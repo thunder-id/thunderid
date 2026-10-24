@@ -79,6 +79,23 @@ describe('EditFlowsSettings', () => {
     expect(screen.queryByText(/These settings are frozen for this agent/)).not.toBeInTheDocument();
   });
 
+  it.each([
+    ['CIBA', 'urn:openid:params:grant-type:ciba'],
+    ['token exchange', 'urn:ietf:params:oauth:grant-type:token-exchange'],
+  ])('keeps flows editable when the agent is delegated through %s alone', (_name, grant) => {
+    render(
+      <EditFlowsSettings
+        agent={baseAgent}
+        editedAgent={{}}
+        oauth2Config={{grantTypes: ['client_credentials', grant], responseTypes: []}}
+        onFieldChange={mockOnFieldChange}
+      />,
+    );
+
+    expect(screen.getByTestId('auth-flow')).toHaveAttribute('data-readonly', 'false');
+    expect(screen.queryByText(/These settings are frozen for this agent/)).not.toBeInTheDocument();
+  });
+
   it('forces the flow sections read-only and shows the lock notice when Delegated mode is off', () => {
     render(
       <EditFlowsSettings

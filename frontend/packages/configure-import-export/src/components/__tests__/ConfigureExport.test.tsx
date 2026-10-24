@@ -300,7 +300,7 @@ type: default
       render(<ConfigureExport resources={yamlContent} />);
       await expandAgentsRow();
 
-      expect(screen.getByText('Unnamed Agent')).toBeInTheDocument();
+      expect(screen.getByText('Unnamed agent')).toBeInTheDocument();
     });
 
     it('parses connection resources and renders a connections section', () => {
@@ -396,19 +396,19 @@ type: google
     },
     {
       resourceType: 'organization_unit',
-      label: 'Organization Units',
+      label: 'Organization units',
       body: (idx) =>
         `resource_type: organization_unit\nname: Org ${idx}\nhandle: org-${idx}\ndescription: Org description ${idx}`,
     },
     {
       resourceType: 'user_type',
-      label: 'User Types',
+      label: 'User types',
       body: (idx) =>
         `resource_type: user_type\ndisplayName: Schema ${idx}\nhandle: schema-${idx}\nallow_self_registration: true`,
     },
     {
       resourceType: 'agent_type',
-      label: 'Agent Types',
+      label: 'Agent types',
       body: (idx) => `resource_type: agent_type\ndisplayName: Agent Type ${idx}\nhandle: agent-type-${idx}`,
     },
     {
@@ -424,7 +424,7 @@ type: google
     },
     {
       resourceType: 'resource_server',
-      label: 'Resource Servers',
+      label: 'Resource servers',
       body: (idx) =>
         `resource_type: resource_server\nname: Resource Server ${idx}\nhandle: rs-${idx}\ndescription: Resource server description ${idx}`,
     },
@@ -448,18 +448,18 @@ type: google
     },
     {
       resourceType: 'server_config',
-      label: 'Server Configurations',
+      label: 'Server configurations',
       body: (idx) => `resource_type: server_config\nname: Server Config ${idx}`,
     },
     {
       resourceType: 'credential_configuration',
-      label: 'Credential Configurations',
+      label: 'Credential configurations',
       body: (idx) =>
         `resource_type: credential_configuration\nname: Credential Config ${idx}\nhandle: credential-config-${idx}\nvct: VerifiableId`,
     },
     {
       resourceType: 'presentation_definition',
-      label: 'Presentation Definitions',
+      label: 'Presentation definitions',
       body: (idx) =>
         `resource_type: presentation_definition\nname: Presentation Definition ${idx}\nhandle: presentation-definition-${idx}\nvct: VerifiableId`,
     },
@@ -519,7 +519,7 @@ type: google
 
       render(<ConfigureExport resources={'---\nresource_type: application\nname: Test App'} />);
 
-      const exportButton = screen.getByText('Export Configuration');
+      const exportButton = screen.getByText('Export configuration');
       await userEvent.click(exportButton);
 
       await waitFor(() => {
@@ -537,13 +537,13 @@ type: google
 
       render(<ConfigureExport resources={'---\nresource_type: application\nname: Test App'} />);
 
-      const exportButton = screen.getByText('Export Configuration');
+      const exportButton = screen.getByText('Export configuration');
       await userEvent.click(exportButton);
 
       await waitFor(() => {
         expect(showSaveFilePicker).toHaveBeenCalled();
       });
-      expect(screen.getByText('Export Configuration')).toBeInTheDocument();
+      expect(screen.getByText('Export configuration')).toBeInTheDocument();
     });
 
     it('falls back to a blob download when the File System Access API is unsupported', async () => {
@@ -552,7 +552,7 @@ type: google
 
       render(<ConfigureExport resources={'---\nresource_type: application\nname: Test App'} />);
 
-      const exportButton = screen.getByText('Export Configuration');
+      const exportButton = screen.getByText('Export configuration');
       await userEvent.click(exportButton);
 
       await waitFor(() => {

@@ -9,7 +9,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 
@@ -18,7 +20,9 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -54,17 +58,30 @@ type UserServiceInterface interface {
 	SetDependencyRegistry(r resourcedependency.Registry)
 	GetUserUsages(ctx context.Context, userID string) (
 		*resourcedependency.DependenciesResponse, *tidcommon.ServiceError)
+	CreateSharingPolicy(ctx context.Context, userID string,
+		req sharing.PolicyRequest) (sharing.Policy, *tidcommon.ServiceError)
+	GetSharingPolicy(ctx context.Context, userID, policyID string) (sharing.Policy, *tidcommon.ServiceError)
+	ListSharingPolicies(ctx context.Context, userID string,
+		limit, offset int) (sharing.PolicyList, *tidcommon.ServiceError)
+	UpdateSharingPolicy(ctx context.Context, userID, policyID string,
+		req sharing.PolicyRequest) (sharing.Policy, *tidcommon.ServiceError)
+	DeleteSharingPolicy(ctx context.Context, userID, policyID string) *tidcommon.ServiceError
+	ResolveSharingOverlay(ctx context.Context, userID, ouID string) (sharing.ResolvedOverlay, *tidcommon.ServiceError)
+	GetAccessibleOrganizationUnits(ctx context.Context, scope string,
+		limit, offset int) (*AccessibleOrganizationUnitListResponse, *tidcommon.ServiceError)
 }
 
 // userService is the default implementation of the UserServiceInterface.
 type userService struct {
 	authzService       sysauthz.SystemAuthorizationServiceInterface
 	entityService      entity.EntityServiceInterface
+	governance         identitygovernance.IdentityGovernanceServiceInterface
 	ouService          oupkg.OrganizationUnitServiceInterface
 	entityTypeService  entitytype.EntityTypeServiceInterface
 	uuidGenerator      func() (string, error)
 	dependencyRegistry resourcedependency.Registry
 	valueCapturer      declarativeresource.ValueCapturer
+	sharingService     sharing.SharingServiceInterface
 }
 
 // newUserService creates a new instance of userService with injected dependencies.
@@ -73,15 +90,19 @@ func newUserService(
 	entityService entity.EntityServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	governance identitygovernance.IdentityGovernanceServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
+	sharingService sharing.SharingServiceInterface,
 ) UserServiceInterface {
 	return &userService{
 		authzService:      authzService,
 		entityService:     entityService,
+		governance:        governance,
 		ouService:         ouService,
 		entityTypeService: entityTypeService,
 		uuidGenerator:     utils.GenerateUUIDv7,
 		valueCapturer:     valueCapturer,
+		sharingService:    sharingService,
 	}
 }
 
@@ -127,7 +148,7 @@ func (us *userService) listAllUsers(
 		return nil, logErrorAndReturnServerError(ctx, logger, "Failed to get user list", err)
 	}
 
-	users := entitiesToUsers(entities)
+	users := us.usersWithAccess(ctx, entities)
 	if includeDisplay {
 		us.populateUserDisplayNames(ctx, users, logger)
 		us.populateOUHandles(ctx, users, logger)
@@ -158,7 +179,7 @@ func (us *userService) listUsersByOUIDs(
 		return nil, logErrorAndReturnServerError(ctx, logger, "Failed to get user list", err)
 	}
 
-	users := entitiesToUsers(entities)
+	users := us.usersWithAccess(ctx, entities)
 	if includeDisplay {
 		us.populateUserDisplayNames(ctx, users, logger)
 		us.populateOUHandles(ctx, users, logger)
@@ -417,6 +438,9 @@ func (us *userService) GetUser(
 	if svcErr := us.checkUserAccess(ctx, security.ActionReadUser, user.OUID, userID); svcErr != nil {
 		return nil, svcErr
 	}
+	access := us.governance.ReadEntityAccess(ctx, *e)
+	user.Status = &access.Status
+	user.LastLoginAt = access.LastLoginAt
 
 	if includeDisplay {
 		displayAttrPaths := entitytype.ResolveDisplayAttributePaths(
@@ -468,7 +492,7 @@ func (as *userService) GetUserGroups(ctx context.Context, userID string, limit, 
 	}
 
 	// Fetch user to resolve the OU ID for the authorization check.
-	userEntity, err := as.entityService.GetEntity(ctx, userID)
+	userEntity, err := as.entityService.GetEntityProfile(ctx, userID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			logger.Debug(ctx, "User not found", log.MaskedString(log.LoggerKeyUserID, userID))
@@ -529,7 +553,7 @@ func (us *userService) UpdateUser(
 	}
 
 	// Fetch the existing user to obtain its OU ID for the authorization check.
-	existingEntity, err := us.entityService.GetEntity(ctx, userID)
+	existingEntity, err := us.entityService.GetEntityProfile(ctx, userID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			logger.Debug(ctx, "User not found", log.MaskedString(log.LoggerKeyUserID, userID))
@@ -560,6 +584,17 @@ func (us *userService) UpdateUser(
 	// Check if user is declarative (immutable)
 	if svcErr := us.checkUserDeclarative(ctx, userID, logger); svcErr != nil {
 		return nil, svcErr
+	}
+
+	// A shared user stays in its organization unit: its policies were issued against that unit.
+	if user.OUID != existingUser.OUID {
+		policies, svcErr := us.sharingService.ListPolicies(ctx, UserSharingType, userID)
+		if svcErr != nil {
+			return nil, translateSharingError(svcErr)
+		}
+		if len(policies) > 0 {
+			return nil, &ErrorSharedUserCannotMove
+		}
 	}
 
 	// Ensure the user object has the correct ID
@@ -610,6 +645,10 @@ func (us *userService) UpdateUser(
 
 	// Sync cleaned attributes back — entity service removed credential fields from Attributes.
 	user.Attributes = updated.Attributes
+	// The status is derived from the updated entity, never taken from the request.
+	access := us.governance.ReadEntityAccess(ctx, *updated)
+	user.Status = &access.Status
+	user.LastLoginAt = access.LastLoginAt
 	logger.Debug(ctx, "Successfully updated user", log.MaskedString(log.LoggerKeyUserID, userID))
 	return user, nil
 }
@@ -693,6 +732,10 @@ func (us *userService) UpdateUserAttributes(
 			log.MaskedString(log.LoggerKeyUserID, userID))
 	}
 
+	access := us.governance.ReadEntityAccess(ctx, *existingEntity)
+	existingUser.Status = &access.Status
+	existingUser.LastLoginAt = access.LastLoginAt
+
 	logger.Debug(ctx, "Successfully updated user attributes", log.MaskedString(log.LoggerKeyUserID, userID))
 	return &existingUser, nil
 }
@@ -734,7 +777,7 @@ func (us *userService) UpdateUserCredentials(
 	}
 
 	// Fetch user outside the transaction to resolve the OU ID for the authorization check.
-	existingEntity, err := us.entityService.GetEntity(ctx, userID)
+	existingEntity, err := us.entityService.GetEntityProfile(ctx, userID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			logger.Debug(ctx, "User not found", log.MaskedString(log.LoggerKeyUserID, userID))
@@ -799,7 +842,7 @@ func (us *userService) ValidateDeleteUser(ctx context.Context, userID string) *t
 	if userID == "" {
 		return &ErrorMissingUserID
 	}
-	existingEntity, err := us.entityService.GetEntity(ctx, userID)
+	existingEntity, err := us.entityService.GetEntityProfile(ctx, userID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			return &ErrorUserNotFound
@@ -830,7 +873,7 @@ func (us *userService) DeleteUser(ctx context.Context, userID string) *tidcommon
 	}
 
 	// Fetch the user to resolve the OU ID for the authorization check.
-	existingEntity, err := us.entityService.GetEntity(ctx, userID)
+	existingEntity, err := us.entityService.GetEntityProfile(ctx, userID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			logger.Debug(ctx, "User not found", log.MaskedString(log.LoggerKeyUserID, userID))
@@ -866,6 +909,13 @@ func (us *userService) DeleteUser(ctx context.Context, userID string) *tidcommon
 	if _, err = us.dependencyRegistry.CascadeDelete(ctx, resourcedependency.ResourceTypeUser, userID); err != nil {
 		return logErrorAndReturnServerError(ctx, logger, "Failed to cascade-delete user dependencies", err,
 			log.MaskedString(log.LoggerKeyUserID, userID))
+	}
+
+	// The sharing policies recorded against the user go with it, in the same position as the cascade
+	// above: nothing else removes them, and a user later created with this id would come back already
+	// shared. Reshares go with the policy beneath them.
+	if svcErr := us.sharingService.DeletePoliciesForResource(ctx, UserSharingType, userID); svcErr != nil {
+		return translateSharingError(svcErr)
 	}
 
 	err = us.entityService.DeleteEntity(ctx, userID)
@@ -959,7 +1009,7 @@ func (us *userService) GetUserUsages(
 		return nil, &ErrorMissingUserID
 	}
 
-	existingEntity, err := us.entityService.GetEntity(ctx, userID)
+	existingEntity, err := us.entityService.GetEntityProfile(ctx, userID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			return nil, &ErrorUserNotFound
@@ -1121,6 +1171,18 @@ func (us *userService) validateOrganizationUnitForUserType(
 	return nil
 }
 
+// usersWithAccess converts entities to users with the access facts governance derived for each, in one
+// read.
+func (us *userService) usersWithAccess(ctx context.Context, entities []providers.Entity) []providers.User {
+	reads := us.governance.ReadAccess(ctx, entities)
+	users := entitiesToUsers(entities)
+	for i := range users {
+		users[i].Status = &reads[i].Status
+		users[i].LastLoginAt = reads[i].LastLoginAt
+	}
+	return users
+}
+
 // validateAndProcessHandlePath validates and processes the handle path.
 func validateAndProcessHandlePath(handlePath string) *tidcommon.ServiceError {
 	if strings.TrimSpace(handlePath) == "" {
@@ -1180,8 +1242,6 @@ func mapEntityError(err error) *tidcommon.ServiceError {
 		return &ErrorAttributeConflict
 	case errors.Is(err, entity.ErrInvalidCredential):
 		return &ErrorInvalidCredential
-	case errors.Is(err, entity.ErrLinkedAccountConflict):
-		return &ErrorLinkedAccountConflict
 	default:
 		return nil
 	}
@@ -1255,6 +1315,261 @@ func (us *userService) checkUserAccess(
 	return nil
 }
 
+// sharingErrors answers the sharing framework's client errors in this service's own codes.
+var sharingErrors = sharing.ErrorTranslation{
+	PolicyNotFound:  ErrorSharingPolicyNotFound,
+	PolicyExists:    ErrorSharingPolicyExists,
+	VersionMismatch: ErrorSharingPolicyVersionMismatch,
+	PolicyDeclared:  ErrorSharingPolicyDeclared,
+	InvalidLimit:    ErrorInvalidLimit,
+	InvalidOffset:   ErrorInvalidOffset,
+	InvalidPolicy:   ErrorInvalidSharingPolicy,
+}
+
+// translateSharingError maps a sharing framework error into this service's own codes.
+func translateSharingError(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
+	return sharingErrors.Translate(svcErr)
+}
+
+// checkSharingAccess authorizes a sharing call against one organization unit. It names no resource,
+// so the self-service rule letting users act on their own record does not apply: sharing a user is
+// an administrator's decision, never the user's own.
+func (us *userService) checkSharingAccess(
+	ctx context.Context, action security.Action, ouID string,
+) *tidcommon.ServiceError {
+	return us.checkUserAccess(ctx, action, ouID, "")
+}
+
+// checkSharingReadAccess allows a read when the caller may read users in any of the given
+// organization units.
+func (us *userService) checkSharingReadAccess(ctx context.Context, ouIDs ...string) *tidcommon.ServiceError {
+	denied := &tidcommon.ErrorUnauthorized
+	for _, ouID := range ouIDs {
+		svcErr := us.checkSharingAccess(ctx, security.ActionReadUser, ouID)
+		if svcErr == nil {
+			return nil
+		}
+		if svcErr.Code != tidcommon.ErrorUnauthorized.Code {
+			return svcErr
+		}
+	}
+	return denied
+}
+
+// requireSharing resolves the user a sharing call names and returns its owning organization unit.
+// The user is read without the caller's authorization, because a sharing call is authorized against
+// the organization unit whose decision it concerns, which need not be the user's own.
+func (us *userService) requireSharing(ctx context.Context, userID string) (string, *tidcommon.ServiceError) {
+	if userID == "" {
+		return "", &ErrorMissingUserID
+	}
+	user, svcErr := us.GetUser(security.WithRuntimeContext(ctx), userID, false)
+	if svcErr != nil {
+		return "", svcErr
+	}
+	return user.OUID, nil
+}
+
+// requireOwnPolicy fetches a policy and refuses one belonging to another resource. Without it a
+// policy id alone would reach any policy in the deployment through any user's path.
+func (us *userService) requireOwnPolicy(
+	ctx context.Context, userID, policyID string,
+) (string, sharing.Policy, *tidcommon.ServiceError) {
+	owningOUID, svcErr := us.requireSharing(ctx, userID)
+	if svcErr != nil {
+		return "", sharing.Policy{}, svcErr
+	}
+	policy, svcErr := us.sharingService.GetPolicy(ctx, policyID)
+	if svcErr != nil {
+		return "", sharing.Policy{}, translateSharingError(svcErr)
+	}
+	if policy.ResourceType != UserSharingType || policy.ResourceID != userID {
+		return "", sharing.Policy{}, &ErrorSharingPolicyNotFound
+	}
+	return owningOUID, policy, nil
+}
+
+// CreateSharingPolicy records which organization units a user reaches. A policy is the initiating
+// organization unit's decision, so that unit is the one the caller must be allowed to act for: the
+// owner for a share, or a unit the user already reached for a reshare.
+func (us *userService) CreateSharingPolicy(
+	ctx context.Context, userID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	owningOUID, svcErr := us.requireSharing(ctx, userID)
+	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	initiatingOUID := req.InitiatingOUID
+	if initiatingOUID == "" {
+		initiatingOUID = owningOUID
+	}
+	if svcErr := us.checkSharingAccess(ctx, security.ActionUpdateUser, initiatingOUID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	// Users that load from resource files only have all their sharing declared there.
+	if isDeclarativeModeEnabled() {
+		return sharing.Policy{}, &ErrorCannotModifyDeclarativeResource
+	}
+	// A declared user's own sharing is declared with it; a unit it is shared into may still reshare.
+	if initiatingOUID == owningOUID {
+		logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+		if svcErr := us.checkUserDeclarative(ctx, userID, logger); svcErr != nil {
+			return sharing.Policy{}, svcErr
+		}
+	}
+	policy, svcErr := us.sharingService.CreatePolicy(ctx, UserSharingType, userID, owningOUID, req)
+	return policy, translateSharingError(svcErr)
+}
+
+// GetSharingPolicy returns one of the user's sharing policies. The owner sees every decision about
+// its user; any other organization unit sees its own.
+func (us *userService) GetSharingPolicy(
+	ctx context.Context, userID, policyID string,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	owningOUID, policy, svcErr := us.requireOwnPolicy(ctx, userID, policyID)
+	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	if svcErr := us.checkSharingReadAccess(ctx, owningOUID, policy.InitiatingOUID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	return policy, nil
+}
+
+// ListSharingPolicies returns one page of the user's sharing policies. A caller who may read users
+// in the owning organization unit sees them all; any other caller sees the ones its own
+// organization units made.
+func (us *userService) ListSharingPolicies(
+	ctx context.Context, userID string, limit, offset int,
+) (sharing.PolicyList, *tidcommon.ServiceError) {
+	if limit < 1 || limit > serverconst.MaxPageSize {
+		return sharing.PolicyList{}, &ErrorInvalidLimit
+	}
+	// An offset this close to MaxInt would overflow the page bounds, the start index and the links.
+	if offset < 0 || offset > math.MaxInt-limit {
+		return sharing.PolicyList{}, &ErrorInvalidOffset
+	}
+
+	owningOUID, svcErr := us.requireSharing(ctx, userID)
+	if svcErr != nil {
+		return sharing.PolicyList{}, svcErr
+	}
+	svcErr = us.checkSharingAccess(ctx, security.ActionReadUser, owningOUID)
+	if svcErr == nil {
+		list, svcErr := us.sharingService.GetPolicyList(ctx, UserSharingType, userID, limit, offset)
+		return list, translateSharingError(svcErr)
+	}
+	if svcErr.Code != tidcommon.ErrorUnauthorized.Code {
+		return sharing.PolicyList{}, svcErr
+	}
+	return us.listOwnSharingPolicies(ctx, userID, limit, offset)
+}
+
+// listOwnSharingPolicies pages, in memory, the policies the caller's own organization units made.
+// A user holds at most one policy per organization unit, so the full set is small.
+func (us *userService) listOwnSharingPolicies(
+	ctx context.Context, userID string, limit, offset int,
+) (sharing.PolicyList, *tidcommon.ServiceError) {
+	policies, svcErr := us.sharingService.ListPolicies(ctx, UserSharingType, userID)
+	if svcErr != nil {
+		return sharing.PolicyList{}, translateSharingError(svcErr)
+	}
+	own := make([]sharing.Policy, 0, len(policies))
+	for _, p := range policies {
+		svcErr := us.checkSharingAccess(ctx, security.ActionReadUser, p.InitiatingOUID)
+		if svcErr == nil {
+			own = append(own, p)
+			continue
+		}
+		if svcErr.Code != tidcommon.ErrorUnauthorized.Code {
+			return sharing.PolicyList{}, svcErr
+		}
+	}
+	// A caller who made none of them has no standing to read the user's sharing at all.
+	if len(own) == 0 {
+		return sharing.PolicyList{}, &tidcommon.ErrorUnauthorized
+	}
+
+	page := own[min(offset, len(own)):min(offset+limit, len(own))]
+	return sharing.PolicyList{
+		TotalResults: len(own),
+		StartIndex:   offset + 1,
+		Count:        len(page),
+		Policies:     page,
+	}, nil
+}
+
+// UpdateSharingPolicy replaces a sharing policy's contents. Only the organization unit whose
+// decision it is may change it.
+func (us *userService) UpdateSharingPolicy(
+	ctx context.Context, userID, policyID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	_, policy, svcErr := us.requireOwnPolicy(ctx, userID, policyID)
+	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	if svcErr := us.checkSharingAccess(ctx, security.ActionUpdateUser, policy.InitiatingOUID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	if isDeclarativeModeEnabled() {
+		return sharing.Policy{}, &ErrorCannotModifyDeclarativeResource
+	}
+	updated, svcErr := us.sharingService.UpdatePolicy(ctx, policyID, req)
+	return updated, translateSharingError(svcErr)
+}
+
+// DeleteSharingPolicy removes a sharing policy and everything that depended on it. A policy that is
+// not there is already gone, so the call succeeds.
+func (us *userService) DeleteSharingPolicy(ctx context.Context, userID, policyID string) *tidcommon.ServiceError {
+	_, policy, svcErr := us.requireOwnPolicy(ctx, userID, policyID)
+	if svcErr != nil {
+		if svcErr.Code == ErrorSharingPolicyNotFound.Code {
+			return nil
+		}
+		return svcErr
+	}
+	if svcErr := us.checkSharingAccess(ctx, security.ActionUpdateUser, policy.InitiatingOUID); svcErr != nil {
+		return svcErr
+	}
+	if isDeclarativeModeEnabled() {
+		return &ErrorCannotModifyDeclarativeResource
+	}
+	if policy.Declared {
+		return &ErrorSharingPolicyDeclared
+	}
+	return translateSharingError(us.sharingService.DeletePolicy(ctx, policyID))
+}
+
+// ResolveSharingOverlay answers which of the user's templated fields one organization unit may
+// override, and on what terms. A user declares no templated fields yet, so the rules are empty. The
+// owner may ask about any organization unit; any other unit may ask about itself.
+func (us *userService) ResolveSharingOverlay(
+	ctx context.Context, userID, ouID string,
+) (sharing.ResolvedOverlay, *tidcommon.ServiceError) {
+	owningOUID, svcErr := us.requireSharing(ctx, userID)
+	if svcErr != nil {
+		return sharing.ResolvedOverlay{}, svcErr
+	}
+	if ouID == "" {
+		return sharing.ResolvedOverlay{}, &ErrorMissingOUIDParameter
+	}
+	if svcErr := us.checkSharingReadAccess(ctx, owningOUID, ouID); svcErr != nil {
+		return sharing.ResolvedOverlay{}, svcErr
+	}
+	overlay, svcErr := us.sharingService.ResolveOverlayRules(ctx, UserSharingType, userID, ouID)
+	if svcErr != nil {
+		// An id naming no organization unit leaves nothing to resolve either.
+		if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
+			return sharing.ResolvedOverlay{}, &ErrorUserNotSharedToOU
+		}
+		return sharing.ResolvedOverlay{}, translateSharingError(svcErr)
+	}
+	if !overlay.Visible {
+		return sharing.ResolvedOverlay{}, &ErrorUserNotSharedToOU
+	}
+	return overlay, nil
+}
+
 // buildTreePaginationLinks builds pagination links for user responses.
 func buildTreePaginationLinks(handlePath string, limit, offset, totalResults int, displayQuery string) []utils.Link {
 	treePath := fmt.Sprintf("/users/tree/%s", path.Clean(handlePath))
@@ -1285,4 +1600,139 @@ func (us *userService) ResolveUserOUHandle(
 		user.OUID = ou.ID
 	}
 	return nil
+}
+
+// GetAccessibleOrganizationUnits lists the organization units the signed-in user can access: the one
+// it lives in and every one it is shared into, narrowed by scope relative to the current one.
+func (us *userService) GetAccessibleOrganizationUnits(
+	ctx context.Context, scope string, limit, offset int,
+) (*AccessibleOrganizationUnitListResponse, *tidcommon.ServiceError) {
+	if scope != "" && scope != accessibleOUScopeSiblings {
+		return nil, &ErrorInvalidScope
+	}
+	if limit < 1 || limit > serverconst.MaxPageSize {
+		return nil, &ErrorInvalidLimit
+	}
+	// An offset this close to MaxInt would overflow the page bounds, the start index and the links.
+	if offset < 0 || offset > math.MaxInt-limit {
+		return nil, &ErrorInvalidOffset
+	}
+
+	userID := security.GetSubject(ctx)
+	if strings.TrimSpace(userID) == "" {
+		return nil, &ErrorAuthenticationFailed
+	}
+	// Units are read on the user's behalf: listing them would otherwise need a permission the user
+	// does not hold, and these are units the user can already access.
+	internalCtx := security.WithRuntimeContext(ctx)
+	user, svcErr := us.GetUser(internalCtx, userID, false)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	reached, svcErr := us.sharingService.ListResourceSharedOUIDs(ctx, UserSharingType, userID)
+	if svcErr != nil {
+		return nil, translateSharingError(svcErr)
+	}
+	// The reach comes in no particular order, so it is sorted for a page to fall in the same place on
+	// every request.
+	slices.Sort(reached)
+	current := security.GetOUID(ctx)
+	if current == "" {
+		current = user.OUID
+	}
+
+	units := newOUReader(us.ouService)
+	accessible := make([]oupkg.OrganizationUnit, 0, len(reached)+1)
+	for _, ouID := range append([]string{user.OUID}, reached...) {
+		ou, found, svcErr := units.get(internalCtx, ouID)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		// A unit removed since it was shared is no longer anywhere to go.
+		if !found {
+			continue
+		}
+		accessible = append(accessible, ou)
+	}
+
+	inScope := accessible
+	if scope == accessibleOUScopeSiblings {
+		currentUnit, found, svcErr := units.get(internalCtx, current)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		inScope = make([]oupkg.OrganizationUnit, 0, len(accessible))
+		for _, ou := range accessible {
+			if found && sameParent(ou.Parent, currentUnit.Parent) {
+				inScope = append(inScope, ou)
+			}
+		}
+	}
+
+	page := inScope[min(offset, len(inScope)):min(offset+limit, len(inScope))]
+	items := make([]AccessibleOrganizationUnit, 0, len(page))
+	for _, ou := range page {
+		items = append(items, AccessibleOrganizationUnit{ID: ou.ID, Handle: ou.Handle, Name: ou.Name,
+			LogoURL: ou.LogoURL})
+	}
+
+	scopeQuery := ""
+	if scope != "" {
+		scopeQuery = "&scope=" + scope
+	}
+	return &AccessibleOrganizationUnitListResponse{
+		Current:           current,
+		TotalResults:      len(inScope),
+		StartIndex:        offset + 1,
+		Count:             len(items),
+		OrganizationUnits: items,
+		Links: utils.BuildPaginationLinks(
+			"/users/me/ous", limit, offset, len(inScope), scopeQuery),
+	}, nil
+}
+
+// sameParent reports whether two units sit under the same parent, top-level units included.
+func sameParent(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
+}
+
+// ouReader reads organization units for one request, each at most once.
+type ouReader struct {
+	ouService oupkg.OrganizationUnitServiceInterface
+	units     map[string]oupkg.OrganizationUnit
+	missing   map[string]struct{}
+}
+
+// newOUReader returns a reader over the given organization unit service.
+func newOUReader(ouService oupkg.OrganizationUnitServiceInterface) *ouReader {
+	return &ouReader{
+		ouService: ouService,
+		units:     make(map[string]oupkg.OrganizationUnit),
+		missing:   make(map[string]struct{}),
+	}
+}
+
+// get returns one organization unit, reporting whether it exists.
+func (r *ouReader) get(
+	ctx context.Context, ouID string,
+) (oupkg.OrganizationUnit, bool, *tidcommon.ServiceError) {
+	if ou, ok := r.units[ouID]; ok {
+		return ou, true, nil
+	}
+	if _, ok := r.missing[ouID]; ok {
+		return oupkg.OrganizationUnit{}, false, nil
+	}
+	ou, svcErr := r.ouService.GetOrganizationUnit(ctx, ouID)
+	if svcErr != nil {
+		if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
+			r.missing[ouID] = struct{}{}
+			return oupkg.OrganizationUnit{}, false, nil
+		}
+		return oupkg.OrganizationUnit{}, false, &tidcommon.InternalServerError
+	}
+	r.units[ouID] = ou
+	return ou, true, nil
 }

@@ -17,10 +17,19 @@ func newPresentationDefinitionDeclarativeServiceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *presentationDefinitionDeclarativeServiceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &presentationDefinitionDeclarativeServiceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -65,7 +74,7 @@ type presentationDefinitionDeclarativeServiceMock_ResolvePresentationDefinitionO
 // ResolvePresentationDefinitionOUHandle is a helper method to define mock.On call
 //   - ctx context.Context
 //   - dto *PresentationDefinitionDTO
-func (_e *presentationDefinitionDeclarativeServiceMock_Expecter) ResolvePresentationDefinitionOUHandle(ctx interface{}, dto interface{}) *presentationDefinitionDeclarativeServiceMock_ResolvePresentationDefinitionOUHandle_Call {
+func (_e *presentationDefinitionDeclarativeServiceMock_Expecter) ResolvePresentationDefinitionOUHandle(ctx any, dto any) *presentationDefinitionDeclarativeServiceMock_ResolvePresentationDefinitionOUHandle_Call {
 	return &presentationDefinitionDeclarativeServiceMock_ResolvePresentationDefinitionOUHandle_Call{Call: _e.mock.On("ResolvePresentationDefinitionOUHandle", ctx, dto)}
 }
 

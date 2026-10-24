@@ -117,67 +117,67 @@ describe('ToolbarPlugin', () => {
     it('should render bold button when bold is enabled', () => {
       render(<ToolbarPlugin bold />);
 
-      expect(screen.getByRole('button', {name: 'Format Bold'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Format bold'})).toBeInTheDocument();
     });
 
     it('should not render bold button when bold is disabled', () => {
       render(<ToolbarPlugin bold={false} />);
 
-      expect(screen.queryByRole('button', {name: 'Format Bold'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Format bold'})).not.toBeInTheDocument();
     });
 
     it('should render italic button when italic is enabled', () => {
       render(<ToolbarPlugin italic />);
 
-      expect(screen.getByRole('button', {name: 'Format Italics'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Format italics'})).toBeInTheDocument();
     });
 
     it('should not render italic button when italic is disabled', () => {
       render(<ToolbarPlugin italic={false} />);
 
-      expect(screen.queryByRole('button', {name: 'Format Italics'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Format italics'})).not.toBeInTheDocument();
     });
 
     it('should render underline button when underline is enabled', () => {
       render(<ToolbarPlugin underline />);
 
-      expect(screen.getByRole('button', {name: 'Format Underline'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Format underline'})).toBeInTheDocument();
     });
 
     it('should not render underline button when underline is disabled', () => {
       render(<ToolbarPlugin underline={false} />);
 
-      expect(screen.queryByRole('button', {name: 'Format Underline'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Format underline'})).not.toBeInTheDocument();
     });
 
     it('should render link button when link is enabled', () => {
       render(<ToolbarPlugin link />);
 
-      expect(screen.getByRole('button', {name: 'Format Link'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Format link'})).toBeInTheDocument();
     });
 
     it('should not render link button when link is disabled', () => {
       render(<ToolbarPlugin link={false} />);
 
-      expect(screen.queryByRole('button', {name: 'Format Link'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Format link'})).not.toBeInTheDocument();
     });
 
     it('should render alignment buttons when alignment is enabled', () => {
       render(<ToolbarPlugin alignment />);
 
-      expect(screen.getByRole('button', {name: 'Left Align'})).toBeInTheDocument();
-      expect(screen.getByRole('button', {name: 'Center Align'})).toBeInTheDocument();
-      expect(screen.getByRole('button', {name: 'Right Align'})).toBeInTheDocument();
-      expect(screen.getByRole('button', {name: 'Justify Align'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Left align'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Center align'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Right align'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Justify align'})).toBeInTheDocument();
     });
 
     it('should not render alignment buttons when alignment is disabled', () => {
       render(<ToolbarPlugin alignment={false} />);
 
-      expect(screen.queryByRole('button', {name: 'Left Align'})).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', {name: 'Center Align'})).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', {name: 'Right Align'})).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', {name: 'Justify Align'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Left align'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Center align'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Right align'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Justify align'})).not.toBeInTheDocument();
     });
 
     it('should render typography dropdown when typography is enabled', () => {
@@ -209,34 +209,34 @@ describe('ToolbarPlugin', () => {
     it('should disable bold button when disabled prop is true', () => {
       render(<ToolbarPlugin bold disabled />);
 
-      expect(screen.getByRole('button', {name: 'Format Bold'})).toBeDisabled();
+      expect(screen.getByRole('button', {name: 'Format bold'})).toBeDisabled();
     });
 
     it('should disable italic button when disabled prop is true', () => {
       render(<ToolbarPlugin italic disabled />);
 
-      expect(screen.getByRole('button', {name: 'Format Italics'})).toBeDisabled();
+      expect(screen.getByRole('button', {name: 'Format italics'})).toBeDisabled();
     });
 
     it('should disable underline button when disabled prop is true', () => {
       render(<ToolbarPlugin underline disabled />);
 
-      expect(screen.getByRole('button', {name: 'Format Underline'})).toBeDisabled();
+      expect(screen.getByRole('button', {name: 'Format underline'})).toBeDisabled();
     });
 
     it('should disable link button when disabled prop is true', () => {
       render(<ToolbarPlugin link disabled />);
 
-      expect(screen.getByRole('button', {name: 'Format Link'})).toBeDisabled();
+      expect(screen.getByRole('button', {name: 'Format link'})).toBeDisabled();
     });
 
     it('should disable alignment buttons when disabled prop is true', () => {
       render(<ToolbarPlugin alignment disabled />);
 
-      expect(screen.getByRole('button', {name: 'Left Align'})).toBeDisabled();
-      expect(screen.getByRole('button', {name: 'Center Align'})).toBeDisabled();
-      expect(screen.getByRole('button', {name: 'Right Align'})).toBeDisabled();
-      expect(screen.getByRole('button', {name: 'Justify Align'})).toBeDisabled();
+      expect(screen.getByRole('button', {name: 'Left align'})).toBeDisabled();
+      expect(screen.getByRole('button', {name: 'Center align'})).toBeDisabled();
+      expect(screen.getByRole('button', {name: 'Right align'})).toBeDisabled();
+      expect(screen.getByRole('button', {name: 'Justify align'})).toBeDisabled();
     });
 
     it('should disable typography button when disabled prop is true', () => {
@@ -287,7 +287,7 @@ describe('ToolbarPlugin', () => {
     it('should dispatch FORMAT_TEXT_COMMAND with bold when bold button is clicked', () => {
       render(<ToolbarPlugin bold />);
 
-      fireEvent.click(screen.getByRole('button', {name: 'Format Bold'}));
+      fireEvent.click(screen.getByRole('button', {name: 'Format bold'}));
 
       expect(mockDispatchCommand).toHaveBeenCalledWith('FORMAT_TEXT_COMMAND', 'bold');
     });
@@ -295,7 +295,7 @@ describe('ToolbarPlugin', () => {
     it('should dispatch FORMAT_TEXT_COMMAND with italic when italic button is clicked', () => {
       render(<ToolbarPlugin italic />);
 
-      fireEvent.click(screen.getByRole('button', {name: 'Format Italics'}));
+      fireEvent.click(screen.getByRole('button', {name: 'Format italics'}));
 
       expect(mockDispatchCommand).toHaveBeenCalledWith('FORMAT_TEXT_COMMAND', 'italic');
     });
@@ -303,7 +303,7 @@ describe('ToolbarPlugin', () => {
     it('should dispatch FORMAT_TEXT_COMMAND with underline when underline button is clicked', () => {
       render(<ToolbarPlugin underline />);
 
-      fireEvent.click(screen.getByRole('button', {name: 'Format Underline'}));
+      fireEvent.click(screen.getByRole('button', {name: 'Format underline'}));
 
       expect(mockDispatchCommand).toHaveBeenCalledWith('FORMAT_TEXT_COMMAND', 'underline');
     });
@@ -311,7 +311,7 @@ describe('ToolbarPlugin', () => {
     it('should dispatch FORMAT_ELEMENT_COMMAND with left when left align button is clicked', () => {
       render(<ToolbarPlugin alignment />);
 
-      fireEvent.click(screen.getByRole('button', {name: 'Left Align'}));
+      fireEvent.click(screen.getByRole('button', {name: 'Left align'}));
 
       expect(mockDispatchCommand).toHaveBeenCalledWith('FORMAT_ELEMENT_COMMAND', 'left');
     });
@@ -319,7 +319,7 @@ describe('ToolbarPlugin', () => {
     it('should dispatch FORMAT_ELEMENT_COMMAND with center when center align button is clicked', () => {
       render(<ToolbarPlugin alignment />);
 
-      fireEvent.click(screen.getByRole('button', {name: 'Center Align'}));
+      fireEvent.click(screen.getByRole('button', {name: 'Center align'}));
 
       expect(mockDispatchCommand).toHaveBeenCalledWith('FORMAT_ELEMENT_COMMAND', 'center');
     });
@@ -327,7 +327,7 @@ describe('ToolbarPlugin', () => {
     it('should dispatch FORMAT_ELEMENT_COMMAND with right when right align button is clicked', () => {
       render(<ToolbarPlugin alignment />);
 
-      fireEvent.click(screen.getByRole('button', {name: 'Right Align'}));
+      fireEvent.click(screen.getByRole('button', {name: 'Right align'}));
 
       expect(mockDispatchCommand).toHaveBeenCalledWith('FORMAT_ELEMENT_COMMAND', 'right');
     });
@@ -335,7 +335,7 @@ describe('ToolbarPlugin', () => {
     it('should dispatch FORMAT_ELEMENT_COMMAND with justify when justify align button is clicked', () => {
       render(<ToolbarPlugin alignment />);
 
-      fireEvent.click(screen.getByRole('button', {name: 'Justify Align'}));
+      fireEvent.click(screen.getByRole('button', {name: 'Justify align'}));
 
       expect(mockDispatchCommand).toHaveBeenCalledWith('FORMAT_ELEMENT_COMMAND', 'justify');
     });
@@ -343,7 +343,7 @@ describe('ToolbarPlugin', () => {
     it('should dispatch TOGGLE_LINK_COMMAND when link button is clicked', () => {
       render(<ToolbarPlugin link />);
 
-      fireEvent.click(screen.getByRole('button', {name: 'Format Link'}));
+      fireEvent.click(screen.getByRole('button', {name: 'Format link'}));
 
       expect(mockDispatchCommand).toHaveBeenCalledWith('TOGGLE_LINK_COMMAND', 'https://');
     });
@@ -391,25 +391,25 @@ describe('ToolbarPlugin', () => {
     it('should have bold enabled by default', () => {
       render(<ToolbarPlugin />);
 
-      expect(screen.getByRole('button', {name: 'Format Bold'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Format bold'})).toBeInTheDocument();
     });
 
     it('should have italic enabled by default', () => {
       render(<ToolbarPlugin />);
 
-      expect(screen.getByRole('button', {name: 'Format Italics'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Format italics'})).toBeInTheDocument();
     });
 
     it('should have underline enabled by default', () => {
       render(<ToolbarPlugin />);
 
-      expect(screen.getByRole('button', {name: 'Format Underline'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Format underline'})).toBeInTheDocument();
     });
 
     it('should have alignment enabled by default', () => {
       render(<ToolbarPlugin />);
 
-      expect(screen.getByRole('button', {name: 'Left Align'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Left align'})).toBeInTheDocument();
     });
 
     it('should have typography enabled by default', () => {
@@ -421,13 +421,13 @@ describe('ToolbarPlugin', () => {
     it('should have link enabled by default', () => {
       render(<ToolbarPlugin />);
 
-      expect(screen.getByRole('button', {name: 'Format Link'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Format link'})).toBeInTheDocument();
     });
 
     it('should not be disabled by default', () => {
       render(<ToolbarPlugin />);
 
-      expect(screen.getByRole('button', {name: 'Format Bold'})).not.toBeDisabled();
+      expect(screen.getByRole('button', {name: 'Format bold'})).not.toBeDisabled();
     });
   });
 
@@ -577,7 +577,7 @@ describe('ToolbarPlugin', () => {
     it('should dispatch TOGGLE_LINK_COMMAND with https:// when adding new link', () => {
       render(<ToolbarPlugin link />);
 
-      fireEvent.click(screen.getByRole('button', {name: 'Format Link'}));
+      fireEvent.click(screen.getByRole('button', {name: 'Format link'}));
 
       // When isLink is false (default), it adds a new link with 'https://'
       expect(mockDispatchCommand).toHaveBeenCalledWith('TOGGLE_LINK_COMMAND', 'https://');
@@ -686,7 +686,7 @@ describe('ToolbarPlugin', () => {
     it('should highlight left align button when alignment is 1', () => {
       render(<ToolbarPlugin alignment />);
 
-      const leftAlignButton = screen.getByRole('button', {name: 'Left Align'});
+      const leftAlignButton = screen.getByRole('button', {name: 'Left align'});
       // By default, alignment is 1 (left) which maps to selectedAlignment === 1
       expect(leftAlignButton).toBeInTheDocument();
     });
@@ -695,21 +695,21 @@ describe('ToolbarPlugin', () => {
       // This would require mocking the selection to have alignment format 2
       render(<ToolbarPlugin alignment />);
 
-      const centerAlignButton = screen.getByRole('button', {name: 'Center Align'});
+      const centerAlignButton = screen.getByRole('button', {name: 'Center align'});
       expect(centerAlignButton).toBeInTheDocument();
     });
 
     it('should highlight right align button when alignment is 3', () => {
       render(<ToolbarPlugin alignment />);
 
-      const rightAlignButton = screen.getByRole('button', {name: 'Right Align'});
+      const rightAlignButton = screen.getByRole('button', {name: 'Right align'});
       expect(rightAlignButton).toBeInTheDocument();
     });
 
     it('should highlight justify align button when alignment is 4', () => {
       render(<ToolbarPlugin alignment />);
 
-      const justifyAlignButton = screen.getByRole('button', {name: 'Justify Align'});
+      const justifyAlignButton = screen.getByRole('button', {name: 'Justify align'});
       expect(justifyAlignButton).toBeInTheDocument();
     });
   });
@@ -763,7 +763,7 @@ describe('ToolbarPlugin', () => {
     it('should not apply active class when disabled', () => {
       render(<ToolbarPlugin bold disabled />);
 
-      const boldButton = screen.getByRole('button', {name: 'Format Bold'});
+      const boldButton = screen.getByRole('button', {name: 'Format bold'});
       expect(boldButton).not.toHaveClass('active');
     });
 
@@ -832,7 +832,7 @@ describe('ToolbarPlugin', () => {
     it('should dispatch TOGGLE_LINK_COMMAND when link button is clicked', () => {
       render(<ToolbarPlugin link />);
 
-      fireEvent.click(screen.getByRole('button', {name: 'Format Link'}));
+      fireEvent.click(screen.getByRole('button', {name: 'Format link'}));
 
       // The dispatch command should have been called
       expect(mockDispatchCommand).toHaveBeenCalledWith('TOGGLE_LINK_COMMAND', expect.anything());
@@ -863,7 +863,7 @@ describe('ToolbarPlugin', () => {
       render(<ToolbarPlugin link />);
 
       // Click the link button (should add a link when isLink is false)
-      fireEvent.click(screen.getByRole('button', {name: 'Format Link'}));
+      fireEvent.click(screen.getByRole('button', {name: 'Format link'}));
 
       // Should dispatch with 'https://' to add the link (since isLink is false by default)
       expect(mockDispatchCommand).toHaveBeenCalledWith('TOGGLE_LINK_COMMAND', 'https://');
@@ -1003,7 +1003,7 @@ describe('ToolbarPlugin', () => {
       }
 
       // Now click the link button - since isLink is true, it should dispatch with null
-      fireEvent.click(screen.getByRole('button', {name: 'Format Link'}));
+      fireEvent.click(screen.getByRole('button', {name: 'Format link'}));
 
       // Should dispatch TOGGLE_LINK_COMMAND
       expect(mockDispatchCommand).toHaveBeenCalledWith('TOGGLE_LINK_COMMAND', expect.anything());
@@ -1212,7 +1212,7 @@ describe('ToolbarPlugin', () => {
       rerender(<ToolbarPlugin link />);
 
       // Click the link button - since isLink is true (set by $isLinkNode returning true), should dispatch with null
-      fireEvent.click(screen.getByRole('button', {name: 'Format Link'}));
+      fireEvent.click(screen.getByRole('button', {name: 'Format link'}));
 
       // Should have dispatched TOGGLE_LINK_COMMAND with null
       expect(mockDispatchCommand).toHaveBeenCalledWith('TOGGLE_LINK_COMMAND', null);
@@ -1276,7 +1276,7 @@ describe('ToolbarPlugin', () => {
       }
 
       // Click the link button - since isLink is false, should dispatch with 'https://'
-      fireEvent.click(screen.getByRole('button', {name: 'Format Link'}));
+      fireEvent.click(screen.getByRole('button', {name: 'Format link'}));
 
       // Should have dispatched TOGGLE_LINK_COMMAND with 'https://'
       expect(mockDispatchCommand).toHaveBeenCalledWith('TOGGLE_LINK_COMMAND', 'https://');

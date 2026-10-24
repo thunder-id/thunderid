@@ -7,12 +7,16 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 
@@ -21,10 +25,14 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 
 	"github.com/thunder-id/thunderid/internal/system/deployment"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 const testDeploymentID = "test-deployment-id"
+
+// testRuntimePersistentDBName keys the transaction a sqlmock-backed transactioner places on the context.
+const testRuntimePersistentDBName = "runtime_persistent"
 
 type RevocationStoreTestSuite struct {
 	suite.Suite
@@ -266,6 +274,187 @@ func (suite *RevocationStoreTestSuite) TestInsertCriterion_ExecError() {
 	assert.Contains(suite.T(), err.Error(), "error inserting revocation criterion")
 }
 
+func (suite *RevocationStoreTestSuite) TestInsertCriteria_EmptySliceSkipsTheClient() {
+	err := suite.store.insertCriteria(context.Background(), nil)
+	assert.NoError(suite.T(), err)
+	suite.mockdbProvider.AssertNotCalled(suite.T(), "GetRuntimePersistentDBClient")
+}
+
+func (suite *RevocationStoreTestSuite) TestInsertCriteria_GeneratesIDsForRowsWithoutOne() {
+	suite.expectNoOpTransaction()
+	rows := []revocationCriterion{
+		{Type: CriterionTypeApplicationKey, Value: "client-1", Reason: RevocationReasonApplicationDeleted,
+			RevokedAt: suite.testCriterion.RevokedAt, ExpiryTime: suite.testCriterion.ExpiryTime},
+		{ID: "already-set", Type: CriterionTypeSubject, Value: "user-1",
+			Reason:    RevocationReasonUserDeleted,
+			RevokedAt: suite.testCriterion.RevokedAt, ExpiryTime: suite.testCriterion.ExpiryTime},
+	}
+	var query dbmodel.DBQuery
+	var args []interface{}
+	suite.mockDBClient.On("ExecuteContext", anyExecuteContextArgs(2)...).
+		Run(func(callArgs mock.Arguments) {
+			query = callArgs.Get(1).(dbmodel.DBQuery)
+			args = callArgs[2:]
+		}).
+		Return(int64(2), nil)
+
+	err := suite.store.insertCriteria(context.Background(), rows)
+
+	assert.NoError(suite.T(), err)
+	assert.NotEmpty(suite.T(), query.Query)
+	assert.Len(suite.T(), args, 2*criteriaInsertColumns)
+	assert.NotEmpty(suite.T(), args[0], "the row with no id must have one generated")
+	assert.Equal(suite.T(), "already-set", args[criteriaInsertColumns],
+		"a row that already carries an id keeps it")
+}
+
+func (suite *RevocationStoreTestSuite) TestInsertCriteria_RejectsRepeatedCriterion() {
+	now := suite.testCriterion.RevokedAt
+	terminal := revocationCriterion{Type: CriterionTypeSubject, Value: "user-1",
+		Reason: RevocationReasonUserDeleted, RevokedAt: now, ExpiryTime: now.Add(time.Hour)}
+	boundary := revocationCriterion{Type: CriterionTypeSubject, Value: "user-1",
+		Reason: RevocationReasonRoleAssignmentRemoved, RevokedAt: now.Add(time.Hour),
+		ExpiryTime: now.Add(2 * time.Hour)}
+
+	testCases := []struct {
+		name string
+		rows []revocationCriterion
+	}{
+		{"TerminalThenBoundary", []revocationCriterion{terminal, boundary}},
+		{"BoundaryThenTerminal", []revocationCriterion{boundary, terminal}},
+		{"Identical", []revocationCriterion{boundary, boundary}},
+	}
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.mockdbProvider = providermock.NewDBProviderInterfaceMock(suite.T())
+			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
+			suite.store.dbProvider = suite.mockdbProvider
+			suite.expectNoOpTransaction()
+
+			err := suite.store.insertCriteria(context.Background(), tc.rows)
+
+			suite.Require().Error(err)
+			suite.Contains(err.Error(), "repeats criterion")
+			suite.mockDBClient.AssertNotCalled(suite.T(), "ExecuteContext")
+		})
+	}
+}
+
+func (suite *RevocationStoreTestSuite) TestInsertCriteria_ChunksAboveTheStatementLimit() {
+	suite.expectNoOpTransaction()
+	rowCount := maxCriteriaRowsPerStatement + 1
+	rows := make([]revocationCriterion, rowCount)
+	for i := range rows {
+		rows[i] = revocationCriterion{
+			ID: fmt.Sprintf("row-%d", i), Type: CriterionTypeEntityScope,
+			Value: fmt.Sprintf("digest-%d", i), Reason: RevocationReasonRoleAssignmentRemoved,
+			RevokedAt: suite.testCriterion.RevokedAt, ExpiryTime: suite.testCriterion.ExpiryTime,
+		}
+	}
+	var chunkSizes []int
+	record := func(callArgs mock.Arguments) {
+		chunkSizes = append(chunkSizes, len(callArgs[2:])/criteriaInsertColumns)
+	}
+	suite.mockDBClient.On("ExecuteContext", anyExecuteContextArgs(maxCriteriaRowsPerStatement)...).
+		Run(record).Return(int64(1), nil).Once()
+	suite.mockDBClient.On("ExecuteContext", anyExecuteContextArgs(1)...).
+		Run(record).Return(int64(1), nil).Once()
+
+	err := suite.store.insertCriteria(context.Background(), rows)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), []int{maxCriteriaRowsPerStatement, 1}, chunkSizes,
+		"one full statement and one carrying the remainder")
+}
+
+func (suite *RevocationStoreTestSuite) TestInsertCriteria_DBClientError() {
+	suite.mockdbProvider.On("GetRuntimePersistentDBClient").Return(nil, errors.New("db client error"))
+
+	err := suite.store.insertCriteria(context.Background(), []revocationCriterion{suite.testCriterion})
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "db client error")
+}
+
+func (suite *RevocationStoreTestSuite) TestInsertCriteria_ExecError() {
+	suite.expectNoOpTransaction()
+	suite.mockDBClient.On("ExecuteContext", anyExecuteContextArgs(1)...).
+		Return(int64(0), errors.New("execute error"))
+
+	err := suite.store.insertCriteria(context.Background(), []revocationCriterion{suite.testCriterion})
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "error inserting revocation criteria")
+}
+
+func (suite *RevocationStoreTestSuite) TestInsertCriteria_TransactionerError() {
+	suite.mockdbProvider.On("GetRuntimePersistentDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimePersistentDBTransactioner").
+		Return(nil, errors.New("transactioner error"))
+
+	err := suite.store.insertCriteria(context.Background(), []revocationCriterion{suite.testCriterion})
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "transactioner error")
+	suite.mockDBClient.AssertNotCalled(suite.T(), "ExecuteContext")
+}
+
+func (suite *RevocationStoreTestSuite) TestInsertCriteria_RollsBackEarlierChunksWhenALaterOneFails() {
+	db, sqlMock, err := sqlmock.New()
+	suite.Require().NoError(err)
+	suite.T().Cleanup(func() { _ = db.Close() })
+	sqlMock.ExpectBegin()
+	sqlMock.ExpectRollback()
+	suite.mockdbProvider.On("GetRuntimePersistentDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimePersistentDBTransactioner").
+		Return(transaction.NewTransactioner(db, testRuntimePersistentDBName), nil)
+
+	rows := make([]revocationCriterion, maxCriteriaRowsPerStatement+1)
+	for i := range rows {
+		rows[i] = revocationCriterion{
+			ID: fmt.Sprintf("row-%d", i), Type: CriterionTypeEntityScope,
+			Value: fmt.Sprintf("digest-%d", i), Reason: RevocationReasonRoleAssignmentRemoved,
+			RevokedAt: suite.testCriterion.RevokedAt, ExpiryTime: suite.testCriterion.ExpiryTime,
+		}
+	}
+	inTransaction := func(callArgs mock.Arguments) {
+		ctx := callArgs.Get(0).(context.Context)
+		suite.True(transaction.HasKeyedTx(ctx, testRuntimePersistentDBName),
+			"every chunk must be written inside the one transaction")
+	}
+	suite.mockDBClient.On("ExecuteContext", anyExecuteContextArgs(maxCriteriaRowsPerStatement)...).
+		Run(inTransaction).Return(int64(maxCriteriaRowsPerStatement), nil).Once()
+	suite.mockDBClient.On("ExecuteContext", anyExecuteContextArgs(1)...).
+		Run(inTransaction).Return(int64(0), errors.New("second chunk failed")).Once()
+
+	err = suite.store.insertCriteria(context.Background(), rows)
+
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "second chunk failed")
+	suite.NoError(sqlMock.ExpectationsWereMet(), "the transaction must roll back, never commit")
+}
+
+func (suite *RevocationStoreTestSuite) TestInsertCriteria_JoinsAnOuterTransaction() {
+	db, sqlMock, err := sqlmock.New()
+	suite.Require().NoError(err)
+	suite.T().Cleanup(func() { _ = db.Close() })
+	sqlMock.ExpectBegin()
+	outerTx, err := db.Begin()
+	suite.Require().NoError(err)
+	ctx := transaction.WithKeyedTx(context.Background(), testRuntimePersistentDBName, outerTx)
+	suite.mockdbProvider.On("GetRuntimePersistentDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimePersistentDBTransactioner").
+		Return(transaction.NewTransactioner(db, testRuntimePersistentDBName), nil)
+	suite.mockDBClient.On("ExecuteContext", anyExecuteContextArgs(1)...).
+		Run(func(callArgs mock.Arguments) {
+			txCtx := callArgs.Get(0).(context.Context)
+			suite.Same(outerTx, transaction.KeyedTxFromContext(txCtx, testRuntimePersistentDBName))
+		}).
+		Return(int64(1), nil)
+
+	err = suite.store.insertCriteria(ctx, []revocationCriterion{suite.testCriterion})
+
+	suite.Require().NoError(err)
+	suite.NoError(sqlMock.ExpectationsWereMet(), "no second transaction may be begun or committed")
+}
+
 func (suite *RevocationStoreTestSuite) TestAreCriteriaRevoked_True() {
 	suite.mockdbProvider.On("GetRuntimePersistentDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, mock.Anything,
@@ -368,6 +557,30 @@ func (suite *RevocationStoreTestSuite) TestCriterionUpsertDoesNotWeakenTerminalR
 	suite.True(expiry.Equal(terminalExpiry))
 }
 
+func (suite *RevocationStoreTestSuite) TestCriterionUpsertNeverMovesABoundaryCutoffBackwards() {
+	db, err := sql.Open("sqlite", ":memory:")
+	suite.Require().NoError(err)
+	suite.T().Cleanup(func() { suite.Require().NoError(db.Close()) })
+	suite.createCriteriaTable(db)
+
+	now := time.Now().UTC().Truncate(time.Second)
+	later := now.Add(time.Hour)
+	_, err = db.Exec(queryInsertRevocationCriterion.Query, "boundary-late", "subject", "user-1",
+		string(RevocationReasonRoleAssignmentRemoved), later, later.Add(time.Hour), "deployment-1")
+	suite.Require().NoError(err)
+	// The same key written again with an earlier cutoff, as a flow that stamped first but committed second.
+	_, err = db.Exec(queryInsertRevocationCriterion.Query, "boundary-early", "subject", "user-1",
+		string(RevocationReasonRoleAssignmentRemoved), now, now.Add(time.Hour), "deployment-1")
+	suite.Require().NoError(err)
+
+	var revokedAt time.Time
+	err = db.QueryRow(`SELECT REVOKED_AT FROM "REVOCATION_CRITERIA"
+		WHERE DEPLOYMENT_ID = ? AND CRITERION_TYPE = ? AND CRITERION_VALUE = ?`,
+		"deployment-1", "subject", "user-1").Scan(&revokedAt)
+	suite.Require().NoError(err)
+	suite.True(revokedAt.Equal(later), "the later cutoff must stand")
+}
+
 func (suite *RevocationStoreTestSuite) TestCriterionUpsertPromotesBoundaryToTerminalRevocation() {
 	db, err := sql.Open("sqlite", ":memory:")
 	suite.Require().NoError(err)
@@ -391,6 +604,59 @@ func (suite *RevocationStoreTestSuite) TestCriterionUpsertPromotesBoundaryToTerm
 	suite.Require().NoError(err)
 	suite.Equal("user_deleted", reason)
 	suite.True(expiry.Equal(terminalExpiry))
+}
+
+func (suite *RevocationStoreTestSuite) TestBuildInsertRevocationCriteriaQuery_WritesAndUpsertsTogether() {
+	db, err := sql.Open("sqlite", ":memory:")
+	suite.Require().NoError(err)
+	suite.T().Cleanup(func() { suite.Require().NoError(db.Close()) })
+	suite.createCriteriaTable(db)
+
+	now := time.Now().UTC().Truncate(time.Second)
+	terminalExpiry := now.Add(24 * time.Hour)
+	_, err = db.Exec(queryInsertRevocationCriterion.Query, "pre-existing-terminal", "subject", "user-1",
+		"user_deleted", now, terminalExpiry, "deployment-1")
+	suite.Require().NoError(err)
+	_, err = db.Exec(queryInsertRevocationCriterion.Query, "pre-existing-boundary", "entity.scope", "digest-1",
+		string(RevocationReasonRoleAssignmentRemoved), now, now.Add(time.Hour), "deployment-1")
+	suite.Require().NoError(err)
+
+	rows := []revocationCriterion{
+		// A fresh key: must simply be inserted.
+		{ID: "fresh-1", Type: CriterionTypeApplicationKey, Value: "client-1",
+			Reason: RevocationReasonApplicationDeleted, RevokedAt: now, ExpiryTime: now.Add(time.Hour)},
+		// Conflicts with the pre-existing terminal row.
+		{ID: "conflict-terminal", Type: CriterionTypeSubject, Value: "user-1",
+			Reason: RevocationReasonRoleAssignmentRemoved, RevokedAt: now.Add(2 * time.Hour),
+			ExpiryTime: now.Add(2 * time.Hour)},
+		// Conflicts with the pre-existing boundary row at a later cutoff: the cutoff must advance.
+		{ID: "conflict-boundary", Type: CriterionTypeEntityScope, Value: "digest-1",
+			Reason: RevocationReasonRoleAssignmentRemoved, RevokedAt: now.Add(2 * time.Hour),
+			ExpiryTime: now.Add(2 * time.Hour)},
+	}
+	query, args := buildInsertRevocationCriteriaQuery(rows, "deployment-1")
+	_, err = db.Exec(query.Query, args...)
+	suite.Require().NoError(err)
+
+	var reason string
+	var revokedAt time.Time
+	err = db.QueryRow(`SELECT REASON, REVOKED_AT FROM "REVOCATION_CRITERIA"
+		WHERE DEPLOYMENT_ID = ? AND CRITERION_TYPE = ? AND CRITERION_VALUE = ?`,
+		"deployment-1", "app.key", "client-1").Scan(&reason, &revokedAt)
+	suite.Require().NoError(err, "the fresh row must have been written")
+	suite.Equal(string(RevocationReasonApplicationDeleted), reason)
+
+	err = db.QueryRow(`SELECT REASON, REVOKED_AT FROM "REVOCATION_CRITERIA"
+		WHERE DEPLOYMENT_ID = ? AND CRITERION_TYPE = ? AND CRITERION_VALUE = ?`,
+		"deployment-1", "subject", "user-1").Scan(&reason, &revokedAt)
+	suite.Require().NoError(err)
+	suite.Equal("user_deleted", reason, "the terminal reason must survive a boundary row in the batch")
+
+	err = db.QueryRow(`SELECT REASON, REVOKED_AT FROM "REVOCATION_CRITERIA"
+		WHERE DEPLOYMENT_ID = ? AND CRITERION_TYPE = ? AND CRITERION_VALUE = ?`,
+		"deployment-1", "entity.scope", "digest-1").Scan(&reason, &revokedAt)
+	suite.Require().NoError(err)
+	suite.True(revokedAt.Equal(now.Add(2*time.Hour)), "the later cutoff in the batch must advance it")
 }
 
 func (suite *RevocationStoreTestSuite) createCriteriaTable(db *sql.DB) {
@@ -418,4 +684,71 @@ func (suite *RevocationStoreTestSuite) TestInsertRevokedToken_ScopesByTheRequest
 
 	assert.NoError(suite.T(), err)
 	suite.mockDBClient.AssertExpectations(suite.T())
+}
+
+func (suite *RevocationStoreTestSuite) expectNoOpTransaction() {
+	suite.mockdbProvider.On("GetRuntimePersistentDBClient").Return(suite.mockDBClient, nil)
+	suite.mockdbProvider.On("GetRuntimePersistentDBTransactioner").
+		Return(transaction.NewNoOpTransactioner(), nil)
+}
+
+func anyExecuteContextArgs(rows int) []interface{} {
+	args := make([]interface{}, 2+rows*criteriaInsertColumns)
+	for i := range args {
+		args[i] = mock.Anything
+	}
+	return args
+}
+
+func (suite *RevocationStoreTestSuite) TestCriterionUpsertKeepsNewestBoundary() {
+	for _, order := range [][]string{{"new", "old", "old"}, {"old", "new", "new"}} {
+		suite.Run(order[0]+"_first", func() {
+			db, err := sql.Open("sqlite", ":memory:")
+			suite.Require().NoError(err)
+			suite.T().Cleanup(func() { suite.Require().NoError(db.Close()) })
+			suite.createCriteriaTable(db)
+
+			now := time.Now().UTC().Truncate(time.Second)
+			newCutoff := now.Add(time.Hour)
+			longExpiry := now.Add(48 * time.Hour)
+			for _, version := range order {
+				cutoff, expiry, reason := now, longExpiry, RevocationReasonRoleAssignmentRemoved
+				if version == "new" {
+					cutoff, expiry, reason = newCutoff, now.Add(24*time.Hour), RevocationReasonIdentitySuspended
+				}
+				_, err = db.Exec(queryInsertRevocationCriterion.Query, version, "subject", "user-1",
+					string(reason), cutoff, expiry, "deployment-1")
+				suite.Require().NoError(err)
+			}
+
+			var cutoff, expiry time.Time
+			err = db.QueryRow(`SELECT REVOKED_AT, EXPIRY_TIME FROM "REVOCATION_CRITERIA"
+				WHERE DEPLOYMENT_ID = ? AND CRITERION_TYPE = ? AND CRITERION_VALUE = ?`,
+				"deployment-1", "subject", "user-1").Scan(&cutoff, &expiry)
+			suite.Require().NoError(err)
+			suite.True(cutoff.Equal(newCutoff))
+			suite.True(expiry.Equal(longExpiry))
+
+			for _, check := range []struct {
+				deployment string
+				issuedAt   time.Time
+				revoked    bool
+			}{
+				{"deployment-1", now.Add(30 * time.Minute), true},
+				{"deployment-1", newCutoff, true},
+				{"deployment-1", newCutoff.Add(time.Second), false},
+				{"deployment-2", now, false},
+			} {
+				query, args := buildCriteriaRevokedQuery([]Criterion{{Type: CriterionTypeSubject, Value: "user-1"}},
+					check.issuedAt, newCutoff.Add(time.Minute), check.deployment)
+				var hit int
+				err = db.QueryRow(query.Query, args...).Scan(&hit)
+				if check.revoked {
+					suite.Require().NoError(err)
+				} else {
+					suite.ErrorIs(err, sql.ErrNoRows)
+				}
+			}
+		})
+	}
 }

@@ -15,6 +15,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/group"
+	resourcepkg "github.com/thunder-id/thunderid/internal/resource"
+	"github.com/thunder-id/thunderid/internal/revocation"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -31,6 +34,9 @@ type RoleAssignmentServiceInterface interface {
 		includeDisplay bool, assigneeType string) (*AssignmentList, *tidcommon.ServiceError)
 	AddAssignments(ctx context.Context, id string, assignments []RoleAssignment) *tidcommon.ServiceError
 	RemoveAssignments(ctx context.Context, id string, assignments []RoleAssignment) *tidcommon.ServiceError
+	// ValidateRemoveAssignment reports whether the assignee may be unassigned and what that revokes.
+	ValidateRemoveAssignment(ctx context.Context, id, assigneeID string) (
+		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	AddAssigneesToRoles(ctx context.Context, assignments []RoleAssignment,
 		roleIDs []string) *tidcommon.ServiceError
 	GetResourceDependencies(
@@ -44,6 +50,7 @@ type roleAssignmentService struct {
 	entityService     entity.EntityServiceInterface
 	groupService      group.GroupServiceInterface
 	entityTypeService entitytype.EntityTypeServiceInterface
+	resourceService   resourcepkg.ResourceServiceInterface
 	transactioner     providers.Transactioner
 	authzService      sysauthz.SystemAuthorizationServiceInterface
 }
@@ -54,6 +61,7 @@ func newRoleAssignmentService(
 	entityService entity.EntityServiceInterface,
 	groupService group.GroupServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	resourceService resourcepkg.ResourceServiceInterface,
 	transactioner providers.Transactioner,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
 ) RoleAssignmentServiceInterface {
@@ -62,6 +70,7 @@ func newRoleAssignmentService(
 		entityService:     entityService,
 		groupService:      groupService,
 		entityTypeService: entityTypeService,
+		resourceService:   resourceService,
 		transactioner:     transactioner,
 		authzService:      authzService,
 	}
@@ -252,6 +261,54 @@ func (as *roleAssignmentService) RemoveAssignments(
 	return as.modifyAssignments(ctx, id, assignments,
 		as.roleStore.RemoveAssignments,
 		"remove assignments from role", "removed assignments from role")
+}
+
+// ValidateRemoveAssignment runs the checks RemoveAssignments runs.
+func (as *roleAssignmentService) ValidateRemoveAssignment(ctx context.Context, id, assigneeID string) (
+	*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, assignmentLoggerComponentName))
+
+	if assigneeID == "" {
+		return nil, &ErrorMissingAssigneeID
+	}
+	if svcErr := as.authzService.CanGrantMembership(ctx, sysauthz.PrincipalTypeRole, id); svcErr != nil {
+		return nil, svcErr
+	}
+
+	// Removing an assignment that is not there changes nothing, so it must not revoke anything.
+	assignment, svcErr := as.directAssignment(ctx, id, assigneeID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if assignment == nil {
+		return nil, &ErrorRoleAssignmentNotFound
+	}
+	if _, svcErr := as.prepareAssignments(
+		ctx, id, []RoleAssignment{{ID: assignment.ID, Type: assignment.Type}},
+	); svcErr != nil {
+		return nil, svcErr
+	}
+
+	role, err := as.roleStore.GetRole(ctx, id)
+	if err != nil {
+		if errors.Is(err, ErrRoleNotFound) {
+			return nil, &ErrorRoleNotFound
+		}
+		logger.Error(ctx, "Failed to retrieve role", log.String("id", id), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	scopes, svcErr := resolveScopes(ctx, as.resourceService, role.Permissions)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	entityIDs, svcErr := expandPrincipal(ctx, as.groupService, assigneeID, assignment.Type == AssigneeTypeGroup)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return &revocation.AccessRevocationTarget{
+		EntityIDs: entityIDs, Scopes: scopes, AssigneeType: string(assignment.Type),
+	}, nil
 }
 
 // modifyAssignments is the shared implementation for AddAssignments and RemoveAssignments. Both
@@ -546,6 +603,25 @@ func (as *roleAssignmentService) resolveAssignments(
 		result = append(result, ra)
 	}
 	return result, nil
+}
+
+// directAssignment returns the role's direct assignment to the assignee, or nil when there is none.
+func (as *roleAssignmentService) directAssignment(ctx context.Context, id, assigneeID string) (
+	*RoleAssignmentWithDisplay, *tidcommon.ServiceError) {
+	for offset := 0; ; offset += serverconst.MaxPageSize {
+		page, svcErr := as.GetRoleAssignments(ctx, id, serverconst.MaxPageSize, offset, false)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		for i := range page.Assignments {
+			if page.Assignments[i].ID == assigneeID {
+				return &page.Assignments[i], nil
+			}
+		}
+		if offset+serverconst.MaxPageSize >= page.TotalResults {
+			return nil, nil
+		}
+	}
 }
 
 // resolveAppDisplay extracts a display name for an app entity from its system attributes.

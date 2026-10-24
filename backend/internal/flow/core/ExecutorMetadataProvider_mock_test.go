@@ -15,10 +15,19 @@ func NewExecutorMetadataProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ExecutorMetadataProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ExecutorMetadataProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -71,7 +80,7 @@ type ExecutorMetadataProviderMock_GetExecutorMeta_Call struct {
 
 // GetExecutorMeta is a helper method to define mock.On call
 //   - name string
-func (_e *ExecutorMetadataProviderMock_Expecter) GetExecutorMeta(name interface{}) *ExecutorMetadataProviderMock_GetExecutorMeta_Call {
+func (_e *ExecutorMetadataProviderMock_Expecter) GetExecutorMeta(name any) *ExecutorMetadataProviderMock_GetExecutorMeta_Call {
 	return &ExecutorMetadataProviderMock_GetExecutorMeta_Call{Call: _e.mock.On("GetExecutorMeta", name)}
 }
 
@@ -122,7 +131,7 @@ type ExecutorMetadataProviderMock_IsRegistered_Call struct {
 
 // IsRegistered is a helper method to define mock.On call
 //   - name string
-func (_e *ExecutorMetadataProviderMock_Expecter) IsRegistered(name interface{}) *ExecutorMetadataProviderMock_IsRegistered_Call {
+func (_e *ExecutorMetadataProviderMock_Expecter) IsRegistered(name any) *ExecutorMetadataProviderMock_IsRegistered_Call {
 	return &ExecutorMetadataProviderMock_IsRegistered_Call{Call: _e.mock.On("IsRegistered", name)}
 }
 

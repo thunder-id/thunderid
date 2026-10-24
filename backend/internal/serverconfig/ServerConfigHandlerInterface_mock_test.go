@@ -16,10 +16,19 @@ func NewServerConfigHandlerInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ServerConfigHandlerInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ServerConfigHandlerInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -72,7 +81,7 @@ type ServerConfigHandlerInterfaceMock_Decode_Call struct {
 
 // Decode is a helper method to define mock.On call
 //   - raw json.RawMessage
-func (_e *ServerConfigHandlerInterfaceMock_Expecter) Decode(raw interface{}) *ServerConfigHandlerInterfaceMock_Decode_Call {
+func (_e *ServerConfigHandlerInterfaceMock_Expecter) Decode(raw any) *ServerConfigHandlerInterfaceMock_Decode_Call {
 	return &ServerConfigHandlerInterfaceMock_Decode_Call{Call: _e.mock.On("Decode", raw)}
 }
 
@@ -89,8 +98,8 @@ func (_c *ServerConfigHandlerInterfaceMock_Decode_Call) Run(run func(raw json.Ra
 	return _c
 }
 
-func (_c *ServerConfigHandlerInterfaceMock_Decode_Call) Return(v any, err error) *ServerConfigHandlerInterfaceMock_Decode_Call {
-	_c.Call.Return(v, err)
+func (_c *ServerConfigHandlerInterfaceMock_Decode_Call) Return(anyMoqParam any, err error) *ServerConfigHandlerInterfaceMock_Decode_Call {
+	_c.Call.Return(anyMoqParam, err)
 	return _c
 }
 
@@ -126,7 +135,7 @@ type ServerConfigHandlerInterfaceMock_Merge_Call struct {
 // Merge is a helper method to define mock.On call
 //   - readOnly any
 //   - writable any
-func (_e *ServerConfigHandlerInterfaceMock_Expecter) Merge(readOnly interface{}, writable interface{}) *ServerConfigHandlerInterfaceMock_Merge_Call {
+func (_e *ServerConfigHandlerInterfaceMock_Expecter) Merge(readOnly any, writable any) *ServerConfigHandlerInterfaceMock_Merge_Call {
 	return &ServerConfigHandlerInterfaceMock_Merge_Call{Call: _e.mock.On("Merge", readOnly, writable)}
 }
 
@@ -148,8 +157,8 @@ func (_c *ServerConfigHandlerInterfaceMock_Merge_Call) Run(run func(readOnly any
 	return _c
 }
 
-func (_c *ServerConfigHandlerInterfaceMock_Merge_Call) Return(v any) *ServerConfigHandlerInterfaceMock_Merge_Call {
-	_c.Call.Return(v)
+func (_c *ServerConfigHandlerInterfaceMock_Merge_Call) Return(anyMoqParam any) *ServerConfigHandlerInterfaceMock_Merge_Call {
+	_c.Call.Return(anyMoqParam)
 	return _c
 }
 
@@ -184,7 +193,7 @@ type ServerConfigHandlerInterfaceMock_Validate_Call struct {
 //   - incoming any
 //   - readOnly any
 //   - writable any
-func (_e *ServerConfigHandlerInterfaceMock_Expecter) Validate(incoming interface{}, readOnly interface{}, writable interface{}) *ServerConfigHandlerInterfaceMock_Validate_Call {
+func (_e *ServerConfigHandlerInterfaceMock_Expecter) Validate(incoming any, readOnly any, writable any) *ServerConfigHandlerInterfaceMock_Validate_Call {
 	return &ServerConfigHandlerInterfaceMock_Validate_Call{Call: _e.mock.On("Validate", incoming, readOnly, writable)}
 }
 

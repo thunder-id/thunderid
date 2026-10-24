@@ -15,6 +15,15 @@ packages:
           pkgname: authzenpdp
           filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/connection/httpconnection:
+    interfaces:
+      httpConnectionStoreInterface:
+        config:
+          dir: internal/connection/httpconnection
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: httpconnection
+          filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/system/cache:
     config:
       all: true
@@ -196,6 +205,18 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: entity
       filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/identitygovernance:
+    config:
+      dir: internal/identitygovernance
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: identitygovernance
+      filename: "{{.InterfaceName}}_mock_test.go"
+    interfaces:
+      entityStateProvider:
+      accountAccessSourceInterface:
+      LockNotifierInterface:
+      notificationTemplateRenderer:
 
   github.com/thunder-id/thunderid/internal/user:
     config:

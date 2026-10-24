@@ -58,7 +58,7 @@ export default function SignOutFlowSection({
 
   return (
     <SettingsCard
-      title={t('applications:edit.flows.labels.signOutFlow', 'Sign Out Flow')}
+      title={t('applications:edit.flows.labels.signOutFlow', 'Sign out flow')}
       description={t(
         'applications:edit.flows.labels.signOutFlow.description',
         'Terminate the SSO session when people sign out of this {{entity}}.',

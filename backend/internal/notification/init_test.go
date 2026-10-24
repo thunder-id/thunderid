@@ -4,6 +4,8 @@
 package notification
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -11,12 +13,15 @@ import (
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	notificationconfig "github.com/thunder-id/thunderid/internal/notification/config"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 )
@@ -55,7 +60,7 @@ func TestInitTestSuite(t *testing.T) {
 	suite.Run(t, new(InitTestSuite))
 }
 
-func (suite *InitTestSuite) SetupSuite() {
+func (suite *InitTestSuite) SetupTest() {
 	config.ResetServerRuntime()
 	testConfig := &config.Config{
 		JWT: engineconfig.JWTConfig{
@@ -78,22 +83,37 @@ func (suite *InitTestSuite) SetupSuite() {
 	if err != nil {
 		suite.T().Fatalf("Failed to initialize server runtime: %v", err)
 	}
-}
-
-func (suite *InitTestSuite) SetupTest() {
 	suite.mockJWTService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
 }
 
-func (suite *InitTestSuite) TearDownSuite() {
+func (suite *InitTestSuite) TearDownTest() {
 	config.ResetServerRuntime()
 }
 
 func (suite *InitTestSuite) TestInitialize() {
-	mgtService, _, _, err := Initialize(suite.mockJWTService)
+	mgtService, _, _, configHandler, err := Initialize(suite.mockJWTService, notificationconfig.Config{})
 	suite.NoError(err)
 
 	suite.NotNil(mgtService)
 	suite.Implements((*NotificationSenderMgtSvcInterface)(nil), mgtService)
+	suite.NotNil(configHandler)
+}
+
+// The returned handler decodes the notification section and protects its declarative layer.
+func (suite *InitTestSuite) TestInitialize_ReturnsTheNotificationSectionHandler() {
+	_, _, _, configHandler, err := Initialize(suite.mockJWTService, notificationconfig.Config{})
+	suite.Require().NoError(err)
+	suite.IsType(&serverConfigHandler{}, configHandler)
+
+	declarative, err := configHandler.Decode(json.RawMessage(`{"defaultEmailSenderId":"file"}`))
+	suite.Require().NoError(err)
+	suite.Equal(notificationconfig.NotificationSectionConfig{DefaultEmailSenderID: "file"}, declarative)
+	_, err = configHandler.Decode(json.RawMessage(`{"defaultEmailSender":"file"}`))
+	suite.Error(err, "an unknown field must be refused")
+	writable := notificationconfig.NotificationSectionConfig{DefaultEmailSenderID: "db"}
+	suite.ErrorIs(configHandler.Validate(writable, declarative, notificationconfig.NotificationSectionConfig{}),
+		errDeclarativeSenderLocked)
+	suite.Equal(declarative, configHandler.Merge(declarative, writable))
 }
 
 func (suite *InitTestSuite) TestInitialize_StoreErrorPropagates() {
@@ -103,10 +123,42 @@ func (suite *InitTestSuite) TestInitialize_StoreErrorPropagates() {
 	getDBProvider = func() provider.DBProviderInterface { return mockProvider }
 	defer func() { getDBProvider = originalGetDBProvider }()
 
-	mgtService, otpService, senderService, err := Initialize(suite.mockJWTService)
+	mgtService, otpService, senderService, configHandler, err :=
+		Initialize(suite.mockJWTService, notificationconfig.Config{})
 
 	suite.Error(err)
 	suite.Nil(mgtService)
 	suite.Nil(otpService)
 	suite.Nil(senderService)
+	suite.Nil(configHandler)
+}
+
+func (suite *InitTestSuite) TestInitializeUsesInjectedConfig() {
+	originalGetDBProvider := getDBProvider
+	mockProvider := providermock.NewDBProviderInterfaceMock(suite.T())
+	getDBProvider = func() provider.DBProviderInterface { return mockProvider }
+	defer func() { getDBProvider = originalGetDBProvider }()
+	cfg := notificationconfig.Config{
+		DeclarativeResourcesEnabled: true,
+		JWT:                         engineconfig.JWTConfig{Issuer: "injected-issuer"},
+		OTP: config.OTPConfig{
+			Length: 8, UseNumericOnly: new(true), ValidityPeriodSeconds: 300,
+		},
+	}
+	suite.mockJWTService.EXPECT().GenerateJWT(mock.Anything, otpSessionAudience, "injected-issuer",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return("injected-session", int64(0), (*tidcommon.ServiceError)(nil)).Once()
+
+	_, otpService, _, _, err := Initialize(suite.mockJWTService, cfg)
+
+	suite.Require().NoError(err)
+	token, otp, expirySeconds, svcErr := otpService.GenerateOTP(
+		context.Background(), "holder@example.com", "email", nil)
+	suite.Require().Nil(svcErr)
+	suite.Equal("injected-session", token)
+	suite.Len(otp, 8)
+	suite.Equal(int64(300), expirySeconds)
+	for _, ch := range otp {
+		suite.Contains("0123456789", string(ch))
+	}
 }

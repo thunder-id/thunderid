@@ -71,7 +71,8 @@ func (s *StoreTestSuite) expectExecError(query dbmodel.DBQuery, argc int, err er
 
 // anyArgs builds the matcher list for a context, a query and argc bound arguments.
 func (s *StoreTestSuite) anyArgs(query dbmodel.DBQuery, argc int) []interface{} {
-	out := []interface{}{mock.Anything, query}
+	out := make([]interface{}, 0, 2+argc)
+	out = append(out, mock.Anything, query)
 	for range argc {
 		out = append(out, mock.Anything)
 	}
@@ -88,8 +89,16 @@ func policyRow(id string) map[string]interface{} {
 		"initiating_ou_id": rootOU,
 		"policy_stage":     string(stageShare),
 		"parent_policy_id": "",
+		"sections":         "{}",
 		"version":          int64(2),
 	}
+}
+
+// sectionsRow returns the row of policy p1 carrying the given SECTIONS document.
+func sectionsRow(document string) map[string]interface{} {
+	row := policyRow("p1")
+	row["sections"] = document
+	return row
 }
 
 // A numeric column comes back as whatever width the driver decoded, and a driver that decoded it as
@@ -117,38 +126,91 @@ func (s *StoreTestSuite) TestTheVersionIsReadWhateverWidthTheDriverReturns() {
 	}
 }
 
-// expectHydrate answers the three follow-up queries hydrate makes for one policy.
-func (s *StoreTestSuite) expectHydrate(policyID string, targets, exclusions, rules []map[string]interface{}) {
-	s.client.On("QueryContext", mock.Anything, queryListTargets, policyID, storeDeploymentID).
-		Return(targets, nil).Once()
-	s.client.On("QueryContext", mock.Anything, queryListExclusions, policyID, storeDeploymentID).
-		Return(exclusions, nil).Once()
+// expectHydrate answers the two follow-up queries hydrate makes for one policy.
+func (s *StoreTestSuite) expectHydrate(policyID string, units, rules []map[string]interface{}) {
+	s.client.On("QueryContext", mock.Anything, queryListUnits, policyID, storeDeploymentID).
+		Return(units, nil).Once()
 	s.client.On("QueryContext", mock.Anything, queryListRules, policyID, storeDeploymentID).
 		Return(rules, nil).Once()
 }
 
-// A policy write is the row plus its targets, exclusions, rules and members, all in one call.
+// A policy write is the row, which says which sections the policy states and what they exclude,
+// plus the units those sections name and their rules, all in one call.
 func (s *StoreTestSuite) TestCreatePolicyWritesEveryPart() {
 	s.clientAvailable()
 	p := Policy{
 		ID: "p1", ResourceType: testType, ResourceID: testResource, OwningOUID: ownerOU,
 		InitiatingOUID: rootOU, Stage: stageShare, Version: 1,
-		Targets: []Target{{
-			ID: "t1", Scope: ScopeRoot, OUID: rootOU, ExcludedOUIDs: []string{childOU, childOU},
-		}},
-		Rules: []StoredRule{{
-			FieldKey: "assignments", TargetID: "t1",
-			Resolved:  OverlayRule{Editable: true, AllowedValues: members("a", "b")},
-			Requested: OverlayRule{Editable: true, AllowedValues: members("a", "b")},
-		}},
+		ChildUnits: &ChildUnits{
+			Mode:  ChildUnitsSelected,
+			Units: []ChildUnit{{OUID: childOU, Reach: ReachSubtree}},
+		},
+		OtherTreeRoots: &OtherTreeRoots{Mode: OtherTreeRootsAll, ExcludedOUIDs: []string{otherOU, otherOU}},
+		Rules: []StoredRule{
+			{
+				FieldKey: "assignments", Grant: GrantRef{Section: SectionChildUnits, OUID: childOU},
+				Resolved:  OverlayRule{Editable: true, AllowedValues: members("a", "b")},
+				Requested: OverlayRule{Editable: true, AllowedValues: members("a", "b")},
+			},
+			{FieldKey: "assignments", Grant: GrantRef{Section: SectionOtherTreeRoots}},
+		},
 	}
 
-	s.expectExec(queryCreatePolicy, 9)
-	s.expectExec(queryInsertTarget, 5)
-	// The duplicate exclusion is deduplicated before it reaches the database.
-	s.expectExec(queryInsertExclusion, 4)
-	// One insert per rule: both forms of it travel as documents.
-	s.expectExec(queryInsertRule, 7)
+	// The sections travel on the policy row as one document: their modes, and what the blanket
+	// one excludes, with the duplicate dropped. A section the policy does not state has no entry.
+	s.client.On("ExecuteContext", mock.Anything, queryCreatePolicy,
+		"p1", string(testType), testResource, ownerOU, rootOU, string(stageShare), nil,
+		`{"childUnits":{"mode":"selected"},"otherTreeRoots":{"mode":"all","excludedOuIds":["`+otherOU+`"]}}`,
+		1, storeDeploymentID).
+		Return(int64(1), nil).Once()
+	s.client.On("ExecuteContext", mock.Anything, queryInsertUnit,
+		"p1", string(SectionChildUnits), childOU, string(ReachSubtree), storeDeploymentID).
+		Return(int64(1), nil).Once()
+	// One insert per rule: both forms of it travel as documents. A named unit's rule is stored
+	// against that unit, and a blanket section's against no unit at all.
+	s.client.On("ExecuteContext", mock.Anything, queryInsertRule,
+		mock.Anything, "p1", string(SectionChildUnits), childOU, "assignments",
+		mock.Anything, mock.Anything, storeDeploymentID).
+		Return(int64(1), nil).Once()
+	s.client.On("ExecuteContext", mock.Anything, queryInsertRule,
+		mock.Anything, "p1", string(SectionOtherTreeRoots), nil, "assignments",
+		mock.Anything, mock.Anything, storeDeploymentID).
+		Return(int64(1), nil).Once()
+
+	s.Require().NoError(s.store.CreatePolicy(context.Background(), p))
+}
+
+// A policy reaching every organization unit states that on its own row, and names no unit.
+func (s *StoreTestSuite) TestCreatePolicyWritesAllUnitsOnThePolicyRow() {
+	s.clientAvailable()
+	p := Policy{
+		ID: "p1", ResourceType: testType, ResourceID: testResource, OwningOUID: ownerOU,
+		InitiatingOUID: ownerOU, Stage: stageShare, Version: 1,
+		AllUnits: &AllUnits{ExcludedOUIDs: []string{childOU}},
+	}
+
+	s.client.On("ExecuteContext", mock.Anything, queryCreatePolicy,
+		"p1", string(testType), testResource, ownerOU, ownerOU, string(stageShare), nil,
+		`{"allUnits":{"excludedOuIds":["`+childOU+`"]}}`, 1, storeDeploymentID).
+		Return(int64(1), nil).Once()
+
+	s.Require().NoError(s.store.CreatePolicy(context.Background(), p))
+}
+
+// A top unit named in another tree is reached at that unit and no deeper, which is the reach its
+// row records.
+func (s *StoreTestSuite) TestCreatePolicyWritesANamedTopUnitAsAUnitReach() {
+	s.clientAvailable()
+	p := Policy{
+		ID: "p1", ResourceType: testType, ResourceID: testResource, OwningOUID: ownerOU,
+		InitiatingOUID: ownerOU, Stage: stageShare, Version: 1,
+		OtherTreeRoots: &OtherTreeRoots{Mode: OtherTreeRootsSelected, Units: []string{rootOU}},
+	}
+
+	s.expectExec(queryCreatePolicy, 10)
+	s.client.On("ExecuteContext", mock.Anything, queryInsertUnit,
+		"p1", string(SectionOtherTreeRoots), rootOU, string(ReachUnit), storeDeploymentID).
+		Return(int64(1), nil).Once()
 
 	s.Require().NoError(s.store.CreatePolicy(context.Background(), p))
 }
@@ -209,19 +271,32 @@ func (s *StoreTestSuite) TestEveryMethodSurfacesAClientFailure() {
 	}
 }
 
-// A row set comes back as a policy with its targets, exclusions and rules attached.
+// A row set comes back as a policy with its sections stated, what they exclude read from the row's
+// own document, and their units and rules attached.
 func (s *StoreTestSuite) TestGetPolicyHydratesEveryPart() {
 	s.clientAvailable()
 	s.client.On("QueryContext", mock.Anything, queryGetPolicyByID, "p1", storeDeploymentID).
-		Return([]map[string]interface{}{policyRow("p1")}, nil).Once()
+		Return([]map[string]interface{}{
+			sectionsRow(`{"childUnits":{"mode":"selected"},` +
+				`"otherTreeRoots":{"mode":"all","excludedOuIds":["` + otherOU + `"]}}`),
+		}, nil).Once()
 	s.expectHydrate("p1",
-		[]map[string]interface{}{{"id": "t1", "target_scope": string(ScopeRoot), "target_ou_id": rootOU}},
-		[]map[string]interface{}{{"target_id": "t1", "excluded_ou_id": childOU}},
-		[]map[string]interface{}{{
-			"id": "r1", "field_key": "assignments", "target_id": "t1",
-			"resolved":  `{"editable":true,"allowedValues":["a"]}`,
-			"requested": `{"editable":true,"allowedValues":["a"]}`,
-		}})
+		[]map[string]interface{}{
+			{"section": string(SectionChildUnits), "ou_id": childOU, "reach": string(ReachSubtree)},
+		},
+		[]map[string]interface{}{
+			{
+				"id": "r1", "field_key": "assignments",
+				"section": string(SectionChildUnits), "ou_id": childOU,
+				"resolved":  `{"editable":true,"allowedValues":["a"]}`,
+				"requested": `{"editable":true,"allowedValues":["a"]}`,
+			},
+			{
+				"id": "r2", "field_key": "assignments",
+				"section": string(SectionOtherTreeRoots), "ou_id": nil,
+				"resolved": `{"editable":false}`, "requested": `{"editable":false}`,
+			},
+		})
 
 	p, err := s.store.GetPolicy(context.Background(), "p1")
 	s.Require().NoError(err)
@@ -229,13 +304,151 @@ func (s *StoreTestSuite) TestGetPolicyHydratesEveryPart() {
 	s.Equal("p1", p.ID)
 	s.Equal(stageShare, p.Stage)
 	s.Equal(2, p.Version)
-	s.Equal([]Target{{
-		ID: "t1", Scope: ScopeRoot, OUID: rootOU, ExcludedOUIDs: []string{childOU},
-	}}, p.Targets)
-	s.Require().Len(p.Rules, 1)
+	s.Nil(p.AllUnits, "a section the row does not state is not made up")
+	s.Equal(&ChildUnits{
+		Mode:  ChildUnitsSelected,
+		Units: []ChildUnit{{OUID: childOU, Reach: ReachSubtree}},
+	}, p.ChildUnits)
+	s.Equal(&OtherTreeRoots{Mode: OtherTreeRootsAll, ExcludedOUIDs: []string{otherOU}}, p.OtherTreeRoots)
+	s.Require().Len(p.Rules, 2)
 	s.Equal("assignments", p.Rules[0].FieldKey)
+	s.Equal(GrantRef{Section: SectionChildUnits, OUID: childOU}, p.Rules[0].Grant)
 	s.Equal([]string{"a"}, *p.Rules[0].Resolved.AllowedValues)
 	s.Nil(p.Rules[0].Resolved.Value, "a set flag of false has to come back absent, not empty")
+	s.Equal(GrantRef{Section: SectionOtherTreeRoots}, p.Rules[1].Grant,
+		"a blanket section's rule names no unit")
+}
+
+// The policy row is what says which decisions were made, so a stray unit row for a section it does
+// not state, or for a mode that names none, is left out rather than read into a reach nobody
+// granted.
+func (s *StoreTestSuite) TestHydrateIgnoresUnitRowsTheSectionsDoNotCarry() {
+	s.clientAvailable()
+	s.client.On("QueryContext", mock.Anything, queryGetPolicyByID, "p1", storeDeploymentID).
+		Return([]map[string]interface{}{
+			sectionsRow(`{"childUnits":{"mode":"all","excludedOuIds":["` + childOU + `"]}}`),
+		}, nil).Once()
+	s.expectHydrate("p1",
+		[]map[string]interface{}{
+			{"section": string(SectionChildUnits), "ou_id": childOU, "reach": string(ReachUnit)},
+			{"section": string(SectionOtherTreeRoots), "ou_id": otherOU, "reach": string(ReachUnit)},
+		},
+		nil)
+
+	p, err := s.store.GetPolicy(context.Background(), "p1")
+	s.Require().NoError(err)
+
+	s.Equal(&ChildUnits{Mode: ChildUnitsAll, ExcludedOUIDs: []string{childOU}}, p.ChildUnits)
+	s.Nil(p.OtherTreeRoots)
+	s.Nil(p.AllUnits)
+}
+
+// Which sections a policy states, in which mode, and what they exclude is one document on its row,
+// keyed by section, and a policy has to come back from it stating exactly what it was written with.
+func (s *StoreTestSuite) TestSectionsRoundTripThroughTheirDocument() {
+	cases := []struct {
+		name   string
+		policy Policy
+		want   string
+	}{
+		{
+			name:   "all child units, nothing excluded",
+			policy: Policy{ChildUnits: &ChildUnits{Mode: ChildUnitsAll}},
+			want:   `{"childUnits":{"mode":"all"}}`,
+		},
+		{
+			name:   "every organization unit",
+			policy: Policy{AllUnits: &AllUnits{ExcludedOUIDs: []string{childOU, grandOU}}},
+			want:   `{"allUnits":{"excludedOuIds":["` + childOU + `","` + grandOU + `"]}}`,
+		},
+		{
+			name:   "every organization unit, nothing excluded",
+			policy: Policy{AllUnits: &AllUnits{}},
+			want:   `{"allUnits":{}}`,
+		},
+		{
+			name: "both blanket sections, each with its own exclusions",
+			policy: Policy{
+				ChildUnits:     &ChildUnits{Mode: ChildUnitsAll, ExcludedOUIDs: []string{childOU}},
+				OtherTreeRoots: &OtherTreeRoots{Mode: OtherTreeRootsAll, ExcludedOUIDs: []string{otherOU, rootOU}},
+			},
+			want: `{"childUnits":{"mode":"all","excludedOuIds":["` + childOU + `"]},` +
+				`"otherTreeRoots":{"mode":"all","excludedOuIds":["` + otherOU + `","` + rootOU + `"]}}`,
+		},
+		{
+			name: "sections naming units record only their mode",
+			policy: Policy{
+				ChildUnits:     &ChildUnits{Mode: ChildUnitsSelected},
+				OtherTreeRoots: &OtherTreeRoots{Mode: OtherTreeRootsSelected},
+			},
+			want: `{"childUnits":{"mode":"selected"},"otherTreeRoots":{"mode":"selected"}}`,
+		},
+	}
+
+	for _, tt := range cases {
+		s.Run(tt.name, func() {
+			encoded, err := encodeSections(tt.policy)
+			s.Require().NoError(err)
+			s.JSONEq(tt.want, encoded)
+
+			var got Policy
+			s.Require().NoError(decodeSections(&got, encoded))
+			s.Equal(tt.policy.AllUnits == nil, got.AllUnits == nil)
+			s.Equal(tt.policy.ChildUnits == nil, got.ChildUnits == nil)
+			s.Equal(tt.policy.OtherTreeRoots == nil, got.OtherTreeRoots == nil)
+
+			roundTripped, err := encodeSections(got)
+			s.Require().NoError(err)
+			s.JSONEq(tt.want, roundTripped)
+		})
+	}
+
+	s.Run("a duplicate exclusion is written once", func() {
+		encoded, err := encodeSections(Policy{
+			ChildUnits: &ChildUnits{Mode: ChildUnitsAll, ExcludedOUIDs: []string{childOU, childOU}},
+		})
+		s.Require().NoError(err)
+		s.JSONEq(`{"childUnits":{"mode":"all","excludedOuIds":["`+childOU+`"]}}`, encoded)
+	})
+
+	// Only a section reaching a whole group withholds anything, so a list beside a section naming
+	// units is left out rather than read as exclusions nothing would apply.
+	s.Run("exclusions beside a section naming units are ignored", func() {
+		var got Policy
+		s.Require().NoError(decodeSections(&got,
+			`{"childUnits":{"mode":"selected","excludedOuIds":["`+childOU+`"]},`+
+				`"otherTreeRoots":{"mode":"selected","excludedOuIds":["`+otherOU+`"]}}`))
+		s.Equal(&ChildUnits{Mode: ChildUnitsSelected}, got.ChildUnits)
+		s.Equal(&OtherTreeRoots{Mode: OtherTreeRootsSelected}, got.OtherTreeRoots)
+	})
+
+	// PostgreSQL hands a JSONB column back as bytes, and a column carrying nothing states no
+	// section at all; both have to read as cleanly as a string does.
+	s.Run("the column is read whatever the driver returns", func() {
+		var fromBytes Policy
+		s.Require().NoError(decodeSections(&fromBytes, []byte(`{"allUnits":{"excludedOuIds":["`+childOU+`"]}}`)))
+		s.Require().NotNil(fromBytes.AllUnits)
+		s.Equal([]string{childOU}, fromBytes.AllUnits.ExcludedOUIDs)
+
+		var fromNothing Policy
+		s.Require().NoError(decodeSections(&fromNothing, nil))
+		s.Nil(fromNothing.AllUnits)
+		s.Nil(fromNothing.ChildUnits)
+		s.Nil(fromNothing.OtherTreeRoots)
+	})
+}
+
+// A document the database cannot return as valid json is reported rather than read as a policy
+// stating nothing, or excluding nothing, which would change who the resource reaches.
+func (s *StoreTestSuite) TestGetPolicyReportsUndecodableSections() {
+	s.clientAvailable()
+	s.client.On("QueryContext", mock.Anything, queryGetPolicyByID, "p1", storeDeploymentID).
+		Return([]map[string]interface{}{sectionsRow("not json")}, nil).Once()
+
+	_, err := s.store.GetPolicy(context.Background(), "p1")
+
+	s.Require().Error(err)
+	s.Contains(err.Error(), "failed to decode sharing policy sections")
 }
 
 // The set flags carry absent-versus-empty, so a flag set with no member rows is an empty list and
@@ -282,26 +495,30 @@ func (s *StoreTestSuite) TestGetPolicyByInitiatorReportsNotFound() {
 // the policy, and nothing further may be written.
 func (s *StoreTestSuite) TestReplacePolicyContentsRefusesAStaleVersion() {
 	s.clientAvailable()
-	s.client.On("ExecuteContext", mock.Anything, queryBumpPolicyVersion, "p1", 1, storeDeploymentID).
+	s.client.On("ExecuteContext", mock.Anything, queryReplacePolicySections,
+		"{}", "p1", 1, storeDeploymentID).
 		Return(int64(0), nil).Once()
 
 	err := s.store.ReplacePolicyContents(context.Background(), Policy{ID: "p1"}, 1)
 	s.ErrorIs(err, errPolicyNotFound)
 }
 
-// A successful version bump clears the old contents before writing the new ones, or a replace would
-// accumulate rather than replace.
+// A successful version bump rewrites the document saying which sections the policy states, and
+// clears the old contents before writing the new ones, or a replace would accumulate rather than
+// replace.
 func (s *StoreTestSuite) TestReplacePolicyContentsClearsBeforeWriting() {
 	s.clientAvailable()
-	s.client.On("ExecuteContext", mock.Anything, queryBumpPolicyVersion, "p1", 2, storeDeploymentID).
+	s.client.On("ExecuteContext", mock.Anything, queryReplacePolicySections,
+		`{"childUnits":{"mode":"selected"}}`, "p1", 2, storeDeploymentID).
 		Return(int64(1), nil).Once()
 	s.expectExec(queryDeleteRules, 2)
-	s.expectExec(queryDeleteExclusions, 2)
-	s.expectExec(queryDeleteTargets, 2)
-	s.expectExec(queryInsertTarget, 5)
+	s.expectExec(queryDeleteUnits, 2)
+	s.expectExec(queryInsertUnit, 5)
 
 	err := s.store.ReplacePolicyContents(context.Background(), Policy{
-		ID: "p1", Targets: []Target{{ID: "t1", Scope: ScopeChild, OUID: childOU}},
+		ID: "p1", ChildUnits: &ChildUnits{
+			Mode: ChildUnitsSelected, Units: []ChildUnit{{OUID: childOU, Reach: ReachUnit}},
+		},
 	}, 2)
 	s.Require().NoError(err)
 }
@@ -365,36 +582,37 @@ func (s *StoreTestSuite) TestWriteFailuresAreWrappedWithTheirPart() {
 	}{
 		{
 			name:    "the policy row",
-			arrange: func() { s.expectExecError(queryCreatePolicy, 9, failure) },
+			arrange: func() { s.expectExecError(queryCreatePolicy, 10, failure) },
 			policy:  Policy{ID: "p1"},
 			wantMsg: "failed to create sharing policy",
 		},
 		{
-			name: "a target",
+			name: "a named unit",
 			arrange: func() {
-				s.expectExec(queryCreatePolicy, 9)
-				s.expectExecError(queryInsertTarget, 5, failure)
+				s.expectExec(queryCreatePolicy, 10)
+				s.expectExecError(queryInsertUnit, 5, failure)
 			},
-			policy:  Policy{ID: "p1", Targets: []Target{{ID: "t1", Scope: ScopeChild, OUID: childOU}}},
-			wantMsg: "failed to create sharing policy target",
+			policy: Policy{ID: "p1", ChildUnits: &ChildUnits{
+				Mode: ChildUnitsSelected, Units: []ChildUnit{{OUID: childOU, Reach: ReachUnit}},
+			}},
+			wantMsg: "failed to create sharing policy unit",
 		},
 		{
-			name: "an exclusion",
+			name: "a named top unit",
 			arrange: func() {
-				s.expectExec(queryCreatePolicy, 9)
-				s.expectExec(queryInsertTarget, 5)
-				s.expectExecError(queryInsertExclusion, 4, failure)
+				s.expectExec(queryCreatePolicy, 10)
+				s.expectExecError(queryInsertUnit, 5, failure)
 			},
-			policy: Policy{ID: "p1", Targets: []Target{{
-				ID: "t1", Scope: ScopeChild, OUID: childOU, ExcludedOUIDs: []string{childOU},
-			}}},
-			wantMsg: "failed to create sharing policy exclusion",
+			policy: Policy{ID: "p1", OtherTreeRoots: &OtherTreeRoots{
+				Mode: OtherTreeRootsSelected, Units: []string{rootOU},
+			}},
+			wantMsg: "failed to create sharing policy unit",
 		},
 		{
 			name: "an overlay rule",
 			arrange: func() {
-				s.expectExec(queryCreatePolicy, 9)
-				s.expectExecError(queryInsertRule, 7, failure)
+				s.expectExec(queryCreatePolicy, 10)
+				s.expectExecError(queryInsertRule, 8, failure)
 			},
 			policy:  Policy{ID: "p1", Rules: []StoredRule{{FieldKey: "assignments"}}},
 			wantMsg: "failed to create overlay rule",
@@ -436,28 +654,15 @@ func (s *StoreTestSuite) TestReadFailuresAreWrapped() {
 			wantMsg: "failed to get sharing policy",
 		},
 		{
-			name: "its targets",
+			name: "its named units",
 			arrange: func() {
 				s.client.On("QueryContext", mock.Anything, queryGetPolicyByID, "p1", storeDeploymentID).
 					Return([]map[string]interface{}{policyRow("p1")}, nil).Once()
-				s.client.On("QueryContext", mock.Anything, queryListTargets, "p1", storeDeploymentID).
+				s.client.On("QueryContext", mock.Anything, queryListUnits, "p1", storeDeploymentID).
 					Return(nil, failure).Once()
 			},
 			call:    func() error { _, err := s.store.GetPolicy(context.Background(), "p1"); return err },
-			wantMsg: "failed to list sharing policy targets",
-		},
-		{
-			name: "its exclusions",
-			arrange: func() {
-				s.client.On("QueryContext", mock.Anything, queryGetPolicyByID, "p1", storeDeploymentID).
-					Return([]map[string]interface{}{policyRow("p1")}, nil).Once()
-				s.client.On("QueryContext", mock.Anything, queryListTargets, "p1", storeDeploymentID).
-					Return([]map[string]interface{}{}, nil).Once()
-				s.client.On("QueryContext", mock.Anything, queryListExclusions, "p1", storeDeploymentID).
-					Return(nil, failure).Once()
-			},
-			call:    func() error { _, err := s.store.GetPolicy(context.Background(), "p1"); return err },
-			wantMsg: "failed to list sharing policy exclusions",
+			wantMsg: "failed to list sharing policy units",
 		},
 		{
 			name: "the resource listing",
@@ -546,8 +751,8 @@ func (s *StoreTestSuite) TestHydrateAllFailsRatherThanReturningPartialResults() 
 		string(testType), testResource, storeDeploymentID, 100, 0).
 		Return([]map[string]interface{}{policyRow("p1"), policyRow("p2")}, nil).Once()
 	// The first row hydrates, the second fails on its targets.
-	s.expectHydrate("p1", nil, nil, nil)
-	s.client.On("QueryContext", mock.Anything, queryListTargets, "p2", storeDeploymentID).
+	s.expectHydrate("p1", nil, nil)
+	s.client.On("QueryContext", mock.Anything, queryListUnits, "p2", storeDeploymentID).
 		Return(nil, failure).Once()
 
 	got, err := s.store.ListPoliciesForResource(context.Background(), testType, testResource, 100, 0)
@@ -563,8 +768,8 @@ func (s *StoreTestSuite) TestHydrateAllReturnsEveryPolicy() {
 	s.client.On("QueryContext", mock.Anything, queryListPoliciesForResource,
 		string(testType), testResource, storeDeploymentID, 100, 0).
 		Return([]map[string]interface{}{policyRow("p1"), policyRow("p2")}, nil).Once()
-	s.expectHydrate("p1", nil, nil, nil)
-	s.expectHydrate("p2", nil, nil, nil)
+	s.expectHydrate("p1", nil, nil)
+	s.expectHydrate("p2", nil, nil)
 
 	got, err := s.store.ListPoliciesForResource(context.Background(), testType, testResource, 100, 0)
 
@@ -583,36 +788,26 @@ func (s *StoreTestSuite) TestReplacePolicyContentsWrapsEachClearingFailure() {
 		wantMsg string
 	}{
 		{
-			name:    "the version bump",
-			arrange: func() { s.expectExecError(queryBumpPolicyVersion, 3, failure) },
-			wantMsg: "failed to update sharing policy version",
+			name:    "the policy row",
+			arrange: func() { s.expectExecError(queryReplacePolicySections, 4, failure) },
+			wantMsg: "failed to update sharing policy",
 		},
 		{
 			name: "clearing rules",
 			arrange: func() {
-				s.expectExec(queryBumpPolicyVersion, 3)
+				s.expectExec(queryReplacePolicySections, 4)
 				s.expectExecError(queryDeleteRules, 2, failure)
 			},
 			wantMsg: "failed to clear overlay rules",
 		},
 		{
-			name: "clearing exclusions",
+			name: "clearing named units",
 			arrange: func() {
-				s.expectExec(queryBumpPolicyVersion, 3)
+				s.expectExec(queryReplacePolicySections, 4)
 				s.expectExec(queryDeleteRules, 2)
-				s.expectExecError(queryDeleteExclusions, 2, failure)
+				s.expectExecError(queryDeleteUnits, 2, failure)
 			},
-			wantMsg: "failed to clear sharing policy exclusions",
-		},
-		{
-			name: "clearing targets",
-			arrange: func() {
-				s.expectExec(queryBumpPolicyVersion, 3)
-				s.expectExec(queryDeleteRules, 2)
-				s.expectExec(queryDeleteExclusions, 2)
-				s.expectExecError(queryDeleteTargets, 2, failure)
-			},
-			wantMsg: "failed to clear sharing policy targets",
+			wantMsg: "failed to clear sharing policy units",
 		},
 	}
 
@@ -698,9 +893,7 @@ func (s *StoreTestSuite) TestRemainingStatementFailuresAreWrapped() {
 			arrange: func() {
 				s.client.On("QueryContext", mock.Anything, queryGetPolicyByID, "p1", storeDeploymentID).
 					Return([]map[string]interface{}{policyRow("p1")}, nil).Once()
-				s.client.On("QueryContext", mock.Anything, queryListTargets, "p1", storeDeploymentID).
-					Return([]map[string]interface{}{}, nil).Once()
-				s.client.On("QueryContext", mock.Anything, queryListExclusions, "p1", storeDeploymentID).
+				s.client.On("QueryContext", mock.Anything, queryListUnits, "p1", storeDeploymentID).
 					Return([]map[string]interface{}{}, nil).Once()
 				s.client.On("QueryContext", mock.Anything, queryListRules, "p1", storeDeploymentID).
 					Return(nil, failure).Once()
@@ -715,9 +908,7 @@ func (s *StoreTestSuite) TestRemainingStatementFailuresAreWrapped() {
 			arrange: func() {
 				s.client.On("QueryContext", mock.Anything, queryGetPolicyByID, "p1", storeDeploymentID).
 					Return([]map[string]interface{}{policyRow("p1")}, nil).Once()
-				s.client.On("QueryContext", mock.Anything, queryListTargets, "p1", storeDeploymentID).
-					Return([]map[string]interface{}{}, nil).Once()
-				s.client.On("QueryContext", mock.Anything, queryListExclusions, "p1", storeDeploymentID).
+				s.client.On("QueryContext", mock.Anything, queryListUnits, "p1", storeDeploymentID).
 					Return([]map[string]interface{}{}, nil).Once()
 				s.client.On("QueryContext", mock.Anything, queryListRules, "p1", storeDeploymentID).
 					Return([]map[string]interface{}{{
@@ -752,16 +943,19 @@ func (s *StoreTestSuite) TestGetPolicyByInitiatorHydrates() {
 	s.clientAvailable()
 	s.client.On("QueryContext", mock.Anything, queryGetPolicyByInitiator,
 		string(testType), testResource, rootOU, storeDeploymentID).
-		Return([]map[string]interface{}{policyRow("p1")}, nil).Once()
+		Return([]map[string]interface{}{sectionsRow(`{"childUnits":{"mode":"selected"}}`)}, nil).Once()
 	s.expectHydrate("p1",
-		[]map[string]interface{}{{"id": "t1", "target_scope": string(ScopeChild), "target_ou_id": childOU}},
-		nil, nil)
+		[]map[string]interface{}{
+			{"section": string(SectionChildUnits), "ou_id": childOU, "reach": string(ReachUnit)},
+		},
+		nil)
 
 	p, err := s.store.GetPolicyByInitiator(context.Background(), testType, testResource, rootOU)
 
 	s.Require().NoError(err)
 	s.Equal(rootOU, p.InitiatingOUID)
-	s.Equal([]Target{{ID: "t1", Scope: ScopeChild, OUID: childOU}}, p.Targets)
+	s.Require().NotNil(p.ChildUnits)
+	s.Equal([]ChildUnit{{OUID: childOU, Reach: ReachUnit}}, p.ChildUnits.Units)
 }
 
 // A failed read of an organization unit's values is reported, not reported as no values, which
@@ -884,8 +1078,8 @@ func (s *StoreTestSuite) TestTheWholeSetReadHydratesEveryPolicy() {
 	s.client.On("QueryContext", mock.Anything, queryListAllPoliciesForResource,
 		string(testType), testResource, storeDeploymentID).
 		Return([]map[string]interface{}{policyRow("p1"), policyRow("p2")}, nil).Once()
-	s.expectHydrate("p1", nil, nil, nil)
-	s.expectHydrate("p2", nil, nil, nil)
+	s.expectHydrate("p1", nil, nil)
+	s.expectHydrate("p2", nil, nil)
 
 	got, err := s.store.ListAllPoliciesForResource(context.Background(), testType, testResource)
 
@@ -956,4 +1150,35 @@ func (s *StoreTestSuite) TestACountThatIsNotANumberIsAFailure() {
 
 	s.Require().Error(err)
 	s.Contains(err.Error(), "failed to read sharing policy count")
+}
+
+// The issued-by lookup backs the check that keeps an issuing organization unit from being deleted,
+// so it reads every resource type and hydrates like any other read.
+func (s *StoreTestSuite) TestListPoliciesIssuedByHydrates() {
+	s.clientAvailable()
+	s.client.On("QueryContext", mock.Anything, queryListPoliciesIssuedBy, rootOU, storeDeploymentID).
+		Return([]map[string]interface{}{sectionsRow(`{"childUnits":{"mode":"all"}}`)}, nil).Once()
+	s.expectHydrate("p1", nil, nil)
+
+	got, err := s.store.ListPoliciesIssuedBy(context.Background(), rootOU)
+
+	s.Require().NoError(err)
+	s.Require().Len(got, 1)
+	s.Equal(rootOU, got[0].InitiatingOUID)
+	s.Require().NotNil(got[0].ChildUnits)
+	s.Equal(ChildUnitsAll, got[0].ChildUnits.Mode)
+}
+
+// A failed read is reported, not read as an organization unit that issued nothing, which would let
+// the unit be deleted out from under its policies.
+func (s *StoreTestSuite) TestListPoliciesIssuedByWrapsAQueryFailure() {
+	s.clientAvailable()
+	failure := errors.New("query error")
+	s.client.On("QueryContext", mock.Anything, queryListPoliciesIssuedBy, rootOU, storeDeploymentID).
+		Return(nil, failure).Once()
+
+	got, err := s.store.ListPoliciesIssuedBy(context.Background(), rootOU)
+
+	s.ErrorIs(err, failure)
+	s.Nil(got)
 }

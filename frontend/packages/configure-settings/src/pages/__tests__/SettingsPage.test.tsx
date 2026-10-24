@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {screen} from '@testing-library/react';
+import {screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {renderWithProviders} from '@thunderid/test-utils';
 import {describe, it, expect, vi} from 'vitest';
@@ -20,6 +20,11 @@ describe('SettingsPage', () => {
     expect(screen.getByText('Settings that apply across your entire ThunderID deployment.')).toBeInTheDocument();
     expect(screen.getByRole('tab', {name: 'CORS'})).toBeInTheDocument();
     expect(screen.getByTestId('cors-section')).toBeInTheDocument();
+  });
+
+  it('sets the document title', async () => {
+    renderWithProviders(<SettingsPage />);
+    await waitFor(() => expect(document.title).toBe('Settings | ThunderID'));
   });
 
   it('keeps the CORS panel active when its tab is clicked', async () => {

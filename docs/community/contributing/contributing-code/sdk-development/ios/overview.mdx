@@ -18,7 +18,7 @@ The iOS SDK lives in [ios-sdks](https://github.com/thunder-id/ios-sdks), a Swift
 ```text
 Sources/ThunderID/          Core SDK (auth, token, http layers)
 Sources/ThunderIDSwiftUI/   SwiftUI component library
-Samples/Quickstart/         Demo app, not part of the SDK
+Playground/                 App for exercising the SDK from source
 Tests/                      Unit tests
 Tests/e2e/                  End-to-end suite
 ```
@@ -31,7 +31,11 @@ swift test
 swiftlint lint --strict
 ```
 
-Open `Samples/Quickstart/Package.swift` in Xcode to run the sample on a simulator or device.
+The quickstart sample lives in [`quickstarts/ios`](https://github.com/thunder-id/samples/tree/main/quickstarts/ios) in the samples repository and depends on the published SDK. To run it against your local changes, `Tests/e2e/scripts/prepare-sample.sh` fetches it into `Tests/e2e/.quickstart` and points it at your checkout; open `Package.swift` there in Xcode to run it on a simulator or device.
+
+## Playground
+
+`Playground/` is a SwiftUI app that uses the SDK from this checkout through a local package reference, so it always runs your changes. It has four tabs: capability checks for each SDK feature with a pass or fail reason, a component explorer with live controls and generated SwiftUI code, a session inspector for tokens and claims, and an SDK event log. Copy `Sources/Config.plist.example` to `Sources/Config.plist`, fill in your server URL and application, then open `Playground.xcodeproj` in Xcode and run the `Playground` scheme. The pull request builder builds it, so keep its checks and stories in step when you change a capability or a component.
 
 ## Code Style
 

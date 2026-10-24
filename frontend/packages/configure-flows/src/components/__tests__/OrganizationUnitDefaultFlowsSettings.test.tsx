@@ -76,10 +76,10 @@ describe('OrganizationUnitDefaultFlowsSettings', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('Sign-in Flow')).toBeInTheDocument();
-    expect(screen.getByText('Sign-up Flow')).toBeInTheDocument();
-    expect(screen.getByText('Recovery Flow')).toBeInTheDocument();
-    expect(screen.getByText('Sign Out Flow')).toBeInTheDocument();
+    expect(screen.getByText('Sign-in flow')).toBeInTheDocument();
+    expect(screen.getByText('Sign-up flow')).toBeInTheDocument();
+    expect(screen.getByText('Recovery flow')).toBeInTheDocument();
+    expect(screen.getByText('Sign out flow')).toBeInTheDocument();
   });
 
   it('should not render a toggle for Sign In or Sign Out', () => {
@@ -93,8 +93,8 @@ describe('OrganizationUnitDefaultFlowsSettings', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.queryByLabelText('toggle-Sign-in Flow')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('toggle-Sign Out Flow')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('toggle-Sign-in flow')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('toggle-Sign out flow')).not.toBeInTheDocument();
   });
 
   it('should render a toggle for Sign Up and Recovery bound to their enabled fields', async () => {
@@ -110,7 +110,7 @@ describe('OrganizationUnitDefaultFlowsSettings', () => {
       </MemoryRouter>,
     );
 
-    const registrationToggle = screen.getByLabelText('toggle-Sign-up Flow');
+    const registrationToggle = screen.getByLabelText('toggle-Sign-up flow');
     await user.click(registrationToggle);
 
     expect(mockOnFieldChange).toHaveBeenCalledWith('isRegistrationFlowEnabled', true);

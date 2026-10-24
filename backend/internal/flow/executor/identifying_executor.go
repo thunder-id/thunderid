@@ -4,9 +4,11 @@
 package executor
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -34,18 +36,24 @@ type identifyingExecutorInterface interface {
 type identifyingExecutor struct {
 	providers.Executor
 	entityProvider entityprovider.EntityProviderInterface
+	authnProvider  providers.AuthnProviderManager
+	accessGuard    *accessGuard
 	logger         *log.Logger
 }
 
 var _ providers.Executor = (*identifyingExecutor)(nil)
 var _ identifyingExecutorInterface = (*identifyingExecutor)(nil)
 
-// newIdentifyingExecutor creates a new instance of IdentifyingExecutor.
+// newIdentifyingExecutor creates a new instance of IdentifyingExecutor. The authentication provider
+// binds the user a federated identity's link holders are narrowed to, and may be nil for an executor
+// that never resolves between link holders.
 func newIdentifyingExecutor(
 	name string,
 	defaultInputs, prerequisites []providers.Input,
 	flowFactory core.FlowFactoryInterface,
 	entityProvider entityprovider.EntityProviderInterface,
+	authnProvider providers.AuthnProviderManager,
+	accessGuard *accessGuard,
 ) *identifyingExecutor {
 	if name == "" {
 		name = ExecutorNameIdentifying
@@ -64,6 +72,8 @@ func newIdentifyingExecutor(
 	return &identifyingExecutor{
 		Executor:       base,
 		entityProvider: entityProvider,
+		authnProvider:  authnProvider,
+		accessGuard:    accessGuard,
 		logger:         logger,
 	}
 }
@@ -77,7 +87,7 @@ func (i *identifyingExecutor) IdentifyEntity(ctx context.Context, filters map[st
 	logger.Debug(ctx, "Identifying entity with filters")
 
 	if entityID, ok := filters[userAttributeUserID].(string); ok && entityID != "" {
-		entity, epErr := i.entityProvider.GetEntity(entityID)
+		entity, epErr := i.entityProvider.GetEntityProfile(entityID)
 		if epErr != nil {
 			if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
 				execResp.Error = errForEntityCategory(ErrEntityNotFound, category)
@@ -133,6 +143,19 @@ func (i *identifyingExecutor) Execute(ctx *providers.NodeContext) (*providers.Ex
 	execResp := &providers.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
+	}
+
+	// After a federated sign-in the link decides the user, so no mode takes typed inputs or matches on
+	// attributes: the candidates come from the link.
+	if federated := federatedIdentityFrom(ctx); federated != nil {
+		switch ctx.ExecutorMode {
+		case ExecutorModeResolve:
+			return i.executeResolveFederated(ctx, execResp)
+		case ExecutorModeCheckState:
+			return i.executeCheckStateFederated(ctx, execResp, federated)
+		default:
+			return i.executeIdentifyFederated(ctx, execResp, federated)
+		}
 	}
 
 	loginHint := ctx.UserInputs[userInputLoginHint]
@@ -209,6 +232,34 @@ func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
 		return execResp, nil
 	}
 
+	// A recovery flow never reaches the assertion check, so a held account is refused here.
+	if ctx.FlowType == providers.FlowTypeRecovery {
+		held, stated, fault := i.accessGuard.heldAt(ctx.Context, *userID, providers.AccessPlaneRecovery, "",
+			logger)
+		if fault != nil {
+			// Answered as a failed account lookup.
+			execResp.Status = providers.ExecFailure
+			execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
+			return execResp, nil
+		}
+		if held {
+			// A refusal that names no hold takes the unknown-user branch.
+			if stated != nil {
+				execResp.Status = providers.ExecFailure
+				execResp.Error = stated
+				return execResp, nil
+			}
+			if loginHintAttr == "" {
+				execResp.Status = providers.ExecUserInputRequired
+				execResp.Inputs = i.GetRequiredInputs(ctx)
+			} else {
+				execResp.Status = providers.ExecFailure
+			}
+			execResp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
+			return execResp, nil
+		}
+	}
+
 	execResp.RuntimeData[userAttributeUserID] = *userID
 	execResp.Status = providers.ExecComplete
 
@@ -265,6 +316,108 @@ func (i *identifyingExecutor) executeResolve(ctx *providers.NodeContext,
 	}
 }
 
+// executeResolveFederated lets the user pick between the users holding a federated identity's link at
+// sign-in. Anything else passes through: an identity with at most one holder needs no pick, and
+// registration settles the holders against the OU it registers into at provisioning.
+func (i *identifyingExecutor) executeResolveFederated(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
+	if ctx.FlowType != providers.FlowTypeAuthentication ||
+		ctx.RuntimeData[common.RuntimeKeyEntityState] != entityStateAmbiguous {
+		execResp.Status = providers.ExecComplete
+		return execResp, nil
+	}
+	return i.executeResolveLinkHolders(ctx, execResp)
+}
+
+// executeResolveLinkHolders narrows the users holding a federated identity's link down to one and
+// binds it to the AuthUser. The candidates come from the link, and only the options offered for them
+// filter it, so the user picks between its holders and nothing else.
+func (i *identifyingExecutor) executeResolveLinkHolders(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
+	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
+	logger.Debug(ctx.Context, "Resolving between the users linked to the federated identity")
+
+	// The holders are loaded from the link on every round, never from stored candidates, which an
+	// attribute-based resolve may have left with users who do not hold this link. The picks carried in
+	// the user inputs narrow them again each round.
+	federated := federatedIdentityFrom(ctx)
+	holders, epErr := i.entityProvider.GetLinkedEntities(federated.IdpID, federated.Sub)
+	if epErr != nil {
+		logger.Debug(ctx.Context, "Failed to retrieve the users linked to the federated identity",
+			log.String("errorCode", string(epErr.Code)))
+		execResp.Status = providers.ExecFailure
+		execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
+		return execResp, nil
+	}
+
+	picked := make(map[string]interface{})
+	for _, option := range extractDisambiguationOptions(holders) {
+		if value := ctx.UserInputs[option.Identifier]; value != "" {
+			picked[option.Identifier] = value
+		}
+	}
+	candidates := holders
+	if len(picked) > 0 {
+		candidates = filterUsersByAttributes(holders, picked)
+	}
+
+	switch len(candidates) {
+	case 0:
+		if len(holders) == 0 {
+			logger.Debug(ctx.Context, "No user is linked to the federated identity")
+			execResp.Status = providers.ExecFailure
+			execResp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
+			return execResp, nil
+		}
+		// A pick that matches no holder is offered the holders' options again. The error makes the
+		// prompt drop the stale pick, which it would otherwise resubmit.
+		resp, err := i.promptLinkHolders(ctx.Context, holders, execResp, logger)
+		if err == nil && resp.Status == providers.ExecUserInputRequired {
+			resp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
+		}
+		return resp, err
+	case 1:
+		return i.bindLinkHolder(ctx, execResp, candidates[0].ID, logger)
+	default:
+		return i.promptLinkHolders(ctx.Context, candidates, execResp, logger)
+	}
+}
+
+// promptLinkHolders asks the user to pick between link holders. The holders are not stored as
+// candidates, so an attribute-based resolve later in the flow does not pick from them.
+func (i *identifyingExecutor) promptLinkHolders(ctx context.Context, holders []*providers.Entity,
+	execResp *providers.ExecutorResponse, logger *log.Logger) (*providers.ExecutorResponse, error) {
+	resp, err := i.handleAmbiguousCandidates(ctx, holders, execResp, logger)
+	if resp != nil {
+		delete(resp.RuntimeData, common.RuntimeKeyCandidateUsers)
+	}
+	return resp, err
+}
+
+// bindLinkHolder makes the AuthUser name the link holder the user picked. The holder came from the
+// link itself, so it is authenticated by entity ID, which the provider admits as a federated sign-in.
+func (i *identifyingExecutor) bindLinkHolder(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
+	entityID string, logger *log.Logger) (*providers.ExecutorResponse, error) {
+	if i.authnProvider == nil {
+		return nil, errors.New("no authentication provider to bind the resolved link holder")
+	}
+	if svcErr := authenticateEntityByID(ctx, i.authnProvider, entityID, ctx.AuthUser, execResp); svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return nil, fmt.Errorf("failed to bind the resolved link holder: %s", svcErr.Code)
+		}
+		logger.Debug(ctx.Context, "Failed to bind the resolved link holder", log.String("errorCode", svcErr.Code))
+		execResp.Status = providers.ExecFailure
+		execResp.Error = cmp.Or(statedHold(svcErr), errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped))
+		return execResp, nil
+	}
+
+	execResp.RuntimeData[userAttributeUserID] = entityID
+	execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateExists
+	execResp.Status = providers.ExecComplete
+	logger.Debug(ctx.Context, "Link holder resolved", log.MaskedString(log.LoggerKeyUserID, entityID))
+	return execResp, nil
+}
+
 // executeCheckState handles the check_state mode which looks up candidates and sets a
 // runtime flag indicating whether zero, one, or multiple entities match. Always returns ExecComplete.
 func (i *identifyingExecutor) executeCheckState(ctx *providers.NodeContext,
@@ -284,22 +437,81 @@ func (i *identifyingExecutor) executeCheckState(ctx *providers.NodeContext,
 		return execResp, nil
 	}
 
-	switch len(candidates) {
-	case 0:
-		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateNotExists
-		logger.Debug(ctx.Context, "No users found for the provided attributes")
-	case 1:
-		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateExists
-		logger.Debug(ctx.Context, "Single user found",
-			log.MaskedString("userID", candidates[0].ID))
-	default:
-		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateAmbiguous
-		logger.Debug(ctx.Context, "Multiple users found",
-			log.Int("candidateCount", len(candidates)))
-	}
+	setEntityStateFromCount(execResp, len(candidates))
+	logger.Debug(ctx.Context, "Entity state checked", log.Int("candidateCount", len(candidates)))
 
 	execResp.Status = providers.ExecComplete
 	return execResp, nil
+}
+
+// executeCheckStateFederated sets the entity state from the users holding the federated identity's
+// link, never from attributes or claims. A provider that cannot list the holders keeps the state the
+// federated executor recorded.
+func (i *identifyingExecutor) executeCheckStateFederated(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse, federated *core.ExternalIdentity) (*providers.ExecutorResponse, error) {
+	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
+
+	holders, epErr := i.entityProvider.GetLinkedEntities(federated.IdpID, federated.Sub)
+	if epErr != nil {
+		if epErr.Code == entityprovider.ErrorCodeNotImplemented {
+			execResp.Status = providers.ExecComplete
+			return execResp, nil
+		}
+		logger.Debug(ctx.Context, "Failed to retrieve the users linked to the federated identity",
+			log.String("errorCode", string(epErr.Code)))
+		execResp.Status = providers.ExecFailure
+		execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
+		return execResp, nil
+	}
+
+	setEntityStateFromCount(execResp, len(holders))
+	logger.Debug(ctx.Context, "Entity state checked from the federated identity's link",
+		log.Int("holderCount", len(holders)))
+	execResp.Status = providers.ExecComplete
+	return execResp, nil
+}
+
+// executeIdentifyFederated identifies the one user holding the federated identity's link. No holder
+// fails rather than prompting, since a typed identifier would name a user the sign-in never proved.
+// Several holders fail too: picking between them is resolve mode's job.
+func (i *identifyingExecutor) executeIdentifyFederated(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse, federated *core.ExternalIdentity) (*providers.ExecutorResponse, error) {
+	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
+
+	holders, epErr := i.entityProvider.GetLinkedEntities(federated.IdpID, federated.Sub)
+	if epErr != nil {
+		logger.Debug(ctx.Context, "Failed to retrieve the users linked to the federated identity",
+			log.String("errorCode", string(epErr.Code)))
+		execResp.Status = providers.ExecFailure
+		execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
+		return execResp, nil
+	}
+
+	switch len(holders) {
+	case 0:
+		execResp.Status = providers.ExecFailure
+		execResp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
+	case 1:
+		execResp.RuntimeData[userAttributeUserID] = holders[0].ID
+		execResp.Status = providers.ExecComplete
+	default:
+		execResp.Status = providers.ExecFailure
+		execResp.Error = errForEntityCategory(ErrAmbiguousEntityIdentity, categoryUnscoped)
+	}
+	logger.Debug(ctx.Context, "Identified from the federated identity's link", log.Int("holderCount", len(holders)))
+	return execResp, nil
+}
+
+// setEntityStateFromCount records whether no entity, one, or several matched.
+func setEntityStateFromCount(execResp *providers.ExecutorResponse, count int) {
+	switch count {
+	case 0:
+		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateNotExists
+	case 1:
+		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateExists
+	default:
+		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateAmbiguous
+	}
 }
 
 // buildSearchAttributes collects search attributes from user inputs and runtime data.

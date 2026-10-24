@@ -70,7 +70,7 @@ The endpoint accepts the same request as either an HTTP `GET` or an HTTP `POST`,
 <ProductName /> terminates the SSO session by running the application's sign-out flow. The flow is resolved in three steps, and the first match wins:
 
 1. The sign-out flow pinned on the application under its **Flows** tab.
-2. The default sign-out flow set on the application's organization unit, under **Organization Units** → the organization unit → **Flows**.
+2. The default sign-out flow set on the application's organization unit, under **Organization units** → the organization unit → **Flows**.
 3. The server-level default sign-out flow.
 
 <ProductName /> ships a server-level default, so an application that pins nothing still signs users out. To use a custom flow instead, build one and select it under the application's **Flows** tab. See [Build a Sign-Out Flow](../../../flows/build-a-flow#go-further).

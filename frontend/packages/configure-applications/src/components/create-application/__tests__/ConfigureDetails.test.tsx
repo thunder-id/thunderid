@@ -59,7 +59,7 @@ const HEIDI_CLIENT_ID = 'c3ce7a6c-2bbb-4abe-909c-41bc9463d3c5';
 
 const createWalletTemplate = (): ApplicationTemplate => ({
   id: 'wallet',
-  ...createTemplate('Digital Wallet', []),
+  ...createTemplate('Digital wallet', []),
 });
 
 // The sign-in approach picker itself now lives on the Design step (ConfigureDesign); this
@@ -176,7 +176,7 @@ describe('ConfigureDetails', () => {
   });
 
   it('renders the redirect URI editor for a redirect-capable template with a prefilled placeholder URI', () => {
-    const template = createTemplate('Browser App', ['https://example.com/callback']);
+    const template = createTemplate('Browser app', ['https://example.com/callback']);
 
     renderWithContext(
       {
@@ -231,7 +231,7 @@ describe('ConfigureDetails', () => {
   });
 
   it('renders passkey configuration even when no other configuration is required', () => {
-    const template = createTemplate('Browser App', ['https://example.com/callback']);
+    const template = createTemplate('Browser app', ['https://example.com/callback']);
 
     renderWithContext(
       {
@@ -255,7 +255,7 @@ describe('ConfigureDetails', () => {
   });
 
   it('shows URL configuration inputs and notifies callbacks when values change', async () => {
-    const template = createTemplate('Browser App', []);
+    const template = createTemplate('Browser app', []);
     const onHostingUrlChange = vi.fn();
     const onCallbackUrlChange = vi.fn();
     const onReadyChange = vi.fn();
@@ -296,7 +296,7 @@ describe('ConfigureDetails', () => {
   }, 15000);
 
   it('displays deep link configuration and forwards values for mobile templates', async () => {
-    const template = createTemplate('Mobile App', []);
+    const template = createTemplate('Mobile app', []);
     const onCallbackUrlChange = vi.fn();
     const onHostingUrlChange = vi.fn();
     const onReadyChange = vi.fn();
@@ -323,7 +323,7 @@ describe('ConfigureDetails', () => {
   });
 
   it('validates hosting URL input and shows validation errors', async () => {
-    const template = createTemplate('Browser App', []);
+    const template = createTemplate('Browser app', []);
     const onHostingUrlChange = vi.fn();
     const onCallbackUrlChange = vi.fn();
     const onReadyChange = vi.fn();
@@ -363,7 +363,7 @@ describe('ConfigureDetails', () => {
   });
 
   it('validates callback URL when in custom mode', async () => {
-    const template = createTemplate('Browser App', []);
+    const template = createTemplate('Browser app', []);
     const onHostingUrlChange = vi.fn();
     const onCallbackUrlChange = vi.fn();
     const onReadyChange = vi.fn();
@@ -399,7 +399,7 @@ describe('ConfigureDetails', () => {
   });
 
   it('validates deep link input for mobile apps', async () => {
-    const template = createTemplate('Mobile App', []);
+    const template = createTemplate('Mobile app', []);
     const onCallbackUrlChange = vi.fn();
     const onHostingUrlChange = vi.fn();
     const onReadyChange = vi.fn();
@@ -428,7 +428,7 @@ describe('ConfigureDetails', () => {
   });
 
   it('handles same as hosting URL callback mode correctly', async () => {
-    const template = createTemplate('Browser App', []);
+    const template = createTemplate('Browser app', []);
     const onHostingUrlChange = vi.fn();
     const onCallbackUrlChange = vi.fn();
     const onReadyChange = vi.fn();
@@ -461,9 +461,9 @@ describe('ConfigureDetails', () => {
   it('renders user type selection when multiple user types are available', () => {
     // Create template with empty allowedUserTypes array to trigger user type selection
     const template: ApplicationTemplate = {
-      ...createTemplate('Browser App', []),
+      ...createTemplate('Browser app', []),
       defaults: {
-        ...createTemplate('Browser App', []).defaults,
+        ...createTemplate('Browser app', []).defaults,
         allowedUserTypes: [], // Empty array means user types selection is required
       },
     };
@@ -492,9 +492,9 @@ describe('ConfigureDetails', () => {
   it('calls onUserTypesChange when user type selection changes', async () => {
     // Create template with empty allowedUserTypes array to trigger user type selection
     const template: ApplicationTemplate = {
-      ...createTemplate('Browser App', []),
+      ...createTemplate('Browser app', []),
       defaults: {
-        ...createTemplate('Browser App', []).defaults,
+        ...createTemplate('Browser app', []).defaults,
         allowedUserTypes: [], // Empty array means user types selection is required
       },
     };
@@ -529,7 +529,7 @@ describe('ConfigureDetails', () => {
   });
 
   it('does not render user type selection when no user types are provided', () => {
-    const template = createTemplate('Browser App', []);
+    const template = createTemplate('Browser app', []);
 
     renderWithContext(
       {
@@ -548,7 +548,7 @@ describe('ConfigureDetails', () => {
   });
 
   it('notifies readiness based on form validity', async () => {
-    const template = createTemplate('Browser App', []);
+    const template = createTemplate('Browser app', []);
     const onReadyChange = vi.fn();
 
     renderWithContext(
@@ -583,7 +583,7 @@ describe('ConfigureDetails', () => {
   describe('CORS readiness guard', () => {
     // A malformed origin used to be dropped on submit without a word, so the step has to block on it.
     const corsTemplate = (): ApplicationTemplate => ({
-      ...createTemplate('Browser App', []),
+      ...createTemplate('Browser app', []),
       capabilities: {cors: true},
     });
 
@@ -648,7 +648,7 @@ describe('ConfigureDetails', () => {
         },
         {
           // No cors capability, so the editor is hidden and its stale rows must not block the step.
-          selectedTemplateConfig: createTemplate('Browser App', []),
+          selectedTemplateConfig: createTemplate('Browser app', []),
           corsOrigins: [createRow(AllowedOriginTypes.ORIGIN, 'https://example.com/path')],
         },
       );
@@ -686,7 +686,7 @@ describe('ConfigureDetails', () => {
   });
 
   it('allows updating relying party ID for passkey configuration', async () => {
-    const template = createTemplate('Browser App', ['https://example.com/callback']);
+    const template = createTemplate('Browser app', ['https://example.com/callback']);
     const setRelyingPartyId = vi.fn();
 
     renderWithContext(
@@ -717,7 +717,7 @@ describe('ConfigureDetails', () => {
   });
 
   it('allows updating relying party name for passkey configuration', async () => {
-    const template = createTemplate('Browser App', ['https://example.com/callback']);
+    const template = createTemplate('Browser app', ['https://example.com/callback']);
     const setRelyingPartyName = vi.fn();
 
     renderWithContext(
@@ -748,7 +748,7 @@ describe('ConfigureDetails', () => {
   });
 
   it('renders both passkey and URL configuration when passkey is enabled', () => {
-    const template = createTemplate('Browser App', []);
+    const template = createTemplate('Browser app', []);
 
     renderWithContext(
       {
@@ -777,7 +777,7 @@ describe('ConfigureDetails', () => {
   });
 
   it('does not render passkey configuration when CREDENTIALS_AUTH is the only authenticator', () => {
-    const template = createTemplate('Browser App', []);
+    const template = createTemplate('Browser app', []);
 
     renderWithContext(
       {
@@ -801,7 +801,7 @@ describe('ConfigureDetails', () => {
   });
 
   it('initializes passkey relying party defaults from hostname and app name', () => {
-    const template = createTemplate('Browser App', ['https://example.com/callback']);
+    const template = createTemplate('Browser app', ['https://example.com/callback']);
 
     renderWithContext(
       {
@@ -829,7 +829,7 @@ describe('ConfigureDetails', () => {
 
   it('falls back to default passkey labels and placeholders when translations are empty', () => {
     translationLookup = (): string => '';
-    const template = createTemplate('Browser App', ['https://example.com/callback']);
+    const template = createTemplate('Browser app', ['https://example.com/callback']);
 
     renderWithContext(
       {
@@ -847,9 +847,9 @@ describe('ConfigureDetails', () => {
     );
 
     expect(screen.getByText('Passkeys')).toBeInTheDocument();
-    expect(screen.getByText('Relying Party ID')).toBeInTheDocument();
+    expect(screen.getByText('Relying party ID')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('e.g., example.com')).toBeInTheDocument();
-    expect(screen.getByText('Relying Party Name')).toBeInTheDocument();
+    expect(screen.getByText('Relying party name')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('e.g., My App')).toBeInTheDocument();
   });
 
@@ -957,7 +957,7 @@ describe('ConfigureDetails', () => {
   describe('Sign-in approach reactions', () => {
     it('hides the URL fields underneath and is ready when Embedded is selected', async () => {
       const onReadyChange = vi.fn();
-      const template = createTemplate('Browser App', []);
+      const template = createTemplate('Browser app', []);
 
       renderWithContext(
         {
@@ -977,7 +977,7 @@ describe('ConfigureDetails', () => {
     });
 
     it('shows the URL fields underneath when Inbuilt is selected', () => {
-      const template = createTemplate('Browser App', []);
+      const template = createTemplate('Browser app', []);
 
       renderWithContext(
         {

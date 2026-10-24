@@ -44,7 +44,7 @@ function MagicLinkProperties({resource, onChange}: CommonResourcePropertiesProps
   return (
     <Stack gap={2}>
       <Typography variant="body2" color="text.secondary">
-        {t('flows:core.executions.magicLink.description', 'Configure the Magic Link step behavior.')}
+        {t('flows:core.executions.magicLink.description', 'Configure the magic link step behavior.')}
       </Typography>
 
       <div>

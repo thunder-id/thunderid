@@ -111,6 +111,7 @@ The `ThunderIDProvider` component accepts the following props:
 | `clientSecret` | `string` | ❌ | Client secret of your application. Only required for confidential clients. |
 | `scopes` | `string \| string[]` | ❌ | OpenID Connect Scopes to request during the sign-in. Defaults to `'openid profile internal_login'` if not provided. |
 | `storage` | `sessionStorage` or `localStorage \| webWorker` | ❌ | Storage mechanism to use for session management. Defaults to `sessionStorage` if not provided. |
+| `session` | `SessionConfig` | ❌ | Behaviour around the <ProductName /> session. Set `session.silentSignIn.beforeRedirect` to `true` to try a silent sign-in before `signIn()` redirects. The silent attempt is skipped when the sign-in options set their own `prompt`. `session.silentSignIn.timeout` (milliseconds, default `10000`) bounds how long a silent sign-in waits. See [Browser configuration](../../../../browser/apis/configuration#session-parameters). |
 | `afterSignInUrl` | `string` | ❌ | URL to redirect to after sign-in process is completed. |
 | `afterSignUpUrl` | `string` | ❌ | URL to redirect to after sign-up process is completed. |
 | `afterSignOutUrl` | `string` | ❌ | URL to redirect to after sign-out process is completed. |

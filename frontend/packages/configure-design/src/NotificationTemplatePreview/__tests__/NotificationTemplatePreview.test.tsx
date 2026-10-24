@@ -18,9 +18,7 @@ vi.mock('@thunderid/i18n', () => ({
   useGetTranslations: () => mockUseGetTranslations(),
 }));
 
-vi.mock('@thunderid/design', () => ({
-  DefaultTheme: {colorSchemes: {light: {palette: {primary: {main: '#3688ff'}}}}},
-}));
+vi.mock('@thunderid/design', () => ({}));
 
 function setTranslations(notification: Record<string, string> = {}, isSuccess = true): void {
   mockUseGetTranslations.mockReturnValue({data: {translations: {notification}}, isSuccess});
@@ -50,21 +48,35 @@ describe('NotificationTemplatePreview', () => {
       <NotificationTemplatePreview
         channel="email"
         subject="{{t(otp.subject)}}"
-        body="<p>{{ctx(otp)}}</p>"
+        body="<p>{{ctx(otpCode)}}</p>"
         locale="en-US"
       />,
     );
 
     expect(screen.getByText('Your verification code')).toBeInTheDocument();
-    expect(emailSrcDoc()).toContain('{{ctx(otp)}}');
+    expect(emailSrcDoc()).toContain('{{ctx(otpCode)}}');
   });
 
   it('resolves {{design(key)}} against the theme in the email body', () => {
     render(
-      <NotificationTemplatePreview channel="email" body="<p>{{design(palette.primary.main)}}</p>" locale="en-US" />,
+      <NotificationTemplatePreview
+        channel="email"
+        body="<p>{{design(palette.primary.main)}}</p>"
+        locale="en-US"
+        theme={{colorSchemes: {light: {palette: {primary: {main: '#3688ff'}}}}}}
+        colorScheme="light"
+      />,
     );
 
     expect(emailSrcDoc()).toContain('#3688ff');
+  });
+
+  it('strips {{design(key)}} to empty when no theme is selected (matches delivery)', () => {
+    render(
+      <NotificationTemplatePreview channel="email" body="<p>x{{design(palette.primary.main)}}y</p>" locale="en-US" />,
+    );
+
+    expect(emailSrcDoc()).toContain('<p>xy</p>');
   });
 
   it('shows no warnings for supported, resolvable tokens', () => {
@@ -74,7 +86,7 @@ describe('NotificationTemplatePreview', () => {
       <NotificationTemplatePreview
         channel="email"
         subject="{{t(otp.subject)}}"
-        body="<p>{{ctx(otp)}}</p>"
+        body="<p>{{ctx(otpCode)}}</p>"
         locale="en-US"
       />,
     );
@@ -107,6 +119,25 @@ describe('NotificationTemplatePreview', () => {
     expect(screen.getByText(/No translation for/i)).toBeInTheDocument();
   });
 
+  it('warns when an unknown context token is used', () => {
+    render(
+      <NotificationTemplatePreview
+        channel="email"
+        body="{{ctx(unknownKey)}}"
+        locale="en-US"
+        contextKeys={new Set(['otpCode'])}
+      />,
+    );
+
+    expect(screen.getByText(/is not a recognized context value/i)).toBeInTheDocument();
+  });
+
+  it('leaves ctx tokens unchecked when no context catalog is provided', () => {
+    render(<NotificationTemplatePreview channel="email" body="{{ctx(unknownKey)}}" locale="en-US" />);
+
+    expect(screen.queryByText(/is not a recognized context value/i)).not.toBeInTheDocument();
+  });
+
   it('suppresses missing-translation warnings until translations have loaded', () => {
     // Fetch still in flight: translations empty and not yet successful.
     setTranslations({}, false);
@@ -119,9 +150,9 @@ describe('NotificationTemplatePreview', () => {
   it('renders the resolved text for the SMS channel', () => {
     setTranslations({'sms.body': 'Your code'});
 
-    render(<NotificationTemplatePreview channel="sms" body="{{t(sms.body)}} {{ctx(otp)}}" locale="en-US" />);
+    render(<NotificationTemplatePreview channel="sms" body="{{t(sms.body)}} {{ctx(otpCode)}}" locale="en-US" />);
 
-    expect(screen.getByText('Your code {{ctx(otp)}}')).toBeInTheDocument();
+    expect(screen.getByText('Your code {{ctx(otpCode)}}')).toBeInTheDocument();
     expect(document.querySelector('iframe[title="Email preview"]')).toBeNull();
   });
 

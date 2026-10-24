@@ -23,11 +23,15 @@ The agent type has the handle `default` and the display name `Default`. The hand
 Each attribute in the schema has:
 
 - a **name** and a **display name**;
-- a **type**: string, number, boolean, or enum;
+- a **type**: string, email, mobile, number, boolean, or enum;
 - **required**: whether every agent must set a value;
 - **unique**: whether the value must be unique across agents;
 - **credential**: whether the value is stored hashed and hidden (string or number only);
-- for a string, an optional **regex pattern**; for an enum, the list of **allowed values**.
+- for a string, an optional **regex pattern**; for email or mobile, a **regex pattern** prefilled by the Console; for an enum, the list of **allowed values**.
+
+Email and mobile attributes hold string values and support the **required** and **unique** flags. They cannot be credentials or define enum values. The Console requires a regex pattern for these types.
+
+If an API request omits the pattern, the backend validates email addresses against `^[^\s@]+@[^\s@]+\.[^\s@]+$` and mobile numbers against `^\+[1-9]\d{1,14}$`. A custom pattern replaces the default. Agents do not support primary email or primary mobile mappings.
 
 ## The default schema
 
@@ -43,7 +47,7 @@ None are required, so an agent can set any, all, or none of them. Set the values
 
 ## Change the schema
 
-- **Console:** click **Schema** on the **Agents** list. Add or edit attributes, set each one's type, display name, required, unique, and credential flags, a regex pattern (string) or allowed values (enum), then save from the unsaved-changes bar.
+- **Console:** click **Schema** on the **Agents** list. Add or edit attributes, set each one's type, display name, required, unique, and credential flags, a regex pattern (string, email, or mobile) or allowed values (enum), then save from the unsaved-changes bar.
 - **API:** manage the schema through the agent-type endpoints. An update must send a `displayName`. The `handle` is optional. If sent, it must be `default`, otherwise the update fails with error `USRS-1014`. See the [Agent Types section of the API Reference](../../../apis#tag/agent-types).
 
 Because the schema is shared by all agents, a change to it applies to every agent at once.

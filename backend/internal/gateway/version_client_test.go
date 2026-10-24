@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/system/constants"
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 )
 
 // gatewayFor serves an import over TLS and returns the gateway registered for it, trusting the
@@ -100,6 +101,22 @@ func TestTheClientSaysWhenTheGatewayWroteNothing(t *testing.T) {
 	assert.True(t, errors.Is(err, errImportNotWritten), "a plain HTTP gateway is never called")
 }
 
+// A gateway the dialer refuses for its private address was never called, so its import is reported
+// as not written and an apply puts back what it saved before sending.
+func TestAnImportRefusedForAPrivateAddressWroteNothing(t *testing.T) {
+	refusePrivateAddresses(t)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+
+	_, err = newGatewayClient().Import(context.Background(),
+		&Gateway{ID: "gw-1", BaseURL: "https://" + listener.Addr().String()}, "k", gatewayImportRequest{})
+
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, syshttp.ErrPrivateAddress), "the dialer did not refuse the address")
+	assert.True(t, errors.Is(err, errImportNotWritten), "a refused private address sent nothing")
+}
+
 // Verification stays on: a gateway whose certificate the registration does not trust is refused,
 // and so is a certificate authority that is not a certificate.
 func TestTheClientVerifiesTheGateway(t *testing.T) {
@@ -144,4 +161,23 @@ func TestTheClientFollowsNoRedirect(t *testing.T) {
 	require.ErrorAs(t, err, &refusal)
 	assert.Equal(t, http.StatusTemporaryRedirect, refusal.Status)
 	assert.False(t, followed, "the redirect was followed")
+}
+
+// Unless the deployment allows gateways on private addresses, a gateway whose name resolves to one
+// is refused as it is dialed, so the key never reaches something inside this plane's own network.
+func TestTheClientRefusesAPrivateAddressUnlessAllowed(t *testing.T) {
+	refusePrivateAddresses(t)
+	called := false
+	gw := gatewayFor(t, func(http.ResponseWriter, *http.Request) { called = true })
+
+	_, err := newGatewayClient().Import(context.Background(), gw, "k", gatewayImportRequest{})
+
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, syshttp.ErrPrivateAddress), "refused for another reason: %v", err)
+	assert.False(t, called, "the key was sent to a private address")
+
+	configureGateway(5, true)
+	_, err = newGatewayClient().Import(context.Background(), gw, "k", gatewayImportRequest{})
+	assert.NoError(t, err)
+	assert.True(t, called)
 }

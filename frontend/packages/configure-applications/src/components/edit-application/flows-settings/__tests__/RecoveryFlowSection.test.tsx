@@ -78,7 +78,7 @@ describe('RecoveryFlowSection', () => {
         </MemoryRouter>,
       );
 
-      expect(screen.getByTestId('card-title')).toHaveTextContent('Recovery Flow');
+      expect(screen.getByTestId('card-title')).toHaveTextContent('Recovery flow');
       expect(screen.getByTestId('card-description')).toHaveTextContent(
         'Choose the flow that handles password and account recovery.',
       );

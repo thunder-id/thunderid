@@ -216,17 +216,17 @@ func (ts *UserAPITestSuite) TearDownSuite() {
 		}
 	}
 
+	if entityTypeID != "" {
+		if err := testutils.DeleteUserType(entityTypeID); err != nil {
+			ts.T().Logf("Failed to delete user type during teardown: %v", err)
+		}
+	}
+
 	// Delete the test organization unit
 	if testOUID != "" {
 		err := deleteOrganizationUnit(testOUID)
 		if err != nil {
 			ts.T().Logf("Failed to delete organization unit during teardown: %v", err)
-		}
-	}
-
-	if entityTypeID != "" {
-		if err := testutils.DeleteUserType(entityTypeID); err != nil {
-			ts.T().Logf("Failed to delete user type during teardown: %v", err)
 		}
 	}
 }
@@ -437,6 +437,35 @@ func (ts *UserAPITestSuite) TestUserUpdate() {
 		Type:       userToUpdate.Type,
 		Attributes: userToUpdate.Attributes,
 	})
+}
+
+func (ts *UserAPITestSuite) TestUserUpdateReportsTheDerivedStatus() {
+	ts.Require().NotEmpty(createdUserID, "User ID is not available for update")
+	userToUpdate := userUpdate
+	userToUpdate.OUID = testOUID
+	encoded, err := json.Marshal(userToUpdate)
+	ts.Require().NoError(err)
+	var body map[string]interface{}
+	ts.Require().NoError(json.Unmarshal(encoded, &body))
+	body["status"] = map[string]interface{}{"value": "SUSPENDED"}
+	payload, err := json.Marshal(body)
+	ts.Require().NoError(err)
+
+	req, err := http.NewRequest(http.MethodPut, testServerURL+"/users/"+createdUserID, bytes.NewReader(payload))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, string(raw))
+
+	var updated struct {
+		Status json.RawMessage `json:"status"`
+	}
+	ts.Require().NoError(json.Unmarshal(raw, &updated))
+	ts.JSONEq(`{"value":"ACTIVE"}`, string(updated.Status), "the update must report the derived status")
 }
 
 // Test user groups listing

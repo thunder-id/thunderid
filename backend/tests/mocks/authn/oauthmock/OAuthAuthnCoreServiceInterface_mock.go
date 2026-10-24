@@ -19,10 +19,19 @@ func NewOAuthAuthnCoreServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *OAuthAuthnCoreServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &OAuthAuthnCoreServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -79,7 +88,7 @@ type OAuthAuthnCoreServiceInterfaceMock_Authenticate_Call struct {
 //   - ctx context.Context
 //   - idpID string
 //   - authzData common.AuthorizationData
-func (_e *OAuthAuthnCoreServiceInterfaceMock_Expecter) Authenticate(ctx interface{}, idpID interface{}, authzData interface{}) *OAuthAuthnCoreServiceInterfaceMock_Authenticate_Call {
+func (_e *OAuthAuthnCoreServiceInterfaceMock_Expecter) Authenticate(ctx any, idpID any, authzData any) *OAuthAuthnCoreServiceInterfaceMock_Authenticate_Call {
 	return &OAuthAuthnCoreServiceInterfaceMock_Authenticate_Call{Call: _e.mock.On("Authenticate", ctx, idpID, authzData)}
 }
 
@@ -160,7 +169,7 @@ type OAuthAuthnCoreServiceInterfaceMock_BuildAuthorizeURL_Call struct {
 // BuildAuthorizeURL is a helper method to define mock.On call
 //   - ctx context.Context
 //   - idpID string
-func (_e *OAuthAuthnCoreServiceInterfaceMock_Expecter) BuildAuthorizeURL(ctx interface{}, idpID interface{}) *OAuthAuthnCoreServiceInterfaceMock_BuildAuthorizeURL_Call {
+func (_e *OAuthAuthnCoreServiceInterfaceMock_Expecter) BuildAuthorizeURL(ctx any, idpID any) *OAuthAuthnCoreServiceInterfaceMock_BuildAuthorizeURL_Call {
 	return &OAuthAuthnCoreServiceInterfaceMock_BuildAuthorizeURL_Call{Call: _e.mock.On("BuildAuthorizeURL", ctx, idpID)}
 }
 
@@ -232,7 +241,7 @@ type OAuthAuthnCoreServiceInterfaceMock_BuildFederatedAuthResult_Call struct {
 //   - idpID string
 //   - sub string
 //   - claims map[string]interface{}
-func (_e *OAuthAuthnCoreServiceInterfaceMock_Expecter) BuildFederatedAuthResult(ctx interface{}, idpID interface{}, sub interface{}, claims interface{}) *OAuthAuthnCoreServiceInterfaceMock_BuildFederatedAuthResult_Call {
+func (_e *OAuthAuthnCoreServiceInterfaceMock_Expecter) BuildFederatedAuthResult(ctx any, idpID any, sub any, claims any) *OAuthAuthnCoreServiceInterfaceMock_BuildFederatedAuthResult_Call {
 	return &OAuthAuthnCoreServiceInterfaceMock_BuildFederatedAuthResult_Call{Call: _e.mock.On("BuildFederatedAuthResult", ctx, idpID, sub, claims)}
 }
 
@@ -314,7 +323,7 @@ type OAuthAuthnCoreServiceInterfaceMock_ExchangeCodeForToken_Call struct {
 //   - idpID string
 //   - code string
 //   - validateResponse bool
-func (_e *OAuthAuthnCoreServiceInterfaceMock_Expecter) ExchangeCodeForToken(ctx interface{}, idpID interface{}, code interface{}, validateResponse interface{}) *OAuthAuthnCoreServiceInterfaceMock_ExchangeCodeForToken_Call {
+func (_e *OAuthAuthnCoreServiceInterfaceMock_Expecter) ExchangeCodeForToken(ctx any, idpID any, code any, validateResponse any) *OAuthAuthnCoreServiceInterfaceMock_ExchangeCodeForToken_Call {
 	return &OAuthAuthnCoreServiceInterfaceMock_ExchangeCodeForToken_Call{Call: _e.mock.On("ExchangeCodeForToken", ctx, idpID, code, validateResponse)}
 }
 
@@ -395,7 +404,7 @@ type OAuthAuthnCoreServiceInterfaceMock_FetchUserInfo_Call struct {
 //   - ctx context.Context
 //   - idpID string
 //   - accessToken string
-func (_e *OAuthAuthnCoreServiceInterfaceMock_Expecter) FetchUserInfo(ctx interface{}, idpID interface{}, accessToken interface{}) *OAuthAuthnCoreServiceInterfaceMock_FetchUserInfo_Call {
+func (_e *OAuthAuthnCoreServiceInterfaceMock_Expecter) FetchUserInfo(ctx any, idpID any, accessToken any) *OAuthAuthnCoreServiceInterfaceMock_FetchUserInfo_Call {
 	return &OAuthAuthnCoreServiceInterfaceMock_FetchUserInfo_Call{Call: _e.mock.On("FetchUserInfo", ctx, idpID, accessToken)}
 }
 
@@ -470,7 +479,7 @@ type OAuthAuthnCoreServiceInterfaceMock_GetOAuthClientConfig_Call struct {
 // GetOAuthClientConfig is a helper method to define mock.On call
 //   - ctx context.Context
 //   - idpID string
-func (_e *OAuthAuthnCoreServiceInterfaceMock_Expecter) GetOAuthClientConfig(ctx interface{}, idpID interface{}) *OAuthAuthnCoreServiceInterfaceMock_GetOAuthClientConfig_Call {
+func (_e *OAuthAuthnCoreServiceInterfaceMock_Expecter) GetOAuthClientConfig(ctx any, idpID any) *OAuthAuthnCoreServiceInterfaceMock_GetOAuthClientConfig_Call {
 	return &OAuthAuthnCoreServiceInterfaceMock_GetOAuthClientConfig_Call{Call: _e.mock.On("GetOAuthClientConfig", ctx, idpID)}
 }
 

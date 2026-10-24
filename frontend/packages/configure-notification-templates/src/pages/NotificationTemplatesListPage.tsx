@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {DocumentTitle} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {Button, PageContent, PageTitle} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -34,7 +35,7 @@ export default function NotificationTemplatesListPage(): JSX.Element {
   };
 
   const title =
-    channel === 'email' ? t('listing.title.email', 'Email Templates') : t('listing.title.sms', 'SMS Templates');
+    channel === 'email' ? t('listing.title.email', 'Email templates') : t('listing.title.sms', 'SMS templates');
   const subtitle =
     channel === 'email'
       ? t('listing.subtitle.email', 'Create, customize, and localize the email notifications your applications send.')
@@ -48,6 +49,7 @@ export default function NotificationTemplatesListPage(): JSX.Element {
 
   return (
     <PageContent>
+      <DocumentTitle title={title} />
       <PageTitle>
         <PageTitle.Header>{title}</PageTitle.Header>
         <PageTitle.SubHeader>{subtitle}</PageTitle.SubHeader>

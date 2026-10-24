@@ -1,7 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {FullScreenCreationWizardLayout} from '@thunderid/components';
+import {DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Box, Button, CircularProgress} from '@wso2/oxygen-ui';
@@ -45,7 +45,7 @@ export default function FlowCreatePage(): JSX.Element {
 
   const steps: Record<FlowCreateStep, {label: string; order: number}> = useMemo(
     () => ({
-      [FlowCreateStep.TYPE]: {label: t('flows:create.steps.type', 'Flow Type'), order: 1},
+      [FlowCreateStep.TYPE]: {label: t('flows:create.steps.type', 'Flow type'), order: 1},
       [FlowCreateStep.TEMPLATE]: {label: t('flows:create.steps.template', 'Template'), order: 2},
       [FlowCreateStep.CONFIGURE]: {label: t('flows:create.steps.configure', 'Details'), order: 3},
     }),
@@ -207,6 +207,7 @@ export default function FlowCreatePage(): JSX.Element {
         </Box>
       }
     >
+      <DocumentTitle title={t('flows:listing.addFlow', 'Create new flow')} />
       {error && (
         <Alert severity="error" sx={{mb: 3}} onClose={clearCreateError}>
           {error}

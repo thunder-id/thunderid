@@ -15,11 +15,20 @@ import type {OAuth2Config} from '../models/oauth';
 export interface OAuth2Flags {
   hasAuthorizationCodeGrant: boolean;
   hasClientCredentialsGrant: boolean;
+  hasJwtBearerGrant: boolean;
   isPublicClient: boolean;
   isPkceDisabledByGrants: boolean;
   isPkceForcedByPublicClient: boolean;
   isPublicClientDisabledByGrants: boolean;
+  isPublicClientDisabledByIdJag: boolean;
   isParDisabledByGrants: boolean;
+}
+
+/**
+ * Returns whether the application issues identity assertions (ID-JAG).
+ */
+export function isIdJagEnabled(config: OAuth2Config | undefined): boolean {
+  return config?.token?.idJag?.enabled === true;
 }
 
 /**
@@ -29,15 +38,20 @@ export function deriveOAuth2Flags(config: OAuth2Config): OAuth2Flags {
   const grantTypes = config.grantTypes ?? [];
   const hasAuthorizationCodeGrant = grantTypes.includes(OAuth2GrantTypes.AUTHORIZATION_CODE);
   const hasClientCredentialsGrant = grantTypes.includes(OAuth2GrantTypes.CLIENT_CREDENTIALS);
+  const hasJwtBearerGrant = grantTypes.includes(OAuth2GrantTypes.JWT_BEARER);
   const isPublicClient = config.publicClient === true;
 
   return {
     hasAuthorizationCodeGrant,
     hasClientCredentialsGrant,
+    hasJwtBearerGrant,
     isPublicClient,
     isPkceDisabledByGrants: !hasAuthorizationCodeGrant,
     isPkceForcedByPublicClient: isPublicClient,
-    isPublicClientDisabledByGrants: hasClientCredentialsGrant || !hasAuthorizationCodeGrant,
+    // client_credentials and the JWT bearer grant both require a confidential client.
+    isPublicClientDisabledByGrants: hasClientCredentialsGrant || hasJwtBearerGrant || !hasAuthorizationCodeGrant,
+    // Issuing identity assertions (ID-JAG) requires a confidential client.
+    isPublicClientDisabledByIdJag: isIdJagEnabled(config),
     // PAR is an authorization-endpoint feature, so it only applies when the authorization code grant
     // is present (e.g. it has no effect on the token exchange or client credentials grants).
     isParDisabledByGrants: !hasAuthorizationCodeGrant,
@@ -93,7 +107,7 @@ function hasTokenIssuingGrant(grants: string[]): boolean {
  * - refresh_token requires a token-issuing grant (authorization_code or ciba)
  * - PKCE requires authorization_code
  * - PAR (requirePushedAuthorizationRequests) requires authorization_code
- * - public client is incompatible with client_credentials and requires authorization_code
+ * - public client is incompatible with client_credentials and jwt-bearer, and requires authorization_code
  * - response type 'code' is added/removed alongside the authorization_code grant
  */
 export function applyGrantTypesChange(current: OAuth2Config, selected: string[]): Partial<OAuth2Config> {
@@ -105,6 +119,7 @@ export function applyGrantTypesChange(current: OAuth2Config, selected: string[])
   const updates: Partial<OAuth2Config> = {grantTypes: nextGrantTypes};
   const nextHasAuthzCode = nextGrantTypes.includes(OAuth2GrantTypes.AUTHORIZATION_CODE);
   const nextHasCC = nextGrantTypes.includes(OAuth2GrantTypes.CLIENT_CREDENTIALS);
+  const nextHasJwtBearer = nextGrantTypes.includes(OAuth2GrantTypes.JWT_BEARER);
   const currentResponseTypes = current.responseTypes ?? [];
 
   if (current.pkceRequired && !nextHasAuthzCode) {
@@ -115,7 +130,7 @@ export function applyGrantTypesChange(current: OAuth2Config, selected: string[])
     updates.requirePushedAuthorizationRequests = false;
   }
 
-  if (current.publicClient && (nextHasCC || !nextHasAuthzCode)) {
+  if (current.publicClient && (nextHasCC || nextHasJwtBearer || !nextHasAuthzCode)) {
     updates.publicClient = false;
     if (current.tokenEndpointAuthMethod === TokenEndpointAuthMethods.NONE) {
       updates.tokenEndpointAuthMethod = TokenEndpointAuthMethods.CLIENT_SECRET_BASIC;
@@ -172,10 +187,20 @@ export function applyTokenEndpointAuthMethodChange(current: OAuth2Config, method
 }
 
 /**
- * Returns whether a grant-type MenuItem should be disabled in the grants picker.
- * refresh_token requires a token-issuing grant.
+ * Returns whether a selected grant is held in place by identity assertions (ID-JAG), which are
+ * issued through the token exchange grant, so it cannot be removed while ID-JAG is on.
  */
-export function isGrantItemDisabled(grant: string, currentGrants: string[]): boolean {
+export function isGrantLockedByIdJag(grant: string, currentGrants: string[], idJagEnabled: boolean): boolean {
+  return idJagEnabled && grant === OAuth2GrantTypes.TOKEN_EXCHANGE && currentGrants.includes(grant);
+}
+
+/**
+ * Returns whether a grant-type MenuItem should be disabled in the grants picker.
+ * refresh_token requires a token-issuing grant, and token exchange cannot be removed while
+ * identity assertions (ID-JAG) are on.
+ */
+export function isGrantItemDisabled(grant: string, currentGrants: string[], idJagEnabled = false): boolean {
+  if (isGrantLockedByIdJag(grant, currentGrants, idJagEnabled)) return true;
   if (grant !== OAuth2GrantTypes.REFRESH_TOKEN) return false;
   if (currentGrants.includes(OAuth2GrantTypes.REFRESH_TOKEN)) return false;
   return !hasTokenIssuingGrant(currentGrants);
@@ -186,16 +211,29 @@ export type CaptionTuple = readonly [key: string, fallback: string];
 
 /** Picks the public-client toggle caption for the current config state. */
 export function getPublicClientCaption(flags: OAuth2Flags, config: OAuth2Config): CaptionTuple {
+  if (flags.hasClientCredentialsGrant) {
+    return [
+      'applications:edit.advanced.publicClient.incompatibleWithClientCredentials',
+      'Not available for machine-to-machine clients.',
+    ];
+  }
+  if (flags.hasJwtBearerGrant) {
+    return [
+      'applications:edit.advanced.publicClient.incompatibleWithJwtBearer',
+      'Not available with the JWT bearer grant, which requires a confidential client.',
+    ];
+  }
+  if (flags.isPublicClientDisabledByIdJag) {
+    return [
+      'applications:edit.advanced.publicClient.incompatibleWithIdJag',
+      'Not available while identity assertions (ID-JAG) are on, since they require a confidential client.',
+    ];
+  }
   if (flags.isPublicClientDisabledByGrants) {
-    return flags.hasClientCredentialsGrant
-      ? [
-          'applications:edit.advanced.publicClient.incompatibleWithClientCredentials',
-          'Not available for machine-to-machine clients.',
-        ]
-      : [
-          'applications:edit.advanced.publicClient.requiresAuthorizationCode',
-          'Available only for clients using the authorization code flow.',
-        ];
+    return [
+      'applications:edit.advanced.publicClient.requiresAuthorizationCode',
+      'Available only for clients using the authorization code flow.',
+    ];
   }
   return config.publicClient
     ? ['applications:edit.advanced.publicClient.public', '']

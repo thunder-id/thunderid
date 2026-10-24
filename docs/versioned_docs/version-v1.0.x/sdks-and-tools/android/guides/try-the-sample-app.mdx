@@ -6,12 +6,12 @@ description: Run the {{ProductName}} Android sample app to see the full authenti
 
 # Try the Android Sample App
 
-The SDK repository ships a sample app in
-[`samples/quickstart`](https://github.com/thunder-id/android-sdks/tree/main/samples/quickstart)
+The [samples repository](https://github.com/thunder-id/samples) ships a sample app in
+[`quickstarts/android`](https://github.com/thunder-id/samples/tree/main/quickstarts/android)
 that exercises the full authentication lifecycle end to end: sign-in, sign-up, and sign-out via
 the SDK's app-native Flow Execution.
 
-<SdkQuickstartDownload packageId="android" icon={<AndroidLogo size={22} />} />
+<SdkQuickstartDownload packageId="android" sample="quickstarts/android" icon={<AndroidLogo size={22} />} />
 
 ## Prerequisites
 
@@ -21,7 +21,8 @@ the SDK's app-native Flow Execution.
 ## Prepare the Android Sample
 
 ```bash
-cd samples/quickstart
+git clone https://github.com/thunder-id/samples.git
+cd samples/quickstarts/android
 cp config.properties.example config.properties
 ```
 

@@ -175,6 +175,54 @@ func (ts *VariableStoreAPITestSuite) TestAnEmptySecretIsRefused() {
 	ts.Equal("VAR-1003", codeOf(ts.T(), body))
 }
 
+// A reference stored as a value would be handed to a resource in place of the value it names, so the
+// store refuses one as a variable or a secret, alone or as an item of a list of strings, whether the
+// value is created or replaced.
+func (ts *VariableStoreAPITestSuite) TestAReferenceIsRefusedAsAValue() {
+	ts.createVariable(ts.name("REF_VARIABLE"), "kept", "")
+	ts.createSecret(ts.name("REF_SECRET"), "kept")
+
+	for _, value := range []string{
+		"var:SOME_VARIABLE",
+		"sec:SOME_SECRET",
+		`["var:SOME_LIST"]`,
+		`["https://kept.test/cb", "sec:SOME_SECRET"]`,
+	} {
+		for _, collection := range []string{"variables", "secrets"} {
+			name := ts.name("REF_VARIABLE")
+			if collection == "secrets" {
+				name = ts.name("REF_SECRET")
+			}
+
+			status, body := ts.postWithBody("/"+collection,
+				fmt.Sprintf(`{"name":%q,"value":%q}`, ts.name("REF_NEW"), value))
+			ts.Equal(http.StatusBadRequest, status, "%s took %q", collection, value)
+			ts.Equal("VAR-1011", codeOf(ts.T(), body), value)
+
+			status, body = ts.putWithBody("/"+collection+"/"+name, fmt.Sprintf(`{"value":%q}`, value))
+			ts.Equal(http.StatusBadRequest, status, "%s replaced a value with %q", collection, value)
+			ts.Equal("VAR-1011", codeOf(ts.T(), body), value)
+		}
+	}
+	ts.Equal("kept", ts.getVariable(ts.name("REF_VARIABLE"), http.StatusOK).Value)
+}
+
+// A value that only looks like a reference is a value, and is stored as it was given: one that holds
+// a reference inside longer text, a list of strings with none, a list holding more than strings, and
+// text that is not a list at all.
+func (ts *VariableStoreAPITestSuite) TestAValueThatOnlyLooksLikeAReferenceIsStored() {
+	for suffix, value := range map[string]string{
+		"IN_TEXT":       "https://app.test/cb?next=var:SOME_VARIABLE",
+		"PLAIN_LIST":    `["https://one.test/cb", "https://two.test/cb"]`,
+		"MIXED_LIST":    `["var:SOME_VARIABLE", 1]`,
+		"NOT_JSON_LIST": "[not a list",
+	} {
+		name := ts.name("LOOKS_" + suffix)
+		ts.createVariable(name, value, "")
+		ts.Equal(value, ts.getVariable(name, http.StatusOK).Value, suffix)
+	}
+}
+
 func (ts *VariableStoreAPITestSuite) TestAnInvalidNameIsRefused() {
 	for _, name := range []string{"has space", "1leading", "dash-ed"} {
 		status, body := ts.postWithBody("/variables",

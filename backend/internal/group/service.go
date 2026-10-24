@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -40,19 +41,28 @@ type GroupServiceInterface interface {
 	UpdateGroup(ctx context.Context, groupID string, request UpdateGroupRequest) (
 		*Group, *tidcommon.ServiceError)
 	DeleteGroup(ctx context.Context, groupID string) *tidcommon.ServiceError
+	// ValidateDeleteGroup runs the checks DeleteGroup runs before it changes anything.
+	ValidateDeleteGroup(ctx context.Context, groupID string) *tidcommon.ServiceError
 	GetGroupMembers(ctx context.Context, groupID string, limit, offset int, includeDisplay bool) (
 		*MemberListResponse, *tidcommon.ServiceError)
+	// GetDirectGroupMember returns the group's direct member with the given ID, or nil when there is none.
+	GetDirectGroupMember(ctx context.Context, groupID, memberID string) (*Member, *tidcommon.ServiceError)
 	ValidateGroupIDs(ctx context.Context, groupIDs []string) *tidcommon.ServiceError
 	// GetTransitiveAncestorGroups returns the IDs of every group containing the given group,
 	// directly or through nesting, excluding the group itself. It performs no authorization check
 	// of its own: the authorization layer calls it, so gating it would be circular.
 	GetTransitiveAncestorGroups(ctx context.Context, groupID string) ([]string, *tidcommon.ServiceError)
+	// GetTransitiveMemberEntities returns the distinct IDs of the non-group members reachable from the
+	// group, directly or through nesting. Nesting too deep to expand is refused rather than truncated.
+	GetTransitiveMemberEntities(ctx context.Context, groupID string) ([]string, *tidcommon.ServiceError)
 	GetGroupsByIDs(ctx context.Context, groupIDs []string) (map[string]*Group, *tidcommon.ServiceError)
 	// GetGroupsByNames returns every group matching each name, keyed by name. A name is not
 	// guaranteed unique: the caller decides how to handle more than one match for a name.
 	GetGroupsByNames(ctx context.Context, names []string) (map[string][]*Group, *tidcommon.ServiceError)
 	AddGroupMembers(ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError)
 	RemoveGroupMembers(ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError)
+	// ValidateRemoveGroupMembers runs the checks RemoveGroupMembers runs before it changes anything.
+	ValidateRemoveGroupMembers(ctx context.Context, groupID string, members []Member) *tidcommon.ServiceError
 	AddMembersToGroups(ctx context.Context, members []Member,
 		groupIDs []string) *tidcommon.ServiceError
 	GetResourceDependencies(
@@ -576,41 +586,13 @@ func (gs *groupService) DeleteGroup(ctx context.Context, groupID string) *tidcom
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Deleting group", log.String("id", groupID))
 
-	if groupID == "" {
-		return &ErrorMissingGroupID
-	}
-
-	if isDeclarative, err := gs.groupStore.IsGroupDeclarative(ctx, groupID); err != nil {
-		logger.Warn(ctx, "Failed to check if group is declarative",
-			log.String("groupID", groupID), log.Error(err))
-		return &tidcommon.InternalServerError
-	} else if isDeclarative {
-		logger.Debug(ctx, "Cannot delete declarative group", log.String("id", groupID))
-		return &ErrorImmutableGroup
+	if svcErr := gs.ValidateDeleteGroup(ctx, groupID); svcErr != nil {
+		return svcErr
 	}
 
 	if gs.dependencyRegistry == nil {
 		logger.Error(ctx, "Dependency registry not set; refusing to delete group", log.String("id", groupID))
 		return &tidcommon.InternalServerError
-	}
-
-	existingGroupDAO, err := gs.groupStore.GetGroup(ctx, groupID)
-	if err != nil {
-		if errors.Is(err, ErrGroupNotFound) {
-			logger.Debug(ctx, "Group not found", log.String("id", groupID))
-			return &ErrorGroupNotFound
-		}
-		logger.Error(ctx, "Failed to delete group", log.Error(err), log.String("groupID", groupID))
-		return &tidcommon.InternalServerError
-	}
-
-	if svcErr := gs.checkGroupAccess(
-		ctx,
-		security.ActionDeleteGroup,
-		existingGroupDAO.OUID,
-		groupID,
-	); svcErr != nil {
-		return svcErr
 	}
 
 	// Remove dependents that must be deleted with the group (its role assignments and its
@@ -633,6 +615,36 @@ func (gs *groupService) DeleteGroup(ctx context.Context, groupID string) *tidcom
 
 	logger.Debug(ctx, "Successfully deleted group", log.String("id", groupID))
 	return nil
+}
+
+// ValidateDeleteGroup runs the checks DeleteGroup runs before it changes anything.
+func (gs *groupService) ValidateDeleteGroup(ctx context.Context, groupID string) *tidcommon.ServiceError {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+
+	if groupID == "" {
+		return &ErrorMissingGroupID
+	}
+
+	if isDeclarative, err := gs.groupStore.IsGroupDeclarative(ctx, groupID); err != nil {
+		logger.Error(ctx, "Failed to check if group is declarative",
+			log.String("groupID", groupID), log.Error(err))
+		return &tidcommon.InternalServerError
+	} else if isDeclarative {
+		logger.Debug(ctx, "Cannot delete declarative group", log.String("id", groupID))
+		return &ErrorImmutableGroup
+	}
+
+	existingGroupDAO, err := gs.groupStore.GetGroup(ctx, groupID)
+	if err != nil {
+		if errors.Is(err, ErrGroupNotFound) {
+			logger.Debug(ctx, "Group not found", log.String("id", groupID))
+			return &ErrorGroupNotFound
+		}
+		logger.Error(ctx, "Failed to delete group", log.Error(err), log.String("groupID", groupID))
+		return &tidcommon.InternalServerError
+	}
+
+	return gs.checkGroupAccess(ctx, security.ActionDeleteGroup, existingGroupDAO.OUID, groupID)
 }
 
 // GetGroupMembers retrieves members of a group with pagination.
@@ -810,6 +822,12 @@ func (gs *groupService) RemoveGroupMembers(
 	)
 }
 
+// ValidateRemoveGroupMembers runs the checks RemoveGroupMembers runs before it changes anything.
+func (gs *groupService) ValidateRemoveGroupMembers(
+	ctx context.Context, groupID string, members []Member) *tidcommon.ServiceError {
+	return gs.validateMembershipChange(ctx, groupID, members)
+}
+
 // modifyGroupMembers is the shared implementation for AddGroupMembers and RemoveGroupMembers.
 // It validates, normalizes, and applies storeOp inside a transaction, then resolves member types.
 func (gs *groupService) modifyGroupMembers(
@@ -821,54 +839,8 @@ func (gs *groupService) modifyGroupMembers(
 ) (*Group, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
-	if groupID == "" {
-		return nil, &ErrorMissingGroupID
-	}
-
-	if len(members) == 0 {
-		return nil, &ErrorEmptyMembers
-	}
-
-	if svcErr := validateMemberTypes(members); svcErr != nil {
+	if svcErr := gs.validateMembershipChange(ctx, groupID, members); svcErr != nil {
 		return nil, svcErr
-	}
-
-	existingGroup, err := gs.groupStore.GetGroup(ctx, groupID)
-	if err != nil {
-		if errors.Is(err, ErrGroupNotFound) {
-			logger.Debug(ctx, "Group not found", log.String("id", groupID))
-			return nil, &ErrorGroupNotFound
-		}
-		logger.Error(ctx, "Failed to fetch group", log.String("id", groupID), log.Error(err))
-		return nil, &tidcommon.InternalServerError
-	}
-
-	if svcErr := gs.checkGroupAccess(ctx, security.ActionUpdateGroup, existingGroup.OUID, groupID); svcErr != nil {
-		return nil, svcErr
-	}
-
-	// Membership conveys every permission the group confers, including through its ancestors.
-	// Removal carries the same requirement.
-	if svcErr := gs.authzService.CanGrantMembership(
-		ctx, sysauthz.PrincipalTypeGroup, groupID,
-	); svcErr != nil {
-		return nil, svcErr
-	}
-
-	if svcErr := gs.validateEntityMembers(ctx, members, security.ActionUpdateGroup); svcErr != nil {
-		return nil, svcErr
-	}
-
-	var groupIDs []string
-	for _, m := range members {
-		if m.Type == MemberTypeGroup {
-			groupIDs = append(groupIDs, m.ID)
-		}
-	}
-	if len(groupIDs) > 0 {
-		if svcErr := gs.ValidateGroupIDs(ctx, groupIDs); svcErr != nil {
-			return nil, svcErr
-		}
 	}
 
 	members = normalizeMembers(members)
@@ -876,7 +848,7 @@ func (gs *groupService) modifyGroupMembers(
 	var capturedSvcErr *tidcommon.ServiceError
 	var updatedGroupDAO GroupDAO
 
-	err = gs.transactioner.Transact(ctx, func(txCtx context.Context) error {
+	err := gs.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		existingGroupDAO, err := gs.groupStore.GetGroup(txCtx, groupID)
 		if err != nil {
 			if errors.Is(err, ErrGroupNotFound) {
@@ -936,6 +908,61 @@ func (gs *groupService) modifyGroupMembers(
 	updatedGroup.Members = resolvedMembers
 	logger.Debug(ctx, successMsg, log.String("id", groupID))
 	return &updatedGroup, nil
+}
+
+// validateMembershipChange runs the checks shared by adding and removing group members.
+func (gs *groupService) validateMembershipChange(
+	ctx context.Context, groupID string, members []Member) *tidcommon.ServiceError {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+
+	if groupID == "" {
+		return &ErrorMissingGroupID
+	}
+
+	if len(members) == 0 {
+		return &ErrorEmptyMembers
+	}
+
+	if svcErr := validateMemberTypes(members); svcErr != nil {
+		return svcErr
+	}
+
+	existingGroup, err := gs.groupStore.GetGroup(ctx, groupID)
+	if err != nil {
+		if errors.Is(err, ErrGroupNotFound) {
+			logger.Debug(ctx, "Group not found", log.String("id", groupID))
+			return &ErrorGroupNotFound
+		}
+		logger.Error(ctx, "Failed to fetch group", log.String("id", groupID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+
+	if svcErr := gs.checkGroupAccess(ctx, security.ActionUpdateGroup, existingGroup.OUID, groupID); svcErr != nil {
+		return svcErr
+	}
+
+	// Membership conveys every permission the group confers, including through its ancestors.
+	// Removal carries the same requirement.
+	if svcErr := gs.authzService.CanGrantMembership(
+		ctx, sysauthz.PrincipalTypeGroup, groupID,
+	); svcErr != nil {
+		return svcErr
+	}
+
+	if svcErr := gs.validateEntityMembers(ctx, members, security.ActionUpdateGroup); svcErr != nil {
+		return svcErr
+	}
+
+	var groupIDs []string
+	for _, m := range members {
+		if m.Type == MemberTypeGroup {
+			groupIDs = append(groupIDs, m.ID)
+		}
+	}
+	if len(groupIDs) > 0 {
+		return gs.ValidateGroupIDs(ctx, groupIDs)
+	}
+	return nil
 }
 
 // validateCreateGroupRequest validates the create group request.
@@ -1336,6 +1363,82 @@ func (gs *groupService) GetTransitiveAncestorGroups(
 	}
 
 	return ancestors, nil
+}
+
+// GetTransitiveMemberEntities returns the distinct IDs of the non-group members reachable from the
+// group, tolerating membership cycles. Each group is read through GetGroupMembers, so the caller's
+// access to every nested group is checked.
+func (gs *groupService) GetTransitiveMemberEntities(
+	ctx context.Context, groupID string,
+) ([]string, *tidcommon.ServiceError) {
+	entityIDs := []string{}
+	seenEntities := map[string]struct{}{}
+	visitedGroups := map[string]struct{}{groupID: {}}
+	frontier := []string{groupID}
+
+	for depth := 0; depth < maxGroupNestingDepth && len(frontier) > 0; depth++ {
+		next := []string{}
+		for _, current := range frontier {
+			members, svcErr := gs.allGroupMembers(ctx, current)
+			if svcErr != nil {
+				return nil, svcErr
+			}
+			for _, member := range members {
+				if member.Type == MemberTypeGroup {
+					if _, seen := visitedGroups[member.ID]; seen {
+						continue
+					}
+					visitedGroups[member.ID] = struct{}{}
+					next = append(next, member.ID)
+					continue
+				}
+				if _, seen := seenEntities[member.ID]; seen {
+					continue
+				}
+				seenEntities[member.ID] = struct{}{}
+				entityIDs = append(entityIDs, member.ID)
+			}
+		}
+		frontier = next
+	}
+
+	if len(frontier) > 0 {
+		return nil, ErrorGroupNestingTooDeep.WithParams(
+			map[string]string{"max": strconv.Itoa(maxGroupNestingDepth)})
+	}
+	return entityIDs, nil
+}
+
+// GetDirectGroupMember returns the group's direct member with the given ID, or nil when there is none.
+func (gs *groupService) GetDirectGroupMember(ctx context.Context, groupID, memberID string) (
+	*Member, *tidcommon.ServiceError) {
+	members, svcErr := gs.allGroupMembers(ctx, groupID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	for i := range members {
+		if members[i].ID == memberID {
+			return &members[i], nil
+		}
+	}
+	return nil, nil
+}
+
+// allGroupMembers returns every direct member of the group, reading all pages.
+func (gs *groupService) allGroupMembers(ctx context.Context, groupID string) (
+	[]Member, *tidcommon.ServiceError) {
+	members := []Member{}
+	for offset := 0; ; offset += serverconst.MaxPageSize {
+		page, svcErr := gs.GetGroupMembers(ctx, groupID, serverconst.MaxPageSize, offset, false)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		members = append(members, page.Members...)
+		if offset+serverconst.MaxPageSize >= page.TotalResults {
+			break
+		}
+	}
+	return members, nil
 }
 
 // checkGroupAccess performs an authorization check on the group resource against the current caller.

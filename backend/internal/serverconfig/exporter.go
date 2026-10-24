@@ -5,10 +5,14 @@ package serverconfig
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -24,14 +28,17 @@ type serverConfigExportDoc struct {
 }
 
 // serverConfigExporter implements declarativeresource.ResourceExporter for server-config sections,
-// exporting each section's effective (merged) value as a declarative document.
+// exporting each section's effective (merged) value as a declarative document. The per-section
+// handlers decode an exported document back into the section's typed value when it is viewed.
 type serverConfigExporter struct {
-	service ServerConfigService
+	service  ServerConfigService
+	handlers map[ConfigName]ServerConfigHandlerInterface
 }
 
 // newServerConfigExporter creates a new server-config exporter.
-func newServerConfigExporter(service ServerConfigService) *serverConfigExporter {
-	return &serverConfigExporter{service: service}
+func newServerConfigExporter(service ServerConfigService,
+	handlers map[ConfigName]ServerConfigHandlerInterface) *serverConfigExporter {
+	return &serverConfigExporter{service: service, handlers: handlers}
 }
 
 // GetResourceType returns the resource type for server config sections.
@@ -85,4 +92,33 @@ func (e *serverConfigExporter) ValidateResource(ctx context.Context,
 // GetResourceRules returns the parameterization rules; server config values carry no parameterized fields.
 func (e *serverConfigExporter) GetResourceRules() *declarativeresource.ResourceRules {
 	return &declarativeresource.ResourceRules{Variables: []string{}, ArrayVariables: []string{}}
+}
+
+// ViewResource shows an exported section as GET /server-config/{name} returns it, holding only what
+// the document says. An import writes the document to the writable layer, so it is shown as that
+// layer over an absent read-only layer, with their merge as the effective value.
+func (e *serverConfigExporter) ViewResource(_ context.Context, document *yaml.Node) (interface{}, error) {
+	return declarativeresource.DecodeView(document, func(exported *exportedServerConfig) (interface{}, error) {
+		handler, ok := e.handlers[ConfigName(exported.Name)]
+		if !ok || handler == nil {
+			return nil, fmt.Errorf("serverconfig: no handler registered for %q", exported.Name)
+		}
+		value, valueErr := yamlNodeToJSON(exported.Value)
+		readOnly, readOnlyErr := handler.Decode(nil)
+		writable, err := handler.Decode(value)
+		if err != nil {
+			return nil, fmt.Errorf("serverconfig: invalid value for %q: %w", exported.Name, err)
+		}
+		return ServerConfigLayers{
+			ReadOnly: readOnly,
+			Writable: writable,
+			Merged:   handler.Merge(readOnly, writable),
+		}, errors.Join(valueErr, readOnlyErr)
+	})
+}
+
+// exportedServerConfig is a section as its export writes it.
+type exportedServerConfig struct {
+	Name  string    `yaml:"name"`
+	Value yaml.Node `yaml:"value"`
 }

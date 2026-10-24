@@ -71,7 +71,7 @@ export default function ConfigureMfaSettings(): JSX.Element {
   return (
     <AuthMethodGroup
       data-testid="application-configure-mfa-settings"
-      title={t('applications:onboarding.configure.security.mfa.title', 'Multi-Factor Login')}
+      title={t('applications:onboarding.configure.security.mfa.title', 'Multi-factor login')}
       checked={checked}
       indeterminate={indeterminate}
       onCheckedChange={handleCheckedChange}

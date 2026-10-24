@@ -76,7 +76,7 @@ function UriListEditor({
       if (required) {
         setErrors((prev) => ({
           ...prev,
-          [index]: t('applications:edit.general.redirectUris.error.empty', 'Invalid Redirect: URI must not be empty.'),
+          [index]: t('applications:edit.general.redirectUris.error.empty', 'Invalid redirect: URI must not be empty.'),
         }));
         return false;
       }
@@ -92,7 +92,7 @@ function UriListEditor({
         ...prev,
         [index]: t(
           'applications:edit.general.redirectUris.error.invalid',
-          'Invalid Redirect: Please enter a valid URL.',
+          'Invalid redirect: Please enter a valid URL.',
         ),
       }));
       return false;
@@ -324,7 +324,7 @@ export default function ConfigureRedirectUris(): JSX.Element {
 
       {!useSameAsRedirect && (
         <UriListEditor
-          title={t('applications:edit.general.postLogoutRedirectUris.title', 'Post-Logout Redirect URIs')}
+          title={t('applications:edit.general.postLogoutRedirectUris.title', 'Post-logout redirect URIs')}
           description={t(
             'applications:edit.general.postLogoutRedirectUris.description',
             'Allowed URIs to redirect to after logout. A post_logout_redirect_uri passed to the logout endpoint must match one of these.',

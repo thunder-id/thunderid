@@ -17,10 +17,19 @@ func NewServiceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ServiceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ServiceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -63,7 +72,7 @@ type ServiceMock_DetachApplication_Call struct {
 // DetachApplication is a helper method to define mock.On call
 //   - ctx context.Context
 //   - appID string
-func (_e *ServiceMock_Expecter) DetachApplication(ctx interface{}, appID interface{}) *ServiceMock_DetachApplication_Call {
+func (_e *ServiceMock_Expecter) DetachApplication(ctx any, appID any) *ServiceMock_DetachApplication_Call {
 	return &ServiceMock_DetachApplication_Call{Call: _e.mock.On("DetachApplication", ctx, appID)}
 }
 
@@ -132,7 +141,7 @@ type ServiceMock_FindCheckpoint_Call struct {
 //   - ctx context.Context
 //   - sessionID string
 //   - checkpoint string
-func (_e *ServiceMock_Expecter) FindCheckpoint(ctx interface{}, sessionID interface{}, checkpoint interface{}) *ServiceMock_FindCheckpoint_Call {
+func (_e *ServiceMock_Expecter) FindCheckpoint(ctx any, sessionID any, checkpoint any) *ServiceMock_FindCheckpoint_Call {
 	return &ServiceMock_FindCheckpoint_Call{Call: _e.mock.On("FindCheckpoint", ctx, sessionID, checkpoint)}
 }
 
@@ -213,7 +222,7 @@ type ServiceMock_LoadCheckpoint_Call struct {
 // LoadCheckpoint is a helper method to define mock.On call
 //   - ctx context.Context
 //   - in LoadCheckpointInput
-func (_e *ServiceMock_Expecter) LoadCheckpoint(ctx interface{}, in interface{}) *ServiceMock_LoadCheckpoint_Call {
+func (_e *ServiceMock_Expecter) LoadCheckpoint(ctx any, in any) *ServiceMock_LoadCheckpoint_Call {
 	return &ServiceMock_LoadCheckpoint_Call{Call: _e.mock.On("LoadCheckpoint", ctx, in)}
 }
 
@@ -284,7 +293,7 @@ type ServiceMock_Resolve_Call struct {
 //   - flowID string
 //   - flowVersion int
 //   - now time.Time
-func (_e *ServiceMock_Expecter) Resolve(ctx interface{}, handle interface{}, flowID interface{}, flowVersion interface{}, now interface{}) *ServiceMock_Resolve_Call {
+func (_e *ServiceMock_Expecter) Resolve(ctx any, handle any, flowID any, flowVersion any, now any) *ServiceMock_Resolve_Call {
 	return &ServiceMock_Resolve_Call{Call: _e.mock.On("Resolve", ctx, handle, flowID, flowVersion, now)}
 }
 
@@ -365,7 +374,7 @@ type ServiceMock_SaveCheckpoint_Call struct {
 // SaveCheckpoint is a helper method to define mock.On call
 //   - ctx context.Context
 //   - in SaveCheckpointInput
-func (_e *ServiceMock_Expecter) SaveCheckpoint(ctx interface{}, in interface{}) *ServiceMock_SaveCheckpoint_Call {
+func (_e *ServiceMock_Expecter) SaveCheckpoint(ctx any, in any) *ServiceMock_SaveCheckpoint_Call {
 	return &ServiceMock_SaveCheckpoint_Call{Call: _e.mock.On("SaveCheckpoint", ctx, in)}
 }
 
@@ -434,7 +443,7 @@ type ServiceMock_Terminate_Call struct {
 //   - ctx context.Context
 //   - handle string
 //   - flowID string
-func (_e *ServiceMock_Expecter) Terminate(ctx interface{}, handle interface{}, flowID interface{}) *ServiceMock_Terminate_Call {
+func (_e *ServiceMock_Expecter) Terminate(ctx any, handle any, flowID any) *ServiceMock_Terminate_Call {
 	return &ServiceMock_Terminate_Call{Call: _e.mock.On("Terminate", ctx, handle, flowID)}
 }
 
@@ -496,7 +505,7 @@ type ServiceMock_TerminateBySubject_Call struct {
 // TerminateBySubject is a helper method to define mock.On call
 //   - ctx context.Context
 //   - subjectID string
-func (_e *ServiceMock_Expecter) TerminateBySubject(ctx interface{}, subjectID interface{}) *ServiceMock_TerminateBySubject_Call {
+func (_e *ServiceMock_Expecter) TerminateBySubject(ctx any, subjectID any) *ServiceMock_TerminateBySubject_Call {
 	return &ServiceMock_TerminateBySubject_Call{Call: _e.mock.On("TerminateBySubject", ctx, subjectID)}
 }
 

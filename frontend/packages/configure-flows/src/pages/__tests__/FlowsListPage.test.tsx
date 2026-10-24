@@ -53,7 +53,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/contexts')>();
   return {
     ...actual,
-    useConfig: () => ({getDocumentationLink: () => undefined}),
+    useConfig: () => ({getDocumentationLink: () => undefined, config: {brand: {product_name: 'ThunderID'}}}),
   };
 });
 
@@ -71,6 +71,16 @@ describe('FlowsListPage', () => {
       );
 
       expect(screen.getByText('Flows')).toBeInTheDocument();
+    });
+
+    it('should set the document title', async () => {
+      render(
+        <MemoryRouter>
+          <FlowsListPage />
+        </MemoryRouter>,
+      );
+
+      await waitFor(() => expect(document.title).toBe('Flows | ThunderID'));
     });
 
     it('should render the page subtitle', () => {

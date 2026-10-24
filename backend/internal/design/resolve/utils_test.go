@@ -144,81 +144,42 @@ func (suite *ResolveUtilsTestSuite) TestResolveApplicableTheme_TrailingContent()
 	assert.ErrorIs(suite.T(), err, errMalformedTheme)
 }
 
-// substituteDesignTokens replaces known placeholders verbatim, leaves unknown ones untouched, does not
-// encode values, leaves placeholders whose value is unsafe unresolved (reporting them as dropped), and
-// returns content without placeholders unchanged.
+// substituteDesignTokens replaces known placeholders with HTML-escaped values, leaves unknown ones
+// untouched, and returns content without placeholders unchanged.
 func (suite *ResolveUtilsTestSuite) TestSubstituteDesignTokens() {
 	tokens := map[string]string{"palette.primary.main": "#fa7b3f"}
 
-	out, dropped := substituteDesignTokens("color: {{design(palette.primary.main)}};", tokens)
+	out := substituteDesignTokens("color: {{design(palette.primary.main)}};", tokens)
 	assert.Equal(suite.T(), "color: #fa7b3f;", out)
-	assert.Empty(suite.T(), dropped)
 
-	out, _ = substituteDesignTokens("{{design(palette.missing)}}", tokens)
+	out = substituteDesignTokens("{{design(palette.missing)}}", tokens)
 	assert.Equal(suite.T(), "{{design(palette.missing)}}", out)
 
-	out, _ = substituteDesignTokens("no tokens here", tokens)
+	out = substituteDesignTokens("no tokens here", tokens)
 	assert.Equal(suite.T(), "no tokens here", out)
 
 	// Repeated placeholders are all substituted.
-	out, _ = substituteDesignTokens(
+	out = substituteDesignTokens(
 		"{{design(palette.primary.main)}} and {{design(palette.primary.main)}}", tokens)
 	assert.Equal(suite.T(), "#fa7b3f and #fa7b3f", out)
 
 	// Hyphenated token keys are matched and substituted.
 	hyphen := map[string]string{"palette.primary.on-hover": "#e86a2f"}
-	out, _ = substituteDesignTokens("{{design(palette.primary.on-hover)}}", hyphen)
+	out = substituteDesignTokens("{{design(palette.primary.on-hover)}}", hyphen)
 	assert.Equal(suite.T(), "#e86a2f", out)
 
-	// Safe values are substituted raw, with no output encoding applied by this component. This also
-	// documents the guard's limit: a value with a quote passes and would break out of an HTML attribute,
-	// so the caller must still encode.
+	// A quote in a value is HTML-escaped so it cannot break out of the attribute it lands in.
 	raw := map[string]string{"x": `red" onmouseover="x`}
-	out, dropped = substituteDesignTokens(`<a title="{{design(x)}}">`, raw)
-	assert.Equal(suite.T(), `<a title="red" onmouseover="x">`, out)
-	assert.Empty(suite.T(), dropped)
+	out = substituteDesignTokens(`<a title="{{design(x)}}">`, raw)
+	assert.Equal(suite.T(), `<a title="red&#34; onmouseover=&#34;x">`, out)
 
-	// A value that could inject an element is left unresolved and reported as dropped.
-	unsafe := map[string]string{"x": "<b>injected</b>"}
-	out, dropped = substituteDesignTokens("{{design(x)}}", unsafe)
-	assert.Equal(suite.T(), "{{design(x)}}", out)
-	assert.Equal(suite.T(), []string{"x"}, dropped)
+	// Angle brackets in a value are escaped, so it renders as text rather than injecting markup.
+	markup := map[string]string{"x": "<b>injected</b>"}
+	out = substituteDesignTokens("{{design(x)}}", markup)
+	assert.Equal(suite.T(), "&lt;b&gt;injected&lt;/b&gt;", out)
 
 	// Substitution is a single pass: a value that itself looks like a placeholder is not re-expanded.
 	nested := map[string]string{"x": "{{design(y)}}", "y": "#fff"}
-	out, _ = substituteDesignTokens("{{design(x)}}", nested)
+	out = substituteDesignTokens("{{design(x)}}", nested)
 	assert.Equal(suite.T(), "{{design(y)}}", out)
-}
-
-// isSafeTokenValue accepts legitimate design-token value shapes and rejects values that could inject
-// markup into text-based output (angle brackets or control characters).
-func (suite *ResolveUtilsTestSuite) TestIsSafeTokenValue() {
-	safe := []string{
-		"#fa7b3f",
-		"rgba(255, 255, 255, 0.051)",
-		"rgba(255 255 255 / 0.051)",
-		"var(--oxygen-palette-error-dark, #d32f2f)",
-		"linear-gradient(rgba(0,0,0,0.1), rgba(0,0,0,0.2))",
-		"'Inter Variable', sans-serif",
-		"12",
-		"0.5",
-		"true",
-		"12px",
-		"",
-	}
-	for _, v := range safe {
-		assert.True(suite.T(), isSafeTokenValue(v), "expected safe: %q", v)
-	}
-
-	unsafe := []string{
-		`<script>alert(1)</script>`,
-		`#fff"><img src=x onerror=alert(1)>`,
-		"red</style><script>x</script>",
-		"a>b",
-		"line\nbreak",
-		"tab\tvalue",
-	}
-	for _, v := range unsafe {
-		assert.False(suite.T(), isSafeTokenValue(v), "expected unsafe: %q", v)
-	}
 }

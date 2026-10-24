@@ -18,10 +18,19 @@ func NewConsentProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ConsentProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ConsentProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -83,7 +92,7 @@ type ConsentProviderMock_RecordConsent_Call struct {
 //   - sessionToken string
 //   - validityPeriod int64
 //   - runtimeMetadata map[string][]string
-func (_e *ConsentProviderMock_Expecter) RecordConsent(ctx interface{}, ouID interface{}, appID interface{}, userID interface{}, decisions interface{}, sessionToken interface{}, validityPeriod interface{}, runtimeMetadata interface{}) *ConsentProviderMock_RecordConsent_Call {
+func (_e *ConsentProviderMock_Expecter) RecordConsent(ctx any, ouID any, appID any, userID any, decisions any, sessionToken any, validityPeriod any, runtimeMetadata any) *ConsentProviderMock_RecordConsent_Call {
 	return &ConsentProviderMock_RecordConsent_Call{Call: _e.mock.On("RecordConsent", ctx, ouID, appID, userID, decisions, sessionToken, validityPeriod, runtimeMetadata)}
 }
 
@@ -192,7 +201,7 @@ type ConsentProviderMock_ResolveConsent_Call struct {
 //   - availableAttributes *providers.AttributesResponse
 //   - forceReprompt bool
 //   - runtimeMetadata map[string][]string
-func (_e *ConsentProviderMock_Expecter) ResolveConsent(ctx interface{}, ouID interface{}, appID interface{}, appName interface{}, userID interface{}, essentialAttributes interface{}, optionalAttributes interface{}, authorizedPermissions interface{}, availableAttributes interface{}, forceReprompt interface{}, runtimeMetadata interface{}) *ConsentProviderMock_ResolveConsent_Call {
+func (_e *ConsentProviderMock_Expecter) ResolveConsent(ctx any, ouID any, appID any, appName any, userID any, essentialAttributes any, optionalAttributes any, authorizedPermissions any, availableAttributes any, forceReprompt any, runtimeMetadata any) *ConsentProviderMock_ResolveConsent_Call {
 	return &ConsentProviderMock_ResolveConsent_Call{Call: _e.mock.On("ResolveConsent", ctx, ouID, appID, appName, userID, essentialAttributes, optionalAttributes, authorizedPermissions, availableAttributes, forceReprompt, runtimeMetadata)}
 }
 

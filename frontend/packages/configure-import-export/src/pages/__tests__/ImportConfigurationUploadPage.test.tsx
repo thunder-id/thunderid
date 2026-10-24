@@ -55,9 +55,9 @@ describe('ImportConfigurationUploadPage', () => {
 
   it('renders upload title', () => {
     render(<ImportConfigurationUploadPage />);
-    // "Import Configuration" is used both as the page title and the (non-clickable) trailing
+    // "Import configuration" is used both as the page title and the (non-clickable) trailing
     // breadcrumb crumb; disambiguate via heading level (h2 title vs h5 breadcrumb item).
-    expect(screen.getByRole('heading', {level: 2, name: 'Import Configuration'})).toBeInTheDocument();
+    expect(screen.getByRole('heading', {level: 2, name: 'Import configuration'})).toBeInTheDocument();
   });
 
   it('renders the file drop area', () => {
@@ -67,7 +67,7 @@ describe('ImportConfigurationUploadPage', () => {
 
   it('renders the env file drop area', () => {
     render(<ImportConfigurationUploadPage />);
-    expect(screen.getByText('Environment Variables')).toBeInTheDocument();
+    expect(screen.getByText('Environment variables')).toBeInTheDocument();
   });
 
   it('renders cancel and continue buttons', () => {
@@ -367,7 +367,7 @@ describe('ImportConfigurationUploadPage', () => {
   it('handles drag and drop events on env file area', () => {
     render(<ImportConfigurationUploadPage />);
 
-    const envLabel = screen.getByText('Environment Variables');
+    const envLabel = screen.getByText('Environment variables');
     const dropZone = envLabel.closest('div')?.nextElementSibling;
     expect(dropZone).toBeInTheDocument();
 

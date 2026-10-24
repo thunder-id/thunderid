@@ -89,7 +89,7 @@ var (
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
 		AllowedUserTypes:          []string{"attr_collect_flow_user"},
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+			"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 		},
 	}
 
@@ -302,16 +302,16 @@ func (ts *AttributeCollectFlowTestSuite) TearDownSuite() {
 		}
 	}
 
+	if attrCollectEntityTypeID != "" {
+		if err := testutils.DeleteUserType(attrCollectEntityTypeID); err != nil {
+			ts.T().Logf("Failed to delete test user type during teardown: %v", err)
+		}
+	}
+
 	// Delete test organization unit
 	if attrCollectTestOUID != "" {
 		if err := testutils.DeleteOrganizationUnit(attrCollectTestOUID); err != nil {
 			ts.T().Logf("Failed to delete test organization unit during teardown: %v", err)
-		}
-	}
-
-	if attrCollectEntityTypeID != "" {
-		if err := testutils.DeleteUserType(attrCollectEntityTypeID); err != nil {
-			ts.T().Logf("Failed to delete test user type during teardown: %v", err)
 		}
 	}
 

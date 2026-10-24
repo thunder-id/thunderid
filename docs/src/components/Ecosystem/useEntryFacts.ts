@@ -5,9 +5,10 @@ import {useEffect, useState} from 'react';
 import {isAvailable} from './presentation';
 import type {EcosystemEntry} from '@site/src/types/ecosystem';
 
-interface SdkRelease {
+interface EcosystemRelease {
   packageId: string;
   publishedDateLabel: string | null;
+  type: 'sdk' | 'sample';
 }
 
 /**
@@ -16,7 +17,7 @@ interface SdkRelease {
  *
  * Both come from sources the project already has. Downloads are read live from
  * the npm registry's public endpoint; the published date comes from
- * `static/data/sdk-releases.json`, which `scripts/generate-sdk-releases.mjs`
+ * `static/data/ecosystem-releases.json`, which `scripts/generate-ecosystem-releases.mjs`
  * builds from each SDK repo's own releases. Either may be unavailable, and the
  * hero simply omits the line rather than showing a guess.
  */
@@ -49,10 +50,12 @@ export default function useEntryFacts(entry: EcosystemEntry): {downloads?: strin
 
   useEffect(() => {
     let active = true;
-    fetch('/data/sdk-releases.json')
+    fetch('/data/ecosystem-releases.json')
       .then((res) => res.json())
-      .then((data: {releases?: SdkRelease[]}) => {
-        const label = data.releases?.find((release) => release.packageId === id)?.publishedDateLabel;
+      .then((data: {releases?: EcosystemRelease[]}) => {
+        const label = data.releases?.find(
+          (release) => release.type === 'sdk' && release.packageId === id,
+        )?.publishedDateLabel;
         if (active && label) setUpdated(`Updated ${label}`);
       })
       .catch(() => {

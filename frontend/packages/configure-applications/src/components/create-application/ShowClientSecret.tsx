@@ -83,9 +83,9 @@ export default function ShowClientSecret({
   };
 
   const saveTitle = resolveCopy(
-    ['applications:clientSecret.saveTitle', 'Save Your Client Secret'],
-    ['applications:flowSecret.saveTitle', 'Save Your Flow Secret'],
-    ['applications:secrets.saveTitle', 'Save Your Secrets'],
+    ['applications:clientSecret.saveTitle', 'Save your client secret'],
+    ['applications:flowSecret.saveTitle', 'Save your flow secret'],
+    ['applications:secrets.saveTitle', 'Save your secrets'],
   );
   const saveSubtitle = resolveCopy(
     [
@@ -102,7 +102,7 @@ export default function ShowClientSecret({
     ],
     [
       'applications:flowSecret.securityReminder.description',
-      'Your Flow Secret is a confidential key used to authenticate your application when it starts a sign-in flow. It should be treated with the same level of security as a password. Never expose it in browser console, version control, or logs.',
+      'Your flow secret is a confidential key used to authenticate your application when it starts a sign-in flow. It should be treated with the same level of security as a password. Never expose it in browser console, version control, or logs.',
     ],
     [
       'applications:secrets.securityReminder.description',
@@ -112,8 +112,8 @@ export default function ShowClientSecret({
   // When both secrets are shown the footer button copies the client secret, so it is labelled
   // explicitly; the Flow Secret has its own copy button on its field.
   const copySecretLabel = flowSecretOnly
-    ? t('applications:flowSecret.copySecret', 'Copy Flow Secret')
-    : t('applications:clientSecret.copySecret', 'Copy Client Secret');
+    ? t('applications:flowSecret.copySecret', 'Copy flow secret')
+    : t('applications:clientSecret.copySecret', 'Copy client secret');
 
   const handleCopy = async (): Promise<void> => {
     await copy(primarySecret);
@@ -172,7 +172,7 @@ export default function ShowClientSecret({
           {clientSecret && (
             <Box>
               <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 0.5}}>
-                {t('applications:clientSecret.clientSecretLabel', 'Client Secret')}
+                {t('applications:clientSecret.clientSecretLabel', 'Client secret')}
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 1}}>
                 {t(
@@ -201,7 +201,7 @@ export default function ShowClientSecret({
                         {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
                       </IconButton>
                       <IconButton
-                        aria-label={`${t('common:actions.copy', 'Copy')} ${t('applications:clientSecret.clientSecretLabel', 'Client Secret')}`}
+                        aria-label={`${t('common:actions.copy', 'Copy')} ${t('applications:clientSecret.clientSecretLabel', 'Client secret')}`}
                         onClick={() => {
                           copy(clientSecret).catch(() => {
                             // Error already handled in copy
@@ -226,7 +226,7 @@ export default function ShowClientSecret({
 
               <Box>
                 <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 0.5}}>
-                  {t('applications:flowSecret.label', 'Flow Secret')}
+                  {t('applications:flowSecret.label', 'Flow secret')}
                 </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 1}}>
                   {t(
@@ -255,7 +255,7 @@ export default function ShowClientSecret({
                           {showFlowSecret ? <EyeOff size={16} /> : <Eye size={16} />}
                         </IconButton>
                         <IconButton
-                          aria-label={`${t('common:actions.copy', 'Copy')} ${t('applications:flowSecret.label', 'Flow Secret')}`}
+                          aria-label={`${t('common:actions.copy', 'Copy')} ${t('applications:flowSecret.label', 'Flow secret')}`}
                           onClick={() => {
                             handleFlowSecretCopy().catch(() => {
                               // Error already handled in handleFlowSecretCopy
@@ -280,7 +280,7 @@ export default function ShowClientSecret({
       {/* Security Reminder Alert */}
       <Alert severity="warning" icon={<AlertTriangle size={20} />}>
         <Typography variant="body2" sx={{fontWeight: 'medium', mb: 1}}>
-          {t('applications:clientSecret.securityReminder.title', 'Security Reminder')}
+          {t('applications:clientSecret.securityReminder.title', 'Security reminder')}
         </Typography>
         <Typography variant="body2">{securityReminderDescription}</Typography>
       </Alert>

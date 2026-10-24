@@ -16,10 +16,19 @@ func newThemeMgtStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *themeMgtStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &themeMgtStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -63,7 +72,7 @@ type themeMgtStoreInterfaceMock_CreateTheme_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - theme CreateThemeRequest
-func (_e *themeMgtStoreInterfaceMock_Expecter) CreateTheme(ctx interface{}, id interface{}, theme interface{}) *themeMgtStoreInterfaceMock_CreateTheme_Call {
+func (_e *themeMgtStoreInterfaceMock_Expecter) CreateTheme(ctx any, id any, theme any) *themeMgtStoreInterfaceMock_CreateTheme_Call {
 	return &themeMgtStoreInterfaceMock_CreateTheme_Call{Call: _e.mock.On("CreateTheme", ctx, id, theme)}
 }
 
@@ -125,7 +134,7 @@ type themeMgtStoreInterfaceMock_DeleteTheme_Call struct {
 // DeleteTheme is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *themeMgtStoreInterfaceMock_Expecter) DeleteTheme(ctx interface{}, id interface{}) *themeMgtStoreInterfaceMock_DeleteTheme_Call {
+func (_e *themeMgtStoreInterfaceMock_Expecter) DeleteTheme(ctx any, id any) *themeMgtStoreInterfaceMock_DeleteTheme_Call {
 	return &themeMgtStoreInterfaceMock_DeleteTheme_Call{Call: _e.mock.On("DeleteTheme", ctx, id)}
 }
 
@@ -191,7 +200,7 @@ type themeMgtStoreInterfaceMock_GetTheme_Call struct {
 // GetTheme is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *themeMgtStoreInterfaceMock_Expecter) GetTheme(ctx interface{}, id interface{}) *themeMgtStoreInterfaceMock_GetTheme_Call {
+func (_e *themeMgtStoreInterfaceMock_Expecter) GetTheme(ctx any, id any) *themeMgtStoreInterfaceMock_GetTheme_Call {
 	return &themeMgtStoreInterfaceMock_GetTheme_Call{Call: _e.mock.On("GetTheme", ctx, id)}
 }
 
@@ -260,7 +269,7 @@ type themeMgtStoreInterfaceMock_GetThemeList_Call struct {
 //   - ctx context.Context
 //   - limit int
 //   - offset int
-func (_e *themeMgtStoreInterfaceMock_Expecter) GetThemeList(ctx interface{}, limit interface{}, offset interface{}) *themeMgtStoreInterfaceMock_GetThemeList_Call {
+func (_e *themeMgtStoreInterfaceMock_Expecter) GetThemeList(ctx any, limit any, offset any) *themeMgtStoreInterfaceMock_GetThemeList_Call {
 	return &themeMgtStoreInterfaceMock_GetThemeList_Call{Call: _e.mock.On("GetThemeList", ctx, limit, offset)}
 }
 
@@ -330,7 +339,7 @@ type themeMgtStoreInterfaceMock_GetThemeListCount_Call struct {
 
 // GetThemeListCount is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *themeMgtStoreInterfaceMock_Expecter) GetThemeListCount(ctx interface{}) *themeMgtStoreInterfaceMock_GetThemeListCount_Call {
+func (_e *themeMgtStoreInterfaceMock_Expecter) GetThemeListCount(ctx any) *themeMgtStoreInterfaceMock_GetThemeListCount_Call {
 	return &themeMgtStoreInterfaceMock_GetThemeListCount_Call{Call: _e.mock.On("GetThemeListCount", ctx)}
 }
 
@@ -382,7 +391,7 @@ type themeMgtStoreInterfaceMock_IsThemeDeclarative_Call struct {
 // IsThemeDeclarative is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *themeMgtStoreInterfaceMock_Expecter) IsThemeDeclarative(ctx interface{}, id interface{}) *themeMgtStoreInterfaceMock_IsThemeDeclarative_Call {
+func (_e *themeMgtStoreInterfaceMock_Expecter) IsThemeDeclarative(ctx any, id any) *themeMgtStoreInterfaceMock_IsThemeDeclarative_Call {
 	return &themeMgtStoreInterfaceMock_IsThemeDeclarative_Call{Call: _e.mock.On("IsThemeDeclarative", ctx, id)}
 }
 
@@ -448,7 +457,7 @@ type themeMgtStoreInterfaceMock_IsThemeExist_Call struct {
 // IsThemeExist is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *themeMgtStoreInterfaceMock_Expecter) IsThemeExist(ctx interface{}, id interface{}) *themeMgtStoreInterfaceMock_IsThemeExist_Call {
+func (_e *themeMgtStoreInterfaceMock_Expecter) IsThemeExist(ctx any, id any) *themeMgtStoreInterfaceMock_IsThemeExist_Call {
 	return &themeMgtStoreInterfaceMock_IsThemeExist_Call{Call: _e.mock.On("IsThemeExist", ctx, id)}
 }
 
@@ -515,7 +524,7 @@ type themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call struct {
 //   - ctx context.Context
 //   - handle string
 //   - excludeID string
-func (_e *themeMgtStoreInterfaceMock_Expecter) IsThemeHandleConflict(ctx interface{}, handle interface{}, excludeID interface{}) *themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call {
+func (_e *themeMgtStoreInterfaceMock_Expecter) IsThemeHandleConflict(ctx any, handle any, excludeID any) *themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call {
 	return &themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call{Call: _e.mock.On("IsThemeHandleConflict", ctx, handle, excludeID)}
 }
 
@@ -578,7 +587,7 @@ type themeMgtStoreInterfaceMock_UpdateTheme_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - theme UpdateThemeRequest
-func (_e *themeMgtStoreInterfaceMock_Expecter) UpdateTheme(ctx interface{}, id interface{}, theme interface{}) *themeMgtStoreInterfaceMock_UpdateTheme_Call {
+func (_e *themeMgtStoreInterfaceMock_Expecter) UpdateTheme(ctx any, id any, theme any) *themeMgtStoreInterfaceMock_UpdateTheme_Call {
 	return &themeMgtStoreInterfaceMock_UpdateTheme_Call{Call: _e.mock.On("UpdateTheme", ctx, id, theme)}
 }
 

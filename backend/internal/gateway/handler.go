@@ -129,12 +129,16 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *common.Serv
 	if svcErr.Code == ErrorGatewayNotFound.Code || svcErr.Code == ErrorVersionNotFound.Code {
 		statusCode = http.StatusNotFound
 	}
-	if svcErr.Code == ErrorGatewayUnreachable.Code {
+	if svcErr.Code == ErrorGatewayUnreachable.Code || svcErr.Code == ErrorGatewayPrivateAddress.Code {
 		statusCode = http.StatusBadGateway
+	}
+	if svcErr.Code == ErrorApplyTookTooLong.Code {
+		statusCode = http.StatusServiceUnavailable
 	}
 	if svcErr.Code == ErrorGatewayLimitReached.Code || svcErr.Code == ErrorGatewayNameTaken.Code ||
 		svcErr.Code == ErrorGatewayAlreadyRegistered.Code || svcErr.Code == ErrorMissingValues.Code ||
-		svcErr.Code == ErrorVersionRemoved.Code || svcErr.Code == ErrorAppliedChanged.Code {
+		svcErr.Code == ErrorVersionRemoved.Code || svcErr.Code == ErrorAppliedChanged.Code ||
+		svcErr.Code == ErrorApplyInProgress.Code || svcErr.Code == ErrorRemovalsNeedConfirmation.Code {
 		statusCode = http.StatusConflict
 	}
 

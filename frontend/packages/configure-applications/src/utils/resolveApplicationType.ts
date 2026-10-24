@@ -58,3 +58,19 @@ export function isM2MApplication(type: ApplicationType | undefined, oauth2Config
 export function isClientCredentialsOnlyGrantSet(grantTypes: readonly string[] | undefined): boolean {
   return (grantTypes ?? []).length === 1 && grantTypes?.[0] === OAuth2GrantTypes.CLIENT_CREDENTIALS;
 }
+
+/**
+ * Grant types that obtain tokens without the client running a sign-in flow.
+ */
+const DIRECT_TOKEN_GRANT_TYPES: readonly string[] = [OAuth2GrantTypes.CLIENT_CREDENTIALS, OAuth2GrantTypes.JWT_BEARER];
+
+/**
+ * Reports whether every configured grant type is a direct-token grant (`client_credentials` or the
+ * JWT bearer grant), mirroring the backend's `isDirectTokenGrantSet`. Such a client never runs an
+ * embedded sign-in flow, so it is excluded from flow-native (Flow Secret) eligibility for
+ * `fullstack`/`custom`/`mcp` applications.
+ */
+export function isDirectTokenGrantSet(grantTypes: readonly string[] | undefined): boolean {
+  const grants = grantTypes ?? [];
+  return grants.length > 0 && grants.every((grant) => DIRECT_TOKEN_GRANT_TYPES.includes(grant));
+}

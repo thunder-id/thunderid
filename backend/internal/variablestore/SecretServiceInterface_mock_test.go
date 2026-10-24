@@ -17,10 +17,19 @@ func NewSecretServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *SecretServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &SecretServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -76,7 +85,7 @@ type SecretServiceInterfaceMock_CreateSecret_Call struct {
 // CreateSecret is a helper method to define mock.On call
 //   - ctx context.Context
 //   - request SecretRequest
-func (_e *SecretServiceInterfaceMock_Expecter) CreateSecret(ctx interface{}, request interface{}) *SecretServiceInterfaceMock_CreateSecret_Call {
+func (_e *SecretServiceInterfaceMock_Expecter) CreateSecret(ctx any, request any) *SecretServiceInterfaceMock_CreateSecret_Call {
 	return &SecretServiceInterfaceMock_CreateSecret_Call{Call: _e.mock.On("CreateSecret", ctx, request)}
 }
 
@@ -135,7 +144,7 @@ type SecretServiceInterfaceMock_DeleteSecret_Call struct {
 // DeleteSecret is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *SecretServiceInterfaceMock_Expecter) DeleteSecret(ctx interface{}, name interface{}) *SecretServiceInterfaceMock_DeleteSecret_Call {
+func (_e *SecretServiceInterfaceMock_Expecter) DeleteSecret(ctx any, name any) *SecretServiceInterfaceMock_DeleteSecret_Call {
 	return &SecretServiceInterfaceMock_DeleteSecret_Call{Call: _e.mock.On("DeleteSecret", ctx, name)}
 }
 
@@ -205,7 +214,7 @@ type SecretServiceInterfaceMock_GetSecret_Call struct {
 // GetSecret is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *SecretServiceInterfaceMock_Expecter) GetSecret(ctx interface{}, name interface{}) *SecretServiceInterfaceMock_GetSecret_Call {
+func (_e *SecretServiceInterfaceMock_Expecter) GetSecret(ctx any, name any) *SecretServiceInterfaceMock_GetSecret_Call {
 	return &SecretServiceInterfaceMock_GetSecret_Call{Call: _e.mock.On("GetSecret", ctx, name)}
 }
 
@@ -275,7 +284,7 @@ type SecretServiceInterfaceMock_ListSecrets_Call struct {
 // ListSecrets is a helper method to define mock.On call
 //   - ctx context.Context
 //   - q listQuery
-func (_e *SecretServiceInterfaceMock_Expecter) ListSecrets(ctx interface{}, q interface{}) *SecretServiceInterfaceMock_ListSecrets_Call {
+func (_e *SecretServiceInterfaceMock_Expecter) ListSecrets(ctx any, q any) *SecretServiceInterfaceMock_ListSecrets_Call {
 	return &SecretServiceInterfaceMock_ListSecrets_Call{Call: _e.mock.On("ListSecrets", ctx, q)}
 }
 
@@ -352,7 +361,7 @@ type SecretServiceInterfaceMock_UpdateSecret_Call struct {
 //   - ctx context.Context
 //   - name string
 //   - request SecretUpdateRequest
-func (_e *SecretServiceInterfaceMock_Expecter) UpdateSecret(ctx interface{}, name interface{}, request interface{}) *SecretServiceInterfaceMock_UpdateSecret_Call {
+func (_e *SecretServiceInterfaceMock_Expecter) UpdateSecret(ctx any, name any, request any) *SecretServiceInterfaceMock_UpdateSecret_Call {
 	return &SecretServiceInterfaceMock_UpdateSecret_Call{Call: _e.mock.On("UpdateSecret", ctx, name, request)}
 }
 

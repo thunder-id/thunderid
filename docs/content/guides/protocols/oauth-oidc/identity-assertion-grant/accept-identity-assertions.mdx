@@ -45,7 +45,7 @@ sequenceDiagram
 
 1. In the Console, navigate to **Connections**.
 2. Select **Add custom connection**.
-3. In the wizard, choose the connection type **Trusted Token Issuer**.
+3. In the wizard, choose the connection type **Trusted token issuer**.
 4. Name the connection and continue.
 5. In the **Add trusted issuer** form, fill in:
     - **Issuer URI**: the external identity provider's issuer identifier. <ProductName /> matches this against the `iss` claim of incoming assertions.
@@ -134,7 +134,7 @@ The token is DPoP-bound when the request includes a DPoP proof. A `resource` par
 - There is no replay cache. <ProductName /> checks that `jti` is present but does not track previously seen values, so keep assertion expiry short.
 - No local account mapping occurs, regardless of Authorization Mapping. The token's `sub` is the external identifier as-is; nothing links it to a local user record.
 - <ProductName /> does not advertise ID-JAG or Enterprise-Managed Authorization discovery metadata in its well-known documents.
-- The Console's Authorization Mapping tab is not yet available on a connection created through the **Trusted Token Issuer** wizard, even though it is the same OIDC connection type and the backend applies its mapping the same way. Configure it through the Connections API directly until the Console adds it.
+- The Console's Authorization Mapping tab is not yet available on a connection created through the **Trusted token issuer** wizard, even though it is the same OIDC connection type and the backend applies its mapping the same way. Configure it through the Connections API directly until the Console adds it.
 
 :::note
 This page covers accepting assertions for token issuance. The [Secure <ProductName /> Using a Third-Party Identity Provider](../../../../trusted-issuer) guide is a different feature: it validates external tokens directly against <ProductName />'s own APIs without issuing a new token.

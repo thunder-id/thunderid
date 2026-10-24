@@ -65,23 +65,23 @@ describe('HowProductRunInHostedIllustration', () => {
     render(<HowProductRunInHostedIllustration />);
 
     expect(screen.getByText('Run')).toBeInTheDocument();
-    expect(screen.getByText('Project + ENV Configs')).toBeInTheDocument();
+    expect(screen.getByText('Project + ENV configs')).toBeInTheDocument();
     expect(screen.getByText('Attach')).toBeInTheDocument();
     expect(screen.getByText('(with required runtime components only)')).toBeInTheDocument();
-    expect(screen.getByText('Admin App')).toBeInTheDocument();
-    expect(screen.getByText('Login App')).toBeInTheDocument();
+    expect(screen.getByText('Admin app')).toBeInTheDocument();
+    expect(screen.getByText('Login app')).toBeInTheDocument();
   });
 
   it('displays product name in title', () => {
     render(<HowProductRunInHostedIllustration />);
 
-    expect(screen.getByText('Run ThunderID in Production')).toBeInTheDocument();
+    expect(screen.getByText('Run ThunderID in production')).toBeInTheDocument();
   });
 
   it('displays product name in runtime text', () => {
     render(<HowProductRunInHostedIllustration />);
 
-    expect(screen.getByText('ThunderID Runtime Hosted')).toBeInTheDocument();
+    expect(screen.getByText('ThunderID runtime hosted')).toBeInTheDocument();
   });
 
   it('handles missing product name gracefully', () => {

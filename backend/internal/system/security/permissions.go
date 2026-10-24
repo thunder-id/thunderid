@@ -296,6 +296,7 @@ func InitSystemPermissions(handle string) {
 		{"GET /users", p.UserView},
 		{"POST /users", p.User},
 		{"GET /users/**", p.UserView},
+		{"POST /users/*/sharing-policies", p.User},
 		{"PUT /users/**", p.User},
 		{"DELETE /users/**", p.User},
 

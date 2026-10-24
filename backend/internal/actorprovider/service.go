@@ -128,7 +128,7 @@ func (p *actorProvider) AuthenticateActor(
 
 // GetActor returns the backing entity record for the given actor ID.
 func (p *actorProvider) GetActor(actorID string) (*providers.Entity, *tidcommon.ServiceError) {
-	entity, epErr := p.entityProvider.GetEntity(actorID)
+	entity, epErr := p.entityProvider.GetEntityProfile(actorID)
 	if epErr != nil {
 		return nil, mapEntityProviderError(epErr)
 	}

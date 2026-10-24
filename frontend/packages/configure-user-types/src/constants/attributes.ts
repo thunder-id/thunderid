@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CONTACT_ATTRIBUTE_REGEX} from '@thunderid/utils';
 import type {LibraryAttribute} from '../types/user-types';
 
 /**
@@ -23,12 +24,12 @@ const ATTRIBUTES: LibraryAttribute[] = [
   {
     name: 'email',
     displayName: 'Email',
-    type: 'string',
+    type: 'email',
     required: true,
     unique: true,
     credential: false,
     enum: [],
-    regex: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$',
+    regex: CONTACT_ATTRIBUTE_REGEX.email,
   },
   {
     name: 'given_name',
@@ -191,24 +192,14 @@ const ATTRIBUTES: LibraryAttribute[] = [
     regex: '',
   },
   {
-    name: 'email_verified',
-    displayName: 'Email Verified',
-    type: 'boolean',
+    name: 'mobile_number',
+    displayName: 'Mobile Number',
+    type: 'mobile',
     required: false,
     unique: false,
     credential: false,
     enum: [],
-    regex: '',
-  },
-  {
-    name: 'phone_verified',
-    displayName: 'Phone Verified',
-    type: 'boolean',
-    required: false,
-    unique: false,
-    credential: false,
-    enum: [],
-    regex: '',
+    regex: CONTACT_ATTRIBUTE_REGEX.mobile,
   },
   {
     name: 'active',

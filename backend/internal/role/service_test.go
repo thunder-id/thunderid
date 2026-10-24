@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package role
@@ -15,9 +15,11 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/group"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -622,6 +624,26 @@ func (suite *RoleServiceTestSuite) TestUpdateRole_DeclarativeMode_Denied() {
 	suite.Equal(ErrorImmutableRole.Code, err.Code)
 }
 
+func (suite *RoleServiceTestSuite) TestUpdateRole_DeclarativeCheckError_Refused() {
+	config.GetServerRuntime().Config.Role.Store = string(serverconst.StoreModeComposite)
+	request := RoleUpdateDetail{
+		Name:        "Updated Role",
+		OUID:        "ou1",
+		Permissions: []ResourcePermissions{{ResourceServerID: "rs1", Permissions: []string{"perm1"}}},
+	}
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything,
+		"rs1", []string{"perm1"}).Return([]string{}, nil)
+	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
+	suite.mockStore.On("IsRoleDeclarative", mock.Anything, "role1").Return(false, errors.New("db down"))
+
+	result, err := suite.service.UpdateRoleWithPermissions(context.Background(), "role1", request)
+
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+	suite.mockStore.AssertNotCalled(suite.T(), "UpdateRole", mock.Anything, mock.Anything, mock.Anything)
+}
+
 // GetRoleWithPermissions Tests
 func (suite *RoleServiceTestSuite) TestGetRole_Success() {
 	expectedRole := RoleWithPermissions{
@@ -1203,6 +1225,18 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_DeclarativeMode_Denied() {
 	suite.Equal(ErrorImmutableRole.Code, err2.Code)
 }
 
+func (suite *RoleServiceTestSuite) TestDeleteRole_DeclarativeCheckError_Refused() {
+	config.GetServerRuntime().Config.Role.Store = string(serverconst.StoreModeComposite)
+	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
+	suite.mockStore.On("IsRoleDeclarative", mock.Anything, "role1").Return(false, errors.New("db down"))
+
+	err := suite.service.DeleteRole(context.Background(), "role1")
+
+	suite.Require().NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+	suite.mockStore.AssertNotCalled(suite.T(), "DeleteRole", mock.Anything, mock.Anything)
+}
+
 // validateAssignmentIDs Tests
 func (suite *RoleServiceTestSuite) TestValidateAssignmentIDs_UserServiceError() {
 	request := RoleCreationDetail{
@@ -1708,4 +1742,444 @@ func newAllowAllRoleAuthz(t *testing.T) sysauthz.SystemAuthorizationServiceInter
 	mockAuthz.On("CanGrantMembership", mock.Anything, mock.Anything, mock.Anything).
 		Return((*tidcommon.ServiceError)(nil)).Maybe()
 	return mockAuthz
+}
+
+// RoleChangeValidationTestSuite tests the role service's pre-revocation validations.
+type RoleChangeValidationTestSuite struct {
+	suite.Suite
+	store     *roleStoreInterfaceMock
+	groups    *groupmock.GroupServiceInterfaceMock
+	ous       *oumock.OrganizationUnitServiceInterfaceMock
+	resources *resourcemock.ResourceServiceInterfaceMock
+	authz     *sysauthzmock.SystemAuthorizationServiceInterfaceMock
+	service   RoleServiceInterface
+}
+
+func TestRoleChangeValidationTestSuite(t *testing.T) {
+	suite.Run(t, new(RoleChangeValidationTestSuite))
+}
+
+func (s *RoleChangeValidationTestSuite) SetupTest() {
+	config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime("/tmp/test", &config.Config{
+		Role: config.RoleConfig{Store: string(serverconst.StoreModeComposite)},
+	}))
+	s.store = newRoleStoreInterfaceMock(s.T())
+	s.groups = groupmock.NewGroupServiceInterfaceMock(s.T())
+	s.ous = oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
+	s.resources = resourcemock.NewResourceServiceInterfaceMock(s.T())
+	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	s.service = newRoleService(s.store, nil, s.groups, s.ous, s.resources, &fakeTransactioner{}, s.authz)
+}
+
+func (s *RoleChangeValidationTestSuite) TearDownTest() {
+	config.ResetServerRuntime()
+}
+
+func (s *RoleChangeValidationTestSuite) mutableRoleGranting(permissions []ResourcePermissions) {
+	s.store.On("GetRole", mock.Anything, targetRoleID).
+		Return(RoleWithPermissions{ID: targetRoleID, OUID: "ou-1", Permissions: permissions}, nil)
+	s.ous.On("GetOrganizationUnit", mock.Anything, "ou-1").Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil)
+	s.store.On("IsRoleDeclarative", mock.Anything, targetRoleID).Return(false, nil)
+}
+
+func (s *RoleChangeValidationTestSuite) mutableRoleGrantingLicense() {
+	s.mutableRoleGranting([]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}})
+	stubResourceServer(s.resources, californiaRSID, californiaAud)
+}
+
+func (s *RoleChangeValidationTestSuite) assignedTo(assignments ...RoleAssignment) {
+	s.store.On("GetRoleAssignmentsCount", mock.Anything, targetRoleID).Return(len(assignments), nil)
+	if len(assignments) > 0 {
+		s.store.On("GetRoleAssignments", mock.Anything, targetRoleID, serverconst.MaxPageSize, 0).
+			Return(assignments, nil)
+	}
+}
+
+func (s *RoleChangeValidationTestSuite) mayChangePermissions(permissions security.PermissionSet) {
+	for resourceServerID, scopes := range permissions {
+		s.resources.On("ValidatePermissions", mock.Anything, resourceServerID, scopes).Return([]string{}, nil)
+	}
+	s.authz.On("CanGrantPermissions", mock.Anything, permissions).Return(nil)
+}
+
+// groupConveying stubs a group whose own and ancestor roles grant one Californian scope.
+func (s *RoleChangeValidationTestSuite) groupConveying(ancestors ...string) {
+	s.groups.On("GetTransitiveAncestorGroups", mock.Anything, targetGroupID).Return(ancestors, nil)
+	s.store.On("GetAllPermissionsForAssignees", mock.Anything, "", append([]string{targetGroupID}, ancestors...)).
+		Return([]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}}, nil)
+	stubResourceServer(s.resources, californiaRSID, californiaAud)
+}
+
+func (s *RoleChangeValidationTestSuite) mayRemoveMember(member group.Member) {
+	s.groups.On("ValidateRemoveGroupMembers", mock.Anything, targetGroupID, []group.Member{member}).Return(nil)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_CoversEveryAssignee() {
+	s.mutableRoleGrantingLicense()
+	s.assignedTo(
+		RoleAssignment{ID: targetUserID, Type: assigneeTypeEntity},
+		RoleAssignment{ID: targetGroupID, Type: AssigneeTypeGroup})
+	stubGroupEntities(s.groups, targetGroupID, "member-1")
+
+	target, svcErr := s.service.ValidateDeleteRole(context.Background(), targetRoleID)
+
+	s.Require().Nil(svcErr)
+	s.ElementsMatch([]string{targetUserID, "member-1"}, target.EntityIDs)
+	s.Equal([]revocation.AudienceScope{{Audience: californiaAud, Scope: "license"}}, target.Scopes)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_DeduplicatesAssignees() {
+	s.mutableRoleGrantingLicense()
+	s.assignedTo(
+		RoleAssignment{ID: targetUserID, Type: assigneeTypeEntity},
+		RoleAssignment{ID: targetGroupID, Type: AssigneeTypeGroup})
+	stubGroupEntities(s.groups, targetGroupID, targetUserID)
+
+	target, svcErr := s.service.ValidateDeleteRole(context.Background(), targetRoleID)
+
+	s.Require().Nil(svcErr)
+	s.Equal([]string{targetUserID}, target.EntityIDs)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_RoleWithoutAssignees() {
+	s.mutableRoleGrantingLicense()
+	s.assignedTo()
+
+	target, svcErr := s.service.ValidateDeleteRole(context.Background(), targetRoleID)
+
+	s.Require().Nil(svcErr)
+	s.Empty(target.EntityIDs)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_RoleWithoutPermissionsSkipsTheAssignees() {
+	s.mutableRoleGranting(nil)
+
+	target, svcErr := s.service.ValidateDeleteRole(context.Background(), targetRoleID)
+
+	s.Require().Nil(svcErr)
+	s.Empty(target.Scopes)
+	s.store.AssertNotCalled(s.T(), "GetRoleAssignmentsCount", mock.Anything, mock.Anything)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_RefusesDeclarativeRole() {
+	s.store.On("GetRole", mock.Anything, targetRoleID).Return(RoleWithPermissions{ID: targetRoleID}, nil)
+	s.ous.On("GetOrganizationUnit", mock.Anything, "").Return(oupkg.OrganizationUnit{}, nil)
+	s.store.On("IsRoleDeclarative", mock.Anything, targetRoleID).Return(true, nil)
+
+	_, svcErr := s.service.ValidateDeleteRole(context.Background(), targetRoleID)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorImmutableRole.Code, svcErr.Code)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_RequiresARole() {
+	_, svcErr := s.service.ValidateDeleteRole(context.Background(), "")
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorMissingRoleID.Code, svcErr.Code)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_CarriesARoleReadFailure() {
+	s.store.On("GetRole", mock.Anything, targetRoleID).Return(RoleWithPermissions{}, ErrRoleNotFound)
+
+	_, svcErr := s.service.ValidateDeleteRole(context.Background(), targetRoleID)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorRoleNotFound.Code, svcErr.Code)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_DeclarativeCheckFailureIsAServerError() {
+	s.store.On("GetRole", mock.Anything, targetRoleID).Return(RoleWithPermissions{ID: targetRoleID}, nil)
+	s.ous.On("GetOrganizationUnit", mock.Anything, "").Return(oupkg.OrganizationUnit{}, nil)
+	s.store.On("IsRoleDeclarative", mock.Anything, targetRoleID).Return(false, errors.New("db down"))
+
+	_, svcErr := s.service.ValidateDeleteRole(context.Background(), targetRoleID)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_CarriesAResourceServerLookupFailure() {
+	s.mutableRoleGranting([]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}})
+	s.resources.On("GetResourceServer", mock.Anything, californiaRSID).Return(nil, &tidcommon.InternalServerError)
+
+	_, svcErr := s.service.ValidateDeleteRole(context.Background(), targetRoleID)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_AssignmentReadFailures() {
+	cases := map[string]struct {
+		setup func()
+		want  tidcommon.ServiceError
+	}{
+		"count failure": {func() {
+			s.store.On("GetRoleAssignmentsCount", mock.Anything, targetRoleID).Return(0, errors.New("db down"))
+		}, tidcommon.InternalServerError},
+		"count over the composite limit": {func() {
+			s.store.On("GetRoleAssignmentsCount", mock.Anything, targetRoleID).
+				Return(0, errResultLimitExceededInCompositeMode)
+		}, ResultLimitExceededInCompositeMode},
+		"page failure": {func() {
+			s.store.On("GetRoleAssignmentsCount", mock.Anything, targetRoleID).Return(1, nil)
+			s.store.On("GetRoleAssignments", mock.Anything, targetRoleID, serverconst.MaxPageSize, 0).
+				Return(nil, errors.New("db down"))
+		}, tidcommon.InternalServerError},
+		"page over the composite limit": {func() {
+			s.store.On("GetRoleAssignmentsCount", mock.Anything, targetRoleID).Return(1, nil)
+			s.store.On("GetRoleAssignments", mock.Anything, targetRoleID, serverconst.MaxPageSize, 0).
+				Return(nil, errResultLimitExceededInCompositeMode)
+		}, ResultLimitExceededInCompositeMode},
+		"group assignee expansion failure": {func() {
+			s.assignedTo(RoleAssignment{ID: targetGroupID, Type: AssigneeTypeGroup})
+			s.groups.On("GetTransitiveMemberEntities", mock.Anything, targetGroupID).
+				Return(nil, &tidcommon.InternalServerError)
+		}, tidcommon.InternalServerError},
+	}
+	for name, tc := range cases {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.mutableRoleGrantingLicense()
+			tc.setup()
+
+			_, svcErr := s.service.ValidateDeleteRole(context.Background(), targetRoleID)
+
+			s.Require().NotNil(svcErr)
+			s.Equal(tc.want.Code, svcErr.Code)
+		})
+	}
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateUpdateRolePermissions_RevokesOnlyTheDroppedPermissions() {
+	s.mutableRoleGranting([]ResourcePermissions{
+		{ResourceServerID: californiaRSID, Permissions: []string{"license", "permits"}}})
+	stubResourceServer(s.resources, californiaRSID, californiaAud)
+	s.assignedTo(RoleAssignment{ID: targetUserID, Type: assigneeTypeEntity})
+	s.mayChangePermissions(security.PermissionSet{californiaRSID: {"license"}})
+
+	target, svcErr := s.service.ValidateUpdateRolePermissions(context.Background(), targetRoleID,
+		[]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}})
+
+	s.Require().Nil(svcErr)
+	s.Equal([]string{targetUserID}, target.EntityIDs)
+	s.Equal([]revocation.AudienceScope{{Audience: californiaAud, Scope: "permits"}}, target.Scopes)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateUpdateRolePermissions_DropsAScopeMovedToAnotherResourceServer() {
+	s.mutableRoleGrantingLicense()
+	s.assignedTo(RoleAssignment{ID: targetUserID, Type: assigneeTypeEntity})
+	s.mayChangePermissions(security.PermissionSet{ohioRSID: {"license"}})
+
+	target, svcErr := s.service.ValidateUpdateRolePermissions(context.Background(), targetRoleID,
+		[]ResourcePermissions{{ResourceServerID: ohioRSID, Permissions: []string{"license"}}})
+
+	s.Require().Nil(svcErr)
+	s.Equal([]revocation.AudienceScope{{Audience: californiaAud, Scope: "license"}}, target.Scopes)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateUpdateRolePermissions_NothingDroppedRevokesNothing() {
+	s.mutableRoleGranting([]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}})
+	s.mayChangePermissions(security.PermissionSet{californiaRSID: {"license", "permits"}})
+
+	target, svcErr := s.service.ValidateUpdateRolePermissions(context.Background(), targetRoleID,
+		[]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license", "permits"}}})
+
+	s.Require().Nil(svcErr)
+	s.Require().NotNil(target)
+	s.Empty(target.Scopes)
+	s.store.AssertNotCalled(s.T(), "GetRoleAssignmentsCount", mock.Anything, mock.Anything)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateUpdateRolePermissions_RefusesAnUnknownPermission() {
+	s.mutableRoleGranting(nil)
+	s.resources.On("ValidatePermissions", mock.Anything, "rs-unknown", []string{"license"}).
+		Return([]string{"license"}, nil)
+
+	_, svcErr := s.service.ValidateUpdateRolePermissions(context.Background(), targetRoleID,
+		[]ResourcePermissions{{ResourceServerID: "rs-unknown", Permissions: []string{"license"}}})
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorInvalidPermissions.Code, svcErr.Code)
+	s.authz.AssertNotCalled(s.T(), "CanGrantPermissions", mock.Anything, mock.Anything)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateUpdateRolePermissions_RefusesAnUngrantablePermission() {
+	s.mutableRoleGranting(nil)
+	s.resources.On("ValidatePermissions", mock.Anything, californiaRSID, []string{"license"}).Return([]string{}, nil)
+	s.authz.On("CanGrantPermissions", mock.Anything, security.PermissionSet{californiaRSID: {"license"}}).
+		Return(&tidcommon.ErrorUnauthorized)
+
+	_, svcErr := s.service.ValidateUpdateRolePermissions(context.Background(), targetRoleID,
+		[]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}})
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateUpdateRolePermissions_RefusesDeclarativeRole() {
+	s.store.On("GetRole", mock.Anything, targetRoleID).Return(RoleWithPermissions{ID: targetRoleID}, nil)
+	s.ous.On("GetOrganizationUnit", mock.Anything, "").Return(oupkg.OrganizationUnit{}, nil)
+	s.store.On("IsRoleDeclarative", mock.Anything, targetRoleID).Return(true, nil)
+
+	_, svcErr := s.service.ValidateUpdateRolePermissions(context.Background(), targetRoleID, nil)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorImmutableRole.Code, svcErr.Code)
+	s.resources.AssertNotCalled(s.T(), "ValidatePermissions", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateGroupDeletion_CoversEveryMember() {
+	s.groups.On("ValidateDeleteGroup", mock.Anything, targetGroupID).Return(nil)
+	s.groupConveying("parent-group")
+	stubGroupEntities(s.groups, targetGroupID, "member-1")
+
+	target, svcErr := s.service.ValidateGroupDeletion(context.Background(), targetGroupID)
+
+	s.Require().Nil(svcErr)
+	s.Equal([]string{"member-1"}, target.EntityIDs)
+	s.Equal([]revocation.AudienceScope{{Audience: californiaAud, Scope: "license"}}, target.Scopes)
+	s.Empty(target.AssigneeType)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateGroupMembershipRemoval_TargetsOnlyTheDepartingMember() {
+	departing := group.Member{ID: targetUserID, Type: group.MemberTypeUser}
+	stubDirectMember(s.groups, targetUserID, &departing)
+	s.mayRemoveMember(departing)
+	s.groupConveying()
+
+	target, svcErr := s.service.ValidateGroupMembershipRemoval(context.Background(), targetGroupID, targetUserID)
+
+	s.Require().Nil(svcErr)
+	s.Equal([]string{targetUserID}, target.EntityIDs)
+	s.Equal(string(group.MemberTypeUser), target.AssigneeType)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateGroupMembershipRemoval_ExpandsADepartingGroup() {
+	departing := group.Member{ID: "child-group", Type: group.MemberTypeGroup}
+	stubDirectMember(s.groups, "child-group", &departing)
+	s.mayRemoveMember(departing)
+	s.groupConveying()
+	stubGroupEntities(s.groups, "child-group", "member-1")
+
+	target, svcErr := s.service.ValidateGroupMembershipRemoval(context.Background(), targetGroupID, "child-group")
+
+	s.Require().Nil(svcErr)
+	s.Equal([]string{"member-1"}, target.EntityIDs)
+	s.Equal(string(group.MemberTypeGroup), target.AssigneeType)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateGroupMembershipRemoval_RefusesANonMember() {
+	stubDirectMember(s.groups, targetUserID, nil)
+
+	_, svcErr := s.service.ValidateGroupMembershipRemoval(context.Background(), targetGroupID, targetUserID)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(group.ErrorInvalidMemberID.Code, svcErr.Code)
+	s.groups.AssertNotCalled(s.T(), "ValidateRemoveGroupMembers", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateGroupChanges_CarryTheGroupServiceRefusal() {
+	for name, refusal := range map[string]*tidcommon.ServiceError{
+		"declarative group":        &group.ErrorImmutableGroup,
+		"member outside the OU":    &tidcommon.ErrorUnauthorized,
+		"access check unavailable": &tidcommon.InternalServerError,
+	} {
+		s.Run(name+" on deletion", func() {
+			s.SetupTest()
+			s.groups.On("ValidateDeleteGroup", mock.Anything, targetGroupID).Return(refusal)
+
+			_, svcErr := s.service.ValidateGroupDeletion(context.Background(), targetGroupID)
+
+			s.Require().NotNil(svcErr)
+			s.Equal(refusal.Code, svcErr.Code)
+			s.groups.AssertNotCalled(s.T(), "GetTransitiveAncestorGroups", mock.Anything, mock.Anything)
+		})
+		s.Run(name+" on member removal", func() {
+			s.SetupTest()
+			departing := group.Member{ID: targetUserID, Type: group.MemberTypeUser}
+			stubDirectMember(s.groups, targetUserID, &departing)
+			s.groups.On("ValidateRemoveGroupMembers", mock.Anything, targetGroupID, []group.Member{departing}).
+				Return(refusal)
+
+			_, svcErr := s.service.ValidateGroupMembershipRemoval(context.Background(), targetGroupID, targetUserID)
+
+			s.Require().NotNil(svcErr)
+			s.Equal(refusal.Code, svcErr.Code)
+			s.groups.AssertNotCalled(s.T(), "GetTransitiveAncestorGroups", mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateGroupMembershipRemoval_CarriesTheMemberListingFailure() {
+	s.groups.On("GetDirectGroupMember", mock.Anything, targetGroupID, targetUserID).
+		Return(nil, &group.ErrorGroupNotFound)
+
+	_, svcErr := s.service.ValidateGroupMembershipRemoval(context.Background(), targetGroupID, targetUserID)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(group.ErrorGroupNotFound.Code, svcErr.Code)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateGroupDeletion_ScopeResolutionFailures() {
+	cases := map[string]func(){
+		"ancestor walk failure": func() {
+			s.groups.On("GetTransitiveAncestorGroups", mock.Anything, targetGroupID).
+				Return(nil, &tidcommon.InternalServerError)
+		},
+		"permission read failure": func() {
+			s.groups.On("GetTransitiveAncestorGroups", mock.Anything, targetGroupID).Return([]string{}, nil)
+			s.store.On("GetAllPermissionsForAssignees", mock.Anything, "", []string{targetGroupID}).
+				Return(nil, errors.New("db down"))
+		},
+		"resource server lookup failure": func() {
+			s.groups.On("GetTransitiveAncestorGroups", mock.Anything, targetGroupID).Return([]string{}, nil)
+			s.store.On("GetAllPermissionsForAssignees", mock.Anything, "", []string{targetGroupID}).
+				Return([]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}}, nil)
+			s.resources.On("GetResourceServer", mock.Anything, californiaRSID).
+				Return(nil, &tidcommon.InternalServerError)
+		},
+	}
+	for name, setup := range cases {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.groups.On("ValidateDeleteGroup", mock.Anything, targetGroupID).Return(nil)
+			setup()
+
+			_, svcErr := s.service.ValidateGroupDeletion(context.Background(), targetGroupID)
+
+			s.Require().NotNil(svcErr)
+			s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+		})
+	}
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateGroupChanges_CarryAMemberExpansionFailure() {
+	s.Run("deletion", func() {
+		s.SetupTest()
+		s.groups.On("ValidateDeleteGroup", mock.Anything, targetGroupID).Return(nil)
+		s.groupConveying()
+		s.groups.On("GetTransitiveMemberEntities", mock.Anything, targetGroupID).
+			Return(nil, &tidcommon.InternalServerError)
+
+		_, svcErr := s.service.ValidateGroupDeletion(context.Background(), targetGroupID)
+
+		s.Require().NotNil(svcErr)
+		s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	})
+	s.Run("departing group", func() {
+		s.SetupTest()
+		departing := group.Member{ID: "child-group", Type: group.MemberTypeGroup}
+		stubDirectMember(s.groups, "child-group", &departing)
+		s.mayRemoveMember(departing)
+		s.groupConveying()
+		s.groups.On("GetTransitiveMemberEntities", mock.Anything, "child-group").
+			Return(nil, &tidcommon.InternalServerError)
+
+		_, svcErr := s.service.ValidateGroupMembershipRemoval(context.Background(), targetGroupID, "child-group")
+
+		s.Require().NotNil(svcErr)
+		s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	})
 }

@@ -12,10 +12,10 @@ export function getGrantTypeLabel(grant: string, t: (key: string, fallback: stri
     return t('applications:edit.advanced.grantTypes.labels.ciba', 'CIBA (Client-Initiated Backchannel Authentication)');
   }
   if (grant === OAuth2GrantTypes.TOKEN_EXCHANGE) {
-    return t('applications:edit.advanced.grantTypes.labels.tokenExchange', 'Token Exchange');
+    return t('applications:edit.advanced.grantTypes.labels.tokenExchange', 'Token exchange');
   }
   if (grant === OAuth2GrantTypes.JWT_BEARER) {
-    return t('applications:edit.advanced.grantTypes.labels.jwtBearer', 'JWT Bearer');
+    return t('applications:edit.advanced.grantTypes.labels.jwtBearer', 'JWT bearer');
   }
   return grant;
 }

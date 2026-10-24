@@ -22,7 +22,7 @@ import {
 
 Use this guide to add <ProductName /> authentication to an iOS application using the <code><ProductName /> iOS SDK</code>.
 
-<SdkQuickstartDownload packageId="ios" icon={<IOSLogo size={22} />} promptFlow="redirect-based" />
+<SdkQuickstartDownload packageId="ios" sample="quickstarts/ios" icon={<IOSLogo size={22} />} promptFlow="redirect-based" />
 
 <TutorialHero>
 
@@ -60,22 +60,22 @@ Once it's running, the console is available at [https://localhost:8090/console](
     :::
 
 2. Navigate to **Applications**.
-3. Click **Add Application**.
+3. Click **Add application**.
 4. From the **Choose a type** page, select **iOS**.
 5. Enter a name (e.g. `My iOS App`).
 6. Select how you want to sign in users (e.g., email/password, social login, etc.).
 7. Select Theme settings.
-8. Leave **Sign-In Approach** set to **Bring Your Own UI** (the default for iOS applications).
+8. Leave **Sign-in approach** set to **Bring your own UI** (the default for iOS applications).
 9. Click **Create**.
 
 :::warning
-Copy the **Application ID** from the **General** tab, under **Quick Copy**. You'll need it when configuring the SDK.
+Copy the **Application ID** from the **General** tab, under **Quick copy**. You'll need it when configuring the SDK.
 :::
 
-10. Open the **Advanced Settings** tab, turn on **Dev Mode** under **Platform Attestation**, then click **Save**.
+10. Open the **Advanced Settings** tab, turn on **Dev mode** under **Platform attestation**, then click **Save**.
 
 :::warning Platform attestation
-Mobile applications prove their binary identity before starting a sign-in flow. If platform attestation is not configured and **Dev Mode** is off, sign-in fails with `FES-1016`, `Attestation not configured`. Dev Mode is a bypass for local development; configure platform attestation for production.
+Mobile applications prove their binary identity before starting a sign-in flow. If platform attestation is not configured and **Dev mode** is off, sign-in fails with `FES-1016`, `Attestation not configured`. Dev Mode is a bypass for local development; configure platform attestation for production.
 :::
 
 ## Create an iOS App

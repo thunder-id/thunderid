@@ -23,7 +23,7 @@ describe('AudienceSection', () => {
   it('renders the card and the current audience value', () => {
     render(<AudienceSection audience="https://api.example.com" onAudienceChange={onAudienceChange} />);
 
-    expect(screen.getByText('Default Audience')).toBeInTheDocument();
+    expect(screen.getByText('Default audience')).toBeInTheDocument();
     expect(screen.getByDisplayValue('https://api.example.com')).toBeInTheDocument();
   });
 

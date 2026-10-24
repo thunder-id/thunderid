@@ -15,7 +15,7 @@ interface BasePropertyDefinition {
  * String property definition.
  */
 export interface StringPropertyDefinition extends BasePropertyDefinition {
-  type: 'string';
+  type: 'string' | 'email' | 'mobile';
   credential?: boolean;
   enum?: string[];
   regex?: string;
@@ -49,7 +49,7 @@ export interface ObjectPropertyDefinition extends BasePropertyDefinition {
  */
 export type ArrayItemDefinition =
   | {
-      type: 'string' | 'number' | 'boolean';
+      type: 'string' | 'email' | 'mobile' | 'number' | 'boolean';
       enum?: string[];
     }
   | {
@@ -83,7 +83,7 @@ export type AgentTypeDefinition = Record<string, PropertyDefinition>;
 /**
  * Property type union for form inputs.
  */
-export type PropertyType = 'string' | 'number' | 'boolean' | 'array' | 'object';
+export type PropertyType = 'email' | 'mobile' | 'string' | 'number' | 'boolean' | 'array' | 'object';
 
 /**
  * UI property type including `enum` as a separate option (maps to string with enum values).

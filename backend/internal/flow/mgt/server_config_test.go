@@ -258,6 +258,36 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_AgentOnboardingHandleRejectedW
 	s.Contains(err.Error(), "agentOnboardingFlow.defaultHandle")
 }
 
+func (s *FlowConfigHandlerTestSuite) TestValidate_LifecycleHandlesCheckedAgainstAdministration() {
+	gotTypes := map[string]providers.FlowType{}
+	s.handler.SetHandleValidator(func(_ context.Context, handle string, flowType providers.FlowType) bool {
+		gotTypes[handle] = flowType
+		return true
+	})
+	cfg := flowconfig.FlowSectionConfig{
+		UserUnlockFlow:           flowconfig.FlowTypeConfig{DefaultHandle: "user-unlock"},
+		UserSuspendFlow:          flowconfig.FlowTypeConfig{DefaultHandle: "user-suspend"},
+		UserUnsuspendFlow:        flowconfig.FlowTypeConfig{DefaultHandle: "user-unsuspend"},
+		AgentUnlockFlow:          flowconfig.FlowTypeConfig{DefaultHandle: "agent-unlock"},
+		AgentSuspendFlow:         flowconfig.FlowTypeConfig{DefaultHandle: "agent-suspend"},
+		AgentUnsuspendFlow:       flowconfig.FlowTypeConfig{DefaultHandle: "agent-unsuspend"},
+		ApplicationSuspendFlow:   flowconfig.FlowTypeConfig{DefaultHandle: "application-suspend"},
+		ApplicationUnsuspendFlow: flowconfig.FlowTypeConfig{DefaultHandle: "application-unsuspend"},
+	}
+
+	s.Require().NoError(s.handler.Validate(cfg, nil, nil))
+	s.Equal(map[string]providers.FlowType{
+		"user-unlock":           providers.FlowTypeAdministration,
+		"user-suspend":          providers.FlowTypeAdministration,
+		"user-unsuspend":        providers.FlowTypeAdministration,
+		"agent-unlock":          providers.FlowTypeAdministration,
+		"agent-suspend":         providers.FlowTypeAdministration,
+		"agent-unsuspend":       providers.FlowTypeAdministration,
+		"application-suspend":   providers.FlowTypeAdministration,
+		"application-unsuspend": providers.FlowTypeAdministration,
+	}, gotTypes)
+}
+
 // An operator can repoint agent onboarding at their own administration flow through the writable
 // layer, and an empty writable layer leaves the declarative default standing.
 func (s *FlowConfigHandlerTestSuite) TestMerge_AgentOnboardingHandleOverlays() {
@@ -273,4 +303,49 @@ func (s *FlowConfigHandlerTestSuite) TestMerge_AgentOnboardingHandleOverlays() {
 
 	kept, _ := s.handler.Merge(ro, flowconfig.FlowSectionConfig{}).(flowconfig.FlowSectionConfig)
 	s.Equal("default-agent-onboarding-flow", kept.AgentOnboardingFlow.DefaultHandle)
+}
+
+// everyAdministrationFlow names a handle, prefixed with prefix, for every administration flow.
+func everyAdministrationFlow(prefix string) flowconfig.FlowSectionConfig {
+	handle := func(name string) flowconfig.FlowTypeConfig {
+		return flowconfig.FlowTypeConfig{DefaultHandle: prefix + "-" + name}
+	}
+	return flowconfig.FlowSectionConfig{
+		UserDeletionFlow:           handle("user-deletion"),
+		ApplicationDeletionFlow:    handle("application-deletion"),
+		SecretRegenerationFlow:     handle("secret-regeneration"),
+		RoleAssignmentRemovalFlow:  handle("role-assignment-removal"),
+		RoleDeletionFlow:           handle("role-deletion"),
+		RolePermissionRemovalFlow:  handle("role-permission-removal"),
+		GroupDeletionFlow:          handle("group-deletion"),
+		GroupMembershipRemovalFlow: handle("group-membership-removal"),
+		ActionDeletionFlow:         handle("action-deletion"),
+		UserUnlockFlow:             handle("user-unlock"),
+		UserSuspendFlow:            handle("user-suspend"),
+		UserUnsuspendFlow:          handle("user-unsuspend"),
+		AgentUnlockFlow:            handle("agent-unlock"),
+		AgentSuspendFlow:           handle("agent-suspend"),
+		AgentUnsuspendFlow:         handle("agent-unsuspend"),
+		ApplicationSuspendFlow:     handle("application-suspend"),
+		ApplicationUnsuspendFlow:   handle("application-unsuspend"),
+	}
+}
+
+func (s *FlowConfigHandlerTestSuite) TestMerge_CarriesEveryAdministrationFlow() {
+	ro := everyAdministrationFlow("ro")
+
+	merged, ok := s.handler.Merge(ro, flowconfig.FlowSectionConfig{}).(flowconfig.FlowSectionConfig)
+
+	s.Require().True(ok)
+	s.Equal(ro, merged)
+}
+
+func (s *FlowConfigHandlerTestSuite) TestMerge_WritableWinsForEveryAdministrationFlow() {
+	wr := everyAdministrationFlow("wr")
+	ro := everyAdministrationFlow("ro")
+
+	merged, ok := s.handler.Merge(ro, wr).(flowconfig.FlowSectionConfig)
+
+	s.Require().True(ok)
+	s.Equal(wr, merged)
 }

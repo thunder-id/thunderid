@@ -195,6 +195,15 @@ func (suite *NotificationSenderServiceTestSuite) TestSendEmail_EmptySenderIDIsRe
 	suite.mockSenderMgtSvc.AssertNotCalled(suite.T(), "GetSenderByName", mock.Anything, mock.Anything)
 }
 
+func (suite *NotificationSenderServiceTestSuite) TestSendEmail_UnknownSender() {
+	suite.mockSenderMgtSvc.On("GetSender", mock.Anything, "missing").Return(nil, &ErrorSenderNotFound).Once()
+
+	err := suite.service.SendEmail(context.Background(), "missing", suite.emailData())
+
+	suite.Equal(&ErrorSenderNotFound, err)
+	suite.mockClientFactory.AssertNotCalled(suite.T(), "GetClient", mock.Anything, mock.Anything)
+}
+
 func (suite *NotificationSenderServiceTestSuite) TestSendEmail_WrongSenderType() {
 	sender := suite.getValidSender()
 	suite.mockSenderMgtSvc.On("GetSender", mock.Anything, "sender-001").Return(sender, nil).Once()

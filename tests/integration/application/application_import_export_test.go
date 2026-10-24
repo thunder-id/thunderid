@@ -639,3 +639,360 @@ func (s *ApplicationImportExportSuite) extractTemplateVariables(
 	}
 	return out
 }
+
+// sharingPolicyRequest posts to an application's sharing endpoints and returns status and body.
+func (s *ApplicationImportExportSuite) sharingRequest(
+	method, path string, body interface{},
+) (int, map[string]interface{}) {
+	s.T().Helper()
+
+	var reader io.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		s.Require().NoError(err)
+		reader = bytes.NewReader(raw)
+	}
+	req, err := http.NewRequest(method, testServerURL+path, reader)
+	s.Require().NoError(err)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := testutils.GetHTTPClient().Do(req)
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	s.Require().NoError(err)
+	decoded := map[string]interface{}{}
+	if len(raw) > 0 {
+		_ = json.Unmarshal(raw, &decoded)
+	}
+	return resp.StatusCode, decoded
+}
+
+// An export carries the sharing policies recorded for an application, and replaying the exported
+// document records the same sharing rather than producing an application nobody can act for.
+//
+// Re-importing is keyed on the organization unit that issues each policy, so the replay replaces
+// what that unit holds instead of colliding with it.
+func (s *ApplicationImportExportSuite) TestExportImportRoundTrip_CarriesSharingPolicies() {
+	appName := "App RT Sharing " + s.handleSuffix
+
+	childOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "app-ie-child-" + s.handleSuffix,
+		Name:   "App Import Export Child " + s.handleSuffix,
+		Parent: &s.ouID,
+	})
+	s.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(childOUID) }()
+
+	createdID, err := createApplication(Application{
+		OUID: s.ouID, Name: appName, Description: "Round-trip with sharing policies",
+		Template: "web", AuthFlowID: s.authFlowID,
+		InboundAuthConfig: []InboundAuthConfig{{
+			Type: "oauth2",
+			OAuthAppConfig: &OAuthAppConfig{
+				ClientID:                "app-rt-sharing-" + s.handleSuffix,
+				ClientSecret:            "app-rt-sharing-secret",
+				RedirectURIs:            []string{"https://app-rt-sharing.example.com/callback"},
+				GrantTypes:              []string{"client_credentials"},
+				TokenEndpointAuthMethod: "client_secret_basic",
+			},
+		}},
+	})
+	s.Require().NoError(err)
+	defer func() { _ = deleteApplication(createdID) }()
+
+	base := "/applications/" + createdID + "/sharing-policies"
+	status, created := s.sharingRequest(http.MethodPost, base, map[string]interface{}{
+		"childUnits": allChildUnits(childOUID),
+	})
+	s.Require().Equal(http.StatusCreated, status, "body: %v", created)
+	policyID, _ := created["id"].(string)
+	s.Require().NotEmpty(policyID)
+	policyVersion := created["version"]
+
+	exported, err := s.exportApps(appExportRequest{Applications: []string{createdID}})
+	s.Require().NoError(err)
+	s.Require().Contains(exported.Resources, "sharingPolicies",
+		"the exported document carries the sharing")
+	s.Require().Contains(exported.Resources, "childUnits", "including the section that was recorded")
+	s.Require().Contains(exported.Resources, "mode: all", "in the mode it was recorded with")
+	s.Require().Contains(exported.Resources, childOUID, "and the exclusion on it")
+
+	// The export parameterizes the client credentials, so the replay has to supply them back.
+	vars := s.extractTemplateVariables(exported.Resources, map[string]interface{}{
+		"clientId":     "app-rt-sharing-" + s.handleSuffix,
+		"clientSecret": "app-rt-sharing-secret",
+		"redirectUris": []string{"https://app-rt-sharing.example.com/callback"},
+	})
+
+	// Replaying the document leaves the organization unit holding one policy, not two.
+	imported, err := s.importApps(appImportRequest{
+		Content:   exported.Resources,
+		Variables: vars,
+		Options:   appImportOptions{Upsert: true, ContinueOnError: false},
+	})
+	s.Require().NoError(err)
+	s.Require().Zero(imported.Summary.Failed, "the replay must not fail: %+v", imported.Results)
+
+	status, listed := s.sharingRequest(http.MethodGet, base, nil)
+	s.Require().Equal(http.StatusOK, status)
+	s.Equal(float64(1), listed["totalResults"],
+		"the replay replaced the policy rather than adding a second")
+
+	policies, _ := listed["policies"].([]interface{})
+	s.Require().Len(policies, 1)
+	s.Equal(policyID, policies[0].(map[string]interface{})["id"],
+		"a replay reproduces the policy under its own id, so anything pointing at it survives")
+	// The document says what the policy already says, so the replay writes nothing. An export,
+	// import, export round has to agree with itself, and a version that moved would break that.
+	s.Equal(policyVersion, policies[0].(map[string]interface{})["version"],
+		"replaying an unchanged document is not an edit, so the version stays")
+	childUnits, _ := policies[0].(map[string]interface{})["childUnits"].(map[string]interface{})
+	s.Require().NotNil(childUnits)
+	s.Equal("all", childUnits["mode"])
+	s.Equal([]interface{}{childOUID}, childUnits["excludedOuIds"],
+		"the exclusion survived the round trip")
+}
+
+// Deleting an application takes its sharing policies with it. A document brought back under the
+// same id without any policy must be shared with nobody, rather than picking up the rows the
+// deleted application left behind.
+func (s *ApplicationImportExportSuite) TestDeleteApplicationRemovesItsSharingPolicies() {
+	appName := "App Del Sharing " + s.handleSuffix
+	createdID, err := createApplication(Application{
+		OUID: s.ouID, Name: appName, Description: "Deleted with sharing policies",
+		Template: "web", AuthFlowID: s.authFlowID,
+		InboundAuthConfig: []InboundAuthConfig{{
+			Type: "oauth2",
+			OAuthAppConfig: &OAuthAppConfig{
+				ClientID:                "app-del-sharing-" + s.handleSuffix,
+				ClientSecret:            "app-del-sharing-secret",
+				RedirectURIs:            []string{"https://app-del-sharing.example.com/callback"},
+				GrantTypes:              []string{"client_credentials"},
+				TokenEndpointAuthMethod: "client_secret_basic",
+			},
+		}},
+	})
+	s.Require().NoError(err)
+	defer func() { _ = deleteApplication(createdID) }()
+
+	base := "/applications/" + createdID + "/sharing-policies"
+	status, created := s.sharingRequest(http.MethodPost, base,
+		map[string]interface{}{"childUnits": allChildUnits()})
+	s.Require().Equal(http.StatusCreated, status, "body: %v", created)
+
+	exported, err := s.exportApps(appExportRequest{Applications: []string{createdID}})
+	s.Require().NoError(err)
+	vars := s.extractTemplateVariables(exported.Resources, map[string]interface{}{
+		"clientId":     "app-del-sharing-" + s.handleSuffix,
+		"clientSecret": "app-del-sharing-secret",
+		"redirectUris": []string{"https://app-del-sharing.example.com/callback"},
+	})
+	content := testutils.WithoutTopLevelKey(exported.Resources, "sharingPolicies")
+	s.Require().NotContains(content, "sharingPolicies", "the document brought back declares no policy")
+
+	s.Require().NoError(deleteApplication(createdID))
+
+	imported, err := s.importApps(appImportRequest{
+		Content:   content,
+		Variables: vars,
+		Options:   appImportOptions{Upsert: true, ContinueOnError: false},
+	})
+	s.Require().NoError(err)
+	s.Require().Zero(imported.Summary.Failed, "import results: %+v", imported.Results)
+	s.Require().Equal(createdID, imported.Results[0].ResourceID,
+		"the document brings the application back under its own id")
+
+	status, listed := s.sharingRequest(http.MethodGet, base, nil)
+	s.Require().Equal(http.StatusOK, status, "body: %v", listed)
+	s.Equal(float64(0), listed["totalResults"], "the deleted application's policies went with it")
+}
+
+// An export copied to make a second application in the same deployment still carries the source's
+// policy ids. The copy's sharing is stored under ids of its own, and the source keeps its policy.
+func (s *ApplicationImportExportSuite) TestImportOfACopiedDocumentGetsItsOwnSharing() {
+	appName := "App Clone Src " + s.handleSuffix
+	sourceID, err := createApplication(Application{
+		OUID: s.ouID, Name: appName, Description: "Source of a copied document",
+		Template: "web", AuthFlowID: s.authFlowID,
+		InboundAuthConfig: []InboundAuthConfig{{
+			Type: "oauth2",
+			OAuthAppConfig: &OAuthAppConfig{
+				ClientID:                "app-clone-src-" + s.handleSuffix,
+				ClientSecret:            "app-clone-src-secret",
+				RedirectURIs:            []string{"https://app-clone.example.com/callback"},
+				GrantTypes:              []string{"client_credentials"},
+				TokenEndpointAuthMethod: "client_secret_basic",
+			},
+		}},
+	})
+	s.Require().NoError(err)
+	defer func() { _ = deleteApplication(sourceID) }()
+
+	sourceBase := "/applications/" + sourceID + "/sharing-policies"
+	status, sourcePolicy := s.sharingRequest(http.MethodPost, sourceBase,
+		map[string]interface{}{"childUnits": allChildUnits()})
+	s.Require().Equal(http.StatusCreated, status, "body: %v", sourcePolicy)
+
+	exported, err := s.exportApps(appExportRequest{Applications: []string{sourceID}})
+	s.Require().NoError(err)
+	// The copy is a new application: no id of its own yet, another name, another client.
+	content := testutils.WithoutTopLevelKey(exported.Resources, "id")
+	content = strings.Replace(content, "name: "+appName, "name: App Clone Copy "+s.handleSuffix, 1)
+	vars := s.extractTemplateVariables(content, map[string]interface{}{
+		"clientId":     "app-clone-copy-" + s.handleSuffix,
+		"clientSecret": "app-clone-copy-secret",
+		"redirectUris": []string{"https://app-clone.example.com/callback"},
+	})
+
+	imported, err := s.importApps(appImportRequest{
+		Content: content, Variables: vars,
+		Options: appImportOptions{Upsert: true, ContinueOnError: false},
+	})
+	s.Require().NoError(err)
+	s.Require().Zero(imported.Summary.Failed, "import results: %+v", imported.Results)
+	copyID := imported.Results[0].ResourceID
+	s.Require().NotEqual(sourceID, copyID, "the copy is a new application")
+	defer func() { _ = deleteApplication(copyID) }()
+
+	status, copied := s.sharingRequest(http.MethodGet, "/applications/"+copyID+"/sharing-policies", nil)
+	s.Require().Equal(http.StatusOK, status, "body: %v", copied)
+	copiedPolicies, _ := copied["policies"].([]interface{})
+	s.Require().Len(copiedPolicies, 1, "the copy carries the sharing the document declared")
+	s.NotEqual(sourcePolicy["id"], copiedPolicies[0].(map[string]interface{})["id"],
+		"under an id of its own")
+
+	status, source := s.sharingRequest(http.MethodGet, sourceBase, nil)
+	s.Require().Equal(http.StatusOK, status, "body: %v", source)
+	sourcePolicies, _ := source["policies"].([]interface{})
+	s.Require().Len(sourcePolicies, 1)
+	s.Equal(sourcePolicy["id"], sourcePolicies[0].(map[string]interface{})["id"], "the source keeps its policy")
+}
+
+// An application with no sharing policies exports a document that declares none, so nothing is
+// invented on the way back in.
+func (s *ApplicationImportExportSuite) TestExportOmitsSharingWhenThereIsNone() {
+	appName := "App RT No Sharing " + s.handleSuffix
+
+	createdID, err := createApplication(Application{
+		OUID: s.ouID, Name: appName, Description: "Round-trip without sharing policies",
+		Template: "web", AuthFlowID: s.authFlowID,
+		InboundAuthConfig: []InboundAuthConfig{{
+			Type: "oauth2",
+			OAuthAppConfig: &OAuthAppConfig{
+				ClientID:                "app-rt-nosharing-" + s.handleSuffix,
+				ClientSecret:            "app-rt-nosharing-secret",
+				GrantTypes:              []string{"client_credentials"},
+				TokenEndpointAuthMethod: "client_secret_basic",
+			},
+		}},
+	})
+	s.Require().NoError(err)
+	defer func() { _ = deleteApplication(createdID) }()
+
+	exported, err := s.exportApps(appExportRequest{Applications: []string{createdID}})
+	s.Require().NoError(err)
+	s.NotContains(exported.Resources, "sharingPolicies")
+}
+
+// A reach not bounded by the issuer's own position in the tree is a deployment decision, so a
+// document may carry one. An import is reviewed configuration, the same as a resource file; only
+// an interactive create through the API is refused.
+func (s *ApplicationImportExportSuite) TestImportCarriesADeploymentWideSharingPolicy() {
+	clientID := "app-imp-allous-client-" + s.handleSuffix
+
+	childOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "app-imp-allous-child-" + s.handleSuffix,
+		Name:   "App Imp AllOus Child " + s.handleSuffix,
+		Parent: &s.ouID,
+	})
+	s.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(childOUID) }()
+	yamlContent := fmt.Sprintf(`resource_type: application
+name: App Imp AllOus %s
+type: m2m
+ouId: %s
+sharingPolicies:
+  - allUnits: {}
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: %s
+      clientSecret: app-imp-allous-secret-%s
+      grantTypes:
+        - client_credentials
+      tokenEndpointAuthMethod: client_secret_basic
+`, s.handleSuffix, s.ouID, clientID, s.handleSuffix)
+
+	imported, err := s.importApps(appImportRequest{
+		Content: yamlContent,
+		Options: appImportOptions{Upsert: true, ContinueOnError: false, Target: "runtime"},
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(1, imported.Summary.Imported, "import results: %+v", imported.Results)
+
+	appID := imported.Results[0].ResourceID
+	s.Require().NotEmpty(appID)
+	defer func() { _ = deleteApplication(appID) }()
+
+	status, listed := s.sharingRequest(http.MethodGet,
+		"/applications/"+appID+"/sharing-policies", nil)
+	s.Require().Equal(http.StatusOK, status, "body: %v", listed)
+	policies, _ := listed["policies"].([]interface{})
+	s.Require().Len(policies, 1, "the document's policy was recorded")
+
+	policy := policies[0].(map[string]interface{})
+	s.Contains(policy, "allUnits", "the policy reaches every organization unit")
+	s.NotContains(policy, "childUnits")
+	s.NotContains(policy, "otherTreeRoots")
+	s.Equal(false, policy["isReadOnly"], "an imported policy is stored, not declared")
+
+	// The same policy through the API is refused, which is the line the import is on the other
+	// side of.
+	status, refused := s.sharingRequest(http.MethodPost,
+		"/applications/"+appID+"/sharing-policies",
+		map[string]interface{}{"otherTreeRoots": map[string]interface{}{"mode": "all"}})
+	s.Equal(http.StatusBadRequest, status, "body: %v", refused)
+	s.Equal(ErrorDeploymentWideSharingCode, refused["code"])
+
+	policyID, _ := policy["id"].(string)
+	s.Require().NotEmpty(policyID)
+	path := "/applications/" + appID + "/sharing-policies/" + policyID
+
+	// What the API may not create, it may still maintain. The section is restated, which is what
+	// lets its exclusions move.
+	status, edited := s.sharingRequest(http.MethodPut, path, map[string]interface{}{
+		"version":  policy["version"],
+		"allUnits": map[string]interface{}{"excludedOuIds": []string{childOUID}},
+	})
+	s.Require().Equal(http.StatusOK, status, "body: %v", edited)
+	editedAllUnits, _ := edited["allUnits"].(map[string]interface{})
+	s.Require().NotNil(editedAllUnits)
+	s.Equal([]interface{}{childOUID}, editedAllUnits["excludedOuIds"])
+
+	// Handing the organization unit back is the same edit in the other direction.
+	status, handedBack := s.sharingRequest(http.MethodPut, path, map[string]interface{}{
+		"version":  edited["version"],
+		"allUnits": map[string]interface{}{},
+	})
+	s.Require().Equal(http.StatusOK, status, "body: %v", handedBack)
+	handedBackAllUnits, _ := handedBack["allUnits"].(map[string]interface{})
+	s.Require().NotNil(handedBackAllUnits)
+	s.Empty(handedBackAllUnits["excludedOuIds"])
+
+	// Trading the section for another is still out of reach, so the edit cannot go where the
+	// create could not.
+	status, widened := s.sharingRequest(http.MethodPut, path, map[string]interface{}{
+		"version":    handedBack["version"],
+		"childUnits": allChildUnits(),
+	})
+	s.Equal(http.StatusBadRequest, status, "body: %v", widened)
+
+	// An imported policy is stored, not declared, so it is deleted like any other.
+	status, _ = s.sharingRequest(http.MethodDelete, path, nil)
+	s.Require().Equal(http.StatusNoContent, status)
+	status, _ = s.sharingRequest(http.MethodGet, path, nil)
+	s.Equal(http.StatusNotFound, status, "the policy is gone")
+}

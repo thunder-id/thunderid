@@ -66,6 +66,22 @@ pnpm --filter @thunderid/react run build
 
 Two other commands are worth knowing: `pnpm symlink` links packages for local development against another project, and `pnpm clean` clears build output.
 
+## Playgrounds
+
+Each SDK has a playground under `playgrounds/<framework>` that uses the workspace package, so it always runs your changes:
+
+| Playground | Port | Covers |
+|---|---|---|
+| `react` | 5173 | Capability checks, a component explorer, hooks and tokens |
+| `vue` | 5174 | Capability checks, a component explorer, composables and tokens |
+| `browser` | 5175 | Capability checks against `ThunderIDBrowserClient`, the UI helpers, and tokens |
+| `express` | 3000 | An API explorer for the SDK's handlers and example protected routes, with an SDK trace |
+| `nextjs` | 3001 | Client and server checks, a component explorer, a server page and tokens |
+| `nuxt` | 3002 | Client and server checks, a component explorer, composables and a server page |
+| `node` | 3003 | An operations explorer for every `ThunderIDNodeClient` method, with an SDK trace |
+
+Copy the playground's `.env.example` to `.env`, fill in your server URL and application, build the packages with `pnpm build`, then start one with `pnpm --filter @thunderid/playground-<framework> dev`. The pull request builder builds and lints them, so keep their checks and stories in step when you change a capability or a component.
+
 ## Conventions
 
 - **Dependency versions are centralized.** `pnpm-workspace.yaml` holds a `catalog:` of pinned versions plus an `overrides` block of security pins. Add or bump a shared dependency there rather than in an individual package.

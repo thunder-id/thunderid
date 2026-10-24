@@ -419,6 +419,72 @@ describe('AgentEditPage', () => {
     });
   });
 
+  // The server holds a delegated agent to the delegated grant rules and does not store the flag, so a
+  // save has to say whether the agent is delegated. Delegated mode is the authorization code grant.
+  describe('Delegated flag on save', () => {
+    // A delegated agent has to pass the page's own checks before it can be saved: a callback and an
+    // allowed user type.
+    const saveWithGrants = async (grantTypes?: string[]): Promise<Record<string, unknown>> => {
+      const user = userEvent.setup();
+      mockUseGetAgent.mockReturnValue({
+        data: {
+          ...baseAgent,
+          allowedUserTypes: ['employee'],
+          inboundAuthConfig:
+            grantTypes === undefined
+              ? []
+              : [
+                  {
+                    type: 'oauth2' as const,
+                    config: {
+                      ...baseAgent.inboundAuthConfig[0].config,
+                      grantTypes,
+                      redirectUris: ['https://app.example.com/callback'],
+                    },
+                  },
+                ],
+        },
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+      render(<AgentEditPage />);
+
+      await user.click(screen.getByRole('button', {name: 'Pick logo B'}));
+      await user.click(screen.getByRole('button', {name: 'Save logo'}));
+
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalled();
+      });
+      return (mockMutateAsync.mock.calls[0][0] as {data: Record<string, unknown>}).data;
+    };
+
+    it('sends delegated when the agent holds the authorization code grant', async () => {
+      const data = await saveWithGrants(['client_credentials', 'authorization_code', 'refresh_token']);
+
+      expect(data.delegated).toBe(true);
+    });
+
+    it('sends delegated when the agent holds CIBA or token exchange without the authorization code grant', async () => {
+      const data = await saveWithGrants(['client_credentials', 'urn:openid:params:grant-type:ciba']);
+
+      expect(data.delegated).toBe(true);
+    });
+
+    it('sends not delegated when the agent has client credentials only', async () => {
+      const data = await saveWithGrants(['client_credentials']);
+
+      expect(data.delegated).toBe(false);
+    });
+
+    it('sends not delegated when the agent has no OAuth configuration', async () => {
+      const data = await saveWithGrants();
+
+      expect(data.delegated).toBe(false);
+    });
+  });
+
   describe('Logo', () => {
     const renderWithLogo = (logoUrl?: string): void => {
       mockUseGetAgent.mockReturnValue({
@@ -434,7 +500,7 @@ describe('AgentEditPage', () => {
     it('offers the logo picker for a writable agent', () => {
       renderWithLogo();
 
-      expect(screen.getByRole('button', {name: 'Update Logo'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Update logo'})).toBeInTheDocument();
     });
 
     it('does not offer the logo picker for a read-only agent', () => {
@@ -448,7 +514,7 @@ describe('AgentEditPage', () => {
 
       render(<AgentEditPage />);
 
-      expect(screen.queryByRole('button', {name: 'Update Logo'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Update logo'})).not.toBeInTheDocument();
       // ResourceAvatar opens its picker from the avatar itself whenever onSelect is set, so the
       // callback has to be withheld rather than just hiding the pencil.
       expect(screen.queryByRole('button', {name: 'Pick logo B'})).not.toBeInTheDocument();
@@ -1105,7 +1171,7 @@ describe('AgentEditPage', () => {
     });
   });
 
-  describe('Client Secret Popup (just created)', () => {
+  describe('Client secret Popup (just created)', () => {
     afterEach(() => {
       mockUseLocation.mockReturnValue({state: null});
     });

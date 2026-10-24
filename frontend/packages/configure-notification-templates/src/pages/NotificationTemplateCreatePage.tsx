@@ -1,9 +1,15 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {FullScreenCreationWizardLayout} from '@thunderid/components';
+import {DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
+import {
+  OrganizationUnitPickerScreen,
+  useGetOrganizationUnit,
+  useHasMultipleOUs,
+} from '@thunderid/configure-organization-units';
 import {getErrorMessage} from '@thunderid/utils';
-import {Alert, Box, Button, Stack} from '@wso2/oxygen-ui';
+import {Alert, Box, Button, CircularProgress, Stack} from '@wso2/oxygen-ui';
+import {Home} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Navigate, useNavigate, useParams} from 'react-router';
@@ -23,12 +29,12 @@ import {
 } from '../models/notification-template';
 import type {CreateTemplateRequest} from '../models/requests';
 
-type CreateStep = 'template' | 'identity' | 'content';
-
-const STEPS: readonly CreateStep[] = ['template', 'identity', 'content'];
+type CreateStep = 'organizationUnit' | 'template' | 'identity' | 'content';
 
 /**
- * Three-step full-screen wizard to create a notification template: choose a starting point (an empty
+ * Full-screen wizard to create a notification template. When the deployment has more than one
+ * organization unit, the first step picks the owning OU (set at creation, immutable); single-OU
+ * deployments skip it and adopt the only OU. The remaining steps choose a starting point (an empty
  * template or a hardcoded sample), capture the identity (display name + handle), then edit the
  * content with a live preview. On create, the new template opens in the editor.
  *
@@ -52,7 +58,10 @@ export default function NotificationTemplateCreatePage(): JSX.Element {
     [templatesData],
   );
 
-  const [step, setStep] = useState<CreateStep>('template');
+  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs();
+
+  const [step, setStep] = useState<CreateStep>('organizationUnit');
+  const [ouId, setOuId] = useState('');
   const [selection, setSelection] = useState<TemplateSelection | null>(null);
   const [displayName, setDisplayName] = useState('');
   const [handle, setHandle] = useState('');
@@ -63,7 +72,26 @@ export default function NotificationTemplateCreatePage(): JSX.Element {
   const [colorScheme, setColorScheme] = useState<TemplateColorScheme>('light');
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // A single-OU deployment adopts its only OU; otherwise the user's pick on the OU step.
+  const soleOuId: string = !hasMultipleOUs && ouList.length === 1 ? ouList[0].id : '';
+  const effectiveOuId: string = ouId !== '' ? ouId : soleOuId;
+  const {data: resolvedOrganizationUnit, isLoading: isResolvedOuLoading} = useGetOrganizationUnit(
+    effectiveOuId,
+    Boolean(effectiveOuId),
+  );
+
   const contentReady = (!isEmail || subject.trim() !== '') && body.trim() !== '';
+
+  // The OU step only exists when there's a choice; single-OU deployments start at the template step.
+  const steps = useMemo<CreateStep[]>(() => {
+    const base: CreateStep[] = [];
+    if (hasMultipleOUs) base.push('organizationUnit');
+    base.push('template', 'identity', 'content');
+    return base;
+  }, [hasMultipleOUs]);
+
+  // Once it's known the deployment has a single OU, skip straight past the OU step.
+  const effectiveStep: CreateStep = step === 'organizationUnit' && !isOuLoading && !hasMultipleOUs ? 'template' : step;
 
   const goToList = (): void => {
     void navigate(routes.notificationTemplates.channel(channel));
@@ -90,7 +118,7 @@ export default function NotificationTemplateCreatePage(): JSX.Element {
     if (!identityReady || !contentReady) return;
     setSubmitError(null);
 
-    const base = {handle: handle.trim(), displayName: displayName.trim()};
+    const base = {handle: handle.trim(), ouId: effectiveOuId, displayName: displayName.trim()};
     const data: CreateTemplateRequest = isEmail
       ? {...base, design: {colorScheme}, content: {subject: subject.trim(), body}}
       : {...base, content: {body}};
@@ -109,13 +137,21 @@ export default function NotificationTemplateCreatePage(): JSX.Element {
   };
 
   const channelCrumb = isEmail
-    ? t('navigation:pages.emailTemplates', 'Email Templates')
-    : t('navigation:pages.smsTemplates', 'SMS Templates');
+    ? t('navigation:pages.emailTemplates', 'Email templates')
+    : t('navigation:pages.smsTemplates', 'SMS templates');
 
   const stepLabel = (value: CreateStep): string => {
+    if (value === 'organizationUnit') return t('create.steps.organizationUnit', 'Organization unit');
     if (value === 'template') return t('create.steps.template', 'Template');
     if (value === 'identity') return t('create.steps.identity', 'Details');
     return t('create.steps.content', 'Content');
+  };
+
+  const stepReady: Record<CreateStep, boolean> = {
+    organizationUnit: effectiveOuId !== '',
+    template: selection !== null,
+    identity: identityReady,
+    content: contentReady,
   };
 
   // An unknown channel segment is not a real page; send it to the canonical list.
@@ -123,19 +159,57 @@ export default function NotificationTemplateCreatePage(): JSX.Element {
     return <Navigate to={routes.notificationTemplates.list()} replace />;
   }
 
-  const stepIndex = STEPS.indexOf(step);
+  const stepIndex = steps.indexOf(effectiveStep);
   const isFirstStep = stepIndex === 0;
+  const isLastStep = effectiveStep === 'content';
+
+  // The OU step is a full-screen picker rendered outside the wizard layout, matching the app and
+  // verifiable-presentation create flows.
+  const pageTitle = t('listing.addTemplate', 'New template');
+
+  if (effectiveStep === 'organizationUnit') {
+    if (isOuLoading || !hasMultipleOUs) {
+      return (
+        <Box sx={{minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+          <DocumentTitle title={pageTitle} />
+          <CircularProgress />
+        </Box>
+      );
+    }
+    return (
+      <>
+        <DocumentTitle title={pageTitle} />
+        <OrganizationUnitPickerScreen
+          icon={<Home size={26} />}
+          title={t('create.organizationUnit.title', 'Where should this template belong?')}
+          subtitle={t(
+            'create.organizationUnit.subtitle',
+            "Choose the organization unit that will own this template. You can't change this once created.",
+          )}
+          value={effectiveOuId}
+          onChange={(value: string): void => {
+            setSubmitError(null);
+            setOuId(value);
+          }}
+          onBack={goToList}
+          onContinue={() => setStep('template')}
+          backLabel={t('common:actions.back', 'Back')}
+          continueLabel={t('common:actions.continue', 'Continue')}
+        />
+      </>
+    );
+  }
 
   return (
     <FullScreenCreationWizardLayout
       onClose={() => {
         if (!createTemplate.isPending) goToList();
       }}
-      progress={((stepIndex + 1) / STEPS.length) * 100}
-      contentMaxWidth={step === 'identity' ? 800 : false}
+      progress={((stepIndex + 1) / steps.length) * 100}
+      contentMaxWidth={effectiveStep === 'identity' ? 800 : false}
       breadcrumbItems={[
         {key: 'templates', label: channelCrumb, onClick: goToList},
-        ...STEPS.slice(0, stepIndex + 1).map((value, index, shown) => ({
+        ...steps.slice(0, stepIndex + 1).map((value, index, shown) => ({
           key: value,
           label: stepLabel(value),
           onClick: index < shown.length - 1 ? (): void => setStep(value) : undefined,
@@ -152,21 +226,21 @@ export default function NotificationTemplateCreatePage(): JSX.Element {
             ) : (
               <Button
                 variant="outlined"
-                onClick={() => setStep(step === 'content' ? 'identity' : 'template')}
+                onClick={() => setStep(steps[stepIndex - 1])}
                 disabled={createTemplate.isPending}
               >
                 {t('common:actions.back', 'Back')}
               </Button>
             )}
-            {step === 'content' ? (
+            {isLastStep ? (
               <Button variant="contained" onClick={handleCreate} disabled={!contentReady || createTemplate.isPending}>
                 {createTemplate.isPending ? t('common:status.creating', 'Creating...') : t('create.submit', 'Create')}
               </Button>
             ) : (
               <Button
                 variant="contained"
-                onClick={() => setStep(step === 'template' ? 'identity' : 'content')}
-                disabled={step === 'template' ? selection === null : !identityReady}
+                onClick={() => setStep(steps[stepIndex + 1])}
+                disabled={!stepReady[effectiveStep]}
               >
                 {t('common:actions.continue', 'Continue')}
               </Button>
@@ -175,11 +249,12 @@ export default function NotificationTemplateCreatePage(): JSX.Element {
         </Stack>
       }
     >
-      {step === 'template' && (
+      <DocumentTitle title={pageTitle} />
+      {effectiveStep === 'template' && (
         <SelectNotificationTemplate channel={channel} selected={selection} onSelect={applySelection} />
       )}
 
-      {step === 'identity' && (
+      {effectiveStep === 'identity' && (
         <ConfigureTemplateIdentity
           channel={channel}
           displayName={displayName}
@@ -190,10 +265,18 @@ export default function NotificationTemplateCreatePage(): JSX.Element {
           onHandleEditedChange={setHandleEdited}
           onReadyChange={setIdentityReady}
           existingHandles={existingHandles}
+          hasMultipleOUs={hasMultipleOUs}
+          organizationUnitName={resolvedOrganizationUnit?.name}
+          organizationUnitLogoUrl={resolvedOrganizationUnit?.logoUrl}
+          isOrganizationUnitLoading={isResolvedOuLoading}
+          onChangeOu={() => {
+            setSubmitError(null);
+            setStep('organizationUnit');
+          }}
         />
       )}
 
-      {step === 'content' && (
+      {effectiveStep === 'content' && (
         <Box
           sx={{
             display: 'grid',

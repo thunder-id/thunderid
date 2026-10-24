@@ -18,10 +18,19 @@ func newNotificationTemplateRendererMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *notificationTemplateRendererMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &notificationTemplateRendererMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -79,7 +88,7 @@ type notificationTemplateRendererMock_Resolve_Call struct {
 //   - channel notificationtemplate.ChannelType
 //   - handle string
 //   - in notificationtemplate.RenderInput
-func (_e *notificationTemplateRendererMock_Expecter) Resolve(ctx interface{}, channel interface{}, handle interface{}, in interface{}) *notificationTemplateRendererMock_Resolve_Call {
+func (_e *notificationTemplateRendererMock_Expecter) Resolve(ctx any, channel any, handle any, in any) *notificationTemplateRendererMock_Resolve_Call {
 	return &notificationTemplateRendererMock_Resolve_Call{Call: _e.mock.On("Resolve", ctx, channel, handle, in)}
 }
 

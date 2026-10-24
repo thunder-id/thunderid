@@ -16,10 +16,19 @@ func NewListenerMock[T any](t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ListenerMock[T] {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ListenerMock[T]{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -51,7 +60,7 @@ type ListenerMock_OnEvent_Call[T any] struct {
 // OnEvent is a helper method to define mock.On call
 //   - ctx context.Context
 //   - event T
-func (_e *ListenerMock_Expecter[T]) OnEvent(ctx interface{}, event interface{}) *ListenerMock_OnEvent_Call[T] {
+func (_e *ListenerMock_Expecter[T]) OnEvent(ctx any, event any) *ListenerMock_OnEvent_Call[T] {
 	return &ListenerMock_OnEvent_Call[T]{Call: _e.mock.On("OnEvent", ctx, event)}
 }
 

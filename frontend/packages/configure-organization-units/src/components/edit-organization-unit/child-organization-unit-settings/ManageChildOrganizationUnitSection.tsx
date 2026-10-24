@@ -45,7 +45,7 @@ export default function ManageChildOrganizationUnitSection({
 
   return (
     <SettingsCard
-      title={t('organizationUnits:edit.childOUs.sections.manage.title', 'Child Organization Units')}
+      title={t('organizationUnits:edit.childOUs.sections.manage.title', 'Child organization units')}
       description={t(
         'organizationUnits:edit.childOUs.sections.manage.description',
         'Organization units nested under this one.',

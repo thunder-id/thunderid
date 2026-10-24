@@ -28,15 +28,15 @@ Applications in <ProductName /> do not reference IdPs directly. The connection r
 - You have created an application. See [Manage Applications](../../applications/manage-applications).
 
 :::note Just-in-time provisioning for first-time users
-The **Continue with Google Login** and **Continue with GitHub Login** widgets enable **Allow Authentication Without Local User** and add the Provisioning steps required to create a local account.
+The **Continue with Google Login** and **Continue with GitHub Login** widgets enable **Allow authentication without local user** and add the Provisioning steps required to create a local account.
 
-For a generic OAuth 2.0 or OIDC connection, enable **Allow Authentication Without Local User** on the executor and add the **Provisioning** widget manually. Without this configuration, the external identity must map to an existing local user. See [Federated Authentication](../../flows/advanced-configurations#federated-authentication).
+For a generic OAuth 2.0 or OIDC connection, enable **Allow authentication without local user** on the executor and add the **Provisioning** widget manually. Without this configuration, the external identity must map to an existing local user. See [Federated Authentication](../../flows/advanced-configurations#federated-authentication).
 :::
 
 :::note Configure a user type for first-time social sign-in
-Your application must allow exactly one user type with **Allow Self Registration** enabled. Sign-in fails if none or more than one of the allowed user types has this setting enabled.
+Your application must allow exactly one user type with **Allow self registration** enabled. Sign-in fails if none or more than one of the allowed user types has this setting enabled.
 
-Under the application's **Access** settings, select the user type you want to assign to first-time users. If you select other user types, ensure only one has **Allow Self Registration** enabled under **User Types**. Existing users are unaffected.
+Under the application's **Access** settings, select the user type you want to assign to first-time users. If you select other user types, ensure only one has **Allow self registration** enabled under **User types**. Existing users are unaffected.
 
 A **User Type Resolver** step selects the user type when several are eligible, but only in registration flows, where it prompts the user to choose. In authentication flows it does not resolve a type, so adding it to a sign-in flow does not lift this requirement.
 :::
@@ -69,7 +69,7 @@ If you have exactly one matching connection, <ProductName /> assigns it automati
 3. Click the executor node to open its configuration panel.
 4. Select the required **Connection**. <ProductName /> assigns it automatically when exactly one matching connection exists.
 5. To create local accounts for first-time users:
-   1. Enable **Allow Authentication Without Local User**.
+   1. Enable **Allow authentication without local user**.
    2. Add the **Provisioning** widget to the flow.
 
 ## Step 3: Complete a Generic OAuth 2.0 or OIDC Flow
@@ -77,7 +77,7 @@ If you have exactly one matching connection, <ProductName /> assigns it automati
 Skip this step if you added the Google or GitHub widget.
 
 1. Add a **Button** component to the sign-in View and connect its output to the OAuth or OIDC executor.
-2. If you enabled **Allow Authentication Without Local User**, add the **Provisioning** widget.
+2. If you enabled **Allow authentication without local user**, add the **Provisioning** widget.
 3. Add an **Auth Assertion Generator** executor.
 4. Connect the success path from the OAuth or OIDC executor to **Provisioning**, when present, and then to **Auth Assertion Generator**.
 5. Connect **Auth Assertion Generator** to **END**.
@@ -92,7 +92,7 @@ Click **Save** in the top-right corner.
 
 1. Navigate to **Applications** and open the application you want to configure.
 2. Open the **Flows** tab.
-3. Under **Sign-in Flow**, select the flow.
+3. Under **Sign-in flow**, select the flow.
 4. Save the application.
 
 ## Step 6: Verify the Integration
@@ -109,3 +109,4 @@ Click **Save** in the top-right corner.
 - [Application Settings](../../applications/application-settings): Configure tokens, flows, and consent for your application.
 - [Build a Sign-In Flow](../../flows/build-a-flow): Learn more about customizing authentication flows.
 - [Manage Identity Providers](../manage-identity-providers): Update or remove identity providers.
+- [Link Federated Accounts](../link-accounts): Let users link a federated identity to their existing account.

@@ -1,15 +1,18 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {Stack} from '@wso2/oxygen-ui';
 import {useCallback, useMemo, type ReactNode} from 'react';
+import AccessChangeValidatorProperties from './execution-properties/AccessChangeValidatorProperties';
 import AgentTypeResolverProperties from './execution-properties/AgentTypeResolverProperties';
 import AttributeUniquenessValidatorProperties from './execution-properties/AttributeUniquenessValidatorProperties';
 import ConsentProperties from './execution-properties/ConsentProperties';
 import {EXECUTOR_TO_IDP_TYPE_MAP, EXECUTORS_WITH_FIXED_INPUTS} from './execution-properties/constants';
+import CriteriaRevocationProperties from './execution-properties/CriteriaRevocationProperties';
 import EmailProperties from './execution-properties/EmailProperties';
 import ExecutorInputsEditor from './execution-properties/ExecutorInputsEditor';
 import FederationProperties from './execution-properties/FederationProperties';
+import GroupExecutorProperties from './execution-properties/GroupExecutorProperties';
 import HttpRequestProperties from './execution-properties/HttpRequestProperties';
 import IdentifyingProperties from './execution-properties/IdentifyingProperties';
 import InviteProperties from './execution-properties/InviteProperties';
@@ -23,6 +26,7 @@ import PasskeyProperties from './execution-properties/PasskeyProperties';
 import PermissionValidatorProperties from './execution-properties/PermissionValidatorProperties';
 import PreDeleteProperties from './execution-properties/PreDeleteProperties';
 import ProvisioningProperties from './execution-properties/ProvisioningProperties';
+import RoleExecutorProperties from './execution-properties/RoleExecutorProperties';
 import SessionSignOutProperties from './execution-properties/SessionSignOutProperties';
 import SmsProperties from './execution-properties/SmsProperties';
 import SsoCheckProperties from './execution-properties/SsoCheckProperties';
@@ -101,6 +105,18 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
     case ExecutionTypes.PreDelete:
       executorSpecificProperties = <PreDeleteProperties resource={resource} onChange={onChange} />;
       break;
+    case ExecutionTypes.CriteriaRevocation:
+      executorSpecificProperties = <CriteriaRevocationProperties resource={resource} onChange={onChange} />;
+      break;
+    case ExecutionTypes.AccessChangeValidator:
+      executorSpecificProperties = <AccessChangeValidatorProperties resource={resource} onChange={onChange} />;
+      break;
+    case ExecutionTypes.RoleExecutor:
+      executorSpecificProperties = <RoleExecutorProperties resource={resource} onChange={onChange} />;
+      break;
+    case ExecutionTypes.GroupExecutor:
+      executorSpecificProperties = <GroupExecutorProperties resource={resource} onChange={onChange} />;
+      break;
     case ExecutionTypes.ProvisioningExecutor:
       executorSpecificProperties = <ProvisioningProperties resource={resource} onChange={onChange} />;
       break;
@@ -132,8 +148,10 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
       executorSpecificProperties = <AttributeUniquenessValidatorProperties resource={resource} onChange={onChange} />;
       break;
     case ExecutionTypes.CredentialSetter:
+    case ExecutionTypes.IdentityGovernance:
     case ExecutionTypes.Session:
     case ExecutionTypes.OwnerResolver:
+    case ExecutionTypes.AccountLinking:
       executorSpecificProperties = <NoConfigProperties />;
       break;
     default:

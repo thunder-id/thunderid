@@ -16,10 +16,19 @@ func NewConfigCryptoProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ConfigCryptoProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ConfigCryptoProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -73,7 +82,7 @@ type ConfigCryptoProviderMock_Decrypt_Call struct {
 // Decrypt is a helper method to define mock.On call
 //   - ctx context.Context
 //   - content []byte
-func (_e *ConfigCryptoProviderMock_Expecter) Decrypt(ctx interface{}, content interface{}) *ConfigCryptoProviderMock_Decrypt_Call {
+func (_e *ConfigCryptoProviderMock_Expecter) Decrypt(ctx any, content any) *ConfigCryptoProviderMock_Decrypt_Call {
 	return &ConfigCryptoProviderMock_Decrypt_Call{Call: _e.mock.On("Decrypt", ctx, content)}
 }
 
@@ -141,7 +150,7 @@ type ConfigCryptoProviderMock_Encrypt_Call struct {
 // Encrypt is a helper method to define mock.On call
 //   - ctx context.Context
 //   - content []byte
-func (_e *ConfigCryptoProviderMock_Expecter) Encrypt(ctx interface{}, content interface{}) *ConfigCryptoProviderMock_Encrypt_Call {
+func (_e *ConfigCryptoProviderMock_Expecter) Encrypt(ctx any, content any) *ConfigCryptoProviderMock_Encrypt_Call {
 	return &ConfigCryptoProviderMock_Encrypt_Call{Call: _e.mock.On("Encrypt", ctx, content)}
 }
 

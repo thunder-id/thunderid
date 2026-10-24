@@ -18,10 +18,19 @@ func NewAuthnProviderManagerMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *AuthnProviderManagerMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &AuthnProviderManagerMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -87,7 +96,7 @@ type AuthnProviderManagerMock_AuthenticateUser_Call struct {
 //   - requestedAttributes *providers.RequestedAttributes
 //   - metadata *providers.AuthnMetadata
 //   - authUser providers.AuthUser
-func (_e *AuthnProviderManagerMock_Expecter) AuthenticateUser(ctx interface{}, identifiers interface{}, credentials interface{}, requestedAttributes interface{}, metadata interface{}, authUser interface{}) *AuthnProviderManagerMock_AuthenticateUser_Call {
+func (_e *AuthnProviderManagerMock_Expecter) AuthenticateUser(ctx any, identifiers any, credentials any, requestedAttributes any, metadata any, authUser any) *AuthnProviderManagerMock_AuthenticateUser_Call {
 	return &AuthnProviderManagerMock_AuthenticateUser_Call{Call: _e.mock.On("AuthenticateUser", ctx, identifiers, credentials, requestedAttributes, metadata, authUser)}
 }
 
@@ -187,7 +196,7 @@ type AuthnProviderManagerMock_Enroll_Call struct {
 //   - requestedAttributes *providers.RequestedAttributes
 //   - metadata *providers.AuthnMetadata
 //   - authUser providers.AuthUser
-func (_e *AuthnProviderManagerMock_Expecter) Enroll(ctx interface{}, identifiers interface{}, credentials interface{}, requestedAttributes interface{}, metadata interface{}, authUser interface{}) *AuthnProviderManagerMock_Enroll_Call {
+func (_e *AuthnProviderManagerMock_Expecter) Enroll(ctx any, identifiers any, credentials any, requestedAttributes any, metadata any, authUser any) *AuthnProviderManagerMock_Enroll_Call {
 	return &AuthnProviderManagerMock_Enroll_Call{Call: _e.mock.On("Enroll", ctx, identifiers, credentials, requestedAttributes, metadata, authUser)}
 }
 
@@ -283,7 +292,7 @@ type AuthnProviderManagerMock_GetEntityReference_Call struct {
 // GetEntityReference is a helper method to define mock.On call
 //   - ctx context.Context
 //   - authUser providers.AuthUser
-func (_e *AuthnProviderManagerMock_Expecter) GetEntityReference(ctx interface{}, authUser interface{}) *AuthnProviderManagerMock_GetEntityReference_Call {
+func (_e *AuthnProviderManagerMock_Expecter) GetEntityReference(ctx any, authUser any) *AuthnProviderManagerMock_GetEntityReference_Call {
 	return &AuthnProviderManagerMock_GetEntityReference_Call{Call: _e.mock.On("GetEntityReference", ctx, authUser)}
 }
 
@@ -361,7 +370,7 @@ type AuthnProviderManagerMock_GetUserAttributes_Call struct {
 //   - requestedAttributes *providers.RequestedAttributes
 //   - metadata *providers.GetAttributesMetadata
 //   - authUser providers.AuthUser
-func (_e *AuthnProviderManagerMock_Expecter) GetUserAttributes(ctx interface{}, requestedAttributes interface{}, metadata interface{}, authUser interface{}) *AuthnProviderManagerMock_GetUserAttributes_Call {
+func (_e *AuthnProviderManagerMock_Expecter) GetUserAttributes(ctx any, requestedAttributes any, metadata any, authUser any) *AuthnProviderManagerMock_GetUserAttributes_Call {
 	return &AuthnProviderManagerMock_GetUserAttributes_Call{Call: _e.mock.On("GetUserAttributes", ctx, requestedAttributes, metadata, authUser)}
 }
 
@@ -441,7 +450,7 @@ type AuthnProviderManagerMock_GetUserAvailableAttributes_Call struct {
 // GetUserAvailableAttributes is a helper method to define mock.On call
 //   - ctx context.Context
 //   - authUser providers.AuthUser
-func (_e *AuthnProviderManagerMock_Expecter) GetUserAvailableAttributes(ctx interface{}, authUser interface{}) *AuthnProviderManagerMock_GetUserAvailableAttributes_Call {
+func (_e *AuthnProviderManagerMock_Expecter) GetUserAvailableAttributes(ctx any, authUser any) *AuthnProviderManagerMock_GetUserAvailableAttributes_Call {
 	return &AuthnProviderManagerMock_GetUserAvailableAttributes_Call{Call: _e.mock.On("GetUserAvailableAttributes", ctx, authUser)}
 }
 
@@ -513,7 +522,7 @@ type AuthnProviderManagerMock_InitiateAuthentication_Call struct {
 //   - credentialType string
 //   - initData any
 //   - metadata *providers.AuthnMetadata
-func (_e *AuthnProviderManagerMock_Expecter) InitiateAuthentication(ctx interface{}, credentialType interface{}, initData interface{}, metadata interface{}) *AuthnProviderManagerMock_InitiateAuthentication_Call {
+func (_e *AuthnProviderManagerMock_Expecter) InitiateAuthentication(ctx any, credentialType any, initData any, metadata any) *AuthnProviderManagerMock_InitiateAuthentication_Call {
 	return &AuthnProviderManagerMock_InitiateAuthentication_Call{Call: _e.mock.On("InitiateAuthentication", ctx, credentialType, initData, metadata)}
 }
 
@@ -545,8 +554,8 @@ func (_c *AuthnProviderManagerMock_InitiateAuthentication_Call) Run(run func(ctx
 	return _c
 }
 
-func (_c *AuthnProviderManagerMock_InitiateAuthentication_Call) Return(v any, serviceError *common.ServiceError) *AuthnProviderManagerMock_InitiateAuthentication_Call {
-	_c.Call.Return(v, serviceError)
+func (_c *AuthnProviderManagerMock_InitiateAuthentication_Call) Return(anyMoqParam any, serviceError *common.ServiceError) *AuthnProviderManagerMock_InitiateAuthentication_Call {
+	_c.Call.Return(anyMoqParam, serviceError)
 	return _c
 }
 
@@ -595,7 +604,7 @@ type AuthnProviderManagerMock_InitiateEnrollment_Call struct {
 //   - credentialType string
 //   - initData any
 //   - metadata *providers.AuthnMetadata
-func (_e *AuthnProviderManagerMock_Expecter) InitiateEnrollment(ctx interface{}, credentialType interface{}, initData interface{}, metadata interface{}) *AuthnProviderManagerMock_InitiateEnrollment_Call {
+func (_e *AuthnProviderManagerMock_Expecter) InitiateEnrollment(ctx any, credentialType any, initData any, metadata any) *AuthnProviderManagerMock_InitiateEnrollment_Call {
 	return &AuthnProviderManagerMock_InitiateEnrollment_Call{Call: _e.mock.On("InitiateEnrollment", ctx, credentialType, initData, metadata)}
 }
 
@@ -627,8 +636,8 @@ func (_c *AuthnProviderManagerMock_InitiateEnrollment_Call) Run(run func(ctx con
 	return _c
 }
 
-func (_c *AuthnProviderManagerMock_InitiateEnrollment_Call) Return(v any, serviceError *common.ServiceError) *AuthnProviderManagerMock_InitiateEnrollment_Call {
-	_c.Call.Return(v, serviceError)
+func (_c *AuthnProviderManagerMock_InitiateEnrollment_Call) Return(anyMoqParam any, serviceError *common.ServiceError) *AuthnProviderManagerMock_InitiateEnrollment_Call {
+	_c.Call.Return(anyMoqParam, serviceError)
 	return _c
 }
 
@@ -666,7 +675,7 @@ type AuthnProviderManagerMock_LinkAccount_Call struct {
 //   - authUser providers.AuthUser
 //   - idpID string
 //   - sub string
-func (_e *AuthnProviderManagerMock_Expecter) LinkAccount(ctx interface{}, authUser interface{}, idpID interface{}, sub interface{}) *AuthnProviderManagerMock_LinkAccount_Call {
+func (_e *AuthnProviderManagerMock_Expecter) LinkAccount(ctx any, authUser any, idpID any, sub any) *AuthnProviderManagerMock_LinkAccount_Call {
 	return &AuthnProviderManagerMock_LinkAccount_Call{Call: _e.mock.On("LinkAccount", ctx, authUser, idpID, sub)}
 }
 
@@ -746,7 +755,7 @@ type AuthnProviderManagerMock_ResolveLinkCandidates_Call struct {
 // ResolveLinkCandidates is a helper method to define mock.On call
 //   - ctx context.Context
 //   - authUser providers.AuthUser
-func (_e *AuthnProviderManagerMock_Expecter) ResolveLinkCandidates(ctx interface{}, authUser interface{}) *AuthnProviderManagerMock_ResolveLinkCandidates_Call {
+func (_e *AuthnProviderManagerMock_Expecter) ResolveLinkCandidates(ctx any, authUser any) *AuthnProviderManagerMock_ResolveLinkCandidates_Call {
 	return &AuthnProviderManagerMock_ResolveLinkCandidates_Call{Call: _e.mock.On("ResolveLinkCandidates", ctx, authUser)}
 }
 

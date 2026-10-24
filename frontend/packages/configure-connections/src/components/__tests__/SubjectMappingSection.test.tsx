@@ -120,7 +120,7 @@ describe('SubjectMappingSection', () => {
     expect(screen.queryByDisplayValue('assistant')).not.toBeInTheDocument();
     expect(onChange).not.toHaveBeenCalled();
 
-    fireEvent.change(screen.getAllByLabelText('ThunderID Attribute')[0], {target: {value: 'email'}});
+    fireEvent.change(screen.getAllByLabelText('ThunderID attribute')[0], {target: {value: 'email'}});
 
     expect(onChange).toHaveBeenLastCalledWith('subjectAttributeMappings', [
       {
@@ -140,7 +140,7 @@ describe('SubjectMappingSection', () => {
       expect(screen.queryByDisplayValue('default')).not.toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByLabelText('ThunderID Attribute'), {target: {value: 'groups'}});
+    fireEvent.change(screen.getByLabelText('ThunderID attribute'), {target: {value: 'groups'}});
 
     expect(onChange).toHaveBeenLastCalledWith('subjectAttributeMappings', [
       {
@@ -313,15 +313,15 @@ describe('SubjectMappingSection', () => {
     fireEvent.mouseDown(typeSelect.querySelector('[role="combobox"]')!);
     fireEvent.click(screen.getByRole('option', {name: 'Employee'}));
 
-    fireEvent.change(within(userMappings).getByLabelText('ThunderID Attribute'), {
+    fireEvent.change(within(userMappings).getByLabelText('ThunderID attribute'), {
       target: {value: 'email'},
     });
-    fireEvent.click(within(userMappings).getByRole('button', {name: 'Add Mapping'}));
+    fireEvent.click(within(userMappings).getByRole('button', {name: 'Add mapping'}));
 
-    const attributes = within(userMappings).getAllByLabelText('ThunderID Attribute');
+    const attributes = within(userMappings).getAllByLabelText('ThunderID attribute');
     fireEvent.change(attributes[1], {target: {value: 'groups'}});
     fireEvent.click(within(userMappings).getAllByRole('button', {name: 'Map to a different PDP attribute'})[1]);
-    fireEvent.change(within(userMappings).getByLabelText('PDP Attribute'), {target: {value: 'roles'}});
+    fireEvent.change(within(userMappings).getByLabelText('PDP attribute'), {target: {value: 'roles'}});
 
     fireEvent.change(attributes[1], {target: {value: 'email'}});
     expect(attributes[1]).toHaveValue('email');
@@ -335,7 +335,7 @@ describe('SubjectMappingSection', () => {
 
     fireEvent.click(within(userMappings).getByTestId(/subject-mapping-remove-\d+-2/));
     await waitFor(() => {
-      expect(within(userMappings).getAllByLabelText('ThunderID Attribute')).toHaveLength(1);
+      expect(within(userMappings).getAllByLabelText('ThunderID attribute')).toHaveLength(1);
     });
 
     fireEvent.click(screen.getByTestId('subject-mapping-add-user'));

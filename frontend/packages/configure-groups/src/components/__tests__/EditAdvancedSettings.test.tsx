@@ -19,7 +19,7 @@ describe('EditAdvancedSettings', () => {
   it('should render danger zone section', () => {
     renderWithProviders(<EditAdvancedSettings {...defaultProps} />);
 
-    expect(screen.getByText('Danger Zone')).toBeInTheDocument();
+    expect(screen.getByText('Danger zone')).toBeInTheDocument();
     expect(screen.getByText('Delete this group')).toBeInTheDocument();
   });
 
@@ -35,6 +35,6 @@ describe('EditAdvancedSettings', () => {
   it('should not render danger zone section when onDeleteClick is not provided', () => {
     renderWithProviders(<EditAdvancedSettings />);
 
-    expect(screen.queryByText('Danger Zone')).not.toBeInTheDocument();
+    expect(screen.queryByText('Danger zone')).not.toBeInTheDocument();
   });
 });

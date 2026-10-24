@@ -2,18 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {describe, expect, it} from 'vitest';
+import type {UserTypeDefinition} from '../../types/user-types';
 import getBreakingSchemaChanges from '../getBreakingSchemaChanges';
 
 describe('getBreakingSchemaChanges', () => {
   it('flags removed, newly-required, and tightened attributes', () => {
-    const base = {
+    const base: UserTypeDefinition = {
       removed: {type: 'string'},
       role: {type: 'string'},
       status: {type: 'string', enum: ['ACTIVE', 'INACTIVE']},
       code: {type: 'string'},
       id: {type: 'string'},
     };
-    const next = {
+    const next: UserTypeDefinition = {
       role: {type: 'number'}, // type change
       status: {type: 'string', enum: ['ACTIVE']}, // enum narrowed
       code: {type: 'string', regex: '^[0-9]+$'}, // regex added
@@ -24,11 +25,11 @@ describe('getBreakingSchemaChanges', () => {
   });
 
   it('ignores additive and loosening changes', () => {
-    const base = {
+    const base: UserTypeDefinition = {
       role: {type: 'string', required: true},
       status: {type: 'string', enum: ['ACTIVE']},
     };
-    const next = {
+    const next: UserTypeDefinition = {
       role: {type: 'string', required: false}, // relaxed
       status: {type: 'string', enum: ['ACTIVE', 'INACTIVE']}, // widened
       optional: {type: 'string'}, // new optional

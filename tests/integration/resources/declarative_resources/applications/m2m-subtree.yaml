@@ -6,12 +6,12 @@ ouId: decl-m2m-root
 type: fullstack
 template: web
 url: https://example.com
-# Everything beneath the owning organization unit, at any depth. Unlike allOus this stays inside
+# Everything beneath the owning organization unit, at any depth. Unlike allUnits this stays inside
 # the owner's own tree, so it needs no cross-tree permission.
 sharingPolicies:
   - id: decl-m2m-subtree-policy-1
-    targets:
-      - scope: allChildren
+    childUnits:
+      mode: all
 inboundAuthConfig:
   - type: "oauth2"
     config:

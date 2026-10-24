@@ -474,8 +474,8 @@ export default function ConfigureDesign({
                         <Box sx={{p: 2.5, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.25}}>
                           <ColorSchemeImage
                             src={{
-                              light: `${import.meta.env.BASE_URL}/assets/images/logo-mini.svg`,
-                              dark: `${import.meta.env.BASE_URL}/assets/images/logo-mini-inverted.svg`,
+                              light: `${import.meta.env.BASE_URL.replace(/\/$/, '')}/assets/images/logo-mini.svg`,
+                              dark: `${import.meta.env.BASE_URL.replace(/\/$/, '')}/assets/images/logo-mini-inverted.svg`,
                             }}
                             alt={{light: 'ThunderID', dark: 'ThunderID'}}
                             height={20}

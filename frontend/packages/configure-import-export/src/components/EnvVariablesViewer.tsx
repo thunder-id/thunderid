@@ -104,7 +104,7 @@ export default function EnvVariablesViewer({
           suggestedName: fileName,
           types: [
             {
-              description: 'Environment Variables',
+              description: 'Environment variables',
               accept: {'text/plain': ['.env']},
             },
           ],

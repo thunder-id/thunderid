@@ -78,7 +78,7 @@ describe('TemplatePreviewPanel', () => {
       const user = userEvent.setup();
       render(<TemplatePreviewPanel {...defaultProps} />);
 
-      await user.click(screen.getByText(t('notificationTemplates:editor.preview.designThemeDefault')));
+      await user.click(screen.getByText(t('notificationTemplates:editor.preview.designThemeNone')));
       await user.click(screen.getByRole('option', {name: 'Acrylic Orange'}));
 
       expect(mockUseGetTheme).toHaveBeenCalledWith('theme-1');

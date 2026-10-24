@@ -10,8 +10,10 @@ import useGetApplication from '../../api/useGetApplication';
 import useUpdateApplication from '../../api/useUpdateApplication';
 import EditAccessSettings from '../../components/edit-application/access/EditAccessSettings';
 import EditAdvancedSettings from '../../components/edit-application/advanced-settings/EditAdvancedSettings';
+import EditCredentialsSettings from '../../components/edit-application/credentials/EditCredentialsSettings';
 import EditCustomizationSettings from '../../components/edit-application/customization-settings/EditCustomizationSettings';
 import McpConnectTab from '../../components/edit-application/mcp/McpConnectTab';
+import EditOrganizationAccessSettings from '../../components/edit-application/organization-access/EditOrganizationAccessSettings';
 import EditTokenSettings from '../../components/edit-application/token-settings/EditTokenSettings';
 import EditTokenSettingsTabs from '../../components/edit-application/token-settings/EditTokenSettingsTabs';
 import ApplicationConstants from '../../constants/application-constants';
@@ -62,6 +64,23 @@ vi.mock('react-i18next', () => ({
       return key;
     },
   }),
+}));
+
+const mockOrganizationAccess = vi.hoisted(() => ({
+  hasChanges: false,
+  save: vi.fn(),
+  reset: vi.fn(),
+  isSaving: false,
+  saveError: null as Error | null,
+}));
+
+vi.mock('@thunderid/configure-resource-sharing', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-resource-sharing')>()),
+  useOrganizationAccess: () => mockOrganizationAccess,
+}));
+
+vi.mock('../../components/edit-application/organization-access/EditOrganizationAccessSettings', () => ({
+  default: vi.fn(() => <div data-testid="organization-access-settings" />),
 }));
 
 vi.mock('../../api/useGetApplication', () => ({
@@ -153,14 +172,27 @@ vi.mock('../../components/edit-application/integration-guides/IntegrationGuides'
 }));
 
 vi.mock('../../components/edit-application/mcp/McpConnectTab', () => ({
-  default: vi.fn(({onValidationChange}: {onValidationChange?: (hasErrors: boolean) => void}) => (
-    <div data-testid="mcp-connect-tab">
-      Connect Tab
-      <button type="button" data-testid="mcp-connect-tab-report-invalid" onClick={() => onValidationChange?.(true)}>
-        Report invalid
-      </button>
-    </div>
-  )),
+  default: vi.fn(
+    ({
+      onValidationChange,
+      onGoToCredentials,
+    }: {
+      onValidationChange?: (hasErrors: boolean) => void;
+      onGoToCredentials?: () => void;
+    }) => (
+      <div data-testid="mcp-connect-tab">
+        Connect Tab
+        <button type="button" data-testid="mcp-connect-tab-report-invalid" onClick={() => onValidationChange?.(true)}>
+          Report invalid
+        </button>
+        {onGoToCredentials && (
+          <button type="button" data-testid="go-to-credentials" onClick={onGoToCredentials}>
+            Go to Credentials
+          </button>
+        )}
+      </div>
+    ),
+  ),
 }));
 
 vi.mock('@thunderid/components', async (importOriginal) => {
@@ -504,7 +536,7 @@ describe('ApplicationEditPage', () => {
     it('should render all tabs without integration guides', () => {
       renderComponent();
 
-      expect(screen.getByRole('tab', {name: /access/i})).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: /^access$/i})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: /credentials/i})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: /flows/i})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: /customization/i})).toBeInTheDocument();
@@ -543,7 +575,7 @@ describe('ApplicationEditPage', () => {
       const user = userEvent.setup();
       renderComponent();
 
-      const accessTab = screen.getByRole('tab', {name: /access/i});
+      const accessTab = screen.getByRole('tab', {name: /^access$/i});
       await user.click(accessTab);
 
       await waitFor(() => {
@@ -1353,7 +1385,7 @@ describe('ApplicationEditPage', () => {
     it('should have proper ARIA labels for tabs', () => {
       renderComponent();
 
-      const accessTab = screen.getByRole('tab', {name: /access/i});
+      const accessTab = screen.getByRole('tab', {name: /^access$/i});
       expect(accessTab).toHaveAttribute('id');
       expect(accessTab).toHaveAttribute('aria-controls');
     });
@@ -1904,7 +1936,7 @@ describe('ApplicationEditPage', () => {
       renderComponent();
 
       // Click Access tab (second tab when integration guides are present)
-      const accessTab = screen.getByRole('tab', {name: /access/i});
+      const accessTab = screen.getByRole('tab', {name: /^access$/i});
       await user.click(accessTab);
 
       await waitFor(() => {
@@ -2049,6 +2081,8 @@ describe('ApplicationEditPage', () => {
       expect(screen.getByRole('tab', {name: 'Customization'})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: 'Token'})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: 'Advanced'})).toBeInTheDocument();
+      // Organization Access is only offered to clients with the client credentials grant for now.
+      expect(screen.queryByRole('tab', {name: 'Organization Access'})).not.toBeInTheDocument();
     });
 
     it('renders the Overview tab panel by default, and the General tab panel once selected', async () => {
@@ -2141,7 +2175,13 @@ describe('ApplicationEditPage', () => {
       });
 
       const lastCallProps = vi.mocked(EditAdvancedSettings).mock.calls.at(-1)?.[0];
-      expect(lastCallProps?.allowedGrantTypes).toEqual(['authorization_code', 'refresh_token', 'client_credentials']);
+      expect(lastCallProps?.allowedGrantTypes).toEqual([
+        'authorization_code',
+        'refresh_token',
+        'client_credentials',
+        'urn:ietf:params:oauth:grant-type:token-exchange',
+        'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      ]);
     });
 
     it('should bump sectionResetKey passed to McpConnectTab when reset is clicked', async () => {
@@ -2263,11 +2303,224 @@ describe('ApplicationEditPage', () => {
       expect(lastCallProps?.oauth2Constraints).toBeUndefined();
     });
 
+    describe('Credentials tab', () => {
+      const mockMcpCimdApplication: Application = {
+        ...mockMcpApplication,
+        inboundAuthConfig: [
+          {
+            type: 'oauth2',
+            config: {
+              responseTypes: ['code'],
+              clientId: 'https://vscode.dev/oauth/client-metadata.json',
+              clientIdMetadataDocument: true,
+              grantTypes: ['authorization_code', 'refresh_token'],
+              redirectUris: ['http://127.0.0.1/callback'],
+              pkceRequired: true,
+              publicClient: false,
+              tokenEndpointAuthMethod: 'private_key_jwt',
+            },
+          },
+        ],
+      };
+
+      const mockMcpPrivateKeyJwtApplication: Application = {
+        ...mockMcpApplication,
+        inboundAuthConfig: [
+          {
+            type: 'oauth2',
+            config: {
+              responseTypes: ['code'],
+              clientId: 'test-mcp-client-id',
+              grantTypes: ['authorization_code', 'refresh_token'],
+              redirectUris: ['http://127.0.0.1:8080/callback'],
+              pkceRequired: true,
+              publicClient: false,
+              tokenEndpointAuthMethod: 'private_key_jwt',
+            },
+          },
+        ],
+      };
+
+      const renameApplication = async (user: ReturnType<typeof userEvent.setup>, name: string) => {
+        const nameSection = screen.getByText('Test MCP Client').closest('div');
+        await user.click(nameSection!.querySelector('button')!);
+        const nameInput = screen.getByRole('textbox');
+        await user.clear(nameInput);
+        await user.type(nameInput, `${name}{Enter}`);
+      };
+
+      it('shows a Credentials tab right after General for a non-CIMD MCP client', () => {
+        mockUseGetApplication.mockReturnValue({
+          data: mockMcpApplication,
+          isLoading: false,
+          isError: false,
+          error: null,
+        } as UseQueryResult<Application>);
+
+        renderComponent();
+
+        const tabNames = screen.getAllByRole('tab').map((tab) => tab.textContent);
+        expect(tabNames.indexOf('Credentials')).toBe(tabNames.indexOf('General') + 1);
+      });
+
+      it('renders the shared credentials settings without attestation on the Credentials tab', async () => {
+        mockUseGetApplication.mockReturnValue({
+          data: mockMcpM2mApplication,
+          isLoading: false,
+          isError: false,
+          error: null,
+        } as UseQueryResult<Application>);
+
+        const user = userEvent.setup();
+        renderComponent();
+
+        await user.click(screen.getByRole('tab', {name: 'Credentials'}));
+
+        expect(screen.getByTestId('edit-credentials-settings')).toBeInTheDocument();
+        const lastCallProps = vi.mocked(EditCredentialsSettings).mock.calls.at(-1)?.[0];
+        expect(lastCallProps?.showAttestation).toBe(false);
+        expect(lastCallProps?.oauth2Config?.clientId).toBe('test-mcp-m2m-client-id');
+      });
+
+      it('switches to the Credentials tab when the Connect tab asks for it', async () => {
+        mockUseGetApplication.mockReturnValue({
+          data: mockMcpM2mApplication,
+          isLoading: false,
+          isError: false,
+          error: null,
+        } as UseQueryResult<Application>);
+
+        const user = userEvent.setup();
+        renderComponent();
+
+        await mountSectionTab(user, 'General', 'mcp-connect-tab');
+        await user.click(screen.getByTestId('go-to-credentials'));
+
+        expect(screen.getByTestId('edit-credentials-settings')).toBeInTheDocument();
+        expect(screen.getByRole('tab', {name: 'Credentials'})).toHaveAttribute('aria-selected', 'true');
+      });
+
+      it('has no Credentials tab, and no link to one, for a CIMD MCP client', async () => {
+        mockUseGetApplication.mockReturnValue({
+          data: mockMcpCimdApplication,
+          isLoading: false,
+          isError: false,
+          error: null,
+        } as UseQueryResult<Application>);
+
+        const user = userEvent.setup();
+        renderComponent();
+
+        expect(screen.queryByRole('tab', {name: 'Credentials'})).not.toBeInTheDocument();
+
+        await mountSectionTab(user, 'General', 'mcp-connect-tab');
+
+        expect(screen.queryByTestId('go-to-credentials')).not.toBeInTheDocument();
+      });
+
+      it('requires a certificate for a non-CIMD MCP client using private_key_jwt', async () => {
+        mockUseGetApplication.mockReturnValue({
+          data: mockMcpPrivateKeyJwtApplication,
+          isLoading: false,
+          isError: false,
+          error: null,
+        } as UseQueryResult<Application>);
+
+        const user = userEvent.setup();
+        renderComponent();
+
+        await renameApplication(user, 'Edited MCP Client');
+
+        await waitFor(() => {
+          expect(screen.getByTestId('unsaved-changes-bar')).toBeInTheDocument();
+        });
+        expect(screen.getByText('A certificate is required.')).toBeInTheDocument();
+        expect(screen.getByRole('button', {name: 'Save Changes'})).toBeDisabled();
+      });
+
+      it('does not require a certificate for a CIMD MCP client, whose keys come from its document', async () => {
+        mockUseGetApplication.mockReturnValue({
+          data: mockMcpCimdApplication,
+          isLoading: false,
+          isError: false,
+          error: null,
+        } as UseQueryResult<Application>);
+
+        const user = userEvent.setup();
+        renderComponent();
+
+        await renameApplication(user, 'Edited MCP Client');
+
+        await waitFor(() => {
+          expect(screen.getByTestId('unsaved-changes-bar')).toBeInTheDocument();
+        });
+        expect(screen.queryByText('A certificate is required.')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', {name: 'Save Changes'})).toBeEnabled();
+      });
+    });
+
+    describe('JWT bearer-only client', () => {
+      const mockMcpJwtBearerApplication: Application = {
+        ...mockMcpApplication,
+        inboundAuthConfig: [
+          {
+            type: 'oauth2',
+            config: {
+              responseTypes: [],
+              clientId: 'test-mcp-jwt-bearer-client-id',
+              grantTypes: ['urn:ietf:params:oauth:grant-type:jwt-bearer'],
+              redirectUris: [],
+              pkceRequired: false,
+              publicClient: false,
+              tokenEndpointAuthMethod: 'client_secret_basic',
+            },
+          },
+        ],
+      };
+
+      it('hides the Flows and Customization tabs', () => {
+        mockUseGetApplication.mockReturnValue({
+          data: mockMcpJwtBearerApplication,
+          isLoading: false,
+          isError: false,
+          error: null,
+        } as UseQueryResult<Application>);
+
+        renderComponent();
+
+        expect(screen.getByRole('tab', {name: 'General'})).toBeInTheDocument();
+        expect(screen.getByRole('tab', {name: 'Credentials'})).toBeInTheDocument();
+        expect(screen.queryByRole('tab', {name: 'Flows'})).not.toBeInTheDocument();
+        expect(screen.queryByRole('tab', {name: 'Customization'})).not.toBeInTheDocument();
+      });
+
+      it('does not lock the PKCE constraint on the Advanced tab', async () => {
+        mockUseGetApplication.mockReturnValue({
+          data: mockMcpJwtBearerApplication,
+          isLoading: false,
+          isError: false,
+          error: null,
+        } as UseQueryResult<Application>);
+
+        const user = userEvent.setup();
+        renderComponent();
+
+        await user.click(screen.getByRole('tab', {name: 'Advanced'}));
+
+        await waitFor(() => {
+          expect(screen.getByTestId('edit-advanced-settings')).toBeInTheDocument();
+        });
+
+        const lastCallProps = vi.mocked(EditAdvancedSettings).mock.calls.at(-1)?.[0];
+        expect(lastCallProps?.oauth2Constraints).toBeUndefined();
+      });
+    });
+
     it('keeps the generic tab set unchanged for non-mcp-client templates', () => {
       // mockApplication (template: 'react') is the default mock from the outer describe block.
       renderComponent();
 
-      expect(screen.getByRole('tab', {name: /access/i})).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: /^access$/i})).toBeInTheDocument();
       expect(screen.queryByTestId('mcp-connect-tab')).not.toBeInTheDocument();
     });
 
@@ -2303,10 +2556,133 @@ describe('ApplicationEditPage', () => {
     });
   });
 
+  describe('Organization Access', () => {
+    // Organization Access is only offered to applications with the client credentials grant, so
+    // these tests use a client-credentials application.
+    const m2mApplication: Application = {
+      ...mockApplication,
+      inboundAuthConfig: [
+        {
+          type: 'oauth2',
+          config: {
+            responseTypes: [],
+            clientId: 'test-client-id',
+            grantTypes: ['client_credentials'],
+            redirectUris: [],
+            pkceRequired: false,
+            publicClient: false,
+            tokenEndpointAuthMethod: 'client_secret_basic',
+          },
+        },
+      ],
+    };
+
+    beforeEach(() => {
+      mockUseGetApplication.mockReturnValue({
+        data: m2mApplication,
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as unknown as UseQueryResult<Application>);
+      mockOrganizationAccess.hasChanges = false;
+      mockOrganizationAccess.isSaving = false;
+      mockOrganizationAccess.saveError = null;
+      mockOrganizationAccess.save.mockReset().mockResolvedValue(undefined);
+      mockOrganizationAccess.reset.mockReset();
+    });
+
+    it('is not offered to an application without the client credentials grant', () => {
+      mockUseGetApplication.mockReturnValue({
+        data: mockApplication,
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as unknown as UseQueryResult<Application>);
+      renderComponent();
+
+      expect(screen.queryByRole('tab', {name: 'Organization Access'})).not.toBeInTheDocument();
+    });
+
+    it('is offered to a client credentials application that also signs users in', () => {
+      const oauth2 = m2mApplication.inboundAuthConfig![0];
+      mockUseGetApplication.mockReturnValue({
+        data: {
+          ...m2mApplication,
+          inboundAuthConfig: [
+            {...oauth2, config: {...oauth2.config, grantTypes: ['authorization_code', 'client_credentials']}},
+          ],
+        },
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as unknown as UseQueryResult<Application>);
+      renderComponent();
+
+      expect(screen.getByRole('tab', {name: 'Organization Access'})).toBeInTheDocument();
+    });
+
+    it('places the Organization Access tab just before Advanced', () => {
+      renderComponent();
+
+      const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent);
+      expect(tabs.indexOf('Organization Access')).toBe(tabs.indexOf('Advanced') - 1);
+    });
+
+    it('hands the tab the application and its access state', async () => {
+      const user = userEvent.setup();
+      renderComponent();
+
+      await mountSectionTab(user, 'Organization Access', 'organization-access-settings');
+
+      expect(vi.mocked(EditOrganizationAccessSettings).mock.calls.at(-1)?.[0]).toEqual(
+        expect.objectContaining({application: m2mApplication, access: mockOrganizationAccess}),
+      );
+    });
+
+    it('saves only the organization access when nothing else changed', async () => {
+      const user = userEvent.setup();
+      const mockMutateAsync = vi.fn();
+      mockUseUpdateApplication.mockReturnValue({
+        mutateAsync: mockMutateAsync,
+        isPending: false,
+        error: null,
+        reset: vi.fn(),
+      } as unknown as UseMutationResult<Application, Error, unknown>);
+      mockOrganizationAccess.hasChanges = true;
+      renderComponent();
+
+      await user.click(screen.getByRole('button', {name: /save changes/i}));
+
+      await waitFor(() => expect(mockOrganizationAccess.save).toHaveBeenCalled());
+      expect(mockMutateAsync).not.toHaveBeenCalled();
+    });
+
+    it('shows an organization access save failure in the save bar', () => {
+      mockOrganizationAccess.hasChanges = true;
+      mockOrganizationAccess.saveError = Object.assign(new Error('refused'), {
+        response: {data: {code: 'APP-1054'}},
+      });
+      renderComponent();
+
+      expect(screen.getByRole('alert')).toHaveTextContent('Failed to update organization access. Please try again.');
+    });
+
+    it('resets the organization access with the rest of the page', async () => {
+      const user = userEvent.setup();
+      mockOrganizationAccess.hasChanges = true;
+      renderComponent();
+
+      await user.click(screen.getByRole('button', {name: /reset/i}));
+
+      expect(mockOrganizationAccess.reset).toHaveBeenCalled();
+    });
+  });
+
   describe('Client Secret Popup (just created)', () => {
     afterEach(async () => {
-      const {useLocation} = await import('react-router');
+      const {useLocation, useNavigate} = await import('react-router');
       (useLocation as ReturnType<typeof vi.fn>).mockReturnValue({state: null});
+      (useNavigate as ReturnType<typeof vi.fn>).mockReturnValue(vi.fn());
     });
 
     it('should not render the secret dialog when there is no justCreatedSecret navigation state', () => {
@@ -2352,6 +2728,42 @@ describe('ApplicationEditPage', () => {
       await waitFor(() => {
         expect(screen.queryByTestId('application-show-client-secret')).not.toBeInTheDocument();
       });
+    });
+
+    it('should clear justCreatedSecret from the history entry while still showing the secret', async () => {
+      const mockNavigate = vi.fn();
+      const {useLocation, useNavigate} = await import('react-router');
+      (useNavigate as ReturnType<typeof vi.fn>).mockReturnValue(mockNavigate);
+      (useLocation as ReturnType<typeof vi.fn>).mockReturnValue({
+        pathname: '/applications/test-app-id',
+        state: {
+          justCreatedSecret: {
+            appName: 'My New App',
+            clientSecret: 'brand-new-secret',
+          },
+        },
+      });
+
+      const {rerender} = renderComponent();
+
+      expect(mockNavigate).toHaveBeenCalledWith('/applications/test-app-id', {replace: true, state: null});
+
+      // The replaced history entry no longer carries the secret, but the open dialog keeps it.
+      (useLocation as ReturnType<typeof vi.fn>).mockReturnValue({pathname: '/applications/test-app-id', state: null});
+      rerender(<ApplicationEditPage />);
+
+      expect(screen.getByDisplayValue('brand-new-secret')).toBeInTheDocument();
+      expect(mockNavigate).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not replace the history entry when there is no justCreatedSecret navigation state', async () => {
+      const mockNavigate = vi.fn();
+      const {useNavigate} = await import('react-router');
+      (useNavigate as ReturnType<typeof vi.fn>).mockReturnValue(mockNavigate);
+
+      renderComponent();
+
+      expect(mockNavigate).not.toHaveBeenCalled();
     });
   });
 });

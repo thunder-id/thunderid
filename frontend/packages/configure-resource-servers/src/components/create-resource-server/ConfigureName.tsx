@@ -69,8 +69,8 @@ export default function ConfigureName({
       <FormControl fullWidth required>
         <FormLabel htmlFor="resource-server-name-input">
           {selectedType === 'MCP'
-            ? t('resourceServers:create.name.nameLabelMcp', 'MCP Server Name')
-            : t('resourceServers:create.name.nameLabel', 'Resource Server Name')}
+            ? t('resourceServers:create.name.nameLabelMcp', 'MCP server name')
+            : t('resourceServers:create.name.nameLabel', 'Resource server name')}
         </FormLabel>
         <TextField
           id="resource-server-name-input"

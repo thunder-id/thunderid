@@ -1,47 +1,9 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-export interface SampleBundleConfigs {
-  declarative?: string;
-  env?: string;
-}
+import {buildRegistry, type SampleBundle} from '@thunderid/configure-onboarding';
 
-export interface SampleBundle {
-  configs: SampleBundleConfigs;
-}
-
-const BUNDLE_ROOT = './sample-bundles/';
-
-export const bundleKeyFromPath = (path: string): string => {
-  const tail = path.slice(BUNDLE_ROOT.length);
-  const lastSlash = tail.lastIndexOf('/');
-  return lastSlash === -1 ? tail : tail.slice(0, lastSlash);
-};
-
-export const buildRegistry = (
-  yamlModules: Record<string, string>,
-  envModules: Record<string, string>,
-): Record<string, SampleBundle> => {
-  const registry: Record<string, SampleBundle> = {};
-
-  const ensure = (key: string): SampleBundle => {
-    if (!registry[key]) {
-      registry[key] = {configs: {}};
-    }
-    return registry[key];
-  };
-
-  for (const [path, content] of Object.entries(yamlModules)) {
-    ensure(bundleKeyFromPath(path)).configs.declarative = content;
-  }
-
-  for (const [path, content] of Object.entries(envModules)) {
-    ensure(bundleKeyFromPath(path)).configs.env = content;
-  }
-
-  return registry;
-};
-
+// The quick start bundles the build stages into ./sample-bundles, inlined at build time.
 const yamlModules: Record<string, string> = import.meta.glob('./sample-bundles/**/*.{yaml,yml}', {
   query: '?raw',
   import: 'default',

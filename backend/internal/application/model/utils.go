@@ -3,6 +3,20 @@
 
 package model
 
+import (
+	"slices"
+
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+)
+
+// IsFlowNativeGrantSet reports whether an OAuth client with these grant types may sign users in by
+// running a flow directly: it has the token-exchange grant, which redeems the flow assertion for
+// tokens, and not the redirect-based authorization_code grant.
+func IsFlowNativeGrantSet[T ~string](grantTypes []T) bool {
+	return slices.Contains(grantTypes, T(providers.GrantTypeTokenExchange)) &&
+		!slices.Contains(grantTypes, T(providers.GrantTypeAuthorizationCode))
+}
+
 // IsValidApplicationType reports whether t is a recognized application type.
 func IsValidApplicationType(t ApplicationType) bool {
 	switch t {

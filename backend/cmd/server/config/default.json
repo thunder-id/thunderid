@@ -10,7 +10,17 @@
         "issuer": "",
         "jwks_url": "",
         "audience": "",
-        "required_claims": []
+        "required_claims": [],
+        "user_id_claim": "sub",
+        "user_lookup": {
+          "url": "",
+          "token_url": "",
+          "client_id": "",
+          "client_secret": "",
+          "scopes": [],
+          "name_attribute": "username",
+          "cache_ttl": 300
+        }
       },
       "token_revocation": {
         "enabled": true,
@@ -183,6 +193,9 @@
         "on_refresh_replay": true,
         "on_explicit_revoke": true,
         "on_code_replay": true
+      },
+      "criteria": {
+        "max_entries_per_change": 10000
       }
     },
     "token_exchange": {
@@ -202,6 +215,9 @@
       "length": 6,
       "use_numeric_only": true,
       "validity_period_seconds": 120
+    },
+    "template": {
+      "store": "composite"
     }
   },
   "user": {
@@ -308,6 +324,50 @@
   "resource_sharing": {
     "allow_child_ou_cross_tree_sharing": false
   },
+  "account_access": {
+    "user": {
+      "lock_granularity": "authentication_method",
+      "record_last_login": false,
+      "last_login_resolution_seconds": 3600,
+      "default": {
+        "enabled": true,
+        "threshold": 5,
+        "failure_window_seconds": 3600,
+        "lock_durations_seconds": [
+          300,
+          900,
+          1800,
+          3600
+        ],
+        "lock_decay_seconds": 86400,
+        "max_consecutive_failures": 50
+      },
+      "notifications": {
+        "on_lock": {
+          "email": {
+            "enabled": true
+          }
+        }
+      }
+    },
+    "agent": {
+      "lock_granularity": "authentication_method",
+      "record_last_login": false,
+      "last_login_resolution_seconds": 3600,
+      "default": {
+        "enabled": true,
+        "threshold": 5,
+        "failure_window_seconds": 900,
+        "lock_durations_seconds": [
+          60,
+          300,
+          900
+        ],
+        "lock_decay_seconds": 3600,
+        "max_consecutive_failures": 50
+      }
+    }
+  },
   "organization_unit": {
     "store": "composite"
   },
@@ -360,6 +420,9 @@
   "user_mgt_provider": {
     "type": "default"
   },
+  "identity_governance_provider": {
+    "type": "default"
+  },
   "openid4vp": {
     "client_id_scheme": "x509_san_dns",
     "signing_key_id": "ecdsa-key",
@@ -396,6 +459,8 @@
   "gateway": {
     "max_gateways": 1,
     "max_versions": 3,
+    "allow_private_addresses": false,
+    "removal_confirmation_threshold": 5,
     "store": "composite"
   }
 }

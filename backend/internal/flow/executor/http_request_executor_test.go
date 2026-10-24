@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -120,6 +121,56 @@ func (suite *HTTPRequestExecutorTestSuite) TestResolvePlaceholdersInConfig() {
 	// Verify body placeholders were resolved
 	assert.Equal(suite.T(), "testuser", receivedBody["user"])
 	assert.Equal(suite.T(), "test@example.com", receivedBody["email"])
+}
+
+func (suite *HTTPRequestExecutorTestSuite) TestResolveRequestPlaceholdersInConfig() {
+	var receivedURL string
+	var receivedHeaders http.Header
+	var receivedBody map[string]interface{}
+
+	suite.mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedURL = r.URL.RequestURI()
+		receivedHeaders = r.Header
+		err := json.NewDecoder(r.Body).Decode(&receivedBody)
+		if err != nil {
+			receivedBody = nil
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	ctx := &providers.NodeContext{
+		Context: common.WithCurrentRequest(context.Background(), &providers.CurrentRequest{
+			Headers: map[string][]string{"User-Agent": {"step-agent"}},
+		}),
+		ExecutionID: "test-flow",
+		NodeProperties: map[string]interface{}{
+			"url":    suite.mockServer.URL + "/collect?src={{request(init.query.utm_source)}}",
+			"method": "POST",
+			"headers": map[string]interface{}{
+				"X-Forwarded-Agent": "{{request(init.header.User-Agent)}}",
+				"X-Step-Agent":      "{{request(current.header.User-Agent)}}",
+			},
+			"body": map[string]interface{}{
+				"host":   "{{request(init.header.Host)}}",
+				"source": "{{request(init.query.utm_source)}}",
+			},
+		},
+	}
+	ctx.SetInitiatorRequest(&providers.InitiatorRequest{
+		Headers:     map[string][]string{"User-Agent": {"init-agent"}, "Host": {"id.example.com"}},
+		QueryParams: map[string][]string{"utm_source": {"newsletter"}},
+	})
+
+	execResp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, execResp.Status)
+
+	assert.Equal(suite.T(), "/collect?src=newsletter", receivedURL)
+	assert.Equal(suite.T(), "init-agent", receivedHeaders.Get("X-Forwarded-Agent"))
+	assert.Equal(suite.T(), "step-agent", receivedHeaders.Get("X-Step-Agent"))
+	assert.Equal(suite.T(), "id.example.com", receivedBody["host"])
+	assert.Equal(suite.T(), "newsletter", receivedBody["source"])
 }
 
 func (suite *HTTPRequestExecutorTestSuite) TestResolvePlaceholderUserIDSpecialHandling() {

@@ -4,6 +4,8 @@
 package executor
 
 import (
+	"time"
+
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/executormeta"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -58,8 +60,14 @@ const (
 	ExecutorNameApplicationActionValidator   = executormeta.ExecutorNameApplicationActionValidator
 	ExecutorNameApplicationDelete            = executormeta.ExecutorNameApplicationDelete
 	ExecutorNameClientSecret                 = executormeta.ExecutorNameClientSecret
+	ExecutorNameAccessChangeValidator        = executormeta.ExecutorNameAccessChangeValidator
+	ExecutorNameRole                         = executormeta.ExecutorNameRole
+	ExecutorNameGroup                        = executormeta.ExecutorNameGroup
+	ExecutorNameActionDeletion               = executormeta.ExecutorNameActionDeletion
 	ExecutorNameOwnerResolver                = executormeta.ExecutorNameOwnerResolver
 	ExecutorNameAgentTypeResolver            = executormeta.ExecutorNameAgentTypeResolver
+	ExecutorNameIdentityGovernance           = executormeta.ExecutorNameIdentityGovernance
+	ExecutorNamePreSuspend                   = executormeta.ExecutorNamePreSuspend
 )
 
 // Executor mode constants
@@ -70,6 +78,20 @@ const (
 	ExecutorModeIdentify   = executormeta.ExecutorModeIdentify
 	ExecutorModeResolve    = executormeta.ExecutorModeResolve
 	ExecutorModeCheckState = executormeta.ExecutorModeCheckState
+
+	ExecutorModeRoleAssignmentRemoval  = executormeta.ExecutorModeRoleAssignmentRemoval
+	ExecutorModeRoleDeletion           = executormeta.ExecutorModeRoleDeletion
+	ExecutorModeRolePermissionRemoval  = executormeta.ExecutorModeRolePermissionRemoval
+	ExecutorModeGroupDeletion          = executormeta.ExecutorModeGroupDeletion
+	ExecutorModeGroupMembershipRemoval = executormeta.ExecutorModeGroupMembershipRemoval
+	ExecutorModeActionDeletion         = executormeta.ExecutorModeActionDeletion
+
+	ExecutorModeRevoke        = executormeta.ExecutorModeRevoke
+	ExecutorModeAdvanceCutoff = executormeta.ExecutorModeAdvanceCutoff
+
+	ExecutorModeUnlock    = executormeta.ExecutorModeUnlock
+	ExecutorModeSuspend   = executormeta.ExecutorModeSuspend
+	ExecutorModeUnsuspend = executormeta.ExecutorModeUnsuspend
 )
 
 // defaultProvisioningCategory is the entity default category a provisioning node provisions into when its
@@ -104,6 +126,17 @@ const (
 	revocationInputSubject     = "subject"
 	revocationInputApplication = "targetApplicationId"
 
+	revocationInputRole           = "targetRoleId"
+	revocationInputAssignee       = "targetAssigneeId"
+	revocationInputGroup          = "targetGroupId"
+	revocationInputMember         = "targetMemberId"
+	revocationInputPermissions    = "targetPermissions"
+	revocationInputResourceServer = "targetResourceServerId"
+	revocationInputResource       = "targetResourceId"
+	revocationInputAction         = "targetActionId"
+
+	governanceInputOperatorNote = "operatorNote"
+
 	ouIDKey        = "ouId"
 	defaultOUIDKey = "defaultOUID"
 
@@ -128,8 +161,12 @@ const (
 	// delegatedKey marks an agent that acts on behalf of a signed-in user. Absent means false.
 	delegatedKey = "delegated"
 	// redirectURIsKey carries the callback URIs of a delegated agent, comma separated. It is the
-	// only part of an agent's OAuth configuration a flow supplies; the provider derives the rest.
+	// only part of an agent's OAuth configuration a flow supplies; the agent service derives the rest.
 	redirectURIsKey = "redirectUris"
+	// authFlowIDKey carries the authentication flow a delegated agent's users sign in through.
+	authFlowIDKey = "authFlowId"
+	// allowedUserTypesKey carries the one user type handle a delegated agent's users may belong to.
+	allowedUserTypesKey = "allowedUserTypes"
 
 	// agentAttributeConflictCode is the agent service's unique-attribute clash code. It is repeated
 	// here rather than referenced from internal/agent: that package reaches the flow executor through
@@ -153,8 +190,13 @@ const (
 	// propertyKeyProvisioningMode names the entity category a provisioning node provisions into.
 	// The value is the category name; absent or empty means the default category.
 	propertyKeyProvisioningMode = "mode"
-	propertyKeyRequiredScopes   = "requiredScopes"
-	propertyKeyEmailTemplate    = "emailTemplate"
+	// propertyKeyDelegated sets whether a provisioned agent acts on behalf of a signed-in user when the
+	// flow does not collect the choice itself. A value the flow collects takes precedence. It applies
+	// to the agent category only.
+	propertyKeyDelegated      = "delegated"
+	propertyKeyRequiredScopes = "requiredScopes"
+	propertyKeyEmailTemplate  = "emailTemplate"
+	propertyKeyBestEffort     = "bestEffort"
 	// TODO: Revisit propertyKeyTokenExpiry and propertyKeyMagicLinkURL — these should not be node properties.
 	propertyKeyTokenExpiry                             = "tokenExpiry"
 	propertyKeyMagicLinkURL                            = "magicLinkURL"
@@ -183,6 +225,10 @@ const (
 	// element is optional.
 	propertyKeyConsentFailOnDeny = "failOnDeny"
 )
+
+// suspensionRevocationTTL is how long a suspension's revocation rows are kept.
+// TODO(#5805): use the server-wide maximum token lifetime once it is introduced.
+const suspensionRevocationTTL = 7 * 24 * time.Hour
 
 // nonSearchableInputs contains the list of user inputs/ attributes that are non-searchable.
 var nonSearchableInputs = []string{

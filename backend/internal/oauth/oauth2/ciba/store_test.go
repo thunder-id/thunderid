@@ -103,6 +103,22 @@ func (s *CIBAStoreTestSuite) TestMarkAuthenticated_TransitionsAndRecordsClaims()
 	s.True(authTime.Equal(got.AuthTime))
 }
 
+func (s *CIBAStoreTestSuite) TestMarkAuthenticated_RecordsWhenTheRequestWasAuthorized() {
+	req := s.sampleRequest()
+	s.Require().NoError(s.store.Add(s.ctx, req))
+	sessionAuthTime := time.Now().Add(-time.Hour)
+
+	before := time.Now()
+	s.Require().NoError(s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "user-1", "openid", "", "", "",
+		sessionAuthTime))
+	after := time.Now()
+
+	got, err := s.store.GetByID(s.ctx, req.AuthReqID)
+	s.Require().NoError(err)
+	s.False(got.AuthorizedAt.Before(before))
+	s.False(got.AuthorizedAt.After(after))
+}
+
 func (s *CIBAStoreTestSuite) TestMarkAuthenticated_Missing_ReturnsNotFound() {
 	err := s.store.MarkAuthenticated(s.ctx, "no-such-req", "u", "", "", "", "", time.Now())
 	s.ErrorIs(err, ErrCIBARequestNotFound)

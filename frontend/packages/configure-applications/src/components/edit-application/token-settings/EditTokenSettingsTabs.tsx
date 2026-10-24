@@ -117,23 +117,23 @@ export default function EditTokenSettingsTabs({
           subjectValue={application.id}
           subjectType="application"
           copy={{
-            attributesTitle: t('applications:edit.token.client.attributes.title', 'Access Token Attributes'),
+            attributesTitle: t('applications:edit.token.client.attributes.title', 'Access token attributes'),
             attributesDescription: t(
               'applications:edit.token.client.attributes.description',
               'Extra attributes to add to the access token this application receives for itself.',
             ),
-            attributesLabel: t('applications:edit.token.client.attributes.label', 'Add or Remove Attributes'),
+            attributesLabel: t('applications:edit.token.client.attributes.label', 'Add or remove attributes'),
             attributesHint: t(
               'applications:edit.token.client.attributes.hint',
               "Click on attributes to add them to this application's access token.",
             ),
             attributesEmpty: t('applications:edit.token.client.attributes.empty', 'No attributes available.'),
-            validityTitle: t('applications:edit.token.client.validity.title', 'Token Validity'),
+            validityTitle: t('applications:edit.token.client.validity.title', 'Token validity'),
             validityDescription: t(
               'applications:edit.token.client.validity.description',
               'How long this access token remains valid before expiration.',
             ),
-            validityLabel: t('applications:edit.token.client.validity.label', 'Token Validity'),
+            validityLabel: t('applications:edit.token.client.validity.label', 'Token validity'),
             validityHint: t(
               'applications:edit.token.client.validity.hint',
               'Token validity period in seconds (e.g., 3600 for 1 hour).',

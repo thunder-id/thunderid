@@ -14,6 +14,8 @@ ouHandle: default
 allowSelfRegistration: true
 systemAttributes:
   display: username
+  primaryEmail: email
+  primaryMobile: mobile_number
 schema:
   username:
     type: string
@@ -21,7 +23,7 @@ schema:
     required: true
     unique: true
   email:
-    type: string
+    type: email
     displayName: Email
     required: true
     unique: true
@@ -35,9 +37,10 @@ schema:
     displayName: Last Name
     required: false
   mobile_number:
-    type: string
+    type: mobile
     displayName: Mobile Number
     required: false
+    regex: "^\\+[1-9]\\d{1,14}$"
   sub:
     type: string
     displayName: Subject
@@ -542,6 +545,12 @@ nodes:
   type: TASK_EXECUTION
   executor:
     name: CredentialSetter
+  onSuccess: release_account_locks
+- id: release_account_locks
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unlock
   onSuccess: recovery_complete
 - id: recovery_complete
   type: PROMPT
@@ -858,13 +867,26 @@ nodes:
   type: TASK_EXECUTION
   executor:
     name: CredentialSetter
-  onSuccess: recovery_complete
+  onSuccess: release_account_locks
   layout:
     size:
       width: 206
       height: 113
     position:
       x: 2820
+      y: 340
+- id: release_account_locks
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unlock
+  onSuccess: recovery_complete
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 3200
       y: 340
 - id: recovery_complete
   type: PROMPT
@@ -892,7 +914,7 @@ nodes:
       width: 350
       height: 340
     position:
-      x: 3140
+      x: 3580
       y: 250
 - id: call_authentication
   type: CALL
@@ -913,7 +935,7 @@ nodes:
       width: 85
       height: 34
     position:
-      x: 3600
+      x: 4040
       y: 375
 ---
 resource_type: flow
@@ -2132,6 +2154,7 @@ nodes:
   type: TASK_EXECUTION
   executor:
     name: CriteriaRevocationExecutor
+    mode: revoke
   onSuccess: regenerate_secret
   layout:
     size:
@@ -2144,13 +2167,26 @@ nodes:
   type: TASK_EXECUTION
   executor:
     name: ClientSecretExecutor
-  onSuccess: end
+  onSuccess: advance_cutoff
   layout:
     size:
       width: 250
       height: 113
     position:
       x: 1200
+      y: 175
+- id: advance_cutoff
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+    mode: advance_cutoff
+  onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 1490
       y: 175
 - id: end
   type: END
@@ -2159,13 +2195,13 @@ nodes:
       width: 85
       height: 34
     position:
-      x: 1520
+      x: 1810
       y: 200
 ---
 resource_type: flow
-id: 01900000-0000-7000-8000-00000000007b
-name: Default Agent Onboarding Flow
-handle: default-agent-onboarding-flow
+id: 01900000-0000-7000-8000-000000000081
+name: Default Role Assignment Removal Flow
+handle: default-role-assignment-removal-flow
 flowType: ADMINISTRATION
 nodes:
 - id: start
@@ -2180,9 +2216,12 @@ nodes:
       y: 200
 - id: permission_validator
   type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system
   executor:
     name: PermissionValidator
-  onSuccess: agent_type_resolution
+  onSuccess: pre_role_assignment_removal
   layout:
     size:
       width: 206
@@ -2190,6 +2229,560 @@ nodes:
     position:
       x: 300
       y: 175
+- id: pre_role_assignment_removal
+  type: TASK_EXECUTION
+  executor:
+    name: AccessChangeValidator
+    mode: role_assignment_removal
+  onSuccess: revoke_scopes
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 580
+      y: 175
+- id: revoke_scopes
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+    mode: revoke
+  onSuccess: remove_assignment
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 900
+      y: 175
+- id: remove_assignment
+  type: TASK_EXECUTION
+  executor:
+    name: RoleExecutor
+    mode: role_assignment_removal
+  onSuccess: advance_cutoff
+  layout:
+    size:
+      width: 230
+      height: 113
+    position:
+      x: 1180
+      y: 175
+- id: advance_cutoff
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+    mode: advance_cutoff
+  onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 1470
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1790
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-00000000007c
+name: Default Action Deletion Flow
+handle: default-action-deletion-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system
+  executor:
+    name: PermissionValidator
+  onSuccess: pre_action_deletion
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: pre_action_deletion
+  type: TASK_EXECUTION
+  executor:
+    name: AccessChangeValidator
+    mode: action_deletion
+  onSuccess: revoke_scopes
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 580
+      y: 175
+- id: revoke_scopes
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+    mode: revoke
+  onSuccess: delete_action
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 900
+      y: 175
+- id: delete_action
+  type: TASK_EXECUTION
+  executor:
+    name: ActionDeletionExecutor
+  onSuccess: advance_cutoff
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1180
+      y: 175
+- id: advance_cutoff
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+    mode: advance_cutoff
+  onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 1470
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1790
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-00000000007d
+name: Default Role Deletion Flow
+handle: default-role-deletion-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system
+  executor:
+    name: PermissionValidator
+  onSuccess: pre_role_deletion
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: pre_role_deletion
+  type: TASK_EXECUTION
+  executor:
+    name: AccessChangeValidator
+    mode: role_deletion
+  onSuccess: revoke_scopes
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 580
+      y: 175
+- id: revoke_scopes
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+    mode: revoke
+  onSuccess: delete_role
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 900
+      y: 175
+- id: delete_role
+  type: TASK_EXECUTION
+  executor:
+    name: RoleExecutor
+    mode: role_deletion
+  onSuccess: advance_cutoff
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1180
+      y: 175
+- id: advance_cutoff
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+    mode: advance_cutoff
+  onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 1470
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1790
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-00000000007e
+name: Default Group Deletion Flow
+handle: default-group-deletion-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:group
+  executor:
+    name: PermissionValidator
+  onSuccess: pre_group_deletion
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: pre_group_deletion
+  type: TASK_EXECUTION
+  executor:
+    name: AccessChangeValidator
+    mode: group_deletion
+  onSuccess: revoke_scopes
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 580
+      y: 175
+- id: revoke_scopes
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+    mode: revoke
+  onSuccess: delete_group
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 900
+      y: 175
+- id: delete_group
+  type: TASK_EXECUTION
+  executor:
+    name: GroupExecutor
+    mode: group_deletion
+  onSuccess: advance_cutoff
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1180
+      y: 175
+- id: advance_cutoff
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+    mode: advance_cutoff
+  onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 1470
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1790
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-00000000007f
+name: Default Group Membership Removal Flow
+handle: default-group-membership-removal-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:group
+  executor:
+    name: PermissionValidator
+  onSuccess: pre_group_membership_removal
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: pre_group_membership_removal
+  type: TASK_EXECUTION
+  executor:
+    name: AccessChangeValidator
+    mode: group_membership_removal
+  onSuccess: revoke_scopes
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 580
+      y: 175
+- id: revoke_scopes
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+    mode: revoke
+  onSuccess: remove_member
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 900
+      y: 175
+- id: remove_member
+  type: TASK_EXECUTION
+  executor:
+    name: GroupExecutor
+    mode: group_membership_removal
+  onSuccess: advance_cutoff
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 1180
+      y: 175
+- id: advance_cutoff
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+    mode: advance_cutoff
+  onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 1470
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1790
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000080
+name: Default Role Permission Removal Flow
+handle: default-role-permission-removal-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system
+  executor:
+    name: PermissionValidator
+  onSuccess: pre_role_permission_removal
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: pre_role_permission_removal
+  type: TASK_EXECUTION
+  executor:
+    name: AccessChangeValidator
+    mode: role_permission_removal
+  onSuccess: revoke_scopes
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 580
+      y: 175
+- id: revoke_scopes
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+    mode: revoke
+  onSuccess: update_permissions
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 900
+      y: 175
+- id: update_permissions
+  type: TASK_EXECUTION
+  executor:
+    name: RoleExecutor
+    mode: role_permission_removal
+  onSuccess: advance_cutoff
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 1180
+      y: 175
+- id: advance_cutoff
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+    mode: advance_cutoff
+  onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 1470
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1790
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-00000000007b
+name: Default Agent Onboarding Flow
+handle: default-agent-onboarding-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 61
+      height: 34
+    position:
+      x: 62
+      y: 1131
+- id: permission_validator
+  type: TASK_EXECUTION
+  executor:
+    name: PermissionValidator
+  onSuccess: agent_type_resolution
+  layout:
+    size:
+      width: 268
+      height: 117
+    position:
+      x: 283
+      y: 1089
 - id: agent_type_resolution
   type: TASK_EXECUTION
   properties:
@@ -2201,11 +2794,11 @@ nodes:
   onIncomplete: prompt_agent_type
   layout:
     size:
-      width: 206
-      height: 113
+      width: 278
+      height: 117
     position:
-      x: 440
-      y: 175
+      x: 803
+      y: 1089
 - id: prompt_agent_type
   type: PROMPT
   meta:
@@ -2247,10 +2840,10 @@ nodes:
   layout:
     size:
       width: 350
-      height: 480
+      height: 680
     position:
-      x: 440
-      y: -320
+      x: 1328
+      y: 289
 - id: ou_selection
   type: TASK_EXECUTION
   properties:
@@ -2261,11 +2854,11 @@ nodes:
   onIncomplete: prompt_ou_selection
   layout:
     size:
-      width: 206
-      height: 113
+      width: 217
+      height: 117
     position:
-      x: 580
-      y: 175
+      x: 1417
+      y: 1089
 - id: prompt_ou_selection
   type: PROMPT
   meta:
@@ -2305,23 +2898,23 @@ nodes:
   layout:
     size:
       width: 350
-      height: 525
+      height: 652
     position:
-      x: 580
-      y: -320
+      x: 1947
+      y: 1306
 - id: owner_resolution
   type: TASK_EXECUTION
   executor:
     name: OwnerResolver
-  onSuccess: provisioning
+  onSuccess: prompt_agent_details
   onIncomplete: prompt_owner
   layout:
     size:
-      width: 206
-      height: 113
+      width: 247
+      height: 117
     position:
-      x: 580
-      y: 175
+      x: 2015
+      y: 1089
 - id: prompt_owner
   type: PROMPT
   meta:
@@ -2362,10 +2955,10 @@ nodes:
   layout:
     size:
       width: 350
-      height: 480
+      height: 597
     position:
-      x: 580
-      y: -320
+      x: 2506
+      y: 122
 - id: prompt_agent_details
   type: PROMPT
   meta:
@@ -2395,7 +2988,12 @@ nodes:
         label: '{{ t(agentOnboarding:forms.agent_details.fields.model_provider.label) }}'
         placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.model_provider.placeholder) }}'
         required: false
-        options: []
+        options:
+        - openai
+        - anthropic
+        - gemini
+        - mistral
+        - custom
       - id: input_agent_model
         ref: model
         type: TEXT_INPUT
@@ -2408,7 +3006,15 @@ nodes:
         label: '{{ t(agentOnboarding:forms.agent_details.fields.function.label) }}'
         placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.function.placeholder) }}'
         required: false
-        options: []
+        options:
+        - task-automation
+        - rag-retrieval
+        - code-gen
+        - data-analysis
+        - orchestrator
+        - sub-agent
+        - assistant
+        - custom
       - type: ACTION
         id: action_agent_details
         label: '{{ t(agentOnboarding:forms.agent_details.actions.submit.label) }}'
@@ -2438,10 +3044,10 @@ nodes:
   layout:
     size:
       width: 350
-      height: 646
+      height: 954
     position:
-      x: 1130
-      y: 60
+      x: 3070
+      y: 711
 - id: agent_attribute_uniqueness
   type: TASK_EXECUTION
   properties:
@@ -2452,15 +3058,16 @@ nodes:
   onIncomplete: prompt_agent_details
   layout:
     size:
-      width: 206
-      height: 113
+      width: 312
+      height: 117
     position:
-      x: 1500
-      y: 175
+      x: 3580
+      y: 1089
 - id: provisioning
   type: TASK_EXECUTION
   properties:
     mode: agent
+    delegated: false
     includeOptional: true
   executor:
     name: ProvisioningExecutor
@@ -2469,11 +3076,11 @@ nodes:
   onFailure: prompt_agent_details
   layout:
     size:
-      width: 206
-      height: 113
+      width: 216
+      height: 117
     position:
-      x: 900
-      y: 175
+      x: 4052
+      y: 1089
 - id: agent_credentials
   type: PROMPT
   meta:
@@ -2507,19 +3114,19 @@ nodes:
   layout:
     size:
       width: 350
-      height: 520
+      height: 532
     position:
-      x: 1760
-      y: 60
+      x: 4428
+      y: 882
 - id: end
   type: END
   layout:
     size:
-      width: 85
+      width: 45
       height: 34
     position:
-      x: 2110
-      y: 200
+      x: 4938
+      y: 1131
 ---
 resource_type: theme
 id: 01900000-0000-7000-8000-000000000071
@@ -5727,6 +6334,34 @@ translations:
     forms.owner.fields.owner.label: Owner
     forms.owner.fields.owner.placeholder: Select a user
     forms.owner.actions.next.label: Continue
+    forms.obo_details.title: Details for acting on behalf of a user
+    forms.obo_details.subtitle: Provide the redirect URIs, login flow, and user type for an agent that acts on behalf of a signed-in user.
+    forms.obo_details.fields.redirect_uris.label: Authorized redirect URIs
+    forms.obo_details.fields.redirect_uris.placeholder: https://example.com/callback, https://app.example.com/callback
+    forms.obo_details.fields.redirect_uris.hint: The callbacks users return to after signing in. Enter several separated by commas.
+    forms.obo_details.fields.auth_flow.label: Login flow
+    forms.obo_details.fields.auth_flow.placeholder: Select a login flow
+    forms.obo_details.fields.auth_flow.hint: The login flow that signs users in to this agent.
+    forms.obo_details.fields.user_type.label: User type
+    forms.obo_details.fields.user_type.placeholder: Select a user type
+    forms.obo_details.fields.user_type.hint: The user type that may sign in through this agent.
+    forms.obo_details.actions.next.label: Continue
+    forms.delegation.title: Agent mode
+    forms.delegation.subtitle: Choose how this agent acts. It can use its own identity or act on behalf of a signed-in user.
+    forms.delegation.fields.delegated.label: Act on behalf of a signed-in user
+    forms.delegation.fields.redirect_uris.label: Authorized redirect URIs
+    forms.delegation.fields.redirect_uris.placeholder: https://example.com/callback, https://app.example.com/callback
+    forms.delegation.fields.redirect_uris.hint: Used when the agent acts on behalf of a signed-in user. The callbacks users return to after signing in. Enter several separated by commas.
+    forms.delegation.fields.auth_flow.label: Login flow
+    forms.delegation.fields.auth_flow.placeholder: Select a login flow
+    forms.delegation.fields.auth_flow.hint: Used when the agent acts on behalf of a signed-in user. The login flow that signs users in to this agent.
+    forms.delegation.fields.user_type.label: User type
+    forms.delegation.fields.user_type.placeholder: Select a user type
+    forms.delegation.fields.user_type.hint: Used when the agent acts on behalf of a signed-in user. The user type that may sign in through this agent.
+    forms.delegation.actions.next.label: Continue
+    forms.missing_inputs.title: Complete the agent details
+    forms.missing_inputs.subtitle: These details are still needed before the agent can be created.
+    forms.missing_inputs.actions.next.label: Continue
     forms.agent_details.title: Agent Details
     forms.agent_details.subtitle: Name the agent and describe the model it runs on and what it does.
     forms.agent_details.fields.name.label: Name
@@ -5980,187 +6615,1021 @@ translations:
   elements:
     fields.usertype.label: User Type
     fields.usertype.placeholder: Select User Type
+    forms.link_prompt.title: Link your account
+    forms.link_prompt.description: Your details matched the account below. Do you want to link to it permanently?
+    forms.link_prompt.actions.confirm.label: Link account
+    forms.link_prompt.actions.reject.label: No, I want a separate account
+    forms.link_picker.title: Choose your account
+    forms.link_picker.description: This sign-in is linked to more than one account. Choose the one to continue with.
+    forms.link_picker.fields.ou.label: Organization
+    forms.link_picker.fields.ou.placeholder: Select an organization
+    forms.link_picker.actions.continue.label: Continue
   signout:
     forms.confirm.title: Sign out?
     forms.confirm.description: You are about to sign out of your account. Do you want to continue?
     forms.confirm.actions.submit.label: Sign out
     errors.failed.description: Something went wrong. Please try again.
   notification:
-    templates.list.title: Notification Templates
+    userInvite.email.subject: "You're Invited to Register"
+    userInvite.email.heading: "You've Been Invited!"
+    userInvite.email.intro: "You have been invited to create your account. Click the link below to complete your registration:"
+    userInvite.email.cta: "Complete Registration"
+    userInvite.email.linkFallback: "If the button above doesn't work, copy and paste the following link into your browser:"
+    userInvite.email.ignore: "If you did not expect this invitation, you can safely ignore this email."
+    userInvite.sms.body: "You've been invited to register. Complete your account setup here: {{ctx(inviteLink)}}"
+    selfRegistration.email.subject: "Complete Your Registration for {{ctx(appName)}}"
+    selfRegistration.email.heading: "Complete Your Registration for {{ctx(appName)}}"
+    selfRegistration.email.intro: "You recently started the registration process for <strong>{{ctx(appName)}}</strong>. Click the link below to complete your account setup:"
+    selfRegistration.email.cta: "Complete Registration"
+    selfRegistration.email.linkFallback: "If the button above doesn't work, copy and paste the following link into your browser:"
+    selfRegistration.email.ignore: "If you did not initiate this request, you can safely ignore this email."
+    selfRegistration.sms.body: "{{ctx(appName)}}: Finish your registration by clicking here: {{ctx(inviteLink)}}"
+    magicLink.email.subject: "Sign in to your account"
+    magicLink.email.heading: "Sign in to your account"
+    magicLink.email.intro: "Use the secure link below to sign in:"
+    magicLink.email.cta: "Sign in"
+    magicLink.email.expiry: "This link expires in {{ctx(expiryTime)}}."
+    magicLink.email.linkFallback: "If the button above doesn't work, copy and paste the following link into your browser:"
+    magicLink.email.ignore: "If you did not request this, you can safely ignore this email."
+    passwordRecovery.email.subject: "Reset Your Password"
+    passwordRecovery.email.heading: "Reset Your Password"
+    passwordRecovery.email.greeting: "Hello,"
+    passwordRecovery.email.intro: "A request was made to reset your account password for {{ctx(appName)}}. Please use the button below to set a new password:"
+    passwordRecovery.email.cta: "Reset Password"
+    passwordRecovery.email.linkFallback: "If the button doesn't work, copy and paste this link into your browser:"
+    passwordRecovery.email.expiry: "This link will expire in <strong>30 minutes</strong> for your security."
+    passwordRecovery.email.ignore: "If you did not request a password reset, you can safely ignore this email, your account will remain unchanged."
+    cibaNotification.email.subject: "Authentication Request from {{ctx(appName)}}"
+    cibaNotification.email.heading: "Authentication Request"
+    cibaNotification.email.intro: "<strong>{{ctx(appName)}}</strong> is requesting to authenticate you."
+    cibaNotification.email.prompt: "If you recognize this request, click the link below to approve:"
+    cibaNotification.email.cta: "Approve Authentication"
+    cibaNotification.email.linkFallback: "If the button above doesn't work, copy and paste the following link into your browser:"
+    cibaNotification.email.ignore: "If you did not initiate this request, you can safely ignore this email."
+    cibaNotification.sms.body: "{{ctx(appName)}}: {{ctx(bindingMessage)}} Tap to approve: {{ctx(inviteLink)}}"
+    otp.email.subject: "Your verification code"
+    otp.email.heading: "Your verification code"
+    otp.email.intro: "Use the following code to complete your verification:"
+    otp.email.expiry: "This code will expire in {{ctx(expiryTime)}}."
+    otp.email.ignore: "If you did not request this, you can safely ignore this email."
+    otp.sms.body: "Your verification code is: {{ctx(otpCode)}}. It expires in {{ctx(expiryTime)}}."
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000087
+name: Default User Unlock Flow
+handle: default-user-unlock-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:user
+  executor:
+    name: PermissionValidator
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unlock
+  onSuccess: notify_holder
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 680
+      y: 175
+- id: notify_holder
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: account-unlocked
+    bestEffort: true
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1060
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1440
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000086
+name: Default Agent Unlock Flow
+handle: default-agent-unlock-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:agent
+  executor:
+    name: PermissionValidator
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unlock
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 680
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1060
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000088
+name: Default User Suspend Flow
+handle: default-user-suspend-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:user
+  executor:
+    name: PermissionValidator
+  onSuccess: pre_suspend
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: pre_suspend
+  type: TASK_EXECUTION
+  executor:
+    name: PreSuspendExecutor
+  onSuccess: revoke_tokens
+  layout:
+    size:
+      width: 220
+      height: 113
+    position:
+      x: 680
+      y: 175
+- id: revoke_tokens
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+  onSuccess: revoke_sessions
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1060
+      y: 175
+- id: revoke_sessions
+  type: TASK_EXECUTION
+  executor:
+    name: SessionRevocationExecutor
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1440
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: suspend
+  onSuccess: notify_holder
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1820
+      y: 175
+- id: notify_holder
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: account-suspended
+    bestEffort: true
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 2200
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 2580
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000089
+name: Default User Unsuspend Flow
+handle: default-user-unsuspend-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:user
+  executor:
+    name: PermissionValidator
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unsuspend
+  onSuccess: notify_holder
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 680
+      y: 175
+- id: notify_holder
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: account-unsuspended
+    bestEffort: true
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1060
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1440
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000082
+name: Default Agent Suspend Flow
+handle: default-agent-suspend-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:agent
+  executor:
+    name: PermissionValidator
+  onSuccess: pre_suspend
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: pre_suspend
+  type: TASK_EXECUTION
+  executor:
+    name: PreSuspendExecutor
+  onSuccess: revoke_tokens
+  layout:
+    size:
+      width: 220
+      height: 113
+    position:
+      x: 680
+      y: 175
+- id: revoke_tokens
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+  onSuccess: revoke_sessions
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1060
+      y: 175
+- id: revoke_sessions
+  type: TASK_EXECUTION
+  executor:
+    name: SessionRevocationExecutor
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1440
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: suspend
+  onSuccess: notify_holder
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1820
+      y: 175
+- id: notify_holder
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: account-suspended
+    bestEffort: true
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 2200
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 2580
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000083
+name: Default Agent Unsuspend Flow
+handle: default-agent-unsuspend-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:agent
+  executor:
+    name: PermissionValidator
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unsuspend
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 680
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1060
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000084
+name: Default Application Suspend Flow
+handle: default-application-suspend-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system
+  executor:
+    name: PermissionValidator
+  onSuccess: pre_suspend
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: pre_suspend
+  type: TASK_EXECUTION
+  executor:
+    name: PreSuspendExecutor
+  onSuccess: revoke_tokens
+  layout:
+    size:
+      width: 220
+      height: 113
+    position:
+      x: 680
+      y: 175
+- id: revoke_tokens
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+  onSuccess: revoke_sessions
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1060
+      y: 175
+- id: revoke_sessions
+  type: TASK_EXECUTION
+  executor:
+    name: SessionRevocationExecutor
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1440
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: suspend
+  onSuccess: notify_holder
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1820
+      y: 175
+- id: notify_holder
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: account-suspended
+    bestEffort: true
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 2200
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 2580
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000085
+name: Default Application Unsuspend Flow
+handle: default-application-unsuspend-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system
+  executor:
+    name: PermissionValidator
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unsuspend
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 680
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1060
+      y: 200
 ---
 resource_type: notification_template
 channel: email
 handle: user-invite
+ouHandle: default
 displayName: User Invitation Email
 description: Sent to invite a new user to complete their registration.
 content:
-  subject: "You're Invited to Register"
+  subject: "{{t(userInvite.email.subject)}}"
   body: |
     <!DOCTYPE html>
     <html>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
-      <h2>You've Been Invited!</h2>
-      <p>You have been invited to create your account. Click the link below to complete your registration:</p>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: {{design(palette.text.primary)}}; background-color: {{design(palette.background.default)}};">
+      <h2>{{t(userInvite.email.heading)}}</h2>
+      <p>{{t(userInvite.email.intro)}}</p>
       <p><a href="{{ctx(inviteLink)}}" style="display: inline-block; padding: 10px 20px;
-        background-color: #3a87ed; color: #fff; text-decoration: none;
-        border-radius: 4px;">Complete Registration</a></p>
-      <p>If the button above doesn't work, copy and paste the following link into your browser:</p>
+        background-color: {{design(palette.primary.main)}}; color: {{design(palette.primary.contrastText)}}; text-decoration: none;
+        border-radius: 4px;">{{t(userInvite.email.cta)}}</a></p>
+      <p>{{t(userInvite.email.linkFallback)}}</p>
       <p><a href="{{ctx(inviteLink)}}">{{ctx(inviteLink)}}</a></p>
-      <p>If you did not expect this invitation, you can safely ignore this email.</p>
+      <p>{{t(userInvite.email.ignore)}}</p>
     </body>
     </html>
 ---
 resource_type: notification_template
 channel: sms
 handle: user-invite
+ouHandle: default
 displayName: User Invitation SMS
 description: Sent to invite a new user to complete their registration.
 content:
-  body: "You've been invited to register. Complete your account setup here: {{ctx(inviteLink)}}"
+  body: "{{t(userInvite.sms.body)}}"
 ---
 resource_type: notification_template
 channel: email
 handle: self-registration
+ouHandle: default
 displayName: Self Registration Invite Email
 description: Sent to complete a self-service registration.
 content:
-  subject: "Complete Your Registration for {{ctx(appName)}}"
+  subject: "{{t(selfRegistration.email.subject)}}"
   body: |
     <!DOCTYPE html>
     <html>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
-      <h2>Complete Your Registration for {{ctx(appName)}}</h2>
-      <p>You recently started the registration process for <strong>{{ctx(appName)}}</strong>. Click the link below to complete your account setup:</p>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: {{design(palette.text.primary)}}; background-color: {{design(palette.background.default)}};">
+      <h2>{{t(selfRegistration.email.heading)}}</h2>
+      <p>{{t(selfRegistration.email.intro)}}</p>
       <p><a href="{{ctx(inviteLink)}}" style="display: inline-block; padding: 10px 20px;
-        background-color: #3a87ed; color: #fff; text-decoration: none;
-        border-radius: 4px;">Complete Registration</a></p>
-      <p>If the button above doesn't work, copy and paste the following link into your browser:</p>
+        background-color: {{design(palette.primary.main)}}; color: {{design(palette.primary.contrastText)}}; text-decoration: none;
+        border-radius: 4px;">{{t(selfRegistration.email.cta)}}</a></p>
+      <p>{{t(selfRegistration.email.linkFallback)}}</p>
       <p><a href="{{ctx(inviteLink)}}">{{ctx(inviteLink)}}</a></p>
-      <p>If you did not initiate this request, you can safely ignore this email.</p>
+      <p>{{t(selfRegistration.email.ignore)}}</p>
     </body>
     </html>
 ---
 resource_type: notification_template
 channel: sms
 handle: self-registration
+ouHandle: default
 displayName: Self Registration Invite SMS
 description: Sent to complete a self-service registration.
 content:
-  body: "{{ctx(appName)}}: Finish your registration by clicking here: {{ctx(inviteLink)}}"
+  body: "{{t(selfRegistration.sms.body)}}"
 ---
 resource_type: notification_template
 channel: email
 handle: magic-link
+ouHandle: default
 displayName: Magic Link Sign-In Email
 description: Sent to let a user sign in through a secure link.
 content:
-  subject: "Sign in to your account"
+  subject: "{{t(magicLink.email.subject)}}"
   body: |
     <!DOCTYPE html>
     <html>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
-      <h2>Sign in to your account</h2>
-      <p>Use the secure link below to sign in:</p>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: {{design(palette.text.primary)}}; background-color: {{design(palette.background.default)}};">
+      <h2>{{t(magicLink.email.heading)}}</h2>
+      <p>{{t(magicLink.email.intro)}}</p>
       <p><a href="{{ctx(magicLink)}}" style="display: inline-block; padding: 10px 20px;
-        background-color: #3a87ed; color: #fff; text-decoration: none;
-        border-radius: 4px;">Sign in</a></p>
-      <p>This link expires in {{ctx(expiryTime)}}.</p>
-      <p>If the button above doesn't work, copy and paste the following link into your browser:</p>
+        background-color: {{design(palette.primary.main)}}; color: {{design(palette.primary.contrastText)}}; text-decoration: none;
+        border-radius: 4px;">{{t(magicLink.email.cta)}}</a></p>
+      <p>{{t(magicLink.email.expiry)}}</p>
+      <p>{{t(magicLink.email.linkFallback)}}</p>
       <p style="word-break: break-all;"><a href="{{ctx(magicLink)}}">{{ctx(magicLink)}}</a></p>
-      <p>If you did not request this, you can safely ignore this email.</p>
+      <p>{{t(magicLink.email.ignore)}}</p>
     </body>
     </html>
 ---
 resource_type: notification_template
 channel: email
 handle: password-recovery
+ouHandle: default
 displayName: Password Recovery Email
 description: Sent to let a user reset their account password.
 content:
-  subject: "Reset Your Password"
+  subject: "{{t(passwordRecovery.email.subject)}}"
   body: |
     <!DOCTYPE html>
     <html>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
-      <h2>Reset Your Password</h2>
-      <p>Hello,</p>
-      <p>A request was made to reset your account password for {{ctx(appName)}}. Please use the button below to set a new password:</p>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: {{design(palette.text.primary)}}; background-color: {{design(palette.background.default)}};">
+      <h2>{{t(passwordRecovery.email.heading)}}</h2>
+      <p>{{t(passwordRecovery.email.greeting)}}</p>
+      <p>{{t(passwordRecovery.email.intro)}}</p>
       <p>
         <a href="{{ctx(inviteLink)}}" style="display: inline-block; padding: 12px 24px;
-        background-color: #3a87ed; color: #ffffff; text-decoration: none;
+        background-color: {{design(palette.primary.main)}}; color: {{design(palette.primary.contrastText)}}; text-decoration: none;
         border-radius: 4px; font-weight: bold;">
-          Reset Password
+          {{t(passwordRecovery.email.cta)}}
         </a>
       </p>
-      <p>If the button doesn't work, copy and paste this link into your browser:</p>
+      <p>{{t(passwordRecovery.email.linkFallback)}}</p>
       <p style="word-break: break-all;">
         <a href="{{ctx(inviteLink)}}">{{ctx(inviteLink)}}</a>
       </p>
-      <p>This link will expire in <strong>30 minutes</strong> for your security.</p>
-      <p>If you did not request a password reset, you can safely ignore this email, your account will remain unchanged.</p>
+      <p>{{t(passwordRecovery.email.expiry)}}</p>
+      <p>{{t(passwordRecovery.email.ignore)}}</p>
     </body>
     </html>
 ---
 resource_type: notification_template
 channel: email
 handle: ciba-notification
+ouHandle: default
 displayName: CIBA Authentication Notification Email
 description: Sent to approve a backchannel authentication request.
 content:
-  subject: "Authentication Request from {{ctx(appName)}}"
+  subject: "{{t(cibaNotification.email.subject)}}"
   body: |
     <!DOCTYPE html>
     <html>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
-      <h2>Authentication Request</h2>
-      <p><strong>{{ctx(appName)}}</strong> is requesting to authenticate you.</p>
-      <p style="padding: 12px; background-color: #f5f5f5; border-left: 4px solid #3a87ed;
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: {{design(palette.text.primary)}}; background-color: {{design(palette.background.default)}};">
+      <h2>{{t(cibaNotification.email.heading)}}</h2>
+      <p>{{t(cibaNotification.email.intro)}}</p>
+      <p style="padding: 12px; background-color: {{design(palette.background.paper)}}; border-left: 4px solid {{design(palette.primary.main)}};
         border-radius: 4px; margin: 16px 0;">{{ctx(bindingMessage)}}</p>
-      <p>If you recognize this request, click the link below to approve:</p>
+      <p>{{t(cibaNotification.email.prompt)}}</p>
       <p><a href="{{ctx(inviteLink)}}" style="display: inline-block; padding: 10px 20px;
-        background-color: #3a87ed; color: #fff; text-decoration: none;
-        border-radius: 4px;">Approve Authentication</a></p>
-      <p>If the button above doesn't work, copy and paste the following link into your browser:</p>
+        background-color: {{design(palette.primary.main)}}; color: {{design(palette.primary.contrastText)}}; text-decoration: none;
+        border-radius: 4px;">{{t(cibaNotification.email.cta)}}</a></p>
+      <p>{{t(cibaNotification.email.linkFallback)}}</p>
       <p><a href="{{ctx(inviteLink)}}">{{ctx(inviteLink)}}</a></p>
-      <p>If you did not initiate this request, you can safely ignore this email.</p>
+      <p>{{t(cibaNotification.email.ignore)}}</p>
     </body>
     </html>
 ---
 resource_type: notification_template
 channel: sms
 handle: ciba-notification
+ouHandle: default
 displayName: CIBA Authentication Notification SMS
 description: Sent to approve a backchannel authentication request.
 content:
-  body: "{{ctx(appName)}}: {{ctx(bindingMessage)}} Tap to approve: {{ctx(inviteLink)}}"
+  body: "{{t(cibaNotification.sms.body)}}"
 ---
 resource_type: notification_template
 channel: email
 handle: otp
+ouHandle: default
 displayName: Email OTP Verification
 description: Sent to verify a user's email address with a one-time passcode.
 content:
-  subject: "Your verification code"
+  subject: "{{t(otp.email.subject)}}"
   body: |
     <!DOCTYPE html>
     <html>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
-      <h2>Your verification code</h2>
-      <p>Use the following code to complete your verification:</p>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: {{design(palette.text.primary)}}; background-color: {{design(palette.background.default)}};">
+      <h2>{{t(otp.email.heading)}}</h2>
+      <p>{{t(otp.email.intro)}}</p>
       <table cellpadding="0" cellspacing="0" border="0">
         <tr>
-          <td style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #3a87ed; background: #f0f4ff; border: 1px solid #c0d0f0; border-radius: 6px; padding: 12px 24px;">{{ctx(otpCode)}}</td>
+          <td style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: {{design(palette.primary.main)}}; background: {{design(palette.background.paper)}}; border: 1px solid {{design(palette.primary.main)}}; border-radius: 6px; padding: 12px 24px;">{{ctx(otpCode)}}</td>
         </tr>
       </table>
-      <p>This code will expire in {{ctx(expiryTime)}}.</p>
-      <p>If you did not request this, you can safely ignore this email.</p>
+      <p>{{t(otp.email.expiry)}}</p>
+      <p>{{t(otp.email.ignore)}}</p>
     </body>
     </html>
 ---
 resource_type: notification_template
 channel: sms
 handle: otp
+ouHandle: default
 displayName: SMS OTP Verification
 description: Sent to verify a user's phone number with a one-time passcode.
 content:
-  body: "Your verification code is: {{ctx(otpCode)}}. It expires in {{ctx(expiryTime)}}."
+  body: "{{t(otp.sms.body)}}"
+---
+resource_type: notification_template
+channel: email
+handle: authentication-method-locked
+ouHandle: default
+displayName: Account Temporarily Locked Email
+description: Sent when repeated failed sign-ins lock one sign-in method for a limited time.
+content:
+  subject: "Sign-in was temporarily locked on your account"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
+      <h2>Sign-in temporarily locked</h2>
+      <p>The {{ctx(authenticationMethod)}} sign-in method on your account has been temporarily locked due to multiple failed attempts.</p>
+      <p><strong>It will be available again in {{ctx(lockDuration)}}, on {{ctx(unlockTime)}} UTC.</strong></p>
+      <p>To regain access sooner, complete account recovery or contact your administrator.</p>
+      <p><strong>Didn't try to sign in?</strong> Someone else may be trying to get into your account. Report this to your administrator. Once you regain access, change your credentials and check that your email address and phone number are still yours.</p>
+    </body>
+    </html>
+---
+resource_type: notification_template
+channel: email
+handle: authentication-method-locked-permanent
+ouHandle: default
+displayName: Account Locked Email
+description: Sent when repeated failed sign-ins lock one sign-in method until it is released.
+content:
+  subject: "Sign-in was locked on your account"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
+      <h2>Sign-in locked</h2>
+      <p>The {{ctx(authenticationMethod)}} sign-in method on your account has been locked due to multiple failed attempts.</p>
+      <p><strong>This lock does not expire automatically.</strong></p>
+      <p>To regain access, complete account recovery or contact your administrator.</p>
+      <p><strong>Didn't try to sign in?</strong> Someone else may be trying to get into your account. Report this to your administrator. Once you regain access, change your credentials and check that your email address and phone number are still yours.</p>
+    </body>
+    </html>
+---
+resource_type: notification_template
+channel: email
+handle: account-locked
+ouHandle: default
+displayName: Account Sign-in Temporarily Locked Email
+description: Sent when repeated failed sign-ins lock every sign-in method on the account for a limited time.
+content:
+  subject: "Sign-in was temporarily locked on your account"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
+      <h2>Sign-in temporarily locked</h2>
+      <p>Sign-in to your account has been temporarily locked due to multiple failed attempts.</p>
+      <p><strong>It will be available again in {{ctx(lockDuration)}}, on {{ctx(unlockTime)}} UTC.</strong></p>
+      <p>To regain access sooner, complete account recovery or contact your administrator.</p>
+      <p><strong>Didn't try to sign in?</strong> Someone else may be trying to get into your account. Report this to your administrator. Once you regain access, change your credentials and check that your email address and phone number are still yours.</p>
+    </body>
+    </html>
+---
+resource_type: notification_template
+channel: email
+handle: account-locked-permanent
+ouHandle: default
+displayName: Account Sign-in Locked Email
+description: Sent when repeated failed sign-ins lock every sign-in method on the account until it is released.
+content:
+  subject: "Sign-in was locked on your account"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
+      <h2>Sign-in locked</h2>
+      <p>Sign-in to your account has been locked due to multiple failed attempts.</p>
+      <p><strong>This lock does not expire automatically.</strong></p>
+      <p>To regain access, complete account recovery or contact your administrator.</p>
+      <p><strong>Didn't try to sign in?</strong> Someone else may be trying to get into your account. Report this to your administrator. Once you regain access, change your credentials and check that your email address and phone number are still yours.</p>
+    </body>
+    </html>
+---
+resource_type: notification_template
+channel: email
+handle: account-suspended
+ouHandle: default
+displayName: Account Suspended Email
+description: Sent when an administrator suspends an account.
+content:
+  subject: "Your account has been suspended"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
+      <h2>Your account has been suspended</h2>
+      <p>Your account has been suspended by an administrator. You can no longer sign in, and your existing sessions have been ended.</p>
+      <p>To regain access, contact your administrator. Only an administrator can lift the suspension.</p>
+    </body>
+    </html>
+---
+resource_type: notification_template
+channel: email
+handle: account-unsuspended
+ouHandle: default
+displayName: Account Suspension Lifted Email
+description: Sent when an administrator lifts a suspension. The account stays locked until it is recovered or unlocked.
+content:
+  subject: "The suspension on your account has been lifted"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
+      <h2>Your account suspension has been lifted</h2>
+      <p>An administrator has lifted the suspension on your account.</p>
+      <p><strong>Your account is still locked.</strong> To sign in again, complete account recovery or contact your administrator.</p>
+    </body>
+    </html>
+---
+resource_type: notification_template
+channel: email
+handle: account-unlocked
+ouHandle: default
+displayName: Account Unlocked Email
+description: Sent when an administrator unlocks an account.
+content:
+  subject: "Your account has been unlocked"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
+      <h2>Your account has been unlocked</h2>
+      <p>An administrator has unlocked your account. You can sign in again.</p>
+    </body>
+    </html>

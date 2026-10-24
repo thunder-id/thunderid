@@ -27,6 +27,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
 
 const emailData: CreateTemplateRequest = {
   handle: 'otp-verification',
+  ouId: 'ou-default',
   displayName: 'OTP Verification',
   design: {colorScheme: 'light'},
   content: {subject: 'Your code', body: '<p>{{ctx(otpCode)}}</p>'},
@@ -83,7 +84,10 @@ describe('useCreateNotificationTemplate', () => {
     mockHttpRequest.mockRejectedValueOnce(apiError);
 
     const {result} = renderHook(() => useCreateNotificationTemplate());
-    result.current.mutate({channel: 'sms', data: {handle: 'h', displayName: 'n', content: {body: 'x'}}});
+    result.current.mutate({
+      channel: 'sms',
+      data: {handle: 'h', ouId: 'ou-default', displayName: 'n', content: {body: 'x'}},
+    });
 
     await waitFor(() => {
       expect(result.current.isError).toBe(true);

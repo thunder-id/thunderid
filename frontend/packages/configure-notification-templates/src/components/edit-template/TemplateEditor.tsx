@@ -149,7 +149,7 @@ export default function TemplateEditor({channel, template}: TemplateEditorProps)
         onClick={handleBack}
         sx={{mb: 1, color: 'text.secondary'}}
       >
-        {t('editor.back', 'Notification Templates')}
+        {t('editor.back', 'Notification templates')}
       </Button>
 
       <PageTitle>

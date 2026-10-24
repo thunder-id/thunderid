@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {ExternalLink} from '@thunderid/components';
+import {DocumentTitle, ExternalLink} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {PageContent, PageTitle, Stack, Button} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -19,6 +19,7 @@ export default function VerifiableCredentialsListPage(): JSX.Element {
 
   return (
     <PageContent>
+      <DocumentTitle title={t('verifiable-credentials:listing.title', 'Credential templates')} />
       <PageTitle>
         <PageTitle.Header>{t('verifiable-credentials:listing.title')}</PageTitle.Header>
         <PageTitle.SubHeader>

@@ -220,6 +220,32 @@ func TestValidateEntityType(t *testing.T) {
 			errMsg:  "invalid schema for entity type",
 		},
 		{
+			name: "multiple contacts without primary allowed",
+			schema: &EntityType{
+				ID:          "schema-1",
+				Handle:      "valid-schema",
+				DisplayName: "Valid Schema",
+				OUID:        "ou-1",
+				Category:    TypeCategoryUser,
+				Schema:      json.RawMessage(`{"work":{"type":"email"},"recovery":{"type":"email"}}`),
+			},
+			wantErr: false,
+		},
+		{
+			name: "agent primary contact rejected",
+			schema: &EntityType{
+				ID:               "schema-1",
+				Handle:           "valid-schema",
+				DisplayName:      "Valid Schema",
+				OUID:             "ou-1",
+				Category:         TypeCategoryAgent,
+				Schema:           json.RawMessage(`{"work":{"type":"email"}}`),
+				SystemAttributes: &SystemAttributes{PrimaryEmail: "work"},
+			},
+			wantErr: true,
+			errMsg:  "invalid system attributes",
+		},
+		{
 			name: "empty schema definition rejected",
 			schema: &EntityType{
 				ID:          "schema-1",
@@ -714,4 +740,14 @@ func TestLoadDeclarativeResources_RejectsDuplicateHandlesAcrossFiles(t *testing.
 	err := loadDeclarativeResources(fileStore, mockSvc)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "duplicate entity type handle")
+}
+
+func TestValidateEntityType_DefaultsPrimaryContacts(t *testing.T) {
+	entityType := &EntityType{
+		ID: "id", Handle: "contacts", DisplayName: "Contacts", OUID: "ou", Category: TypeCategoryUser,
+		Schema: json.RawMessage(`{"work":{"type":"email"},"phone":{"type":"mobile"}}`),
+	}
+
+	assert.NoError(t, validateEntityType(entityType))
+	assert.Equal(t, &SystemAttributes{PrimaryEmail: "work", PrimaryMobile: "phone"}, entityType.SystemAttributes)
 }

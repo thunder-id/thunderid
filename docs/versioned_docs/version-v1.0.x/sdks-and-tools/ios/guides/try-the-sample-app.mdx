@@ -6,12 +6,12 @@ description: Run the {{ProductName}} iOS sample app to see the full authenticati
 
 # Try the iOS Sample App
 
-The SDK repository ships a sample app in
-[`Samples/Quickstart`](https://github.com/thunder-id/ios-sdks/tree/main/Samples/Quickstart) that
+The [samples repository](https://github.com/thunder-id/samples) ships a sample app in
+[`quickstarts/ios`](https://github.com/thunder-id/samples/tree/main/quickstarts/ios) that
 exercises the full authentication lifecycle end to end: sign-in, sign-up, and sign-out via the
 SDK's app-native Flow Execution.
 
-<SdkQuickstartDownload packageId="ios" icon={<IOSLogo size={22} />} />
+<SdkQuickstartDownload packageId="ios" sample="quickstarts/ios" icon={<IOSLogo size={22} />} />
 
 ## Prerequisites
 
@@ -21,8 +21,9 @@ SDK's app-native Flow Execution.
 ## Prepare the iOS Sample
 
 ```bash
-cd Samples/Quickstart
-cp Config.plist.example Sources/Config.plist
+git clone https://github.com/thunder-id/samples.git
+cd samples/quickstarts/ios
+cp Sources/Config.plist.example Sources/Config.plist
 # Edit Sources/Config.plist with your {{ProductName}} base URL and application ID
 ```
 

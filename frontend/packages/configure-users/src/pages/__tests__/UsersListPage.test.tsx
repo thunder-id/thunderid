@@ -44,6 +44,12 @@ describe('UsersListPage', () => {
     expect(screen.getByText('Users')).toBeInTheDocument();
   });
 
+  it('sets the document title', async () => {
+    render(<UsersListPage />);
+
+    await waitFor(() => expect(document.title).toBe('Users | ThunderID'));
+  });
+
   it('renders page description', () => {
     render(<UsersListPage />);
 

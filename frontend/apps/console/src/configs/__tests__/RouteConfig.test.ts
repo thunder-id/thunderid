@@ -126,9 +126,9 @@ describe('RouteConfig', () => {
     expect(RouteConfig.welcome.getStartedApplicationsTypes()).toBe('/welcome/get-started/applications/types');
     expect(RouteConfig.welcome.getStartedApplicationsCreate()).toBe('/welcome/get-started/applications/create');
     expect(RouteConfig.welcome.getStartedAgentsCreate()).toBe('/welcome/get-started/agents/create');
-    expect(RouteConfig.welcome.tryoutSecuringApplication()).toBe('/welcome/tryout/securing-application');
-    expect(RouteConfig.welcome.tryoutAiAgents()).toBe('/welcome/tryout/ai-agents');
-    expect(RouteConfig.welcome.tryoutMcp()).toBe('/welcome/tryout/mcp');
+    expect(RouteConfig.welcome.tryoutSecuringApplication?.()).toBe('/welcome/tryout/securing-application');
+    expect(RouteConfig.welcome.tryoutAiAgents?.()).toBe('/welcome/tryout/ai-agents');
+    expect(RouteConfig.welcome.tryoutMcp?.()).toBe('/welcome/tryout/mcp');
     expect(RouteConfig.welcome.importConfigurationUpload()).toBe('/welcome/import-configuration');
     expect(RouteConfig.welcome.importConfigurationValidate()).toBe('/welcome/import-configuration/validate');
     expect(RouteConfig.welcome.importConfigurationSummary()).toBe('/welcome/import-configuration/summary');

@@ -1,17 +1,22 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {isContactAttributeType, resolveAttributeRegex} from '@thunderid/utils';
 import type {PropertyDefinition} from '../models/users';
 
 /** Whether a stored value still matches its schema definition (type, enum, regex). */
 export function attributeConformsToSchema(value: unknown, fieldDef: PropertyDefinition): boolean {
   switch (fieldDef.type) {
+    case 'email':
+    case 'mobile':
     case 'string': {
       if (typeof value !== 'string') return false;
+      if (isContactAttributeType(fieldDef.type) && value === '') return false;
       if (fieldDef.enum && fieldDef.enum.length > 0 && !fieldDef.enum.includes(value)) return false;
-      if (fieldDef.regex) {
+      const regex = resolveAttributeRegex(fieldDef.type, fieldDef.regex);
+      if (regex) {
         try {
-          return new RegExp(fieldDef.regex).test(value);
+          return new RegExp(regex).test(value);
         } catch {
           return true; // unparseable schema regex can't judge the value
         }

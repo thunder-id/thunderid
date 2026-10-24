@@ -1,7 +1,8 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {NameSuggestion} from '@thunderid/components';
+import {NameSuggestion, OrganizationUnitSummaryChip} from '@thunderid/components';
+import {OrganizationUnitTreeConstants} from '@thunderid/configure-organization-units';
 import {generateHandle} from '@thunderid/utils';
 import {FormControl, FormLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {useEffect, type ChangeEvent, type JSX} from 'react';
@@ -28,6 +29,16 @@ export interface ConfigureTemplateIdentityProps {
   onReadyChange: (ready: boolean) => void;
   /** Existing handles in the channel, to flag a duplicate before submit. */
   existingHandles?: string[];
+  /** True when the OU was chosen on a dedicated earlier step; only then is the summary chip shown. */
+  hasMultipleOUs?: boolean;
+  /** Resolved OU display name, shown in the summary chip. */
+  organizationUnitName?: string;
+  /** Resolved OU logo, shown in the summary chip. */
+  organizationUnitLogoUrl?: string;
+  /** Whether the OU is still being resolved. */
+  isOrganizationUnitLoading?: boolean;
+  /** Invoked when the chip's "Change" link is clicked, returning to the OU step. */
+  onChangeOu?: () => void;
 }
 
 /**
@@ -46,6 +57,11 @@ export default function ConfigureTemplateIdentity({
   onHandleEditedChange,
   onReadyChange,
   existingHandles = [],
+  hasMultipleOUs = false,
+  organizationUnitName = undefined,
+  organizationUnitLogoUrl = undefined,
+  isOrganizationUnitLoading = false,
+  onChangeOu = undefined,
 }: ConfigureTemplateIdentityProps): JSX.Element {
   const {t} = useTranslation('notificationTemplates');
 
@@ -85,6 +101,16 @@ export default function ConfigureTemplateIdentity({
           : t('create.details.titleSms', "Let's collect some details about your SMS template")}
       </Typography>
 
+      {hasMultipleOUs && onChangeOu && (
+        <OrganizationUnitSummaryChip
+          logoUrl={organizationUnitLogoUrl}
+          icon={OrganizationUnitTreeConstants.DEFAULT_AVATAR}
+          label={t('create.organizationUnit.fieldLabel', 'Organization unit')}
+          value={isOrganizationUnitLoading ? t('common:status.loading', 'Loading...') : organizationUnitName}
+          onChange={onChangeOu}
+        />
+      )}
+
       <FormControl fullWidth required>
         <FormLabel htmlFor="template-name-input">{t('create.displayName.label', 'Display name')}</FormLabel>
         <TextField
@@ -92,7 +118,7 @@ export default function ConfigureTemplateIdentity({
           id="template-name-input"
           value={displayName}
           onChange={(e) => handleNameChange(e.target.value)}
-          placeholder={t('create.displayName.placeholder', 'e.g. OTP Verification')}
+          placeholder={t('create.displayName.placeholder', 'e.g. OTP verification')}
           inputProps={{maxLength: 255}}
         />
         <NameSuggestion onSelect={handleSuggestionSelect} />

@@ -20,16 +20,17 @@ const (
 
 // SecurityContext holds immutable authenticated subject information.
 type SecurityContext struct {
-	subject           string
-	ouID              string
-	token             string
-	revocationID      string
-	tokenFamilyID     string
-	revocationSubject string
-	revocationAppKey  string
-	establishedAt     time.Time
-	permissions       []string
-	attributes        map[string]interface{}
+	subject             string
+	ouID                string
+	token               string
+	revocationID        string
+	tokenFamilyID       string
+	revocationSubject   string
+	revocationAppKey    string
+	revocationAudiences []string
+	establishedAt       time.Time
+	permissions         []string
+	attributes          map[string]interface{}
 }
 
 // newSecurityContext creates a new immutable SecurityContext.
@@ -41,6 +42,19 @@ func newSecurityContext(subject, ouID, token string,
 		token:       token,
 		permissions: permissions,
 		attributes:  attributes,
+	}
+}
+
+// revocationIdentity returns the token attributes the revocation enforcer checks.
+func (c *SecurityContext) revocationIdentity() RevocationIdentity {
+	return RevocationIdentity{
+		JTI:           c.revocationID,
+		TokenFamilyID: c.tokenFamilyID,
+		Subject:       c.revocationSubject,
+		AppKey:        c.revocationAppKey,
+		Audiences:     c.revocationAudiences,
+		Scopes:        c.permissions,
+		EstablishedAt: c.establishedAt,
 	}
 }
 

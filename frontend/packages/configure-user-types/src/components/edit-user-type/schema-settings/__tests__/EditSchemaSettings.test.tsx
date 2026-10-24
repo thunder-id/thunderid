@@ -65,6 +65,90 @@ describe('EditSchemaSettings', () => {
     vi.clearAllMocks();
   });
 
+  it.each(['email', 'mobile'] as const)('requires a regex for %s attributes', async (type) => {
+    const user = userEvent.setup();
+    const {rerender} = render(
+      <EditSchemaSettings
+        properties={[{...baseProperties[0], type, regex: '^custom$'}]}
+        onPropertiesChange={mockOnPropertiesChange}
+        userTypeHandle="test"
+      />,
+    );
+    await user.click(screen.getByText('email'));
+    const input = screen.getByDisplayValue('^custom$');
+    expect(input).toBeRequired();
+    await user.clear(input);
+    rerender(
+      <EditSchemaSettings
+        properties={[{...baseProperties[0], type, regex: ''}]}
+        onPropertiesChange={mockOnPropertiesChange}
+        userTypeHandle="test"
+      />,
+    );
+    expect(
+      screen.getByText(
+        type === 'email'
+          ? 'Enter a regular expression for email attributes.'
+          : 'Enter a regular expression for mobile attributes.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ['email', false, 'other', 'email', false],
+    ['email', true, 'other', 'email', true],
+    ['email', true, '', 'email', false],
+    ['email', true, ' ', 'email', false],
+    ['email', true, 'other', 'mobile', false],
+    ['mobile', false, 'other', 'mobile', false],
+    ['mobile', true, 'other', 'mobile', true],
+    ['mobile', true, '', 'mobile', false],
+    ['mobile', true, ' ', 'mobile', false],
+    ['mobile', true, 'other', 'email', false],
+  ] as const)(
+    'shows replacement instructions only when another named %s is available (primary: %s, alternative: %j %s)',
+    async (type, primary, name, alternativeType, canReplace) => {
+      const user = userEvent.setup();
+      render(
+        <EditSchemaSettings
+          properties={[
+            {...baseProperties[0], type, primary},
+            {...baseProperties[0], id: '2', name, type: alternativeType, primary: false},
+          ]}
+          onPropertiesChange={mockOnPropertiesChange}
+          userTypeHandle="test"
+        />,
+      );
+      await user.click(screen.getByRole('button', {name: 'email'}));
+      await user.hover(screen.getByLabelText('Primary').closest('label')!);
+
+      const tooltip = await screen.findByRole('tooltip');
+      expect(tooltip).toHaveTextContent('Used as the primary contact for users');
+      if (canReplace) {
+        expect(tooltip).toHaveTextContent('To change it, select Primary on another attribute of this type');
+      } else {
+        expect(tooltip).not.toHaveTextContent('To change it');
+      }
+    },
+  );
+
+  it.each(['email', 'mobile'] as const)('omits replacement instructions for a sole primary %s', async (type) => {
+    const user = userEvent.setup();
+    render(
+      <EditSchemaSettings
+        properties={[{...baseProperties[0], type, primary: true}]}
+        onPropertiesChange={mockOnPropertiesChange}
+        userTypeHandle="test"
+      />,
+    );
+    await user.click(screen.getByRole('button', {name: 'email'}));
+    await user.hover(screen.getByLabelText('Primary').closest('label')!);
+
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip).toHaveTextContent('Used as the primary contact for users');
+    expect(tooltip).not.toHaveTextContent('To change it');
+  });
+
   it('renders existing properties as collapsed rows', () => {
     const props = {
       properties: baseProperties,
@@ -451,5 +535,97 @@ describe('EditSchemaSettings', () => {
     await waitFor(() => {
       expect(mockOnPropertiesChange).toHaveBeenCalledWith([baseProperties[1]]);
     });
+  });
+  it.each([
+    [false, true, ['Select one email attribute as the primary email.']],
+    [true, false, ['Select one mobile attribute as the primary mobile.']],
+    [
+      false,
+      false,
+      ['Select one email attribute as the primary email.', 'Select one mobile attribute as the primary mobile.'],
+    ],
+    [true, true, []],
+  ] as const)(
+    'shows separate missing-primary messages (email selected: %s, mobile selected: %s)',
+    (emailPrimary, mobilePrimary, messages) => {
+      render(
+        <EditSchemaSettings
+          properties={[
+            {...baseProperties[0], name: 'work', type: 'email', primary: emailPrimary},
+            {...baseProperties[0], id: '2', name: 'recovery', type: 'email', primary: false},
+            {...baseProperties[0], id: '3', name: 'phone', type: 'mobile', primary: mobilePrimary},
+            {...baseProperties[0], id: '4', name: 'backupPhone', type: 'mobile', primary: false},
+          ]}
+          onPropertiesChange={mockOnPropertiesChange}
+          userTypeHandle="test"
+        />,
+      );
+      expect(screen.queryAllByRole('alert').map((alert) => alert.textContent)).toEqual(messages);
+    },
+  );
+
+  it('shows Primary checked for a primary contact and prevents clearing it', async () => {
+    const user = userEvent.setup();
+    render(
+      <EditSchemaSettings
+        properties={[{...baseProperties[0], type: 'email', primary: true}]}
+        onPropertiesChange={mockOnPropertiesChange}
+        userTypeHandle="test"
+      />,
+    );
+    await user.click(screen.getByText('email'));
+    expect(screen.getByLabelText('Primary')).toBeChecked();
+    expect(screen.getByLabelText('Primary')).toBeDisabled();
+    expect(screen.queryByRole('checkbox', {name: /credential/i})).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['email', 'Email', '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$'],
+    ['mobile', 'Mobile', '^\\+[1-9]\\d{1,14}$'],
+  ] as const)('applies the default regex when the type changes to %s', async (type, label, regex) => {
+    const user = userEvent.setup();
+    render(
+      <EditSchemaSettings
+        properties={[{...baseProperties[0], regex: '^[a-z]+$'}]}
+        onPropertiesChange={mockOnPropertiesChange}
+        userTypeHandle="test"
+      />,
+    );
+    await user.click(screen.getByText('email'));
+    await user.click(screen.getByRole('combobox'));
+    await user.click(await screen.findByRole('option', {name: label}));
+    expect(mockOnPropertiesChange).toHaveBeenCalledWith([expect.objectContaining({type, regex, enum: []})]);
+  });
+
+  it.each(['email', 'mobile'] as const)('hides allowed values for %s attributes', async (type) => {
+    const user = userEvent.setup();
+    render(
+      <EditSchemaSettings
+        properties={[{...baseProperties[0], type}]}
+        onPropertiesChange={mockOnPropertiesChange}
+        userTypeHandle="test"
+      />,
+    );
+    await user.click(screen.getByText('email'));
+    expect(screen.getByPlaceholderText(/e.g., \^/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Allowed Values/i)).not.toBeInTheDocument();
+  });
+
+  it('transfers Primary between email attributes without changing mobile selection', async () => {
+    const user = userEvent.setup();
+    const properties: SchemaPropertyInput[] = [
+      {...baseProperties[0], type: 'email', primary: true},
+      {...baseProperties[0], id: '2', name: 'recovery', type: 'email', primary: false},
+      {...baseProperties[0], id: '3', name: 'phone', type: 'mobile', primary: true},
+    ];
+    render(
+      <EditSchemaSettings properties={properties} onPropertiesChange={mockOnPropertiesChange} userTypeHandle="test" />,
+    );
+    await user.click(screen.getByText('recovery'));
+    await user.click(screen.getByLabelText('Primary'));
+    const next = mockOnPropertiesChange.mock.calls.at(-1)?.[0] as SchemaPropertyInput[];
+    expect(next.find((property) => property.name === 'email')?.primary).toBe(false);
+    expect(next.find((property) => property.name === 'recovery')?.primary).toBe(true);
+    expect(next.find((property) => property.name === 'phone')?.primary).toBe(true);
   });
 });

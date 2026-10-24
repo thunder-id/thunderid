@@ -384,6 +384,108 @@ func (s *UtilsTestSuite) TestResolvePlaceholderSpecialCharactersInValue() {
 	}
 }
 
+func (s *UtilsTestSuite) TestResolveRequestPlaceholderFromInitiatorRequest() {
+	ctx := &providers.NodeContext{}
+	ctx.SetInitiatorRequest(&providers.InitiatorRequest{
+		Headers:     map[string][]string{"User-Agent": {"curl/8.0"}},
+		QueryParams: map[string][]string{"utm_source": {"newsletter"}},
+	})
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"Header init source", "{{request(init.header.User-Agent)}}", "curl/8.0"},
+		{"Header case-insensitive lookup", "{{request(init.header.user-agent)}}", "curl/8.0"},
+		{"Query init source", "{{request(init.query.utm_source)}}", "newsletter"},
+		{"Embedded in larger value", "ua={{request(init.header.User-Agent)}}", "ua=curl/8.0"},
+	}
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			result := ResolvePlaceholder(ctx, tt.input, nil, nil, true, nil)
+			s.Equal(tt.expected, result)
+		})
+	}
+}
+
+func (s *UtilsTestSuite) TestResolveRequestPlaceholderFromCurrentRequest() {
+	ctx := &providers.NodeContext{
+		Context: common.WithCurrentRequest(context.Background(), &providers.CurrentRequest{
+			Headers:     map[string][]string{"User-Agent": {"flow-agent"}},
+			QueryParams: map[string][]string{"step": {"otp"}},
+		}),
+	}
+	ctx.SetInitiatorRequest(&providers.InitiatorRequest{
+		Headers: map[string][]string{"User-Agent": {"init-agent"}},
+	})
+
+	s.Equal("flow-agent", ResolvePlaceholder(ctx, "{{request(current.header.User-Agent)}}", nil, nil, true, nil))
+	s.Equal("otp", ResolvePlaceholder(ctx, "{{request(current.query.step)}}", nil, nil, true, nil))
+	// A sourceless selector defaults to current, so it reads the current request (not init).
+	s.Equal("flow-agent", ResolvePlaceholder(ctx, "{{request(header.User-Agent)}}", nil, nil, true, nil))
+	s.Equal("otp", ResolvePlaceholder(ctx, "{{request(query.step)}}", nil, nil, true, nil))
+	// An explicit init source still reads the init request.
+	s.Equal("init-agent", ResolvePlaceholder(ctx, "{{request(init.header.User-Agent)}}", nil, nil, true, nil))
+}
+
+func (s *UtilsTestSuite) TestResolveRequestPlaceholderQueryIsCaseSensitive() {
+	ctx := &providers.NodeContext{}
+	ctx.SetInitiatorRequest(&providers.InitiatorRequest{
+		QueryParams: map[string][]string{"utm_source": {"newsletter"}},
+	})
+
+	s.Equal("{{request(init.query.UTM_SOURCE)}}",
+		ResolvePlaceholder(ctx, "{{request(init.query.UTM_SOURCE)}}", nil, nil, true, nil),
+		"query lookups must be case-sensitive")
+}
+
+func (s *UtilsTestSuite) TestResolveRequestPlaceholderFirstValueWins() {
+	ctx := &providers.NodeContext{}
+	ctx.SetInitiatorRequest(&providers.InitiatorRequest{
+		Headers: map[string][]string{"X-Forwarded-For": {"1.1.1.1", "2.2.2.2"}},
+	})
+
+	s.Equal("1.1.1.1", ResolvePlaceholder(ctx, "{{request(init.header.X-Forwarded-For)}}", nil, nil, true, nil))
+}
+
+func (s *UtilsTestSuite) TestResolveRequestPlaceholderUnresolvable() {
+	ctxWithReq := &providers.NodeContext{}
+	ctxWithReq.SetInitiatorRequest(&providers.InitiatorRequest{
+		Headers: map[string][]string{"User-Agent": {"curl/8.0"}},
+	})
+
+	ctxWithoutReq := &providers.NodeContext{}
+
+	tests := []struct {
+		name     string
+		ctx      *providers.NodeContext
+		input    string
+		expected string
+	}{
+		{"Nil initiator request", ctxWithoutReq, "{{request(init.header.User-Agent)}}",
+			"{{request(init.header.User-Agent)}}"},
+		{"Nil current request", ctxWithReq, "{{request(current.header.User-Agent)}}",
+			"{{request(current.header.User-Agent)}}"},
+		{"Unknown header", ctxWithReq, "{{request(init.header.X-Missing)}}", "{{request(init.header.X-Missing)}}"},
+		{"Unknown source", ctxWithReq, "{{request(other.header.User-Agent)}}",
+			"{{request(other.header.User-Agent)}}"},
+		{"Unknown type", ctxWithReq, "{{request(init.cookie.session)}}", "{{request(init.cookie.session)}}"},
+		{"Sourceless with no current request", ctxWithReq, "{{request(header.User-Agent)}}",
+			"{{request(header.User-Agent)}}"},
+		{"Missing name", ctxWithReq, "{{request(init.header.)}}", "{{request(init.header.)}}"},
+		{"Missing type after source", ctxWithReq, "{{request(init.header)}}", "{{request(init.header)}}"},
+	}
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			result := ResolvePlaceholder(tt.ctx, tt.input, nil, nil, true, nil)
+			s.Equal(tt.expected, result)
+		})
+	}
+}
+
 // externalIdentityData is runtime data holding an external identity with the given claims.
 func externalIdentityData(claims map[string]interface{}) map[string]string {
 	encoded, err := json.Marshal(ExternalIdentity{IdpID: "idp-1", Sub: "sub-1", Claims: claims})

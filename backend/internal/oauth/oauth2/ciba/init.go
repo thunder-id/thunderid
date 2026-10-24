@@ -32,13 +32,14 @@ func Initialize(
 	resourceService providers.ResourceServerProvider,
 	runtimeStore providers.RuntimeStoreProvider,
 	jtiStore jti.JTIStoreInterface,
+	governance providers.IdentityGovernanceProvider,
 	cfg oauthconfig.Config,
 ) CIBAServiceInterface {
 	store := newCIBAStore(runtimeStore)
-	cibaSvc := newCIBAService(store, flowExecService, jwtService, actorProvider, resourceService, cfg)
+	cibaSvc := newCIBAService(store, flowExecService, jwtService, actorProvider, resourceService, governance, cfg)
 	cibaHandler := newCIBAHandler(cibaSvc)
 	registerRoutes(mux, cibaHandler, actorProvider, authnProvider, jwtService, discoveryService,
-		jtiStore, cfg.OAuth.ClientAssertion, cfg.JWT.Leeway)
+		jtiStore, governance, cfg.OAuth.ClientAssertion, cfg.JWT.Leeway)
 	return cibaSvc
 }
 
@@ -52,6 +53,7 @@ func registerRoutes(
 	jwtService jwt.JWTServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 	jtiStore jti.JTIStoreInterface,
+	governance providers.IdentityGovernanceProvider,
 	assertionCfg engineconfig.ClientAssertionConfig,
 	jwtLeeway int64,
 ) {
@@ -63,7 +65,7 @@ func registerRoutes(
 	}
 
 	issuer := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).Issuer
-	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, jwtService,
+	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, governance, jwtService,
 		jtiStore, issuer, assertionCfg, jwtLeeway)
 	authHandler := clientAuthMiddleware(http.HandlerFunc(cibaHandler.HandleBackchannelAuthRequest))
 

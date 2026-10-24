@@ -158,7 +158,7 @@ export default function ConfigureName({
         <OrganizationUnitSummaryChip
           logoUrl={organizationUnitLogoUrl}
           icon={OrganizationUnitTreeConstants.DEFAULT_AVATAR}
-          label={t('userTypes:createWizard.organizationUnit.fieldLabel', 'Organization Unit')}
+          label={t('userTypes:createWizard.organizationUnit.fieldLabel', 'Organization unit')}
           value={isOrganizationUnitLoading ? t('common:status.loading', 'Loading...') : organizationUnitName}
           onChange={onChangeOu}
         />
@@ -209,7 +209,7 @@ export default function ConfigureName({
       <ToggleCard
         checked={allowSelfRegistration}
         onChange={onAllowSelfRegistrationChange}
-        title={t('userTypes:allowSelfRegistration', 'Allow Self Registration')}
+        title={t('userTypes:allowSelfRegistration', 'Allow self registration')}
         subtitle={t(
           'userTypes:createWizard.general.subtitle',
           'Users can register for this user type without an invitation',

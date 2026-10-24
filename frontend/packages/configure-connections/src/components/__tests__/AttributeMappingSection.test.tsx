@@ -16,10 +16,10 @@ function Harness({initialConfig = undefined}: {initialConfig?: AttributeConfigur
 
 // The package's test setup renders real translations, so assert on the resolved English strings.
 const RESOLUTION_TITLE = 'User type resolution';
-const MAPPINGS_TITLE = 'Attribute Mappings';
-const EXTERNAL_ATTRIBUTE = 'External Attribute';
-const EXTERNAL_VALUE = 'External Value';
-const LOCAL_ATTRIBUTE = 'Local Attribute';
+const MAPPINGS_TITLE = 'Attribute mappings';
+const EXTERNAL_ATTRIBUTE = 'External attribute';
+const EXTERNAL_VALUE = 'External value';
+const LOCAL_ATTRIBUTE = 'Local attribute';
 
 // The SettingsCard is mocked to a labelled <section> so each card can be located and scoped by title.
 vi.mock('@thunderid/components', () => ({

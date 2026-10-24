@@ -42,7 +42,7 @@ export default function ClientSecretSection({
     >
       <FormControl fullWidth>
         <FormLabel htmlFor="agent-credentials-secret">
-          {t('agents:edit.credentials.sections.secret.clientSecretLabel', 'Client Secret')}
+          {t('agents:edit.credentials.sections.secret.clientSecretLabel', 'Client secret')}
         </FormLabel>
         <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 1}}>
           {t(
@@ -66,7 +66,7 @@ export default function ClientSecretSection({
             disabled={disabled}
             sx={{flex: '0 0 20%'}}
           >
-            {t('agents:edit.credentials.sections.secret.regenerateButton', 'Regenerate Client Secret')}
+            {t('agents:edit.credentials.sections.secret.regenerateButton', 'Regenerate client secret')}
           </Button>
         </Stack>
       </FormControl>

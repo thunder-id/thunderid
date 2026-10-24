@@ -17,6 +17,9 @@ docs:
   quickstart: /docs/next/getting-started/connect-your-application/ios
 links:
   github: https://github.com/thunder-id/ios-sdks
+  samples: https://github.com/thunder-id/samples/tree/main/quickstarts/ios
+# Offers the quickstart's released zip at the top of the page, from the samples repo releases.
+sample: quickstarts/ios
 apiReference:
   source: manual
 
@@ -480,7 +483,7 @@ guides:
     title: Try the iOS Sample App
     icon: terminal
     description: Run the {{ProductName}} iOS sample app to see the full authentication lifecycle end to end.
-    intro: 'The SDK repository ships a sample app in [`Samples/Quickstart`](https://github.com/thunder-id/ios-sdks/tree/main/Samples/Quickstart)
+    intro: 'The [samples repository](https://github.com/thunder-id/samples) ships a sample app in [`quickstarts/ios`](https://github.com/thunder-id/samples/tree/main/quickstarts/ios)
       that exercises the full authentication lifecycle end to end: sign-in, sign-up, and sign-out via the SDK''s app-native
       Flow Execution. } />'
     sections:
@@ -494,8 +497,9 @@ guides:
         code:
           lang: bash
           content: |-
-            cd Samples/Quickstart
-            cp Config.plist.example Sources/Config.plist
+            git clone https://github.com/thunder-id/samples.git
+            cd samples/quickstarts/ios
+            cp Sources/Config.plist.example Sources/Config.plist
             # Edit Sources/Config.plist with your {{ProductName}} base URL and application ID
       - title: Attestation via Apple App Attest (optional)
         description: 'If the application enforces platform attestation, set `THUNDERID_ATTESTATION_ENABLED` to `true`

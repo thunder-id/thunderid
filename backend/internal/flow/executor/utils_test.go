@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
@@ -971,4 +972,49 @@ func (s *UtilsTestSuite) TestSetExternalIdentity_ReplacesEarlierEntry() {
 	identity := core.GetExternalIdentity(execResp.RuntimeData)
 	s.Equal("idp-second", identity.IdpID)
 	s.Equal(map[string]interface{}{"email": "second@example.com"}, identity.Claims)
+}
+
+// setFederatedEntityState records whether the federated identity resolved to one user, several or
+// none.
+func (s *UtilsTestSuite) TestSetFederatedEntityState() {
+	tests := []struct {
+		name      string
+		ref       *providers.EntityReference
+		svcErr    *tidcommon.ServiceError
+		wantState string
+	}{
+		{name: "one user", ref: &providers.EntityReference{EntityID: "user-1"}, wantState: entityStateExists},
+		{name: "no user", svcErr: &authnprovidermgr.ErrorUserNotFound, wantState: entityStateNotExists},
+		{name: "several users", svcErr: &authnprovidermgr.ErrorAmbiguousUser, wantState: entityStateAmbiguous},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			authnProvider := managermock.NewAuthnProviderManagerMock(s.T())
+			authnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+				Return(newAuthenticatedAuthUser(), tc.ref, tc.svcErr)
+			execResp := &providers.ExecutorResponse{
+				AuthUser:    newAuthenticatedAuthUser(),
+				RuntimeData: map[string]string{},
+			}
+
+			setFederatedEntityState(s.T().Context(), execResp, authnProvider)
+
+			s.Equal(tc.wantState, execResp.RuntimeData[common.RuntimeKeyEntityState])
+		})
+	}
+}
+
+func (s *UtilsTestSuite) TestStatedHold_StatesOnlyTheManagerHoldCodes() {
+	s.Nil(statedHold(nil))
+	s.Nil(statedHold(&tidcommon.ErrorUnauthorized))
+	s.Equal(&ErrAccountLocked, statedHold(&authnprovidermgr.ErrorAccountLocked))
+	s.Equal(&ErrAccountSuspended, statedHold(&authnprovidermgr.ErrorAccountSuspended))
+}
+
+func (s *UtilsTestSuite) TestStatedDecision_StatesOnlyANamedHold() {
+	s.Nil(statedDecision(providers.AccessDecision{}))
+	s.Nil(statedDecision(providers.AccessDecision{Admitted: true}))
+	s.Equal(&ErrAccountLocked, statedDecision(providers.AccessDecision{Reason: providers.AccessRefusalReasonLocked}))
+	s.Equal(&ErrAccountSuspended,
+		statedDecision(providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended}))
 }

@@ -26,6 +26,8 @@ describe('TemplateConstants', () => {
       'authorization_code',
       'refresh_token',
       'client_credentials',
+      'urn:ietf:params:oauth:grant-type:token-exchange',
+      'urn:ietf:params:oauth:grant-type:jwt-bearer',
     ]);
   });
 });

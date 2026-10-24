@@ -11,16 +11,17 @@ import (
 /*
 One federated identity, two sign-ins.
 
-A subject is linked to at most one user. A sign-in checks for a link when it starts, so two sign-ins
+A subject may be linked to several users. A sign-in checks for a link when it starts, so two sign-ins
 for the same subject that both pause before writing would each find it free. These scenarios pause one
-at a prompt, let the other record the link, then resume the first: its write is the one the uniqueness
-rule refuses, and the user the other sign-in linked keeps the identity.
+at a prompt, let the other record the link, then resume the first. A registration still refuses to
+create a second user where one already holds the link, while a verified account is linked beside the
+user that holds it, and a later sign-in asks which of the two to continue with.
 */
 
 const (
-	linkedAccountConflictCode = "FET-1097"
-	linkingWriteFailedCode    = "FET-1096"
-	identifyFailedCode        = "FET-1002"
+	entityAlreadyExistsCode = "FET-1007"
+	linkingWriteFailedCode  = "FET-1096"
+	identifyFailedCode      = "FET-1002"
 )
 
 // pauseAtProvisioning starts a registration for user under a configuration that maps nothing onto the
@@ -41,7 +42,7 @@ func (s *FederatedMappingSuite) completeProvisioning(step *common.FlowStep) (*co
 }
 
 // BC1: two registrations for one subject both reach provisioning. The first creates the user and the
-// link; the second is refused rather than creating a second user holding the same identity.
+// link; the second is refused as an existing user rather than creating a second user beside it.
 func (s *FederatedMappingSuite) TestProvisioningRefusesAnIdentityLinkedMeanwhile() {
 	user := s.baseUser(s.nextSubject())
 	first := s.pauseAtProvisioning(user)
@@ -58,7 +59,7 @@ func (s *FederatedMappingSuite) TestProvisioningRefusesAnIdentityLinkedMeanwhile
 	s.Require().NoError(err, "a failed flow is still a 200 carrying its error, got %v", err)
 	s.Require().Equal("ERROR", refused.FlowStatus, "the identity is linked already, got %+v", refused)
 	s.Require().NotNil(refused.Error, "the terminal step should carry its error, got %+v", refused)
-	s.Equal(linkedAccountConflictCode, refused.Error.Code, "expected the linked account conflict, got %+v", refused.Error)
+	s.Equal(entityAlreadyExistsCode, refused.Error.Code, "expected the existing user refusal, got %+v", refused.Error)
 	s.Empty(refused.Assertion, "a refused registration must not issue an assertion")
 
 	repeat, err := s.authenticate(s.authAppID, mapping(fedPersonType.Handle), user)
@@ -69,12 +70,44 @@ func (s *FederatedMappingSuite) TestProvisioningRefusesAnIdentityLinkedMeanwhile
 	s.Equal(provisioned.ID, claims.Sub, "the identity should stay with the user that linked it first")
 }
 
+// fedLinkResolvingFlow is fedVerifiedLinkingFlow with a resolve node between the federated node and the
+// linking node, which asks which account to continue with when several hold the identity.
+func fedLinkResolvingFlow(idpID, verifyFlowID string) testutils.Flow {
+	flow := fedVerifiedLinkingFlow(idpID, verifyFlowID)
+	flow.Handle = "auth_flow_federated_link_resolving"
+	nodes := flow.Nodes.([]map[string]interface{})
+	for _, node := range nodes {
+		if node["id"] == "oidc_auth" {
+			node["onSuccess"] = "link_resolver"
+		}
+	}
+	flow.Nodes = append(nodes,
+		map[string]interface{}{
+			"id":           "link_resolver",
+			"type":         "TASK_EXECUTION",
+			"executor":     map[string]interface{}{"name": "IdentifyingExecutor", "mode": "resolve"},
+			"onSuccess":    "linking",
+			"onIncomplete": "link_picker",
+		},
+		map[string]interface{}{
+			"id":   "link_picker",
+			"type": "PROMPT",
+			"prompts": []map[string]interface{}{
+				{"action": map[string]interface{}{"ref": "action_pick", "nextNode": "link_resolver"}},
+			},
+		},
+	)
+	return flow
+}
+
 // BC2: a sign-in pauses on the linking prompt while another provisions a user for the same subject.
-// Verifying the candidate afterwards cannot link the identity to a second user, so the write fails.
-func (s *FederatedMappingSuite) TestLinkingRefusesAnIdentityLinkedMeanwhile() {
+// Verifying the candidate afterwards links it beside that user, and a later sign-in asks which of the
+// two accounts to continue with.
+func (s *FederatedMappingSuite) TestLinkingBesideAnIdentityLinkedMeanwhile() {
 	email, candidateID := s.linkTarget()
 	user, config := s.matchingIdentity(email)
-	appID := s.passwordLinkingApp("federated-verified-race")
+	verifyFlowID := s.createVerifyFlow(common.VerifyPasswordFlow("verify_flow_federated-verified-race"))
+	appID := s.createScenarioApp(fedVerifiedLinkingFlow(s.idpID, verifyFlowID), "federated-verified-race")
 
 	step, err := s.authenticate(appID, config, user)
 	s.Require().NoError(err, "the matched identity should reach the linking prompt")
@@ -92,11 +125,28 @@ func (s *FederatedMappingSuite) TestLinkingRefusesAnIdentityLinkedMeanwhile() {
 	final, err := common.CompleteFlow(verification.ExecutionID,
 		map[string]string{"username": email, "password": candidatePassword}, common.VerifyPasswordAction,
 		verification.ChallengeToken)
-	s.Require().NoError(err, "a failed flow is still a 200 carrying its error, got %v", err)
-	s.Require().Equal("ERROR", final.FlowStatus, "the identity is linked already, got %+v", final)
-	s.Require().NotNil(final.Error, "the terminal step should carry its error, got %+v", final)
-	s.Equal(linkingWriteFailedCode, final.Error.Code, "expected the refused link write, got %+v", final.Error)
-	s.Empty(final.Assertion, "a refused link must not issue an assertion")
+	s.Require().NoError(err, "verifying the account should complete the flow")
+	s.Require().Equal("COMPLETE", final.FlowStatus, "the verified account should be linked too, got %+v", final)
+	claims, err := testutils.DecodeJWT(final.Assertion)
+	s.Require().NoError(err, "failed to decode the assertion")
+	s.Equal(candidateID, claims.Sub, "the assertion should be issued for the verified account")
+
+	// Both accounts now hold the identity, so the next sign-in asks which one to continue with.
+	resolvingAppID := s.createScenarioApp(fedLinkResolvingFlow(s.idpID, verifyFlowID), "federated-link-resolving")
+	pick, err := s.authenticateFlow(resolvingAppID, user.Sub)
+	s.Require().NoError(err, "the identity linked to two accounts should reach the picker")
+	s.Require().Equal("INCOMPLETE", pick.FlowStatus, "two linked accounts should be picked between, got %+v", pick)
+	s.Empty(pick.Assertion, "no assertion may be issued before the account is picked")
+	s.Require().True(common.HasInput(pick.Data.Inputs, "username"),
+		"the accounts differ on username, so it should be offered, got %+v", pick.Data.Inputs)
+
+	picked, err := common.CompleteFlow(pick.ExecutionID, map[string]string{"username": email}, "action_pick",
+		pick.ChallengeToken)
+	s.Require().NoError(err, "picking an account should complete the flow")
+	s.Require().Equal("COMPLETE", picked.FlowStatus, "the picked account should sign in, got %+v", picked)
+	claims, err = testutils.DecodeJWT(picked.Assertion)
+	s.Require().NoError(err, "failed to decode the assertion")
+	s.Equal(candidateID, claims.Sub, "the assertion should be issued for the picked account")
 }
 
 // BC3: a linking attribute that more users share than a sign-in may choose between matches nobody,

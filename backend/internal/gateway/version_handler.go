@@ -94,7 +94,12 @@ func (h *versionHandler) handleApply(w http.ResponseWriter, r *http.Request) {
 		handleError(ctx, w, svcErr)
 		return
 	}
-	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, result)
+	// A queued apply is accepted rather than done: the latest version follows the running apply.
+	status := http.StatusOK
+	if result.Queued {
+		status = http.StatusAccepted
+	}
+	sysutils.WriteSuccessResponse(ctx, w, status, result)
 }
 
 // handleRevert returns a gateway to the version it held before.

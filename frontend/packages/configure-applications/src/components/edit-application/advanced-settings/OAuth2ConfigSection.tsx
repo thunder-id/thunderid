@@ -40,6 +40,8 @@ import {
   getPublicClientCaption,
   hasUserAccess,
   isGrantItemDisabled,
+  isGrantLockedByIdJag,
+  isIdJagEnabled,
 } from '../../../utils/oauth2Rules';
 import BackchannelLogoutUriField from '../../common/BackchannelLogoutUriField';
 
@@ -305,8 +307,11 @@ export default function OAuth2ConfigSection({
     isPkceDisabledByGrants,
     isPkceForcedByPublicClient,
     isPublicClientDisabledByGrants,
+    isPublicClientDisabledByIdJag,
     isParDisabledByGrants,
   } = flags;
+  const isPublicClientDisallowed = isPublicClientDisabledByGrants || isPublicClientDisabledByIdJag;
+  const idJagEnabled = isIdJagEnabled(oauth2Config);
 
   return (
     <SettingsCard
@@ -335,16 +340,26 @@ export default function OAuth2ConfigSection({
               ) : (
                 <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
                   {selected.map((v) => (
-                    <Chip key={v} label={v} size="small" />
+                    <Chip key={v} label={getGrantTypeLabel(v, t)} size="small" />
                   ))}
                 </Stack>
               )
             }
           >
             {availableGrantTypes.map((grant) => (
-              <MenuItem key={grant} value={grant} disabled={isGrantItemDisabled(grant, grantTypes)}>
+              <MenuItem key={grant} value={grant} disabled={isGrantItemDisabled(grant, grantTypes, idJagEnabled)}>
                 <Checkbox checked={grantTypes.includes(grant)} size="small" />
-                <ListItemText primary={getGrantTypeLabel(grant, t)} />
+                <ListItemText
+                  primary={getGrantTypeLabel(grant, t)}
+                  secondary={
+                    isGrantLockedByIdJag(grant, grantTypes, idJagEnabled)
+                      ? t(
+                          'applications:edit.advanced.grantTypes.requiredByIdJag',
+                          'Required by identity assertions (ID-JAG)',
+                        )
+                      : undefined
+                  }
+                />
               </MenuItem>
             ))}
           </Select>
@@ -458,7 +473,7 @@ export default function OAuth2ConfigSection({
         {showRedirectUris && (
           <FormControl fullWidth>
             <FormLabel htmlFor="post-logout-redirect-uris-section">
-              {t('applications:edit.general.postLogoutRedirectUris.title', 'Post-Logout Redirect URIs')}
+              {t('applications:edit.general.postLogoutRedirectUris.title', 'Post-logout redirect URIs')}
             </FormLabel>
             <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 2}}>
               {t(
@@ -528,7 +543,7 @@ export default function OAuth2ConfigSection({
         {/* Token Endpoint Auth Method */}
         <FormControl fullWidth size="small">
           <FormLabel htmlFor="token_endpoint_auth_method">
-            {t('applications:edit.advanced.labels.tokenEndpointAuthMethod', 'Client Authentication Method')}
+            {t('applications:edit.advanced.labels.tokenEndpointAuthMethod', 'Client authentication method')}
           </FormLabel>
           <Select
             id="token_endpoint_auth_method"
@@ -550,7 +565,7 @@ export default function OAuth2ConfigSection({
               <MenuItem
                 key={method}
                 value={method}
-                disabled={method === TokenEndpointAuthMethods.NONE && isPublicClientDisabledByGrants}
+                disabled={method === TokenEndpointAuthMethods.NONE && isPublicClientDisallowed}
               >
                 {method}
               </MenuItem>
@@ -623,7 +638,7 @@ export default function OAuth2ConfigSection({
             control={
               <Switch
                 checked={oauth2Config.publicClient ?? false}
-                disabled={!isEditable || isPublicClientLocked || isPublicClientDisabledByGrants}
+                disabled={!isEditable || isPublicClientLocked || isPublicClientDisallowed}
                 onChange={(e) => onOAuth2ConfigChange?.(applyPublicClientChange(oauth2Config, e.target.checked))}
                 inputProps={{'aria-label': t('applications:edit.advanced.labels.publicClient')}}
               />
@@ -682,7 +697,7 @@ export default function OAuth2ConfigSection({
                 inputProps={{
                   'aria-label': t(
                     'applications:edit.advanced.labels.requirePAR',
-                    'Require Pushed Authorization Requests',
+                    'Require pushed authorization requests',
                   ),
                 }}
               />
@@ -690,7 +705,7 @@ export default function OAuth2ConfigSection({
             label={
               <Stack direction="row" alignItems="center" spacing={0.5}>
                 <Typography variant="subtitle2">
-                  {t('applications:edit.advanced.labels.requirePAR', 'Require Pushed Authorization Requests')}
+                  {t('applications:edit.advanced.labels.requirePAR', 'Require pushed authorization requests')}
                 </Typography>
                 {isParLocked && (
                   <Tooltip title={t('applications:edit.advanced.lockedByTemplate', 'Set by template')}>

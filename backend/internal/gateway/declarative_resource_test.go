@@ -5,6 +5,7 @@ package gateway
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -43,11 +44,43 @@ func TestValidateDeclaredGatewayRefusesAnIncompleteDeclaration(t *testing.T) {
 		"no base url": {Name: "dev", Key: "k"},
 		// A declared gateway holds its key in memory only, so one the file does not name is one
 		// this control plane could never authenticate to.
-		"no key": {Name: "dev", BaseURL: "https://dp"},
+		"no key":                     {Name: "dev", BaseURL: "https://dp"},
+		"base url is http":           {Name: "dev", BaseURL: "http://dp.example.com:8090", Key: "k"},
+		"base url is a scheme":       {Name: "dev", BaseURL: "https://", Key: "k"},
+		"base url carries a user":    {Name: "dev", BaseURL: "https://user:secret@dp.example.com", Key: "k"},
+		"name holds a slash":         {Name: "dev/prod", BaseURL: "https://dp", Key: "k"},
+		"name is punctuation alone":  {Name: "- -", BaseURL: "https://dp", Key: "k"},
+		"name is longer than a name": {Name: strings.Repeat("d", 65), BaseURL: "https://dp", Key: "k"},
 	} {
 		if err := validateDeclaredGateway(declared); err == nil {
 			t.Errorf("%s: expected the declaration to be refused", name)
 		}
+	}
+
+	err := validateDeclaredGateway(&declaredGateway{Name: "dev", BaseURL: "https://user:hunter2@dp.example.com",
+		Key: "k"})
+	if err == nil || strings.Contains(err.Error(), "hunter2") {
+		t.Errorf("the refusal shows the password the base URL carries: %v", err)
+	}
+
+	err = validateDeclaredGateway(&declaredGateway{Name: "dev", BaseURL: "http://dp.example.com:8090", Key: "k"})
+	if err == nil || !strings.Contains(err.Error(), `but "http://dp.example.com:8090" is not https`) {
+		t.Errorf("the refusal does not say what is wrong with the base URL: %v", err)
+	}
+}
+
+// A declared gateway on a private address is refused unless the deployment allows such addresses.
+func TestValidateDeclaredGatewayFollowsThePrivateAddressSetting(t *testing.T) {
+	refusePrivateAddresses(t)
+	declared := &declaredGateway{Name: "dev", BaseURL: "https://localhost:8090", Key: "k"}
+	err := validateDeclaredGateway(declared)
+	if err == nil || !strings.Contains(err.Error(), "gateway.allow_private_addresses") {
+		t.Fatalf("expected the private address to be refused naming the setting, got %v", err)
+	}
+
+	configureGateway(5, true)
+	if err := validateDeclaredGateway(declared); err != nil {
+		t.Fatalf("an allowed private address was refused: %v", err)
 	}
 }
 

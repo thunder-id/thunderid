@@ -78,7 +78,7 @@ export default function AccessSection({
     onFieldChange('allowedAgentTypes', enabled ? [ApplicationConstants.DEFAULT_AGENT_TYPE_HANDLE] : []);
   };
 
-  const agentSignInLabel = t('applications:edit.access.agentSignIn.toggle.label', 'Enable Agent Sign-In');
+  const agentSignInLabel = t('applications:edit.access.agentSignIn.toggle.label', 'Enable agent sign-in');
 
   const accessSchema = z.object({
     url: z.string().url('Please enter a valid URL').or(z.literal('')).optional(),
@@ -114,7 +114,7 @@ export default function AccessSection({
     <Stack spacing={3}>
       {showUserAccessConfig && (
         <SettingsCard
-          title={t('applications:edit.access.sections.userTypes.title', 'Allowed User Types')}
+          title={t('applications:edit.access.sections.userTypes.title', 'Allowed user types')}
           description={t(
             'applications:edit.access.sections.userTypes.description',
             'Choose which user types can sign up through this application.',
@@ -162,7 +162,7 @@ export default function AccessSection({
 
       {showUserAccessConfig && (
         <SettingsCard
-          title={t('applications:edit.access.sections.agentSignIn.title', 'Agent Sign-In')}
+          title={t('applications:edit.access.sections.agentSignIn.title', 'Agent sign-in')}
           description={t(
             'applications:edit.access.sections.agentSignIn.description',
             'Allow agents to sign in to this application using the sign-in flow.',
@@ -181,7 +181,7 @@ export default function AccessSection({
       )}
 
       <SettingsCard
-        title={t('applications:edit.access.sections.applicationAccess.title', 'Application Access')}
+        title={t('applications:edit.access.sections.applicationAccess.title', 'Application access')}
         description={t(
           'applications:edit.access.sections.applicationAccess.description',
           'Configure where this application is accessed from.',

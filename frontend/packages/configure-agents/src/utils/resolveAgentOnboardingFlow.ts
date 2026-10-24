@@ -1,10 +1,9 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-/** Minimal shape of the HTTP client this module needs, so it can be used outside a React tree. */
-export interface HttpLike {
-  request: (config: unknown) => Promise<{data?: unknown}>;
-}
+import {findAdministrationFlowId, type HttpLike, type ServerConfigLayers} from '@thunderid/utils';
+
+export type {HttpLike};
 
 interface AgentOnboardingFlowConfig {
   defaultHandle?: string;
@@ -13,30 +12,6 @@ interface AgentOnboardingFlowConfig {
 interface FlowSectionConfig {
   agentOnboardingFlow?: AgentOnboardingFlowConfig;
 }
-
-interface ServerConfigLayers<T> {
-  readOnly?: T;
-  writable?: T;
-  merged?: T;
-}
-
-interface BasicFlowSummary {
-  id: string;
-  handle: string;
-  flowType: string;
-}
-
-interface FlowListResponse {
-  flows?: BasicFlowSummary[];
-}
-
-const ADMINISTRATION_FLOW_TYPE = 'ADMINISTRATION';
-
-/**
- * Page size used when walking the flow listing to resolve a handle. Matches the server's maximum
- * page size, so the common case of a handful of administration flows resolves in one request.
- */
-const FLOW_PAGE_SIZE = 100;
 
 /** Why the onboarding flow could not be resolved. Each case needs a different remedy. */
 export const AgentOnboardingFlowProblem = {
@@ -68,39 +43,6 @@ export async function resolveAgentOnboardingFlowHandle(http: HttpLike, serverUrl
   const layers = (response?.data ?? {}) as ServerConfigLayers<FlowSectionConfig>;
 
   return layers.merged?.agentOnboardingFlow?.defaultHandle ?? '';
-}
-
-/**
- * Finds the identifier of the administration flow carrying the given handle, or null when no such
- * flow exists. `/flow/execute` addresses a flow by id while the server config names it by handle.
- *
- * The listing is paginated and ordered newest first, which puts a bootstrap flow last, so pages
- * are walked until the handle is found or the listing is exhausted.
- *
- * `deleteUserViaFlow.ts` in `@thunderid/configure-users` walks the listing the same way; a fix to
- * the paging here belongs there too.
- */
-export async function findAdministrationFlowId(
-  http: HttpLike,
-  serverUrl: string,
-  handle: string,
-): Promise<string | null> {
-  for (let offset = 0; ; offset += FLOW_PAGE_SIZE) {
-    const response = await http.request({
-      url: `${serverUrl}/flows?flowType=${ADMINISTRATION_FLOW_TYPE}&limit=${FLOW_PAGE_SIZE}&offset=${offset}`,
-      method: 'GET',
-    });
-    const flows = ((response?.data ?? {}) as FlowListResponse).flows ?? [];
-    const match = flows.find((flow) => flow.handle === handle && flow.flowType === ADMINISTRATION_FLOW_TYPE);
-
-    if (match) {
-      return match.id;
-    }
-    // A short page is the last page, so the handle is genuinely absent rather than further along.
-    if (flows.length < FLOW_PAGE_SIZE) {
-      return null;
-    }
-  }
 }
 
 /**

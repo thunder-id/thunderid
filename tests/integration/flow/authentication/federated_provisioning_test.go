@@ -293,7 +293,7 @@ func (ts *FederatedProvisioningTestSuite) appForFlow(
 		AllowedUserTypes: allowedTypes,
 		AuthFlowID:       flowID,
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+			"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 		},
 	})
 	ts.Require().NoError(err, "Failed to create app %s", appName)

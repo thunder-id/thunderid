@@ -122,6 +122,20 @@ func (c *compositeStore) ListAllPoliciesForResource(
 	return appendUnsuperseded(stored, declared), nil
 }
 
+// ListPoliciesIssuedBy returns every policy one organization unit issued, from both stores. Nothing is
+// merged away: the question is whether any policy depends on the unit, and either half answers it.
+func (c *compositeStore) ListPoliciesIssuedBy(ctx context.Context, ouID string) ([]Policy, error) {
+	stored, err := c.dbStore.ListPoliciesIssuedBy(ctx, ouID)
+	if err != nil {
+		return nil, err
+	}
+	declared, err := c.fileStore.ListPoliciesIssuedBy(ctx, ouID)
+	if err != nil {
+		return nil, err
+	}
+	return append(stored, declared...), nil
+}
+
 // CountPoliciesForResource returns how many policies one resource has across both stores.
 //
 // The halves are merged before counting rather than added: a declaration whose unit also holds a

@@ -3,7 +3,7 @@
 
 package sharing
 
-// nullableString maps an empty string to a SQL null, so an absent parent or target organization
+// nullableString maps an empty string to a SQL null, so an absent parent or named organization
 // unit stores as null rather than as an empty string a foreign key would reject.
 func nullableString(v string) interface{} {
 	if v == "" {

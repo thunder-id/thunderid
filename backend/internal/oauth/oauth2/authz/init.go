@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package authz
@@ -28,6 +28,7 @@ func Initialize(
 	ssoSession session.Service,
 	ssoTransport session.HandleTransportInterface,
 	flowProvider providers.FlowProvider,
+	governance providers.IdentityGovernanceProvider,
 	cfg oauthconfig.Config,
 	storeProvider providers.RuntimeStoreProvider,
 	transactioner providers.Transactioner,
@@ -39,7 +40,7 @@ func Initialize(
 	authzService := newAuthorizeService(
 		actorProvider, resourceService, jwtService, flowExecService,
 		authzCodeStore, authzReqStore, parService, transactioner, criteriaRevoker,
-		ssoSession, flowProvider, cfg, jtiStore,
+		ssoSession, flowProvider, governance, cfg, jtiStore,
 	)
 	authzHandler := newAuthorizeHandler(authzService, ssoTransport, cfg)
 	registerRoutes(mux, authzHandler)

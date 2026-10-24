@@ -30,7 +30,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/contexts')>();
   return {
     ...actual,
-    useConfig: () => ({getServerUrl: () => 'http://localhost:8090'}),
+    useConfig: () => ({getServerUrl: () => 'http://localhost:8090', config: {brand: {product_name: 'ThunderID'}}}),
     useToast: () => ({showToast: mockShowToast}),
   };
 });

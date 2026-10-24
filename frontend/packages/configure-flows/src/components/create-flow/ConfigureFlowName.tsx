@@ -96,7 +96,7 @@ export default function ConfigureFlowName({value, onChange, onReadyChange}: Conf
               fullWidth
               id="flow-name-input"
               onChange={(e) => handleNameChange(e.target.value)}
-              placeholder={t('flows:create.configure.name.placeholder', 'e.g. Customer Sign-in')}
+              placeholder={t('flows:create.configure.name.placeholder', 'e.g. Customer sign-in')}
               error={!!fieldState.error}
             />
           )}

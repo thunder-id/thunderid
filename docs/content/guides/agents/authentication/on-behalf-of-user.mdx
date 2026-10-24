@@ -17,8 +17,8 @@ An agent can hold an access token that represents a user instead of itself. The 
 
 By default an agent acts only on its own. Extending it lets the same agent also act for a signed-in user, without giving up acting on its own. In the Console, extend the agent as follows:
 
-1. On the **Advanced** tab, under **Operating Mode**, turn on the **Delegated mode** toggle. The agent keeps acting on its own (`client_credentials`) and gains the ability to sign a user in and act for them (`authorization_code` with PKCE).
-2. Still on the **Advanced** tab, add the **Authorized redirect URIs** for the sign-in callback, and set **Allowed User Types** to the user types allowed to register through the agent.
+1. On the **Advanced** tab, under **Operating mode**, turn on the **Delegated mode** toggle. The agent keeps acting on its own (`client_credentials`) and gains the ability to sign a user in and act for them (`authorization_code` with PKCE).
+2. Still on the **Advanced** tab, add the **Authorized redirect URIs** for the sign-in callback, and set **Allowed user types** to the user types allowed to register through the agent.
 3. On the **Flows** tab, pick the **Authentication** and **Registration** flows that decide how users authenticate (enterprise SSO, social login, passkeys, OTP, and where step-up applies).
 
 :::note
@@ -104,7 +104,7 @@ When a user token already exists, exchange it for a new one scoped to a specific
 <Tabs groupId="agent-config">
 <TabItem value="console" label="Console" default>
 
-On the **Advanced** tab, add the **Token Exchange** grant (available in either operating mode).
+On the **Advanced** tab, add the **Token exchange** grant (available in either operating mode).
 
 </TabItem>
 <TabItem value="api" label="API">
@@ -143,7 +143,7 @@ To confine an agent to specific operations, such as allowing a read but denying 
 
 An agent that acts for a user can also renew that access without a new sign-in, by keeping a refresh token. Enable the refresh grant like the other delegated grants:
 
-- **Console:** on the **Advanced** tab, with the agent extended to act for a user, add the refresh grant (`refresh_token`) in **Grant Types**.
+- **Console:** on the **Advanced** tab, with the agent extended to act for a user, add the refresh grant (`refresh_token`) in **Grant types**.
 - **API:** add `refresh_token` to the agent's `grantTypes`.
 
 The exchange call, and the rules for narrowing scope and preserving the resource binding, are the same as for any client. See [Refresh Token](../../../protocols/oauth-oidc/refresh-token) for the request and its rules. The reissued token keeps the agent as the actor.
@@ -165,7 +165,7 @@ A resource reads `sub` to apply the user's permissions and `act` to see which ag
 | `aud` | The resolved resource server, or the agent's default audience (its client ID when none is set) when the request carries no permission scopes or `resource`. |
 | `scope` | A subset of the user's scopes, never more than the user's own token held. |
 | `client_id` | The agent's client ID. |
-| `act` | The agent acting for the user, on the access token only and never the ID token. It is appended automatically on the `authorization_code` and CIBA grants, and built from the `actor_token` on a token exchange. |
+| `act` | The agent acting for the user, on the access token only and never the ID token. It is appended automatically on the `authorization_code` and CIBA grants. On a token exchange it names the `actor_token`'s subject, or the agent itself when the request has no `actor_token`. Earlier actors in a `subject_token` that <ProductName /> issued stay nested beneath it. See [The nested act claim](../agent-to-agent#the-nested-act-claim). |
 | `exp`, `iat`, `nbf`, `jti` | Standard JWT lifetime and identity claims. |
 
 ## Troubleshooting

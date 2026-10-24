@@ -17,10 +17,19 @@ func NewFlowMetaServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *FlowMetaServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &FlowMetaServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -79,7 +88,7 @@ type FlowMetaServiceInterfaceMock_GetFlowMetadata_Call struct {
 //   - id string
 //   - language *string
 //   - namespace *string
-func (_e *FlowMetaServiceInterfaceMock_Expecter) GetFlowMetadata(ctx interface{}, metaType interface{}, id interface{}, language interface{}, namespace interface{}) *FlowMetaServiceInterfaceMock_GetFlowMetadata_Call {
+func (_e *FlowMetaServiceInterfaceMock_Expecter) GetFlowMetadata(ctx any, metaType any, id any, language any, namespace any) *FlowMetaServiceInterfaceMock_GetFlowMetadata_Call {
 	return &FlowMetaServiceInterfaceMock_GetFlowMetadata_Call{Call: _e.mock.On("GetFlowMetadata", ctx, metaType, id, language, namespace)}
 }
 

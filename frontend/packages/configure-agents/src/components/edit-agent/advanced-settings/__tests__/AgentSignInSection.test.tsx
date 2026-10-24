@@ -62,7 +62,7 @@ describe('AgentSignInSection', () => {
       />,
     );
 
-    expect(screen.getByText('Agent Sign-In')).toBeInTheDocument();
+    expect(screen.getByText('Agent sign-in')).toBeInTheDocument();
     expect(screen.getByText('Allow agents to sign in through this agent using the sign-in flow.')).toBeInTheDocument();
   });
 
@@ -76,7 +76,7 @@ describe('AgentSignInSection', () => {
       />,
     );
 
-    expect(screen.getByLabelText('Enable Agent Sign-In')).not.toBeChecked();
+    expect(screen.getByLabelText('Enable agent sign-in')).not.toBeChecked();
   });
 
   it('renders the toggle on when an agent type is allowed', () => {
@@ -89,7 +89,7 @@ describe('AgentSignInSection', () => {
       />,
     );
 
-    expect(screen.getByLabelText('Enable Agent Sign-In')).toBeChecked();
+    expect(screen.getByLabelText('Enable agent sign-in')).toBeChecked();
   });
 
   it('prioritizes editedAgent.allowedAgentTypes over agent.allowedAgentTypes', () => {
@@ -102,7 +102,7 @@ describe('AgentSignInSection', () => {
       />,
     );
 
-    expect(screen.getByLabelText('Enable Agent Sign-In')).not.toBeChecked();
+    expect(screen.getByLabelText('Enable agent sign-in')).not.toBeChecked();
   });
 
   it('allows the default agent type when the toggle is turned on', async () => {
@@ -116,7 +116,7 @@ describe('AgentSignInSection', () => {
       />,
     );
 
-    await user.click(screen.getByLabelText('Enable Agent Sign-In'));
+    await user.click(screen.getByLabelText('Enable agent sign-in'));
 
     expect(mockOnFieldChange).toHaveBeenCalledWith('allowedAgentTypes', ['default']);
   });
@@ -132,7 +132,7 @@ describe('AgentSignInSection', () => {
       />,
     );
 
-    await user.click(screen.getByLabelText('Enable Agent Sign-In'));
+    await user.click(screen.getByLabelText('Enable agent sign-in'));
 
     expect(mockOnFieldChange).toHaveBeenCalledWith('allowedAgentTypes', []);
   });
@@ -147,6 +147,6 @@ describe('AgentSignInSection', () => {
       />,
     );
 
-    expect(screen.getByLabelText('Enable Agent Sign-In')).toBeDisabled();
+    expect(screen.getByLabelText('Enable agent sign-in')).toBeDisabled();
   });
 });

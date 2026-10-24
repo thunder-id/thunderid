@@ -17,10 +17,19 @@ func NewOUHierarchyResolverMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *OUHierarchyResolverMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &OUHierarchyResolverMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -76,7 +85,7 @@ type OUHierarchyResolverMock_GetAncestorOUIDs_Call struct {
 // GetAncestorOUIDs is a helper method to define mock.On call
 //   - ctx context.Context
 //   - ouID string
-func (_e *OUHierarchyResolverMock_Expecter) GetAncestorOUIDs(ctx interface{}, ouID interface{}) *OUHierarchyResolverMock_GetAncestorOUIDs_Call {
+func (_e *OUHierarchyResolverMock_Expecter) GetAncestorOUIDs(ctx any, ouID any) *OUHierarchyResolverMock_GetAncestorOUIDs_Call {
 	return &OUHierarchyResolverMock_GetAncestorOUIDs_Call{Call: _e.mock.On("GetAncestorOUIDs", ctx, ouID)}
 }
 
@@ -145,7 +154,7 @@ type OUHierarchyResolverMock_IsAncestor_Call struct {
 //   - ctx context.Context
 //   - ancestorOUID string
 //   - descendantOUID string
-func (_e *OUHierarchyResolverMock_Expecter) IsAncestor(ctx interface{}, ancestorOUID interface{}, descendantOUID interface{}) *OUHierarchyResolverMock_IsAncestor_Call {
+func (_e *OUHierarchyResolverMock_Expecter) IsAncestor(ctx any, ancestorOUID any, descendantOUID any) *OUHierarchyResolverMock_IsAncestor_Call {
 	return &OUHierarchyResolverMock_IsAncestor_Call{Call: _e.mock.On("IsAncestor", ctx, ancestorOUID, descendantOUID)}
 }
 

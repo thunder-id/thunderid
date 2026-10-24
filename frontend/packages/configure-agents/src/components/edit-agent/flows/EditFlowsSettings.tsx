@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
-  OAuth2GrantTypes,
   type Application,
   SettingsLockNotice,
   AuthenticationFlowSection,
@@ -12,6 +11,7 @@ import {Stack} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {Agent, OAuthAgentConfig} from '../../../models/agent';
+import {hasDelegationGrant} from '../../../utils/isDelegatedAgent';
 
 interface EditFlowsSettingsProps {
   agent: Agent;
@@ -27,7 +27,7 @@ export default function EditFlowsSettings({
   onFieldChange,
 }: EditFlowsSettingsProps): JSX.Element {
   const {t} = useTranslation();
-  const isUnlocked = oauth2Config?.grantTypes?.includes(OAuth2GrantTypes.AUTHORIZATION_CODE) ?? false;
+  const isUnlocked = hasDelegationGrant(oauth2Config?.grantTypes);
 
   // Agents share the inbound-client shape with applications (auth_flow_id, registration flow
   // config), so the same components are reused with an entity-label override. Forcing

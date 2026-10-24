@@ -17,6 +17,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
 )
 
 // newAuthZENPDPEngine creates an AuthZEN PDP authorization engine.
@@ -143,7 +145,7 @@ func (p *authZENPDPEngine) settingsForConnection(
 	if connection == nil {
 		return nil, fmt.Errorf("AuthZEN PDP connection %q was not found", connectionID)
 	}
-	return prepareAuthZENPDPSettingsWithTimeout(AuthZENPDPConfig{
+	settings, err := prepareAuthZENPDPSettingsWithTimeout(AuthZENPDPConfig{
 		ResourceType:             resourceType,
 		Endpoint:                 connection.Endpoint,
 		BatchEndpoint:            connection.BatchEndpoint,
@@ -151,6 +153,19 @@ func (p *authZENPDPEngine) settingsForConnection(
 		RetryCount:               connection.RetryCount,
 		SubjectAttributeMappings: connection.SubjectAttributeMappings,
 	}, time.Second)
+	if err != nil {
+		return nil, err
+	}
+	authenticationConfig, err := outboundauth.FromProperties(connection.AuthenticationProperties)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt outbound authentication: %w", err)
+	}
+	authenticator, err := httpauth.New(authenticationConfig)
+	if err != nil {
+		return nil, err
+	}
+	settings.authenticator = authenticator
+	return settings, nil
 }
 
 // evaluateBatch converts ThunderID evaluations into AuthZEN batch payloads and maps responses back in order.
@@ -255,6 +270,12 @@ func (p *authZENPDPEngine) post(
 			return fmt.Errorf("failed to create AuthZEN request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/json")
+		if settings.authenticator != nil {
+			if err := settings.authenticator.Authenticate(ctx, req); err != nil {
+				cancel()
+				return fmt.Errorf("failed to authenticate AuthZEN PDP request: %w", err)
+			}
+		}
 
 		resp, err := p.client.Do(req)
 		if err != nil {

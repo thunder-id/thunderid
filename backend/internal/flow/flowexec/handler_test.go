@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
@@ -56,6 +57,12 @@ func (s *HandlerTestSuite) TestHandleFlowError_ClientError_Returns400() {
 func (s *HandlerTestSuite) TestHandleFlowError_ForbiddenError_Returns403() {
 	w := httptest.NewRecorder()
 	handleFlowError(context.Background(), w, &ErrorDirectFlowInitiationNotPermitted, "")
+	s.Equal(http.StatusForbidden, w.Code)
+}
+
+func (s *HandlerTestSuite) TestHandleFlowError_ApplicationNotUsable_Returns403() {
+	w := httptest.NewRecorder()
+	handleFlowError(context.Background(), w, &ErrorFlowApplicationNotUsable, "")
 	s.Equal(http.StatusForbidden, w.Code)
 }
 
@@ -195,6 +202,44 @@ func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_PropagatesInboundSSOCo
 	s.Equal(http.StatusOK, w.Code)
 	s.Require().True(gotOK, "inbound SSO transport inputs must be propagated onto the service context")
 	s.Equal("inbound-handle", gotInbound.HandleFor("flow-1"))
+}
+
+// TestHandleFlowExecutionRequest_CapturesCurrentRequest verifies the current step's request headers
+// and query params are captured onto the service context, with credential headers stripped.
+func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_CapturesCurrentRequest() {
+	t := s.T()
+	mockSvc := NewFlowExecServiceInterfaceMock(t)
+
+	var gotRequest *providers.CurrentRequest
+	mockSvc.EXPECT().Execute(mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(ctx context.Context, _ string, _ string, _ string, _ bool, _ string,
+			_ map[string]string, _ string, _ string, _ string) {
+			gotRequest = common.CurrentRequestFrom(ctx)
+		}).
+		Return(&FlowStep{ExecutionID: "exec-1", Status: providers.FlowStatusIncomplete},
+			(*tidcommon.ServiceError)(nil))
+
+	h := newFlowExecutionHandler(mockSvc, session.NewHandleTransport(session.TransportConfig{SecureCookies: false}), 0)
+	req := httptest.NewRequest(http.MethodPost, "/flow/execute?utm_source=newsletter&client_secret=supersecret",
+		bytes.NewBufferString(testFlowExecRequestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "curl/8.0")
+	req.Header.Set("Authorization", "Bearer secret")
+	w := httptest.NewRecorder()
+
+	h.HandleFlowExecutionRequest(w, req)
+
+	s.Equal(http.StatusOK, w.Code)
+	s.Require().NotNil(gotRequest, "current request must be captured onto the service context")
+	s.Equal("curl/8.0", http.Header(gotRequest.Headers).Get("User-Agent"))
+	s.Empty(http.Header(gotRequest.Headers).Get("Authorization"), "credential headers must be stripped")
+	// The inbound host is folded in under Host so {{request(current.header.Host)}} resolves.
+	s.Equal("example.com", http.Header(gotRequest.Headers).Get("Host"))
+	s.Require().Contains(gotRequest.QueryParams, "utm_source")
+	s.Equal("newsletter", gotRequest.QueryParams["utm_source"][0])
+	// client_secret is a credential query param and must be stripped at capture.
+	s.NotContains(gotRequest.QueryParams, "client_secret", "credential query params must be stripped")
 }
 
 // TestHandleFlowExecutionRequest_WritesSSOHandleCookie verifies a minted handle is emitted as the

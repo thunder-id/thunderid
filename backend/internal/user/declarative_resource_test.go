@@ -9,17 +9,22 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	entitypkg "github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 )
 
 // DeclarativeResourceTestSuite tests user declarative resource parsing and export.
@@ -169,7 +174,7 @@ func (suite *DeclarativeResourceTestSuite) TestParseToUserWrapper() {
 func (suite *DeclarativeResourceTestSuite) TestUserExporter_Metadata() {
 	exporter := newUserExporter(
 		NewUserServiceInterfaceMock(suite.T()), entitymock.NewEntityServiceInterfaceMock(suite.T()),
-		entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T()))
+		entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T()), nil)
 
 	suite.Equal(resourceTypeUser, exporter.GetResourceType())
 	suite.Equal(paramTypeUser, exporter.GetParameterizerType())
@@ -179,7 +184,8 @@ func (suite *DeclarativeResourceTestSuite) TestUserExporter_GetAllResourceIDs() 
 	ctx := context.Background()
 	mockSvc := NewUserServiceInterfaceMock(suite.T())
 	entityServiceMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
-	exporter := newUserExporter(mockSvc, entityServiceMock, entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T()))
+	exporter := newUserExporter(
+		mockSvc, entityServiceMock, entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T()), nil)
 
 	users := []providers.User{{ID: "user-1"}, {ID: "user-2"}}
 	mockSvc.On("GetUserList", ctx, serverconst.MaxPageSize, 0, mock.Anything, false).
@@ -228,7 +234,7 @@ func (suite *DeclarativeResourceTestSuite) TestMakeUserParser_ParsesYAMLToEntity
 func (suite *DeclarativeResourceTestSuite) TestGetResourceRules_IncludesCredentials() {
 	exporter := newUserExporter(
 		NewUserServiceInterfaceMock(suite.T()), entitymock.NewEntityServiceInterfaceMock(suite.T()),
-		entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T()))
+		entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T()), nil)
 
 	rules := exporter.GetResourceRules()
 	suite.Contains(rules.DynamicPropertyFields, "Credentials")
@@ -237,7 +243,7 @@ func (suite *DeclarativeResourceTestSuite) TestGetResourceRules_IncludesCredenti
 func (suite *DeclarativeResourceTestSuite) TestValidateResource_MissingUsername() {
 	exporter := newUserExporter(
 		NewUserServiceInterfaceMock(suite.T()), entitymock.NewEntityServiceInterfaceMock(suite.T()),
-		entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T()))
+		entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T()), nil)
 
 	resource := &userDeclarativeResource{
 		ID:         "user-1",
@@ -262,7 +268,7 @@ func (suite *DeclarativeResourceTestSuite) TestMakeUserValidator_Success() {
 	}
 
 	svcMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
-	svcMock.On("GetEntity", context.Background(), "user-1").
+	svcMock.On("GetEntityProfile", context.Background(), "user-1").
 		Return((*providers.Entity)(nil), entitypkg.ErrEntityNotFound)
 
 	validator := makeUserValidator()
@@ -282,7 +288,7 @@ func (suite *DeclarativeResourceTestSuite) TestMakeUserValidator_DuplicateEntity
 	}
 
 	svcMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
-	svcMock.On("GetEntity", context.Background(), "user-1").
+	svcMock.On("GetEntityProfile", context.Background(), "user-1").
 		Return(&providers.Entity{Category: providers.EntityCategoryUser, ID: "user-1"}, nil)
 
 	validator := makeUserValidator()
@@ -303,7 +309,7 @@ func (suite *DeclarativeResourceTestSuite) TestMakeUserValidator_DBError() {
 	}
 
 	svcMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
-	svcMock.On("GetEntity", context.Background(), "user-1").
+	svcMock.On("GetEntityProfile", context.Background(), "user-1").
 		Return((*providers.Entity)(nil), errors.New("db error"))
 
 	validator := makeUserValidator()
@@ -385,4 +391,142 @@ func (suite *DeclarativeResourceTestSuite) TestBuildHashCfgForUser_UnrecognizedA
 	_, err = buildHashCfgForUser()
 	suite.Error(err)
 	suite.Contains(err.Error(), "BCRYPT")
+}
+
+// sharedUserYAML is a user document that declares one policy, its unit named by ouID or ouHandle.
+func sharedUserYAML(unit string) []byte {
+	return []byte("" +
+		"id: user-1\n" +
+		"type: person\n" +
+		unit + "\n" +
+		"attributes:\n" +
+		"  username: alice\n" +
+		"sharingPolicies:\n" +
+		"  - id: user-1-policy-1\n" +
+		"    childUnits:\n" +
+		"      mode: selected\n" +
+		"      units:\n" +
+		"        - ouId: ou-eu\n" +
+		"          reach: unit\n")
+}
+
+// A document that declares no sharing hands the framework nothing to hold, without consulting the
+// service.
+func (suite *DeclarativeResourceTestSuite) TestMakeUserSharingParser_DeclaresNothingWithoutPolicies() {
+	parser := makeUserSharingParser(NewUserServiceInterfaceMock(suite.T()))
+
+	declared, err := parser([]byte("id: user-1\ntype: person\nouId: ou-1\nattributes:\n  username: alice\n"))
+
+	suite.Require().NoError(err)
+	suite.Equal("user-1", declared.ResourceID)
+	suite.Empty(declared.Policies)
+}
+
+// The policies are declared on the user, against the unit the user lives in.
+func (suite *DeclarativeResourceTestSuite) TestMakeUserSharingParser_ReadsThePoliciesAgainstTheUsersUnit() {
+	userSvc := NewUserServiceInterfaceMock(suite.T())
+	userSvc.On("ResolveUserOUHandle", mock.Anything, mock.Anything).Return((*tidcommon.ServiceError)(nil))
+
+	declared, err := makeUserSharingParser(userSvc)(sharedUserYAML("ouId: ou-1"))
+
+	suite.Require().NoError(err)
+	suite.Equal("user-1", declared.ResourceID)
+	suite.Equal("alice", declared.ResourceName)
+	suite.Equal("ou-1", declared.OwningOUID)
+	suite.Equal([]sharing.PolicyRequest{{
+		ID: "user-1-policy-1",
+		ChildUnits: &sharing.ChildUnitsRequest{
+			Mode:  sharing.ChildUnitsSelected,
+			Units: []sharing.ChildUnitRequest{{OUID: "ou-eu", Reach: sharing.ReachUnit}},
+		},
+	}}, declared.Policies)
+}
+
+// A unit named by handle is resolved to the id the policies are declared against.
+func (suite *DeclarativeResourceTestSuite) TestMakeUserSharingParser_ResolvesAUnitNamedByHandle() {
+	userSvc := NewUserServiceInterfaceMock(suite.T())
+	userSvc.On("ResolveUserOUHandle", mock.Anything, mock.MatchedBy(func(u *providers.User) bool {
+		return u.OUHandle == "acme/customers"
+	})).Run(func(args mock.Arguments) {
+		args.Get(1).(*providers.User).OUID = "ou-customers"
+	}).Return((*tidcommon.ServiceError)(nil))
+
+	declared, err := makeUserSharingParser(userSvc)(sharedUserYAML("ouHandle: acme/customers"))
+
+	suite.Require().NoError(err)
+	suite.Equal("ou-customers", declared.OwningOUID)
+}
+
+// A handle no unit holds stops the load rather than declaring policies against no unit.
+func (suite *DeclarativeResourceTestSuite) TestMakeUserSharingParser_RefusesAnUnknownHandle() {
+	userSvc := NewUserServiceInterfaceMock(suite.T())
+	userSvc.On("ResolveUserOUHandle", mock.Anything, mock.Anything).Return(&ErrorInvalidRequestFormat)
+
+	_, err := makeUserSharingParser(userSvc)(sharedUserYAML("ouHandle: nowhere"))
+
+	suite.Error(err)
+	suite.Contains(err.Error(), "nowhere")
+}
+
+func (suite *DeclarativeResourceTestSuite) TestMakeUserSharingParser_RefusesMalformedYAML() {
+	_, err := makeUserSharingParser(NewUserServiceInterfaceMock(suite.T()))([]byte("id: [unclosed"))
+
+	suite.Error(err)
+}
+
+// sharingAnswers sets what the framework says the user's sharing is when the export asks.
+func (c *credentialExport) sharingAnswers(
+	t *testing.T, replayable []sharing.ReplayablePolicy, svcErr *tidcommon.ServiceError,
+) {
+	t.Helper()
+	c.sharing = sharingmock.NewSharingServiceInterfaceMock(t)
+	c.exporter = newUserExporter(c.users, c.entities, c.entityTypes, c.sharing)
+	c.sharing.On("ExportPolicies", context.Background(), UserSharingType, "user-1").
+		Return(replayable, svcErr).Once()
+}
+
+// A user's sharing travels with it, the owner's policy and the reshares alike, so an import elsewhere
+// shares it the same way.
+func TestAUsersSharingPoliciesAreExported(t *testing.T) {
+	c := newCredentialExport(t, "alice")
+	c.typeDeclaresCredentials()
+	share := sharing.PolicyRequest{ChildUnits: &sharing.ChildUnitsRequest{
+		Mode:  sharing.ChildUnitsSelected,
+		Units: []sharing.ChildUnitRequest{{OUID: "ou-eu", Reach: sharing.ReachUnit}},
+	}}
+	reshare := sharing.PolicyRequest{
+		InitiatingOUID: "ou-eu",
+		ChildUnits:     &sharing.ChildUnitsRequest{Mode: sharing.ChildUnitsAll},
+	}
+	c.sharingAnswers(t, []sharing.ReplayablePolicy{
+		{InitiatingOUID: "ou-1", Request: share},
+		{InitiatingOUID: "ou-eu", Request: reshare},
+	}, nil)
+
+	user := c.exportUser(t)
+
+	assert.Equal(t, []sharing.PolicyRequest{share, reshare}, user.SharingPolicies)
+}
+
+// A user shared nowhere is exported with no sharing section.
+func TestAUserSharedNowhereExportsNoSharingPolicies(t *testing.T) {
+	c := newCredentialExport(t, "alice")
+	c.typeDeclaresCredentials()
+
+	user := c.exportUser(t)
+
+	assert.Nil(t, user.SharingPolicies)
+}
+
+// A failure to read the user's sharing fails the export, rather than exporting a user that would
+// re-import shared nowhere.
+func TestUnreadableSharingFailsTheUsersExport(t *testing.T) {
+	c := newCredentialExport(t, "alice")
+	c.typeDeclaresCredentials()
+	c.sharingAnswers(t, nil, &tidcommon.InternalServerError)
+
+	_, _, svcErr := c.exporter.GetResourceByID(context.Background(), "user-1")
+
+	require.NotNil(t, svcErr)
+	assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
 }

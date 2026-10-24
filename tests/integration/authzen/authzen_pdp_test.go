@@ -6,12 +6,14 @@ package authzen
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -26,7 +28,13 @@ type authZENPDPConnectionResponse struct {
 	BatchEndpoint            string                              `json:"batchEndpoint,omitempty"`
 	TimeoutMS                int                                 `json:"timeoutMs"`
 	RetryCount               int                                 `json:"retryCount"`
+	Authentication           authZENPDPAuthenticationResponse    `json:"authentication"`
 	SubjectAttributeMappings []authZENPDPSubjectAttributeMapping `json:"subjectAttributeMappings,omitempty"`
+}
+
+type authZENPDPAuthenticationResponse struct {
+	Type       string            `json:"type"`
+	Properties map[string]string `json:"properties,omitempty"`
 }
 
 type authZENPDPSubjectAttributeMapping struct {
@@ -117,6 +125,8 @@ type AuthZENPDPIntegrationSuite struct {
 
 func (s *AuthZENPDPIntegrationSuite) SetupSuite() {
 	s.pdpServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.Require().Equal("authzen-primary-key", r.Header.Get("X-AuthZEN-Key"))
+		s.Require().Equal("authzen-tenant", r.Header.Get("X-AuthZEN-Tenant"))
 		switch r.URL.Path {
 		case "/access/v1/evaluation":
 			var evaluation authZENPDPSingleRequest
@@ -229,6 +239,13 @@ func (s *AuthZENPDPIntegrationSuite) SetupSuite() {
 		"batchEndpoint": s.pdpServer.URL + "/access/v1/evaluations",
 		"timeoutMs":     750,
 		"retryCount":    2,
+		"authentication": map[string]interface{}{
+			"type": "api_key",
+			"properties": map[string]string{
+				"X-AuthZEN-Key":    "authzen-primary-key",
+				"X-AuthZEN-Tenant": "authzen-tenant",
+			},
+		},
 		"subjectAttributeMappings": []authZENPDPSubjectAttributeMapping{{
 			EntityType: "authzen-pdp-person",
 			Attributes: []authZENPDPSubjectAttributeRow{{
@@ -374,6 +391,151 @@ func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionEvaluatesAccess() {
 	s.Require().NoError(json.Unmarshal(body, &result))
 	s.Require().Len(result.Evaluations, 1)
 	s.True(result.Evaluations[0].Decision)
+}
+
+func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPRequestAuthenticationMethods() {
+	original := s.getAuthZENPDPConnection()
+	tests := []struct {
+		name           string
+		authentication map[string]interface{}
+		checkHeaders   func(http.Header)
+	}{
+		{
+			name:           "none",
+			authentication: map[string]interface{}{"type": "none"},
+			checkHeaders: func(headers http.Header) {
+				s.Empty(headers.Get("Authorization"))
+				s.Empty(headers.Get("X-AuthZEN-Key"))
+			},
+		},
+		{
+			name: "bearer",
+			authentication: map[string]interface{}{
+				"type": "bearer", "properties": map[string]string{"token": "pdp-bearer-token"},
+			},
+			checkHeaders: func(headers http.Header) {
+				s.Equal("Bearer pdp-bearer-token", headers.Get("Authorization"))
+			},
+		},
+		{
+			name: "basic",
+			authentication: map[string]interface{}{
+				"type": "basic", "properties": map[string]string{
+					"username": "pdp-user", "password": "pdp-password",
+				},
+			},
+			checkHeaders: func(headers http.Header) {
+				request := &http.Request{Header: headers}
+				username, password, ok := request.BasicAuth()
+				s.True(ok)
+				s.Equal("pdp-user", username)
+				s.Equal("pdp-password", password)
+			},
+		},
+		{
+			name: "multiple API-key headers",
+			authentication: map[string]interface{}{
+				"type": "api_key", "properties": map[string]string{
+					"X-AuthZEN-Key": "replacement-key", "X-AuthZEN-Tenant": "replacement-tenant",
+				},
+			},
+			checkHeaders: func(headers http.Header) {
+				s.Equal("replacement-key", headers.Get("X-AuthZEN-Key"))
+				s.Equal("replacement-tenant", headers.Get("X-AuthZEN-Tenant"))
+			},
+		},
+	}
+
+	for _, test := range tests {
+		s.Run(test.name, func() {
+			receivedHeaders := make(chan http.Header, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				receivedHeaders <- r.Header.Clone()
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"evaluations":[{"decision":true}]}`)
+			}))
+			defer server.Close()
+
+			updated := original
+			updated.Endpoint = server.URL + "/access/v1/evaluation"
+			updated.BatchEndpoint = server.URL + "/access/v1/evaluations"
+			s.updateAuthZENPDPConnectionWithAuthentication(updated, test.authentication)
+			defer s.updateAuthZENPDPConnection(original)
+
+			status, body, token := s.requestClientCredentialsToken("read")
+			s.Require().Equal(http.StatusOK, status, string(body))
+			s.NotEmpty(token.AccessToken)
+			select {
+			case headers := <-receivedHeaders:
+				test.checkHeaders(headers)
+			case <-time.After(time.Second):
+				s.FailNow("PDP did not receive an evaluation request")
+			}
+		})
+	}
+}
+
+func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPRejectsInvalidStoredConfiguration() {
+	if testutils.GetDBType() != "sqlite" {
+		s.T().Skip("stored-configuration fixture uses the SQLite config DB")
+	}
+	query := fmt.Sprintf(`SELECT PROPERTIES FROM "AUTHORIZATION_PDP_CONNECTION" WHERE ID='%s';`, s.connectionID)
+	original, err := testutils.QueryConfigDB(query)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(original)
+
+	tests := []struct {
+		name   string
+		mutate func(map[string]json.RawMessage)
+	}{
+		{
+			name: "invalid endpoint",
+			mutate: func(properties map[string]json.RawMessage) {
+				properties["endpoint"] = json.RawMessage(`"not-an-endpoint"`)
+			},
+		},
+		{
+			name: "unreadable encrypted credential",
+			mutate: func(properties map[string]json.RawMessage) {
+				var authentication []struct {
+					Name     string `json:"name"`
+					Value    string `json:"value"`
+					IsSecret bool   `json:"isSecret"`
+				}
+				s.Require().NoError(json.Unmarshal(properties["authenticationProperties"], &authentication))
+				for i := range authentication {
+					if authentication[i].IsSecret {
+						authentication[i].Value = "invalid-ciphertext"
+						break
+					}
+				}
+				properties["authenticationProperties"] = mustJSON(authentication)
+			},
+		},
+	}
+	for _, test := range tests {
+		s.Run(test.name, func() {
+			var properties map[string]json.RawMessage
+			s.Require().NoError(json.Unmarshal([]byte(original), &properties))
+			test.mutate(properties)
+			updated := mustJSON(properties)
+			s.setStoredAuthZENPDPProperties(string(updated))
+			defer s.setStoredAuthZENPDPProperties(original)
+
+			status, body, token := s.requestClientCredentialsToken("read")
+			s.NotEqual(http.StatusOK, status, string(body))
+			s.Empty(token.AccessToken)
+		})
+	}
+}
+
+func (s *AuthZENPDPIntegrationSuite) setStoredAuthZENPDPProperties(properties string) {
+	escaped := strings.ReplaceAll(properties, "'", "''")
+	query := fmt.Sprintf(`UPDATE "AUTHORIZATION_PDP_CONNECTION" SET PROPERTIES='%s' WHERE ID='%s'; SELECT changes();`,
+		escaped, s.connectionID)
+	changed, err := testutils.QueryConfigDB(query)
+	s.Require().NoError(err)
+	s.Equal("1", changed)
 }
 
 func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPBatchContinuesForUnknownUser() {
@@ -529,6 +691,11 @@ func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionSettingsAndUsagePer
 	s.Equal(s.pdpServer.URL+"/access/v1/evaluations", connection.BatchEndpoint)
 	s.Equal(750, connection.TimeoutMS)
 	s.Equal(2, connection.RetryCount)
+	s.Equal("api_key", connection.Authentication.Type)
+	s.Equal(map[string]string{
+		"X-Authzen-Key":    "******",
+		"X-Authzen-Tenant": "******",
+	}, connection.Authentication.Properties)
 	s.Require().Len(connection.SubjectAttributeMappings, 1)
 	s.Equal("authzen-pdp-person", connection.SubjectAttributeMappings[0].EntityType)
 	s.Require().Len(connection.SubjectAttributeMappings[0].Attributes, 1)
@@ -758,6 +925,40 @@ func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionValidationAndNotFou
 			status: http.StatusCreated,
 		},
 		{
+			name:   "invalid authentication type",
+			method: http.MethodPost,
+			path:   "/connections/authzen-pdp",
+			body: string(mustJSON(map[string]interface{}{
+				"name":           "Invalid Authentication PDP",
+				"endpoint":       s.pdpServer.URL + "/access/v1/evaluation",
+				"authentication": map[string]interface{}{"type": "unknown"},
+			})),
+			status: http.StatusBadRequest,
+		},
+		{
+			name:   "authenticated remote HTTP endpoint",
+			method: http.MethodPost,
+			path:   "/connections/authzen-pdp",
+			body: string(mustJSON(map[string]interface{}{
+				"name":           "Insecure PDP",
+				"endpoint":       "http://pdp.example.com/access/v1/evaluation",
+				"authentication": map[string]interface{}{"type": "bearer", "properties": map[string]string{"token": "secret"}},
+			})),
+			status: http.StatusBadRequest,
+		},
+		{
+			name:   "authenticated remote HTTP batch endpoint",
+			method: http.MethodPost,
+			path:   "/connections/authzen-pdp",
+			body: string(mustJSON(map[string]interface{}{
+				"name":           "Insecure Batch PDP",
+				"endpoint":       "https://pdp.example.com/access/v1/evaluation",
+				"batchEndpoint":  "http://pdp.example.com/access/v1/evaluations",
+				"authentication": map[string]interface{}{"type": "bearer", "properties": map[string]string{"token": "secret"}},
+			})),
+			status: http.StatusBadRequest,
+		},
+		{
 			name:   "unknown subject mapping attribute",
 			method: http.MethodPost,
 			path:   "/connections/authzen-pdp",
@@ -907,6 +1108,46 @@ func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionUpdateRejectsInvali
 
 	connection := s.getAuthZENPDPConnection()
 	s.Equal("AuthZEN PDP", connection.Name)
+}
+
+func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionEndpointChangeRequiresFreshAuthentication() {
+	endpoint := s.pdpServer.URL + "/access/v1/evaluation-new"
+	connection := s.getAuthZENPDPConnection()
+	defer s.updateAuthZENPDPConnection(connection)
+	payload := map[string]interface{}{
+		"name":          connection.Name,
+		"endpoint":      endpoint,
+		"batchEndpoint": connection.BatchEndpoint,
+	}
+	sendUpdate := func() (*http.Response, []byte) {
+		request, err := http.NewRequest(http.MethodPut,
+			testutils.TestServerURL+"/connections/authzen-pdp/"+s.connectionID,
+			bytes.NewReader(mustJSON(payload)))
+		s.Require().NoError(err)
+		request.Header.Set("Content-Type", "application/json")
+		response, err := testutils.GetHTTPClient().Do(request)
+		s.Require().NoError(err)
+		body, err := io.ReadAll(response.Body)
+		_ = response.Body.Close()
+		s.Require().NoError(err)
+		return response, body
+	}
+
+	response, body := sendUpdate()
+	s.Equal(http.StatusBadRequest, response.StatusCode, string(body))
+	s.Contains(string(body), "CON-1014")
+	s.Equal(connection.Endpoint, s.getAuthZENPDPConnection().Endpoint)
+
+	payload["authentication"] = map[string]interface{}{
+		"type": "api_key",
+		"properties": map[string]string{
+			"X-AuthZEN-Key":    "replacement-key",
+			"X-AuthZEN-Tenant": "replacement-tenant",
+		},
+	}
+	response, body = sendUpdate()
+	s.Equal(http.StatusOK, response.StatusCode, string(body))
+	s.Equal(endpoint, s.getAuthZENPDPConnection().Endpoint)
 }
 
 func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionExportImportRoundTrip() {
@@ -1419,6 +1660,18 @@ func (s *AuthZENPDPIntegrationSuite) getAuthZENPDPConnectionByID(
 func (s *AuthZENPDPIntegrationSuite) updateAuthZENPDPConnection(
 	connection authZENPDPConnectionResponse,
 ) {
+	s.updateAuthZENPDPConnectionWithAuthentication(connection, map[string]interface{}{
+		"type": "api_key",
+		"properties": map[string]string{
+			"X-AuthZEN-Key": "authzen-primary-key", "X-AuthZEN-Tenant": "authzen-tenant",
+		},
+	})
+}
+
+func (s *AuthZENPDPIntegrationSuite) updateAuthZENPDPConnectionWithAuthentication(
+	connection authZENPDPConnectionResponse,
+	authentication map[string]interface{},
+) {
 	payload := mustJSON(map[string]interface{}{
 		"name":                     connection.Name,
 		"description":              connection.Description,
@@ -1426,6 +1679,7 @@ func (s *AuthZENPDPIntegrationSuite) updateAuthZENPDPConnection(
 		"batchEndpoint":            connection.BatchEndpoint,
 		"timeoutMs":                connection.TimeoutMS,
 		"retryCount":               connection.RetryCount,
+		"authentication":           authentication,
 		"subjectAttributeMappings": connection.SubjectAttributeMappings,
 	})
 	request, err := http.NewRequest(

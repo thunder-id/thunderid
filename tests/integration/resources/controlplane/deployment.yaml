@@ -17,9 +17,23 @@ server:
       issuer: "http://localhost:8091"
       jwks_url: "http://localhost:8091/jwks"
       audience: "thunderid-control-plane"
+      # Who captured or applied a version is shown by name as the issuer's user endpoint reports it,
+      # read with a client credentials token for the client the suite's issuer knows
+      # (testutils/control_plane.go).
+      user_lookup:
+        url: "http://localhost:8091/users/{id}"
+        token_url: "http://localhost:8091/token"
+        client_id: "control-plane-lookup"
+        client_secret: "control-plane-lookup-secret"
+        scopes: ["internal_user_mgt_view"]
+        name_attribute: "username"
+        # Kept a minute: long enough for a test, short enough not to outlive a run.
+        cache_ttl: 60
 
 gateway:
   max_gateways: 5
+  # The suite registers the data plane on localhost.
+  allow_private_addresses: true
 
 tls:
   min_version: "1.3"

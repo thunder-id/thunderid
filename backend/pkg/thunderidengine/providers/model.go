@@ -156,7 +156,7 @@ type Resource struct {
 	Handle       string   `yaml:"handle"                json:"handle"`
 	Description  string   `yaml:"description,omitempty" json:"description,omitempty"`
 	Parent       *string  `yaml:"-"                     json:"-"`                // Resolved parent ID
-	ParentHandle string   `yaml:"parent,omitempty"      json:"parent,omitempty"` // Parent handle during YAML parsing only
+	ParentHandle string   `yaml:"parent,omitempty"      json:"parent,omitempty"` // Parent reference; the parent's full path once processed
 	Permission   string   `yaml:"-"                     json:"-"`                // Computed permission string
 	Actions      []Action `yaml:"actions,omitempty"     json:"actions,omitempty"`
 }
@@ -699,15 +699,55 @@ type OAuthProfile struct {
 	AcrValues                          []string            `json:"acrValues,omitempty"`
 }
 
-// User represents a user in the system.
+// AccessLockedMethod is one live automatic lock. Method is the authentication method it holds, or the
+// entity key when it holds every method. ExpiresAt is when it lifts on its own, empty when it does
+// not. An entity can hold several at once.
+type AccessLockedMethod struct {
+	Method    string `json:"method"              yaml:"-"`
+	ExpiresAt string `json:"expiresAt,omitempty" yaml:"-"`
+}
+
+// AccessStatusDetails describes a status on a management read. Every field is optional. Since is
+// when a suspension was placed. OperatorNote is never disclosed on a refusal. LockedMethods lists the
+// live automatic locks in registry order, and is empty unless the status is LOCKED.
+type AccessStatusDetails struct {
+	Reason        AccessHoldReason     `json:"reason,omitempty"       yaml:"-"`
+	Since         string               `json:"since,omitempty"        yaml:"-"`
+	OperatorNote  string               `json:"operatorNote,omitempty" yaml:"-"`
+	LockedMethods []AccessLockedMethod `json:"lockedMethods,omitempty" yaml:"-"`
+}
+
+// ApplicationStatusReport exposes only the application lifecycle status.
+type ApplicationStatusReport struct {
+	Value AccessStatus `json:"value"`
+}
+
+// AccessStatusReport is the access status a management read returns: the effective value
+// (SUSPENDED, LOCKED or ACTIVE) and its details, nil when there is nothing to add.
+type AccessStatusReport struct {
+	Value   AccessStatus         `json:"value"             yaml:"-"`
+	Details *AccessStatusDetails `json:"details,omitempty" yaml:"-"`
+}
+
+// AccessDecision is the result of an access check. A refusal's Reason names the hold; a refusal that
+// names none answers as a wrong credential.
+type AccessDecision struct {
+	Admitted bool
+	Reason   AccessRefusalReason
+}
+
+// User represents a user in the system. Status is derived at read time and read-only. LastLoginAt is
+// recorded by the runtime, session reuse included, never by a profile write.
 type User struct {
-	ID         string          `json:"id,omitempty"`
-	OUID       string          `json:"ouId,omitempty"`
-	OUHandle   string          `json:"ouHandle,omitempty"`
-	Type       string          `json:"type,omitempty"`
-	Attributes json.RawMessage `json:"attributes,omitempty"`
-	Display    string          `json:"display,omitempty"`
-	IsReadOnly bool            `json:"isReadOnly"`
+	ID          string              `json:"id,omitempty"`
+	OUID        string              `json:"ouId,omitempty"`
+	OUHandle    string              `json:"ouHandle,omitempty"`
+	Type        string              `json:"type,omitempty"`
+	Attributes  json.RawMessage     `json:"attributes,omitempty"`
+	Display     string              `json:"display,omitempty"`
+	IsReadOnly  bool                `json:"isReadOnly"`
+	Status      *AccessStatusReport `json:"status,omitempty"`
+	LastLoginAt string              `json:"lastLoginAt,omitempty"`
 	// LinkedAccount, set on create, records the user's linked account in the same write.
 	LinkedAccount *LinkedAccount `json:"-"`
 }
@@ -728,6 +768,10 @@ type Agent struct {
 	LogoURL     string          `json:"logoUrl,omitempty"`
 	Owner       string          `json:"owner,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
+
+	// Delegated marks an agent that acts on behalf of a signed-in user. It selects the OAuth grant
+	// types applied and checked when the agent is created and is not stored.
+	Delegated bool `json:"delegated,omitempty"`
 
 	// The service-level model carries the full internal profile.
 	InboundAuthProfile
@@ -770,16 +814,18 @@ type LoginConsentConfig struct {
 }
 
 // Entity represents a unified identity principal returned by the entity provider.
+// RuntimeAttributes is the entity's runtime data, never serialized or cached with the profile.
 type Entity struct {
-	ID               string          `json:"id,omitempty"`
-	Category         EntityCategory  `json:"category,omitempty"`
-	Type             string          `json:"type,omitempty"`
-	State            EntityState     `json:"state,omitempty"`
-	OUID             string          `json:"ouId,omitempty"`
-	OUHandle         string          `json:"ouHandle,omitempty"`
-	Attributes       json.RawMessage `json:"attributes,omitempty"`
-	SystemAttributes json.RawMessage `json:"systemAttributes,omitempty"`
-	IsReadOnly       bool            `json:"isReadOnly"`
+	ID                string          `json:"id,omitempty"`
+	Category          EntityCategory  `json:"category,omitempty"`
+	Type              string          `json:"type,omitempty"`
+	State             EntityState     `json:"state,omitempty"`
+	OUID              string          `json:"ouId,omitempty"`
+	OUHandle          string          `json:"ouHandle,omitempty"`
+	Attributes        json.RawMessage `json:"attributes,omitempty"`
+	SystemAttributes  json.RawMessage `json:"systemAttributes,omitempty"`
+	RuntimeAttributes json.RawMessage `json:"-"`
+	IsReadOnly        bool            `json:"isReadOnly"`
 	// Display is the value of the entity type's display attribute, falling back to the entity ID.
 	// It is populated only by callers that resolve it, such as the actor provider for agents.
 	Display string `json:"display,omitempty"`
@@ -1220,6 +1266,9 @@ type Application struct {
 	PolicyURI string   `yaml:"policyUri,omitempty" json:"policyUri,omitempty" jsonschema:"Privacy Policy URI."`
 	Contacts  []string `yaml:"contacts,omitempty" json:"contacts,omitempty"`
 
+	// Status is the effective access status, derived at read time.
+	Status *ApplicationStatusReport `yaml:"-" json:"status,omitempty" jsonschema:"Effective access status. Read-only."`
+
 	InboundAuthProfile `yaml:",inline"`
 	InboundAuthConfig  []InboundAuthConfigWithSecret `yaml:"inboundAuthConfig,omitempty" json:"inboundAuthConfig,omitempty" jsonschema:"Inbound authentication configuration (OAuth2/OIDC settings)."`
 	Metadata           map[string]interface{}        `yaml:"metadata,omitempty" json:"metadata,omitempty" jsonschema:"Generic metadata key-value pairs."`
@@ -1297,10 +1346,18 @@ type InboundAuthConfigWithSecret struct {
 	OAuthConfig *OAuthConfigWithSecret `json:"config,omitempty" yaml:"config,omitempty" jsonschema:"OAuth/OIDC configuration. Required when type is 'oauth2'. Defines OAuth grant types, redirect URIs, client authentication, and PKCE settings."`
 }
 
-// InitiatorRequest holds the original HTTP request data that triggered the flow.
+// InitiatorRequest holds the original HTTP request data that triggered the flow (e.g. the OAuth2
+// authorization request). It is persisted with the flow context for redirect-based flows.
 type InitiatorRequest struct {
 	Headers     map[string][]string `json:"headers,omitempty"     yaml:"headers,omitempty"`
 	QueryParams map[string][]string `json:"queryParams,omitempty" yaml:"queryParams,omitempty"`
+}
+
+// CurrentRequest holds the HTTP request data driving the current flow step. Unlike InitiatorRequest
+// it is transient: it rides on the request context for one execution and is never persisted.
+type CurrentRequest struct {
+	Headers     map[string][]string
+	QueryParams map[string][]string
 }
 
 // NodeContext holds the context for a specific node in the flow execution.
@@ -1486,6 +1543,9 @@ type Event struct {
 
 	// Status indicates the outcome of the event (e.g., "success", "failure", "in_progress").
 	Status string `json:"status"`
+
+	// ServerIdentifier is the identifier of the deployment that generated the event.
+	ServerIdentifier string `json:"server_identifier"`
 
 	// Data contains event-specific structured data.
 	// Use this to store any additional information relevant to the event type.

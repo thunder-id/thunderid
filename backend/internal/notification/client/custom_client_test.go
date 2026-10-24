@@ -16,10 +16,17 @@ import (
 	"github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 )
 
 type CustomClientTestSuite struct {
 	suite.Suite
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
 }
 
 func TestCustomClientTestSuite(t *testing.T) {
@@ -48,7 +55,8 @@ func (suite *CustomClientTestSuite) getValidCustomSenderJSON() common.Notificati
 			createProperty("url", "https://api.example.com/sms", false),
 			createProperty("http_method", "POST", false),
 			createProperty("content_type", "JSON", false),
-			createProperty("http_headers", "Authorization:Bearer token,X-Api-Key:key123", false),
+			createProperty(common.CustomPropKeyHTTPHeaders,
+				"X-Api-Key: key123, X-Tenant: tenant-1", true),
 		},
 	}
 }
@@ -92,8 +100,8 @@ func (suite *CustomClientTestSuite) TestSendSMS_JSON_Success() {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		suite.Equal(http.MethodPost, r.Method)
 		suite.Equal("application/json", r.Header.Get("Content-Type"))
-		suite.Equal("Bearer token", r.Header.Get("Authorization"))
 		suite.Equal("key123", r.Header.Get("X-Api-Key"))
+		suite.Equal("tenant-1", r.Header.Get("X-Tenant"))
 
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write([]byte(`{"success":true}`)); err != nil {
@@ -114,6 +122,191 @@ func (suite *CustomClientTestSuite) TestSendSMS_JSON_Success() {
 	err := client.Send(context.Background(), common.ChannelTypeSMS, data)
 
 	suite.NoError(err)
+}
+
+func (suite *CustomClientTestSuite) TestSendSMSLegacyHTTPHeadersSuccess() {
+	for _, test := range []struct {
+		name     string
+		isSecret bool
+	}{{name: "plaintext"}, {name: "encrypted", isSecret: true}} {
+		suite.Run(test.name, func() {
+			sender := suite.getValidCustomSenderJSON()
+			sender.Properties[len(sender.Properties)-1] = createProperty(
+				"http_headers", "X-API-Key: legacy-key, X-Tenant: legacy-tenant", test.isSecret,
+			)
+			client, err := newCustomClient(context.Background(), sender)
+			suite.Require().NoError(err)
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				suite.Equal("legacy-key", r.Header.Get("X-API-Key"))
+				suite.Equal("legacy-tenant", r.Header.Get("X-Tenant"))
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+
+			client.(*CustomClient).url = server.URL
+			err = client.Send(context.Background(), common.ChannelTypeSMS, common.MessageData{
+				Recipient: "+15559876543", Body: `{"message":"Test message"}`,
+			})
+			suite.NoError(err)
+		})
+	}
+}
+
+func (suite *CustomClientTestSuite) TestSendSMSStringHeadersAndAuthentication() {
+	sender := suite.getValidCustomSenderFORM()
+	sender.Properties = append(sender.Properties,
+		createProperty(common.CustomPropKeyHTTPHeaders,
+			"X-Campaign: campaign-1", false),
+	)
+	authProperties, err := outboundauth.ToProperties(outboundauth.Config{
+		Type: outboundauth.TypeAPIKey, Properties: map[string]string{"X-Api-Key": "secret"},
+	})
+	suite.Require().NoError(err)
+	sender.Properties = append(sender.Properties, authProperties...)
+	client, err := newCustomClient(context.Background(), sender)
+	suite.Require().NoError(err)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		suite.Equal("campaign-1", r.Header.Get("X-Campaign"))
+		suite.Equal("secret", r.Header.Get("X-Api-Key"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	client.(*CustomClient).url = server.URL
+	err = client.Send(context.Background(), common.ChannelTypeSMS, common.MessageData{Body: "text"})
+	suite.NoError(err)
+}
+
+func (suite *CustomClientTestSuite) TestSendSMSBearerAndBasicAuthentication() {
+	for _, test := range []struct {
+		name   string
+		config outboundauth.Config
+		check  func(*http.Request)
+	}{
+		{"bearer", outboundauth.Config{Type: outboundauth.TypeBearer,
+			Properties: map[string]string{outboundauth.FieldBearerToken: "token"}},
+			func(request *http.Request) { suite.Equal("Bearer token", request.Header.Get("Authorization")) }},
+		{"basic", outboundauth.Config{Type: outboundauth.TypeBasic,
+			Properties: map[string]string{outboundauth.FieldBasicUsername: "user",
+				outboundauth.FieldBasicPassword: "password"}},
+			func(request *http.Request) {
+				username, password, ok := request.BasicAuth()
+				suite.True(ok)
+				suite.Equal("user", username)
+				suite.Equal("password", password)
+			}},
+	} {
+		suite.Run(test.name, func() {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				test.check(request)
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+			sender := suite.getValidCustomSenderJSON()
+			authProperties, err := outboundauth.ToProperties(test.config)
+			suite.Require().NoError(err)
+			sender.Properties = append(sender.Properties, authProperties...)
+			client, err := newCustomClient(context.Background(), sender)
+			suite.Require().NoError(err)
+			client.(*CustomClient).url = server.URL
+			suite.NoError(client.Send(context.Background(), common.ChannelTypeSMS,
+				common.MessageData{Body: `{"message":"test"}`}))
+		})
+	}
+}
+
+func (suite *CustomClientTestSuite) TestRejectsGeneralAuthorizationWithBearerOrBasic() {
+	for _, config := range []outboundauth.Config{
+		{Type: outboundauth.TypeBearer, Properties: map[string]string{outboundauth.FieldBearerToken: "token"}},
+		{Type: outboundauth.TypeBasic, Properties: map[string]string{
+			outboundauth.FieldBasicUsername: "user", outboundauth.FieldBasicPassword: "password"}},
+	} {
+		sender := suite.getValidCustomSenderJSON()
+		sender.Properties = append(sender.Properties,
+			createProperty(common.CustomPropKeyHTTPHeaders, "authorization: legacy", false))
+		authProperties, err := outboundauth.ToProperties(config)
+		suite.Require().NoError(err)
+		sender.Properties = append(sender.Properties, authProperties...)
+		_, err = newCustomClient(context.Background(), sender)
+		suite.ErrorContains(err, "also used for authentication")
+	}
+}
+
+func (suite *CustomClientTestSuite) TestSendSMSLegacyHeadersAllowRemoteHTTP() {
+	sender := suite.getValidCustomSenderJSON()
+	sender.Properties[len(sender.Properties)-1] = createProperty(
+		"http_headers", "X-API-Key: legacy-key", false,
+	)
+	client, err := newCustomClient(context.Background(), sender)
+	suite.Require().NoError(err)
+	customClient := client.(*CustomClient)
+	customClient.url = "http://internal.example/send"
+	called := false
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		called = true
+		suite.Equal("legacy-key", request.Header.Get("X-API-Key"))
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+	})
+	customClient.httpClient = &http.Client{Transport: transport}
+
+	err = client.Send(context.Background(), common.ChannelTypeSMS, common.MessageData{
+		Recipient: "+15559876543", Body: `{"message":"Test message"}`,
+	})
+	suite.NoError(err)
+	suite.True(called)
+}
+
+func (suite *CustomClientTestSuite) TestSendSMSLegacyHeadersFollowRedirect() {
+	forwarded := false
+	destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		forwarded = true
+		suite.Equal("campaign-1", request.Header.Get("X-Campaign"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer destination.Close()
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		http.Redirect(w, request, destination.URL, http.StatusTemporaryRedirect)
+	}))
+	defer redirect.Close()
+
+	sender := suite.getValidCustomSenderJSON()
+	sender.Properties[len(sender.Properties)-1] = createProperty(
+		common.CustomPropKeyHTTPHeaders, "X-Campaign: campaign-1", false,
+	)
+	client, err := newCustomClient(context.Background(), sender)
+	suite.Require().NoError(err)
+	client.(*CustomClient).url = redirect.URL
+
+	err = client.Send(context.Background(), common.ChannelTypeSMS, common.MessageData{Body: `{"message":"test"}`})
+	suite.NoError(err)
+	suite.True(forwarded)
+}
+
+func (suite *CustomClientTestSuite) TestSendSMSAuthenticationDoesNotFollowRedirect() {
+	forwarded := false
+	destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		forwarded = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer destination.Close()
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		http.Redirect(w, request, destination.URL, http.StatusTemporaryRedirect)
+	}))
+	defer redirect.Close()
+
+	sender := suite.getValidCustomSenderFORM()
+	authProperties, err := outboundauth.ToProperties(outboundauth.Config{
+		Type: outboundauth.TypeAPIKey, Properties: map[string]string{"X-API-Key": "secret"},
+	})
+	suite.Require().NoError(err)
+	sender.Properties = append(sender.Properties, authProperties...)
+	client, err := newCustomClient(context.Background(), sender)
+	suite.Require().NoError(err)
+	client.(*CustomClient).url = redirect.URL
+
+	err = client.Send(context.Background(), common.ChannelTypeSMS, common.MessageData{Body: "message=test"})
+	suite.ErrorContains(err, "status: 307")
+	suite.False(forwarded)
 }
 
 func (suite *CustomClientTestSuite) TestSendSMS_FORM_Success() {
@@ -215,31 +408,6 @@ func (suite *CustomClientTestSuite) TestSendSMS_UnsupportedContentType() {
 	suite.Contains(err.Error(), "unsupported content type")
 }
 
-func (suite *CustomClientTestSuite) TestGetHeadersFromString_Success() {
-	sender := suite.getValidCustomSenderJSON()
-	client, _ := newCustomClient(context.Background(), sender)
-	customClient := client.(*CustomClient)
-
-	headers, err := customClient.getHeadersFromString("Authorization:Bearer token,X-Api-Key:key123")
-
-	suite.NoError(err)
-	suite.Equal(2, len(headers))
-	suite.Equal("Bearer token", headers["Authorization"])
-	suite.Equal("key123", headers["X-Api-Key"])
-}
-
-func (suite *CustomClientTestSuite) TestGetHeadersFromString_InvalidFormat() {
-	sender := suite.getValidCustomSenderJSON()
-	client, _ := newCustomClient(context.Background(), sender)
-	customClient := client.(*CustomClient)
-
-	headers, err := customClient.getHeadersFromString("InvalidHeader")
-
-	suite.Error(err)
-	suite.Nil(headers)
-	suite.Contains(err.Error(), "invalid HTTP header format")
-}
-
 func (suite *CustomClientTestSuite) TestNewCustomClient_WithUnknownProperty() {
 	sender := suite.getValidCustomSenderJSON()
 	sender.Properties = append(sender.Properties, createProperty("unknown_prop", "value", false))
@@ -251,7 +419,7 @@ func (suite *CustomClientTestSuite) TestNewCustomClient_WithUnknownProperty() {
 	suite.NotNil(client)
 }
 
-func (suite *CustomClientTestSuite) TestNewCustomClient_InvalidHeaders() {
+func (suite *CustomClientTestSuite) TestNewCustomClient_InvalidAPIKeyHeaders() {
 	sender := common.NotificationSenderDTO{
 		Name:     "Test Custom",
 		Provider: common.NotificationProviderTypeCustom,
@@ -259,7 +427,7 @@ func (suite *CustomClientTestSuite) TestNewCustomClient_InvalidHeaders() {
 			createProperty("url", "https://api.example.com/sms", false),
 			createProperty("http_method", "POST", false),
 			createProperty("content_type", "JSON", false),
-			createProperty("http_headers", "InvalidHeaderFormat", false),
+			createProperty(common.CustomPropKeyHTTPHeaders, "InvalidHeaderFormat", true),
 		},
 	}
 
@@ -267,5 +435,5 @@ func (suite *CustomClientTestSuite) TestNewCustomClient_InvalidHeaders() {
 
 	suite.Error(err)
 	suite.Nil(client)
-	suite.Contains(err.Error(), "invalid HTTP header format")
+	suite.Contains(err.Error(), "failed to parse legacy HTTP headers")
 }

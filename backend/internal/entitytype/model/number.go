@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package model
@@ -52,14 +52,13 @@ func (p *number) validateValue(ctx context.Context, value interface{}, path stri
 	numberValue, ok := convertToFloat64(value)
 	if !ok {
 		logger.Debug(ctx, "Expected number but got different type",
-			log.String("property", path), log.String("value", fmt.Sprintf("%v", value)))
+			log.String("property", path))
 		return false, nil
 	}
 
 	if p.enum != nil {
 		if _, exists := p.enum[numberValue]; !exists {
-			logger.Debug(ctx, "Value not in enum", log.String("property", path),
-				log.String("value", fmt.Sprintf("%v", value)))
+			logger.Debug(ctx, "Value not in enum", log.String("property", path))
 			return false, nil
 		}
 	}

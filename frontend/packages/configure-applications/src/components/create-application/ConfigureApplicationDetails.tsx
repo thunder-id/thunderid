@@ -218,7 +218,7 @@ export default function ConfigureApplicationDetails({
         <OrganizationUnitSummaryChip
           logoUrl={organizationUnit?.logoUrl}
           icon={OrganizationUnitTreeConstants.DEFAULT_AVATAR}
-          label={t('applications:onboarding.organizationUnit.fieldLabel', 'Organization Unit')}
+          label={t('applications:onboarding.organizationUnit.fieldLabel', 'Organization unit')}
           value={isOuLoading ? t('common:status.loading', 'Loading...') : organizationUnit?.name}
           onChange={onChangeOu}
         />

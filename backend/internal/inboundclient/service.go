@@ -35,6 +35,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/system/valueref"
 )
 
 // InboundClientServiceInterface is the public API of the inbound client subsystem.
@@ -108,6 +109,8 @@ type inboundClientService struct {
 	sharingService sharing.SharingServiceInterface
 	sharedTypes    map[providers.EntityCategory]sharing.ResourceType
 	logger         *log.Logger
+	// keepsReferences is set on a control plane, which keeps a value reference where a value belongs.
+	keepsReferences bool
 }
 
 // newInboundClientService creates and returns an inboundClientService with all dependencies wired.
@@ -123,7 +126,7 @@ func newInboundClientService(store inboundClientStoreInterface, transactioner pr
 	cimdService cimd.CIMDServiceInterface,
 	sharingService sharing.SharingServiceInterface,
 	sharedTypes map[providers.EntityCategory]sharing.ResourceType,
-) InboundClientServiceInterface {
+) *inboundClientService {
 	return &inboundClientService{
 		store:          store,
 		transactioner:  transactioner,
@@ -173,7 +176,7 @@ func (s *inboundClientService) CreateInboundClient(ctx context.Context, client *
 			return err
 		}
 		if vErr := validateOAuthProfile(
-			ctx, oauthProfile, hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
+			ctx, s.profileToValidate(oauthProfile), hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
 			return vErr
 		}
 	}
@@ -195,7 +198,7 @@ func (s *inboundClientService) CreateInboundClient(ctx context.Context, client *
 		}
 		if oauthProfile != nil {
 			if oauthProfile.Certificate != nil && oauthClientID != "" {
-				if _, vErr, opErr := s.createCertificate(
+				if _, opErr, vErr := s.createCertificate(
 					txCtx, oauthClientID, oauthProfile.Certificate,
 				); vErr != nil {
 					return vErr
@@ -271,7 +274,7 @@ func (s *inboundClientService) UpdateInboundClient(ctx context.Context, client *
 			return err
 		}
 		if vErr := validateOAuthProfile(
-			ctx, oauthProfile, hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
+			ctx, s.profileToValidate(oauthProfile), hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
 			return vErr
 		}
 	}
@@ -300,7 +303,7 @@ func (s *inboundClientService) UpdateInboundClient(ctx context.Context, client *
 			if oauthProfile != nil {
 				oauthCert = oauthProfile.Certificate
 			}
-			if _, vErr, opErr := s.syncCertificate(
+			if _, opErr, vErr := s.syncCertificate(
 				txCtx, oauthClientID, oauthCert,
 			); vErr != nil {
 				return vErr
@@ -333,7 +336,7 @@ func (s *inboundClientService) Validate(ctx context.Context, client *inboundmode
 			return err
 		}
 		if vErr := validateOAuthProfile(
-			ctx, oauthProfile, hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
+			ctx, s.profileToValidate(oauthProfile), hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
 			return vErr
 		}
 	}
@@ -422,7 +425,7 @@ func (s *inboundClientService) resolveClientID(ctx context.Context, entityID str
 	if s.entityProvider == nil {
 		return ""
 	}
-	e, epErr := s.entityProvider.GetEntity(entityID)
+	e, epErr := s.entityProvider.GetEntityProfile(entityID)
 	if epErr != nil {
 		s.logger.Warn(ctx, "Failed to resolve OAuth client_id from entity provider",
 			log.String("entityID", entityID), log.Error(epErr))
@@ -597,7 +600,7 @@ func (s *inboundClientService) GetOAuthClientByEntityID(ctx context.Context, ent
 // is missing.
 func (s *inboundClientService) oauthClientForEntity(ctx context.Context, entityID, clientID string) (
 	*providers.OAuthClient, error) {
-	e, epErr := s.entityProvider.GetEntity(entityID)
+	e, epErr := s.entityProvider.GetEntityProfile(entityID)
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
 			return nil, nil
@@ -727,7 +730,7 @@ func (s *inboundClientService) resolveFlowDefaults(ctx context.Context, c *inbou
 
 	ouID := ""
 	if s.entityProvider != nil && c.ID != "" {
-		if e, epErr := s.entityProvider.GetEntity(c.ID); epErr == nil && e != nil {
+		if e, epErr := s.entityProvider.GetEntityProfile(c.ID); epErr == nil && e != nil {
 			ouID = e.OUID
 		}
 	}
@@ -818,27 +821,27 @@ func (s *inboundClientService) GetCertificate(ctx context.Context, refType cert.
 
 // createCertificate validates and creates a new OAuth-app certificate record.
 func (s *inboundClientService) createCertificate(ctx context.Context, refID string,
-	in *inboundmodel.Certificate) (*inboundmodel.Certificate, error, *CertOperationError) {
+	in *inboundmodel.Certificate) (*inboundmodel.Certificate, *CertOperationError, error) {
 	c, vErr := validateCertificateInput(refID, "", in)
 	if vErr != nil {
-		return nil, vErr, nil
+		return nil, nil, vErr
 	}
 	if c == nil {
 		return nil, nil, nil
 	}
 	if _, svcErr := s.certService.CreateCertificate(ctx, c); svcErr != nil {
-		return nil, nil, &CertOperationError{Operation: CertOpCreate, RefType: c.RefType, Underlying: svcErr}
+		return nil, &CertOperationError{Operation: CertOpCreate, RefType: c.RefType, Underlying: svcErr}, nil
 	}
 	return &inboundmodel.Certificate{Type: c.Type, Value: c.Value}, nil, nil
 }
 
 // syncCertificate creates, updates, or deletes the OAuth-app certificate to match the desired state.
 func (s *inboundClientService) syncCertificate(ctx context.Context, refID string,
-	in *inboundmodel.Certificate) (*inboundmodel.Certificate, error, *CertOperationError) {
+	in *inboundmodel.Certificate) (*inboundmodel.Certificate, *CertOperationError, error) {
 	refType := cert.CertificateReferenceTypeOAuthApp
 	existing, svcErr := s.certService.GetCertificateByReference(ctx, refType, refID)
 	if svcErr != nil && svcErr.Code != cert.ErrorCertificateNotFound.Code {
-		return nil, nil, &CertOperationError{Operation: CertOpRetrieve, RefType: refType, Underlying: svcErr}
+		return nil, &CertOperationError{Operation: CertOpRetrieve, RefType: refType, Underlying: svcErr}, nil
 	}
 
 	existingID := ""
@@ -847,17 +850,17 @@ func (s *inboundClientService) syncCertificate(ctx context.Context, refID string
 	}
 	desired, vErr := validateCertificateInput(refID, existingID, in)
 	if vErr != nil {
-		return nil, vErr, nil
+		return nil, nil, vErr
 	}
 
 	if desired != nil {
 		if existing != nil {
 			if _, opErr := s.certService.UpdateCertificateByID(ctx, existing.ID, desired); opErr != nil {
-				return nil, nil, &CertOperationError{Operation: CertOpUpdate, RefType: refType, Underlying: opErr}
+				return nil, &CertOperationError{Operation: CertOpUpdate, RefType: refType, Underlying: opErr}, nil
 			}
 		} else {
 			if _, opErr := s.certService.CreateCertificate(ctx, desired); opErr != nil {
-				return nil, nil, &CertOperationError{Operation: CertOpCreate, RefType: refType, Underlying: opErr}
+				return nil, &CertOperationError{Operation: CertOpCreate, RefType: refType, Underlying: opErr}, nil
 			}
 		}
 		return &inboundmodel.Certificate{Type: desired.Type, Value: desired.Value}, nil, nil
@@ -865,7 +868,7 @@ func (s *inboundClientService) syncCertificate(ctx context.Context, refID string
 
 	if existing != nil {
 		if opErr := s.certService.DeleteCertificateByReference(ctx, refType, refID); opErr != nil {
-			return nil, nil, &CertOperationError{Operation: CertOpDelete, RefType: refType, Underlying: opErr}
+			return nil, &CertOperationError{Operation: CertOpDelete, RefType: refType, Underlying: opErr}, nil
 		}
 	}
 	return nil, nil, nil
@@ -911,6 +914,28 @@ func validateCertificateInput(refID, existingCertID string, in *inboundmodel.Cer
 	}
 }
 
+// referenceStandIn is checked in place of a redirect URI that is wholly a variable reference.
+const referenceStandIn = "https://reference.invalid/callback"
+
+// profileToValidate returns the profile as it is checked. A control plane keeps a reference to the
+// redirect URIs a deployment holds rather than the URIs, and those are checked where they are put in,
+// on import into that deployment; so each such reference is checked as a valid address would be, and
+// every other check still applies. Anywhere else the profile is checked as it is.
+func (s *inboundClientService) profileToValidate(p *providers.OAuthProfile) *providers.OAuthProfile {
+	if !s.keepsReferences || p == nil {
+		return p
+	}
+	checked := *p
+	checked.RedirectURIs = make([]string, len(p.RedirectURIs))
+	for i, uri := range p.RedirectURIs {
+		if valueref.IsWellFormedReference(uri) && !valueref.IsSecretReference(uri) {
+			uri = referenceStandIn
+		}
+		checked.RedirectURIs[i] = uri
+	}
+	return &checked
+}
+
 // validateOAuthProfile validates all fields of an OAuth profile data object.
 func validateOAuthProfile(ctx context.Context, p *providers.OAuthProfile, hasClientSecret bool,
 	cryptoProvider providers.RuntimeCryptoProvider, jweService jwe.JWEServiceInterface) error {
@@ -927,6 +952,9 @@ func validateOAuthProfile(ctx context.Context, p *providers.OAuthProfile, hasCli
 		return err
 	}
 	if err := validateTokenEndpointAuthMethod(p, hasClientSecret); err != nil {
+		return err
+	}
+	if err := validateIDJAGConfig(p); err != nil {
 		return err
 	}
 	if p.PublicClient {
@@ -977,6 +1005,24 @@ func validateBackchannelLogoutURI(p *providers.OAuthProfile) error {
 	default:
 		return ErrOAuthInvalidBackchannelLogoutURI
 	}
+}
+
+// validateIDJAGConfig checks that a profile enabling ID-JAG issuance has the token-exchange grant,
+// through which ID-JAGs are issued, and at least one allowed audience to issue them for, none blank.
+func validateIDJAGConfig(p *providers.OAuthProfile) error {
+	if p.Token == nil || p.Token.IDJAG == nil || !p.Token.IDJAG.Enabled {
+		return nil
+	}
+	if !slices.Contains(p.GrantTypes, string(providers.GrantTypeTokenExchange)) {
+		return ErrOAuthClientIDJAGRequiresTokenExchange
+	}
+	audiences := p.Token.IDJAG.AllowedAudiences
+	if len(audiences) == 0 || slices.ContainsFunc(audiences, func(a string) bool {
+		return strings.TrimSpace(a) == ""
+	}) {
+		return ErrOAuthClientIDJAGRequiresAllowedAudience
+	}
+	return nil
 }
 
 // maxDefaultAudienceLength bounds the access token default audience, a single audience identifier
@@ -1540,16 +1586,15 @@ func (s *inboundClientService) validateSubjectAttributeMapping(
 		if !slices.Contains(allowedUserTypes, entityType) {
 			return ErrFKInvalidSubjectAttributeMapping
 		}
-		// A subject attribute must be unique, required, non-credential, and string-typed: unique so it
+		// A subject attribute must be unique, required, non-credential, and string-backed: unique so it
 		// identifies a single user, required so every user of the type has it (a stable sub), and
-		// string so it can be emitted as the string sub claim.
+		// string-backed so it can be emitted as the string sub claim.
 		attrs, svcErr := s.entityType.GetAttributes(
 			security.WithRuntimeContext(ctx), entitytype.TypeCategoryUser, entityType,
 			entitytype.AttributeFilter{
 				AllowNonCredential: true,
 				RequiredOnly:       true,
 				UniqueOnly:         true,
-				Type:               entitytypemodel.TypeString,
 			})
 		if svcErr != nil {
 			s.logger.Error(ctx, "Failed to retrieve attributes for subject mapping validation",
@@ -1557,7 +1602,7 @@ func (s *inboundClientService) validateSubjectAttributeMapping(
 			return ErrUniqueAttributeLookupFailed
 		}
 		if !slices.ContainsFunc(attrs, func(a entitytype.AttributeInfo) bool {
-			return a.Attribute == subjectAttribute
+			return a.Attribute == subjectAttribute && entitytypemodel.IsStringBackedType(a.Type)
 		}) {
 			return ErrFKInvalidSubjectAttributeMapping
 		}
@@ -1758,7 +1803,9 @@ func isComputedAttribute(attr string) bool {
 		oauth2const.ClaimOUID,
 		oauth2const.ClaimOUName,
 		oauth2const.ClaimOUHandle,
-		oauth2const.ClaimUserType:
+		oauth2const.ClaimUserType,
+		oauth2const.ClaimUserTypeHandle,
+		oauth2const.ClaimUserTypeName:
 		return true
 	}
 	return false

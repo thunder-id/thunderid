@@ -22,7 +22,8 @@ type UserType struct {
 // UserTypeSystemAttributes carries the system-level settings of a user type, such as the
 // attribute used to render a human-readable display name.
 type UserTypeSystemAttributes struct {
-	Display string `json:"display,omitempty"`
+	Display      string `json:"display,omitempty"`
+	PrimaryEmail string `json:"primaryEmail,omitempty"`
 }
 
 // User represents a user in the system
@@ -323,6 +324,33 @@ type TokenHTTPResult struct {
 	Token      *TokenResponse
 }
 
+// IntrospectionResult is the part of an introspection answer the tests read.
+type IntrospectionResult struct {
+	Active bool   `json:"active"`
+	Sub    string `json:"sub"`
+}
+
+// AccessStatus is the effective access status a management read of a user, an agent or an
+// application reports.
+type AccessStatus struct {
+	Value   string               `json:"value"`
+	Details *AccessStatusDetails `json:"details"`
+}
+
+// AccessStatusDetails says what produced a hold. An application read carries none.
+type AccessStatusDetails struct {
+	Reason        string         `json:"reason"`
+	Since         string         `json:"since"`
+	OperatorNote  string         `json:"operatorNote"`
+	LockedMethods []LockedMethod `json:"lockedMethods"`
+}
+
+// LockedMethod is one live lock, with its expiry, empty for a lock that does not lapse.
+type LockedMethod struct {
+	Method    string `json:"method"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
 // AuthorizationResponse represents the response from authorization completion
 type AuthorizationResponse struct {
 	RedirectURI string `json:"redirect_uri"`
@@ -412,10 +440,11 @@ type FlowErrorResponse struct {
 
 // Flow represents a flow definition
 type Flow struct {
-	Name     string      `json:"name"`
-	FlowType string      `json:"flowType"`
-	Handle   string      `json:"handle"`
-	Nodes    interface{} `json:"nodes"`
+	Name         string      `json:"name"`
+	FlowType     string      `json:"flowType"`
+	Handle       string      `json:"handle"`
+	Interceptors interface{} `json:"interceptors,omitempty"`
+	Nodes        interface{} `json:"nodes"`
 }
 
 // NotificationSender represents a notification sender in the system

@@ -7,13 +7,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/system/observability/event"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/observabilityprovidermock"
 )
 
 type ServiceTestSuite struct {
@@ -33,12 +38,12 @@ func (suite *ServiceTestSuite) SetupTest() {
 	suite.mockStore = newServerConfigStoreInterfaceMock(suite.T())
 	suite.mockHandler = NewServerConfigHandlerInterfaceMock(suite.T())
 	suite.service = newServerConfigService(suite.mockStore,
-		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler})
+		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, nil)
 }
 
 // serviceWithoutHandlers builds a service with no registered handlers, sharing the suite store mock.
 func (suite *ServiceTestSuite) serviceWithoutHandlers() ServerConfigService {
-	return newServerConfigService(suite.mockStore, map[ConfigName]ServerConfigHandlerInterface{})
+	return newServerConfigService(suite.mockStore, map[ConfigName]ServerConfigHandlerInterface{}, nil)
 }
 
 // Raw (byte) layers shared across the store tests, plus an incoming PUT value.
@@ -79,7 +84,7 @@ func (suite *ServiceTestSuite) TestListConfigNames_NoHandlers() {
 func (suite *ServiceTestSuite) TestListConfigNames_NilHandler() {
 	service := newServerConfigService(suite.mockStore, map[ConfigName]ServerConfigHandlerInterface{
 		ConfigNameCORS: nil,
-	})
+	}, nil)
 
 	names, svcErr := service.ListConfigNames(suite.ctx)
 
@@ -302,4 +307,146 @@ func (suite *ServiceTestSuite) TestSetConfig_UpsertError() {
 	suite.mockStore.EXPECT().UpsertServerConfig(mock.Anything, mock.Anything).Return(errors.New("db error"))
 	svcErr := suite.service.SetConfig(suite.ctx, ConfigNameCORS, incomingRaw)
 	assert.Same(suite.T(), &common.InternalServerError, svcErr)
+}
+
+// auditedService builds a service over the suite mocks whose events land in the returned slice.
+func (suite *ServiceTestSuite) auditedService() (ServerConfigService, *[]*providers.Event) {
+	published := []*providers.Event{}
+	obs := observabilityprovidermock.NewObservabilityProviderMock(suite.T())
+	obs.EXPECT().IsEnabled().Return(true)
+	obs.EXPECT().PublishEvent(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, evt *providers.Event) { published = append(published, evt) })
+	return newServerConfigService(suite.mockStore,
+		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, obs), &published
+}
+
+// A write is recorded with the section and the outcome, never the value, which may hold secrets.
+func (suite *ServiceTestSuite) TestSetConfig_PublishesTheChange() {
+	previous := json.RawMessage(`["https://old.example.com"]`)
+	suite.mockHandler.EXPECT().Decode(incomingRaw).Return(incomingVal, nil)
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
+		Return(storeLayers{Writable: previous}, nil)
+	suite.mockHandler.EXPECT().Decode(json.RawMessage(nil)).Return(nil, nil)
+	suite.mockHandler.EXPECT().Decode(previous).Return(readOnlyVal, nil)
+	suite.mockHandler.EXPECT().Validate(incomingVal, nil, readOnlyVal).Return(nil)
+	suite.mockStore.EXPECT().UpsertServerConfig(mock.Anything, mock.Anything).Return(nil)
+	svc, published := suite.auditedService()
+
+	suite.Nil(svc.SetConfig(suite.ctx, ConfigNameCORS, incomingRaw))
+
+	suite.Require().Len(*published, 1)
+	evt := (*published)[0]
+	suite.Equal(string(event.EventTypeServerConfigUpdated), evt.Type)
+	suite.Equal(providers.StatusSuccess, evt.Status)
+	suite.Equal(string(ConfigNameCORS), evt.Data[event.DataKey.ConfigName])
+	suite.assertCarriesNoValue(evt, previous, incomingRaw)
+}
+
+// A rejected write is recorded as an attempt, without the value that was refused.
+func (suite *ServiceTestSuite) TestSetConfig_PublishesARejection() {
+	suite.mockHandler.EXPECT().Decode(incomingRaw).Return(nil, errors.New("bad shape"))
+	svc, published := suite.auditedService()
+
+	suite.NotNil(svc.SetConfig(suite.ctx, ConfigNameCORS, incomingRaw))
+
+	suite.Require().Len(*published, 1)
+	evt := (*published)[0]
+	suite.Equal(string(event.EventTypeServerConfigUpdateFailed), evt.Type)
+	suite.Equal(ErrorInvalidConfigValue.Code, evt.Data[event.DataKey.Error])
+	suite.assertCarriesNoValue(evt, incomingRaw)
+}
+
+// An unknown section name comes from the request path, so it is refused without an event.
+func (suite *ServiceTestSuite) TestSetConfig_UnknownNamePublishesNothing() {
+	obs := observabilityprovidermock.NewObservabilityProviderMock(suite.T())
+	svc := newServerConfigService(suite.mockStore,
+		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, obs)
+
+	suite.NotNil(svc.SetConfig(suite.ctx, ConfigName("no-such-section"), incomingRaw))
+}
+
+// expectSuccessfulWrite sets up the store and handler for a write that succeeds.
+func (suite *ServiceTestSuite) expectSuccessfulWrite() {
+	suite.mockHandler.EXPECT().Decode(incomingRaw).Return(incomingVal, nil)
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).Return(storeLayers{}, nil)
+	suite.mockHandler.EXPECT().Decode(json.RawMessage(nil)).Return(nil, nil)
+	suite.mockHandler.EXPECT().Validate(incomingVal, nil, nil).Return(nil)
+	suite.mockStore.EXPECT().UpsertServerConfig(mock.Anything, mock.Anything).Return(nil)
+}
+
+// A failed store write is recorded as a failure with the server error code.
+func (suite *ServiceTestSuite) TestSetConfig_PublishesAFailedUpsert() {
+	suite.mockHandler.EXPECT().Decode(incomingRaw).Return(incomingVal, nil)
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).Return(storeLayers{}, nil)
+	suite.mockHandler.EXPECT().Decode(json.RawMessage(nil)).Return(nil, nil)
+	suite.mockHandler.EXPECT().Validate(incomingVal, nil, nil).Return(nil)
+	suite.mockStore.EXPECT().UpsertServerConfig(mock.Anything, mock.Anything).Return(errors.New("db error"))
+	svc, published := suite.auditedService()
+
+	suite.Same(&common.InternalServerError, svc.SetConfig(suite.ctx, ConfigNameCORS, incomingRaw))
+
+	suite.Require().Len(*published, 1)
+	evt := (*published)[0]
+	suite.Equal(string(event.EventTypeServerConfigUpdateFailed), evt.Type)
+	suite.Equal(providers.StatusFailure, evt.Status)
+	suite.Equal(common.InternalServerError.Code, evt.Data[event.DataKey.Error])
+}
+
+// The writer's subject is recorded when the request has one, and omitted when it has none.
+func (suite *ServiceTestSuite) TestSetConfig_PublishesTheActorWhenThereIsOne() {
+	cases := []struct {
+		name  string
+		ctx   context.Context
+		actor string
+	}{
+		{name: "with a subject", ctx: security.WithSecurityContextTest(context.Background(),
+			security.NewSecurityContextForTest("admin-1", "", "", nil, nil)), actor: "admin-1"},
+		{name: "without a subject", ctx: context.Background()},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.expectSuccessfulWrite()
+			svc, published := suite.auditedService()
+
+			suite.Nil(svc.SetConfig(tc.ctx, ConfigNameCORS, incomingRaw))
+
+			suite.Require().Len(*published, 1)
+			actor, recorded := (*published)[0].Data[event.DataKey.ActorSub]
+			suite.Equal(tc.actor != "", recorded)
+			if recorded {
+				suite.Equal(tc.actor, actor)
+			}
+		})
+	}
+}
+
+// Without an enabled observability provider a write publishes nothing and still succeeds.
+func (suite *ServiceTestSuite) TestSetConfig_PublishesNothingWithoutObservability() {
+	suite.Run("disabled", func() {
+		suite.SetupTest()
+		suite.expectSuccessfulWrite()
+		obs := observabilityprovidermock.NewObservabilityProviderMock(suite.T())
+		obs.EXPECT().IsEnabled().Return(false).Once()
+		svc := newServerConfigService(suite.mockStore,
+			map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, obs)
+
+		suite.Nil(svc.SetConfig(suite.ctx, ConfigNameCORS, incomingRaw))
+		obs.AssertNotCalled(suite.T(), "PublishEvent", mock.Anything, mock.Anything)
+	})
+	suite.Run("absent", func() {
+		suite.SetupTest()
+		suite.expectSuccessfulWrite()
+
+		suite.Nil(suite.service.SetConfig(suite.ctx, ConfigNameCORS, incomingRaw))
+	})
+}
+
+// assertCarriesNoValue fails if any event field carries a stored or written value.
+func (suite *ServiceTestSuite) assertCarriesNoValue(evt *providers.Event, values ...json.RawMessage) {
+	for key, field := range evt.Data {
+		for _, value := range values {
+			suite.NotContains(fmt.Sprint(field), string(value), "field %s carries a config value", key)
+		}
+	}
 }

@@ -17,10 +17,19 @@ func NewAuthorizationCodeStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *AuthorizationCodeStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &AuthorizationCodeStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -72,7 +81,7 @@ type AuthorizationCodeStoreInterfaceMock_ConsumeAuthorizationCode_Call struct {
 // ConsumeAuthorizationCode is a helper method to define mock.On call
 //   - ctx context.Context
 //   - authCode string
-func (_e *AuthorizationCodeStoreInterfaceMock_Expecter) ConsumeAuthorizationCode(ctx interface{}, authCode interface{}) *AuthorizationCodeStoreInterfaceMock_ConsumeAuthorizationCode_Call {
+func (_e *AuthorizationCodeStoreInterfaceMock_Expecter) ConsumeAuthorizationCode(ctx any, authCode any) *AuthorizationCodeStoreInterfaceMock_ConsumeAuthorizationCode_Call {
 	return &AuthorizationCodeStoreInterfaceMock_ConsumeAuthorizationCode_Call{Call: _e.mock.On("ConsumeAuthorizationCode", ctx, authCode)}
 }
 
@@ -144,7 +153,7 @@ type AuthorizationCodeStoreInterfaceMock_ConsumedTokenFamily_Call struct {
 // ConsumedTokenFamily is a helper method to define mock.On call
 //   - ctx context.Context
 //   - authCode string
-func (_e *AuthorizationCodeStoreInterfaceMock_Expecter) ConsumedTokenFamily(ctx interface{}, authCode interface{}) *AuthorizationCodeStoreInterfaceMock_ConsumedTokenFamily_Call {
+func (_e *AuthorizationCodeStoreInterfaceMock_Expecter) ConsumedTokenFamily(ctx any, authCode any) *AuthorizationCodeStoreInterfaceMock_ConsumedTokenFamily_Call {
 	return &AuthorizationCodeStoreInterfaceMock_ConsumedTokenFamily_Call{Call: _e.mock.On("ConsumedTokenFamily", ctx, authCode)}
 }
 
@@ -212,7 +221,7 @@ type AuthorizationCodeStoreInterfaceMock_GetAuthorizationCode_Call struct {
 // GetAuthorizationCode is a helper method to define mock.On call
 //   - ctx context.Context
 //   - authCode string
-func (_e *AuthorizationCodeStoreInterfaceMock_Expecter) GetAuthorizationCode(ctx interface{}, authCode interface{}) *AuthorizationCodeStoreInterfaceMock_GetAuthorizationCode_Call {
+func (_e *AuthorizationCodeStoreInterfaceMock_Expecter) GetAuthorizationCode(ctx any, authCode any) *AuthorizationCodeStoreInterfaceMock_GetAuthorizationCode_Call {
 	return &AuthorizationCodeStoreInterfaceMock_GetAuthorizationCode_Call{Call: _e.mock.On("GetAuthorizationCode", ctx, authCode)}
 }
 
@@ -269,7 +278,7 @@ type AuthorizationCodeStoreInterfaceMock_InsertAuthorizationCode_Call struct {
 // InsertAuthorizationCode is a helper method to define mock.On call
 //   - ctx context.Context
 //   - authzCode AuthorizationCode
-func (_e *AuthorizationCodeStoreInterfaceMock_Expecter) InsertAuthorizationCode(ctx interface{}, authzCode interface{}) *AuthorizationCodeStoreInterfaceMock_InsertAuthorizationCode_Call {
+func (_e *AuthorizationCodeStoreInterfaceMock_Expecter) InsertAuthorizationCode(ctx any, authzCode any) *AuthorizationCodeStoreInterfaceMock_InsertAuthorizationCode_Call {
 	return &AuthorizationCodeStoreInterfaceMock_InsertAuthorizationCode_Call{Call: _e.mock.On("InsertAuthorizationCode", ctx, authzCode)}
 }
 
@@ -328,7 +337,7 @@ type AuthorizationCodeStoreInterfaceMock_MarkConsumedTokenFamily_Call struct {
 //   - authCode string
 //   - tokenFamilyID string
 //   - ttl time.Duration
-func (_e *AuthorizationCodeStoreInterfaceMock_Expecter) MarkConsumedTokenFamily(ctx interface{}, authCode interface{}, tokenFamilyID interface{}, ttl interface{}) *AuthorizationCodeStoreInterfaceMock_MarkConsumedTokenFamily_Call {
+func (_e *AuthorizationCodeStoreInterfaceMock_Expecter) MarkConsumedTokenFamily(ctx any, authCode any, tokenFamilyID any, ttl any) *AuthorizationCodeStoreInterfaceMock_MarkConsumedTokenFamily_Call {
 	return &AuthorizationCodeStoreInterfaceMock_MarkConsumedTokenFamily_Call{Call: _e.mock.On("MarkConsumedTokenFamily", ctx, authCode, tokenFamilyID, ttl)}
 }
 

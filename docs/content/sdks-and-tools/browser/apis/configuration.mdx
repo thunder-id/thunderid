@@ -50,15 +50,16 @@ await auth.initialize({
 |-----------|------|---------|-------------|
 | `storage` | `string` | `'sessionStorage'` | Storage backend: `'sessionStorage'`, `'localStorage'`, or `'browserMemory'` |
 
-### Session Management Parameters
+### Session Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `syncSession` | `boolean` | `false` | Enable OIDC Session Management via RP iframe. Requires same-domain or third-party cookies |
-| `checkSessionInterval` | `number` | `3` | Interval in seconds between session-check polls |
-| `sessionRefreshInterval` | `number` | `300` | Interval in seconds for silent token refresh |
+| `session.silentSignIn.beforeRedirect` | `boolean` | `false` | Before `signIn()` redirects, try a silent `prompt=none` sign-in from the existing <ProductName /> session. When the session exists, the user is signed in without leaving the app. Otherwise the redirect continues. Skipped when the sign-in options set their own `prompt` |
+| `session.silentSignIn.timeout` | `number` | `10000` | How long, in milliseconds, a silent sign-in waits for a response before treating the user as signed out. Also applies to `signInSilently()` |
 | `periodicTokenRefresh` | `boolean` | `false` | Automatically refresh tokens before expiry |
 | `autoLogoutOnTokenRefreshError` | `boolean` | `false` | Sign the user out when a token refresh fails |
+
+Silent sign-in loads the authorization endpoint in a hidden iframe, so it can only find the session when the browser sends the <ProductName /> session cookie into that iframe. That requires the app to run on the same site as <ProductName />, and the application's authentication flow to maintain an SSO session. See [Single Sign-On](../../../../guides/flows/single-sign-on).
 
 ### Advanced Parameters
 
@@ -123,7 +124,9 @@ await auth.initialize({
   scopes: ['openid', 'profile', 'email'],
   storage: 'sessionStorage',
   periodicTokenRefresh: true,
-  sessionRefreshInterval: 300,
+  session: {
+    silentSignIn: {beforeRedirect: true},
+  },
 })
 
 export default auth

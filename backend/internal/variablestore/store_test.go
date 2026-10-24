@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -231,6 +232,10 @@ func TestRowStringToleratesDriverShapes(t *testing.T) {
 	}
 	if got := rowString(row, "absent"); got != "" {
 		t.Fatalf("missing column: got %q", got)
+	}
+	set := time.Date(2026, 10, 16, 6, 54, 40, 0, time.FixedZone("plus two", 2*60*60))
+	if got := rowString(map[string]interface{}{"updated_at": set}, "updated_at"); got != "2026-10-16T04:54:40Z" {
+		t.Fatalf("time column: got %q", got)
 	}
 }
 

@@ -27,7 +27,7 @@ See [Workload Identity Federation](../overview) for what federation replaces and
 
 1. Sign in to the <ProductName /> Console at `https://localhost:8090/console`.
 2. Navigate to **Agents** → **New Agent**.
-3. Enter an **Agent Name** (for example `research-agent`).
+3. Enter an **Agent name** (for example `research-agent`).
 4. Select an owner for the agent.
 5. Click **Create Agent**.
 6. Note down the **Agent ID**, OpenAI matches on this value.
@@ -36,7 +36,7 @@ See [Workload Identity Federation](../overview) for what federation replaces and
 A new agent has the `client_credentials` grant enabled, so it can already request a token for itself. See [Agent Token](../../../agents/authentication/agent-own-token) on how to get a token.
 
 :::note[Setting the audience]
-OpenAI matches the token's `aud` claim against the audience registered on the provider, so the agent token has to carry that value. You can configure a default audience value from the console, under agent's **Advanced** → **OAuth 2 Configuration** → **Default audience (aud)**.
+OpenAI matches the token's `aud` claim against the audience registered on the provider, so the agent token has to carry that value. You can configure a default audience value from the console, under agent's **Advanced** → **OAuth 2 configuration** → **Default audience (aud)**.
 :::
 
 A `client_credentials` request that carries no `resource` parameter now produces a token whose `aud` claim is the value of default audience (for example `https://api.openai.com`). This is the value you register with OpenAI below.

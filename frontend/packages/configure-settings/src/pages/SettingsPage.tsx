@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {ExternalLink} from '@thunderid/components';
+import {DocumentTitle, ExternalLink} from '@thunderid/components';
 import {Box, PageContent, PageTitle, Tab, Tabs} from '@wso2/oxygen-ui';
 import {useState, type JSX, type SyntheticEvent} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -18,6 +18,7 @@ export default function SettingsPage(): JSX.Element {
 
   return (
     <PageContent>
+      <DocumentTitle title={t('settings:page.title', 'Settings')} />
       <PageTitle>
         <PageTitle.Header>{t('settings:page.title')}</PageTitle.Header>
         <PageTitle.SubHeader>

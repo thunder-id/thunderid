@@ -56,4 +56,31 @@ describe('VENDOR_META_BY_TYPE', () => {
       generalSettingsCardCopy: 'configuration',
     });
   });
+
+  it('presents the HTTP endpoint as a custom connection that re-enters credentials on an origin change', () => {
+    expect(VENDOR_META_BY_TYPE[ConnectionTypes.HTTP]).toMatchObject({
+      key: 'http',
+      displayName: 'Service endpoint',
+      descriptionKey: 'connections:vendor.http.description',
+      categories: ['custom'],
+      presentation: 'custom',
+      reentersCredentialsOnOriginChange: true,
+      generalSettingsCardCopy: 'configuration',
+    });
+    expect(VENDOR_META_BY_TYPE[ConnectionTypes.HTTP]?.supportsAuthentication).toBeUndefined();
+    expect(VENDOR_META_BY_TYPE[ConnectionTypes.HTTP]?.supportsSubjectMapping).toBeUndefined();
+  });
+
+  it('renders each HTTP endpoint instance as its own custom card', () => {
+    const cards = buildConnectionCards(
+      [{id: 'h1', name: 'Risk Engine', type: 'http', categories: ['http']}],
+      CONNECTION_VENDOR_META,
+    );
+
+    expect(cards.find((card) => card.id === 'http:h1')).toMatchObject({
+      displayName: 'Risk Engine',
+      categories: ['custom'],
+      status: 'configured',
+    });
+  });
 });

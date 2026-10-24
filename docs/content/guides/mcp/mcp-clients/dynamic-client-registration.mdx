@@ -3,7 +3,7 @@ title: Enable Dynamic Client Registration
 docType: guide
 persona: iam
 sidebar_position: 3
-description: Enable Dynamic Client Registration so MCP clients register themselves with {{ProductName}} instead of you pre-registering them in the Console.
+description: Enable Dynamic Client Registration so MCP clients register themselves with {{ProductName}} instead of you configuring them manually in the Console.
 ---
 
 # Enable Dynamic Client Registration
@@ -11,12 +11,12 @@ description: Enable Dynamic Client Registration so MCP clients register themselv
 Enable Dynamic Client Registration (DCR) so an MCP client registers its own OAuth 2.1 client at connection time, instead of you creating an application for it in the Console first.
 
 :::note
-The MCP specification's current revision [deprecates Dynamic Client Registration](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization/client-registration) in favor of Client ID Metadata Documents, keeping DCR only for backward compatibility with authorization servers that do not support them. <ProductName /> supports Dynamic Client Registration today.
+The MCP specification's current revision [deprecates Dynamic Client Registration](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization/client-registration) in favor of Client ID Metadata Documents, keeping DCR only for backward compatibility with authorization servers that do not support them. <ProductName /> supports both. For a client that publishes a metadata document, see [Register an MCP Client from Its Metadata Document](../client-id-metadata-document).
 :::
 
 ## When DCR Is the Right Choice
 
-Pre-registering a client in the Console, covered in [Register an MCP Client in the Console](../register-a-client), works when you know the client and its redirect URI ahead of time. DCR is the better fit when:
+Configuring a client manually, covered in [Configure an MCP Client Manually](../register-a-client), works when you know the client and its redirect URI ahead of time. DCR is the better fit when:
 
 - You cannot enumerate the clients ahead of time, such as a self-hosted MCP client your users install individually.
 - The client picks a random callback port each time it starts, so there is no fixed redirect URI to register.
@@ -95,6 +95,6 @@ A client registered through DCR appears in the Console under **Applications**, a
 ## Next Steps
 
 - [Dynamic Client Registration](../../../protocols/oauth-oidc/dynamic-client-registration): The protocol-level reference for the DCR endpoint, request fields, and response shape.
-- [Register an MCP Client in the Console](../register-a-client): Pre-register a client instead, when you know its redirect URI ahead of time.
+- [Configure an MCP Client Manually](../register-a-client): Configure a client manually instead, when you know its redirect URI ahead of time.
 - [Secure Your MCP Server](../../mcp-server/secure-your-mcp-server): Protect the MCP server these clients connect to.
 - [Connect a Python MCP Server](../../../../getting-started/connect-your-mcp/python): A runnable quickstart that connects Claude Code through DCR, end to end.

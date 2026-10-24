@@ -29,7 +29,7 @@ export default function DevModeConfirmDialog({open, onClose, onConfirm}: DevMode
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>
-        {t('applications:edit.advanced.attestation.devModeConfirmDialog.title', 'Enable Dev Mode?')}
+        {t('applications:edit.advanced.attestation.devModeConfirmDialog.title', 'Enable dev mode?')}
       </DialogTitle>
       <DialogContent>
         <DialogContentText>
@@ -46,7 +46,7 @@ export default function DevModeConfirmDialog({open, onClose, onConfirm}: DevMode
           {t('applications:edit.advanced.attestation.devModeConfirmDialog.cancelButton', 'Cancel')}
         </Button>
         <Button onClick={onConfirm} color="warning" variant="contained" data-testid="dev-mode-confirm-button">
-          {t('applications:edit.advanced.attestation.devModeConfirmDialog.confirmButton', 'Enable Dev Mode')}
+          {t('applications:edit.advanced.attestation.devModeConfirmDialog.confirmButton', 'Enable dev mode')}
         </Button>
       </DialogActions>
     </Dialog>

@@ -424,9 +424,9 @@ func parseEntityTypeFromRow(row map[string]interface{}) (EntityType, error) {
 		return EntityType{}, fmt.Errorf("failed to parse handle as string")
 	}
 
-	displayName, ok := row["display_name"].(string)
+	displayName, ok := row["name"].(string)
 	if !ok {
-		return EntityType{}, fmt.Errorf("failed to parse display_name as string")
+		return EntityType{}, fmt.Errorf("failed to parse name as string")
 	}
 
 	oUID, ok := row["ou_id"].(string)
@@ -485,9 +485,9 @@ func parseEntityTypeListItemFromRow(row map[string]interface{}) (EntityTypeListI
 		return EntityTypeListItem{}, fmt.Errorf("failed to parse handle as string")
 	}
 
-	displayName, ok := row["display_name"].(string)
+	displayName, ok := row["name"].(string)
 	if !ok {
-		return EntityTypeListItem{}, fmt.Errorf("failed to parse display_name as string")
+		return EntityTypeListItem{}, fmt.Errorf("failed to parse name as string")
 	}
 
 	oUID, ok := row["ou_id"].(string)

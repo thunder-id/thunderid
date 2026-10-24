@@ -9,12 +9,16 @@ import (
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/resource"
+	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -29,6 +33,7 @@ type service struct {
 	notificationService notification.NotificationSenderMgtSvcInterface
 	resourceService     resource.ResourceServiceInterface
 	authZENPDPService   authzenpdp.AuthZENPDPServiceInterface
+	httpService         httpconnection.HTTPConnectionServiceInterface
 	valueCapturer       declarativeresource.ValueCapturer
 }
 
@@ -37,12 +42,14 @@ type service struct {
 func newService(idpService idp.IDPServiceInterface,
 	notificationService notification.NotificationSenderMgtSvcInterface,
 	resourceService resource.ResourceServiceInterface,
-	authZENPDPService authzenpdp.AuthZENPDPServiceInterface) *service {
+	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
+	httpService httpconnection.HTTPConnectionServiceInterface) *service {
 	return &service{
 		idpService:          idpService,
 		notificationService: notificationService,
 		resourceService:     resourceService,
 		authZENPDPService:   authZENPDPService,
+		httpService:         httpService,
 	}
 }
 
@@ -163,6 +170,22 @@ func (s *service) listInstances(ctx context.Context, category connectionCategory
 				Description: sender.Description,
 				Type:        vendor,
 				Categories:  []connectionCategory{categoryEmailProvider},
+			})
+		}
+	}
+
+	if category == "" || category == categoryHTTP {
+		connections, svcErr := s.listHTTP(ctx)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		for _, connection := range connections {
+			instances = append(instances, connectionInstance{
+				ID:          connection.ID,
+				Name:        connection.Name,
+				Description: connection.Description,
+				Type:        httpVendorName,
+				Categories:  []connectionCategory{categoryHTTP},
 			})
 		}
 	}
@@ -300,7 +323,32 @@ func (s *service) updateSender(ctx context.Context, senderType ncommon.Notificat
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	dto.Properties = mergeStoredSecrets(dto.Properties, existing.Properties,
+	storedProperties := existing.Properties
+	if senderType == ncommon.NotificationSenderTypeMessage && provider == ncommon.NotificationProviderTypeCustom {
+		var err error
+		dto.Properties, err = mergeSMSGatewayProperties(dto.Properties, existing.Properties)
+		if err != nil {
+			return nil, &notification.ErrorInvalidRequestFormat
+		}
+	}
+	if senderType == ncommon.NotificationSenderTypeEmail && provider == ncommon.NotificationProviderTypeSMTP {
+		var err error
+		dto.Properties, err = mergeSMTPAuthentication(dto.Properties, existing.Properties)
+		if err != nil {
+			return nil, &notification.ErrorInvalidRequestFormat
+		}
+	}
+	if senderType == ncommon.NotificationSenderTypeMessage && provider == ncommon.NotificationProviderTypeCustom ||
+		senderType == ncommon.NotificationSenderTypeEmail && provider == ncommon.NotificationProviderTypeSMTP {
+		storedProperties = make([]cmodels.Property, 0, len(existing.Properties))
+		for _, property := range existing.Properties {
+			if !outboundauth.OwnsPropertyKey(property.GetName()) &&
+				property.GetName() != ncommon.CustomPropKeyHTTPHeaders {
+				storedProperties = append(storedProperties, property)
+			}
+		}
+	}
+	dto.Properties = mergeStoredSecrets(dto.Properties, storedProperties,
 		senderCredentialTargetKeys(senderType, provider)...)
 	updated, svcErr := s.notificationService.UpdateSender(ctx, id, dto)
 	if svcErr == nil {
@@ -310,10 +358,12 @@ func (s *service) updateSender(ctx context.Context, senderType ncommon.Notificat
 }
 
 // senderCredentialTargetKeys returns the transport properties that identify where a sender's
-// outbound authentication credential is presented. Only email vendors carry outbound
-// authentication today; every other sender reports none.
+// outbound authentication credential is presented.
 func senderCredentialTargetKeys(senderType ncommon.NotificationSenderType,
 	provider ncommon.NotificationProviderType) []string {
+	if senderType == ncommon.NotificationSenderTypeMessage && provider == ncommon.NotificationProviderTypeCustom {
+		return []string{ncommon.CustomPropKeyURL}
+	}
 	if senderType != ncommon.NotificationSenderTypeEmail {
 		return nil
 	}
@@ -407,6 +457,68 @@ func (s *service) deleteAuthZENPDP(ctx context.Context, id string) *tidcommon.Se
 		return &authzenpdp.ErrorHasBlockingDependencies
 	}
 	return s.authZENPDPService.DeleteAuthZENPDPConnection(ctx, id)
+}
+
+// createHTTP validates and stores an HTTP connection.
+func (s *service) createHTTP(ctx context.Context, connection httpconnection.HTTPConnection) (
+	*httpconnection.HTTPConnection, *tidcommon.ServiceError) {
+	if s.httpService == nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	return s.httpService.CreateHTTPConnection(ctx, connection)
+}
+
+// listHTTP returns all HTTP connections.
+func (s *service) listHTTP(ctx context.Context) ([]httpconnection.HTTPConnection, *tidcommon.ServiceError) {
+	if s.httpService == nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	return s.httpService.ListHTTPConnections(ctx)
+}
+
+// getHTTP returns an HTTP connection by ID.
+func (s *service) getHTTP(ctx context.Context, id string) (*httpconnection.HTTPConnection,
+	*tidcommon.ServiceError) {
+	if s.httpService == nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	return s.httpService.GetHTTPConnection(ctx, id)
+}
+
+// updateHTTP resolves the request's authentication against the stored connection under the shared
+// retention rule, then delegates the update. The credential target of an HTTP connection is its URL
+// origin, so pointing a connection at another server needs each secret again.
+func (s *service) updateHTTP(ctx context.Context, id string, connection httpconnection.HTTPConnection) (
+	*httpconnection.HTTPConnection, *tidcommon.ServiceError) {
+	existing, svcErr := s.getHTTP(ctx, id)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	request, err := outboundauth.FromProperties(connection.AuthProperties)
+	if err != nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	previousTarget := []string{existing.URL}
+	nextTarget := []string{connection.URL}
+	if httpconnection.SameOrigin(connection.URL, existing.URL) {
+		nextTarget = previousTarget
+	}
+	connection.AuthProperties, err = outboundauth.UpdateProperties(
+		&outboundauth.Authentication{Type: string(request.Type), Properties: request.Properties},
+		existing.AuthProperties, previousTarget, nextTarget, httpauth.SupportedTypes(),
+		httpauth.CanonicalizeForUpdate, httpauth.Canonicalize)
+	if err != nil {
+		return nil, &httpconnection.ErrorInvalidAuthentication
+	}
+	return s.httpService.UpdateHTTPConnection(ctx, id, connection)
+}
+
+// deleteHTTP deletes an HTTP connection by ID.
+func (s *service) deleteHTTP(ctx context.Context, id string) *tidcommon.ServiceError {
+	if s.httpService == nil {
+		return &tidcommon.InternalServerError
+	}
+	return s.httpService.DeleteHTTPConnection(ctx, id)
 }
 
 // usagesByType verifies the instance is of the expected type, then returns the resources that

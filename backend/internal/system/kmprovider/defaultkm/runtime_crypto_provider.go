@@ -9,6 +9,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
+	"crypto/mldsa"
 	"crypto/rsa"
 	"encoding/base64"
 	"errors"
@@ -20,7 +21,6 @@ import (
 	"github.com/cloudflare/circl/sign/mldsa/mldsa87"
 
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
-	"github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm/pki"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -269,9 +269,10 @@ func (s *runtimeCryptoService) GetPublicKeys(
 	keys := make([]providers.PublicKeyInfo, 0, len(allCerts))
 	for id, cert := range allCerts {
 		pub := cert.PublicKey
-		if pub == nil {
-			// ML-DSA: the standard library cannot parse the certificate's public
-			// key, so derive it from the configured private key.
+		if _, isStdMLDSA := pub.(*mldsa.PublicKey); pub == nil || isStdMLDSA {
+			// ML-DSA: signing uses cloudflare/circl, while the standard library parses the
+			// certificate's public key as a crypto/mldsa key, so derive the circl public key
+			// from the configured private key.
 			derived, ok := s.derivePublicKey(ctx, id)
 			if !ok {
 				continue
@@ -354,7 +355,7 @@ func (s *runtimeCryptoService) derivePublicKey(ctx context.Context, id string) (
 
 func (s *runtimeCryptoService) GetTLSMaterial(
 	ctx context.Context,
-) (*common.TLSMaterial, error) {
+) (*kmprovider.TLSMaterial, error) {
 	if s.pkiService == nil {
 		return nil, errors.New("PKI service not initialized")
 	}
@@ -362,7 +363,7 @@ func (s *runtimeCryptoService) GetTLSMaterial(
 	if err != nil {
 		return nil, fmt.Errorf("failed to load TLS config: %w", err)
 	}
-	return &common.TLSMaterial{
+	return &kmprovider.TLSMaterial{
 		Certificate: tlsCfg.Certificates[0],
 		MinVersion:  tlsCfg.MinVersion,
 	}, nil

@@ -16,10 +16,19 @@ func newDiscoveryHandlerInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *discoveryHandlerInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &discoveryHandlerInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -51,7 +60,7 @@ type discoveryHandlerInterfaceMock_HandleOAuth2AuthorizationServerMetadata_Call 
 // HandleOAuth2AuthorizationServerMetadata is a helper method to define mock.On call
 //   - w http.ResponseWriter
 //   - r *http.Request
-func (_e *discoveryHandlerInterfaceMock_Expecter) HandleOAuth2AuthorizationServerMetadata(w interface{}, r interface{}) *discoveryHandlerInterfaceMock_HandleOAuth2AuthorizationServerMetadata_Call {
+func (_e *discoveryHandlerInterfaceMock_Expecter) HandleOAuth2AuthorizationServerMetadata(w any, r any) *discoveryHandlerInterfaceMock_HandleOAuth2AuthorizationServerMetadata_Call {
 	return &discoveryHandlerInterfaceMock_HandleOAuth2AuthorizationServerMetadata_Call{Call: _e.mock.On("HandleOAuth2AuthorizationServerMetadata", w, r)}
 }
 
@@ -97,7 +106,7 @@ type discoveryHandlerInterfaceMock_HandleOIDCDiscovery_Call struct {
 // HandleOIDCDiscovery is a helper method to define mock.On call
 //   - w http.ResponseWriter
 //   - r *http.Request
-func (_e *discoveryHandlerInterfaceMock_Expecter) HandleOIDCDiscovery(w interface{}, r interface{}) *discoveryHandlerInterfaceMock_HandleOIDCDiscovery_Call {
+func (_e *discoveryHandlerInterfaceMock_Expecter) HandleOIDCDiscovery(w any, r any) *discoveryHandlerInterfaceMock_HandleOIDCDiscovery_Call {
 	return &discoveryHandlerInterfaceMock_HandleOIDCDiscovery_Call{Call: _e.mock.On("HandleOIDCDiscovery", w, r)}
 }
 

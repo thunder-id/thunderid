@@ -18,7 +18,7 @@ export default function QuickCopySection({userType, copiedField, onCopyToClipboa
 
   return (
     <SettingsCard
-      title={t('userTypes:edit.general.sections.quickCopy.title', 'Quick Copy')}
+      title={t('userTypes:edit.general.sections.quickCopy.title', 'Quick copy')}
       description={t(
         'userTypes:edit.general.sections.quickCopy.description',
         'Copy user type identifiers for use in your application.',
@@ -27,7 +27,7 @@ export default function QuickCopySection({userType, copiedField, onCopyToClipboa
       <Stack spacing={3}>
         <FormControl fullWidth>
           <FormLabel htmlFor="user-type-handle-input">
-            {t('userTypes:edit.general.labels.userTypeHandle', 'User Type Handle')}
+            {t('userTypes:edit.general.labels.userTypeHandle', 'User type handle')}
           </FormLabel>
           <TextField
             fullWidth
@@ -72,7 +72,7 @@ export default function QuickCopySection({userType, copiedField, onCopyToClipboa
 
         <FormControl fullWidth>
           <FormLabel htmlFor="user-type-id-input">
-            {t('userTypes:edit.general.labels.userTypeId', 'User Type ID')}
+            {t('userTypes:edit.general.labels.userTypeId', 'User type ID')}
           </FormLabel>
           <TextField
             fullWidth

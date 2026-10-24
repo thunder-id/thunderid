@@ -17,10 +17,19 @@ func newUserInfoServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *userInfoServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &userInfoServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -76,7 +85,7 @@ type userInfoServiceInterfaceMock_GetUserInfo_Call struct {
 // GetUserInfo is a helper method to define mock.On call
 //   - ctx context.Context
 //   - accessToken string
-func (_e *userInfoServiceInterfaceMock_Expecter) GetUserInfo(ctx interface{}, accessToken interface{}) *userInfoServiceInterfaceMock_GetUserInfo_Call {
+func (_e *userInfoServiceInterfaceMock_Expecter) GetUserInfo(ctx any, accessToken any) *userInfoServiceInterfaceMock_GetUserInfo_Call {
 	return &userInfoServiceInterfaceMock_GetUserInfo_Call{Call: _e.mock.On("GetUserInfo", ctx, accessToken)}
 }
 
@@ -149,7 +158,7 @@ type userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call struct {
 //   - proof string
 //   - htm string
 //   - htu string
-func (_e *userInfoServiceInterfaceMock_Expecter) GetUserInfoForDPoP(ctx interface{}, accessToken interface{}, proof interface{}, htm interface{}, htu interface{}) *userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call {
+func (_e *userInfoServiceInterfaceMock_Expecter) GetUserInfoForDPoP(ctx any, accessToken any, proof any, htm any, htu any) *userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call {
 	return &userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call{Call: _e.mock.On("GetUserInfoForDPoP", ctx, accessToken, proof, htm, htu)}
 }
 

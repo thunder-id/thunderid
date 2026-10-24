@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import type {Base} from './base';
@@ -33,7 +33,12 @@ export const WidgetTypes = {
   EUDIWallet: 'EUDI_WALLET',
   PasskeyAuthentication: 'PASSKEY_AUTHENTICATION',
   Provisioning: 'PROVISIONING',
+  AgentOwnerResolution: 'AGENT_OWNER_RESOLUTION',
+  AgentDelegation: 'AGENT_DELEGATION',
+  AgentOboDetails: 'AGENT_OBO_DETAILS',
   Consent: 'CONSENT',
+  AccountLinkingVerification: 'ACCOUNT_LINKING_VERIFICATION',
+  AccountLinkingVerificationWithSelection: 'ACCOUNT_LINKING_VERIFICATION_WITH_SELECTION',
   MagicLink: 'MAGIC_LINK',
   SelfSignUpLink: 'SELF_SIGN_UP_LINK',
   SignInLink: 'SIGN_IN_LINK',

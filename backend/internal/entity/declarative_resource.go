@@ -7,9 +7,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 type declarativeSystemCredentialHasher interface {
@@ -66,6 +70,29 @@ func loadDeclarativeResources(
 			return nil, fmt.Errorf("parser returned nil entity without error")
 		}
 
+		var initial struct {
+			State providers.EntityState `yaml:"state" json:"state"`
+		}
+		if err := yaml.Unmarshal(data, &initial); err != nil {
+			return nil, fmt.Errorf("failed to parse initial entity state: %w", err)
+		}
+		entity.State = initial.State
+		if entity.State == "" {
+			entity.State = providers.EntityStateActive
+		}
+		if len(entity.State) > maxEntityStateLength {
+			return nil, fmt.Errorf("state of entity %s is longer than %d characters", entity.ID,
+				maxEntityStateLength)
+		}
+		if isNearMissSuspended(entity.State) {
+			logger.Warn(context.Background(), "Declarative state is not SUSPENDED, so the entity is not suspended",
+				log.String("category", entity.Category.String()), log.MaskedString(log.LoggerKeyEntityID, entity.ID),
+				log.String("state", string(entity.State)))
+		}
+
+		// Runtime values are never supplied by declarative profiles.
+		entity.RuntimeAttributes = nil
+
 		resource := &entityStoreEntry{
 			Entity:            *entity,
 			Credentials:       credentials,
@@ -115,4 +142,11 @@ func loadDeclarativeResources(
 	}
 
 	return nil
+}
+
+// isNearMissSuspended reports whether a declarative state is SUSPENDED in another case or with
+// surrounding spaces. Only the exact value holds.
+func isNearMissSuspended(state providers.EntityState) bool {
+	return state != providers.EntityStateSuspended &&
+		strings.EqualFold(strings.TrimSpace(string(state)), string(providers.EntityStateSuspended))
 }

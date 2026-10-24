@@ -18,11 +18,11 @@ describe('getGrantTypeLabel', () => {
   });
 
   it('returns the friendly Token Exchange label for the token-exchange URN', () => {
-    expect(getGrantTypeLabel('urn:ietf:params:oauth:grant-type:token-exchange', t)).toBe('Token Exchange');
+    expect(getGrantTypeLabel('urn:ietf:params:oauth:grant-type:token-exchange', t)).toBe('Token exchange');
   });
 
   it('returns the friendly JWT Bearer label for the jwt-bearer URN', () => {
-    expect(getGrantTypeLabel('urn:ietf:params:oauth:grant-type:jwt-bearer', t)).toBe('JWT Bearer');
+    expect(getGrantTypeLabel('urn:ietf:params:oauth:grant-type:jwt-bearer', t)).toBe('JWT bearer');
   });
 
   it('returns the raw value unchanged for an unknown/arbitrary grant type', () => {

@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {DefaultTheme, type Theme} from '@thunderid/design';
+import {type Theme} from '@thunderid/design';
 import {useGetTranslations} from '@thunderid/i18n';
 import {Alert, Box, CircularProgress, Stack, Typography} from '@wso2/oxygen-ui';
 import {useMemo, type JSX} from 'react';
@@ -37,9 +37,19 @@ export interface NotificationTemplatePreviewProps {
   body: string;
   /** Locale resolving {{t(key)}}; unset → not resolved. */
   locale?: string;
-  /** Resolved theme (caller-provided). `undefined` → default theme; `null` → spinner. */
+  /** Resolved theme (caller-provided). `undefined` → no theme, design tokens render empty; `null` → spinner. */
   theme?: Theme | null;
   colorScheme?: 'light' | 'dark';
+  /**
+   * ctx keys the runtime can inject (the catalog the editor offers). When set, a {{ctx(key)}} outside
+   * it is flagged; when omitted, ctx tokens are left unchecked.
+   */
+  contextKeys?: ReadonlySet<string>;
+  /**
+   * design keys the editor offers (the catalog). When set, a {{design(key)}} outside it is flagged,
+   * independent of the selected theme; when omitted, design tokens are left unchecked.
+   */
+  designKeys?: ReadonlySet<string>;
 }
 
 /**
@@ -55,6 +65,8 @@ export default function NotificationTemplatePreview({
   locale = undefined,
   theme = undefined,
   colorScheme = undefined,
+  contextKeys = undefined,
+  designKeys = undefined,
 }: NotificationTemplatePreviewProps): JSX.Element {
   const {t} = useTranslation('design');
 
@@ -69,12 +81,12 @@ export default function NotificationTemplatePreview({
     [translationsData],
   );
 
-  // The theme GatePreview actually renders with (undefined falls back to the default theme), so
-  // {{design(...)}} resolves against the same theme shown in the preview.
-  const effectiveTheme = (theme === undefined ? DefaultTheme : theme) as Record<string, unknown> | null;
+  // The theme {{design(...)}} tokens resolve against. No theme selected (undefined) means no design:
+  // tokens resolve to empty, matching delivery for an app with no theme. null = the caller is still
+  // loading the selected theme (spinner below); don't warn on tokens we can't resolve yet.
+  const effectiveTheme = (theme ?? null) as Record<string, unknown> | null;
   const scheme = colorScheme ?? 'light';
   const chrome = PREVIEW_CHROME[scheme];
-  // null theme = caller is still loading the selected theme; don't warn on tokens we can't resolve yet.
   const themeLoading = theme === null;
 
   // Until translations have loaded (or when no locale is set), every {{t(key)}} would look missing;
@@ -90,11 +102,11 @@ export default function NotificationTemplatePreview({
             body,
             channel,
             translations,
-            theme: effectiveTheme,
-            colorScheme: scheme,
+            contextKeys,
+            designKeys,
             skipMissingTranslation,
           }),
-    [themeLoading, subject, body, channel, translations, effectiveTheme, scheme, skipMissingTranslation],
+    [themeLoading, subject, body, channel, translations, contextKeys, designKeys, skipMissingTranslation],
   );
 
   const opts = useMemo(
@@ -217,13 +229,19 @@ function warningMessage(
     case 'designUnresolved':
       return t(
         'notificationTemplatePreview.warnings.designUnresolved',
-        'Design token "{{token}}" does not match any value in the selected theme; it is shown as-is and may not render.',
+        'Design token "{{token}}" is not a recognized design token; it may not render as expected.',
         {token},
       );
     case 'missingTranslation':
       return t(
         'notificationTemplatePreview.warnings.missingTranslation',
         'No translation for "{{token}}" in any language; the template will fail to send until it is added.',
+        {token},
+      );
+    case 'unknownContext':
+      return t(
+        'notificationTemplatePreview.warnings.unknownContext',
+        '"{{token}}" is not a recognized context value and will not be substituted when the template is sent.',
         {token},
       );
     default:

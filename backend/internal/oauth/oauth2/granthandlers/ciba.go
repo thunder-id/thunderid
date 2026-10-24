@@ -15,6 +15,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -23,11 +24,12 @@ import (
 
 // cibaGrantHandler handles the OpenID Connect CIBA grant type (poll mode).
 type cibaGrantHandler struct {
-	cibaService     ciba.CIBAServiceInterface
-	tokenBuilder    tokenservice.TokenBuilderInterface
-	attributeCache  attributecache.AttributeCacheServiceInterface
-	resourceService providers.ResourceServerProvider
-	logger          *log.Logger
+	cibaService        ciba.CIBAServiceInterface
+	tokenBuilder       tokenservice.TokenBuilderInterface
+	attributeCache     attributecache.AttributeCacheServiceInterface
+	resourceService    providers.ResourceServerProvider
+	enforcementService revocation.EnforcementServiceInterface
+	logger             *log.Logger
 }
 
 // newCIBAGrantHandler creates a new instance of cibaGrantHandler.
@@ -36,13 +38,15 @@ func newCIBAGrantHandler(
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	attributeCache attributecache.AttributeCacheServiceInterface,
 	resourceService providers.ResourceServerProvider,
+	enforcementService revocation.EnforcementServiceInterface,
 ) GrantHandlerInterface {
 	return &cibaGrantHandler{
-		cibaService:     cibaService,
-		tokenBuilder:    tokenBuilder,
-		attributeCache:  attributeCache,
-		resourceService: resourceService,
-		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CIBAGrantHandler")),
+		cibaService:        cibaService,
+		tokenBuilder:       tokenBuilder,
+		attributeCache:     attributeCache,
+		resourceService:    resourceService,
+		enforcementService: enforcementService,
+		logger:             log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CIBAGrantHandler")),
 	}
 }
 
@@ -303,6 +307,7 @@ func (h *cibaGrantHandler) resolveIssuedAudiencesAndScopes(ctx context.Context,
 ) ([]string, []string, *model.ErrorResponse) {
 	oidcScopes, permissionScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(scopeStr, oauthApp.ScopeClaims)
 
+	var audiences []string
 	if len(record.Resources) == 0 {
 		if len(permissionScopes) > 0 {
 			return nil, nil, &model.ErrorResponse{
@@ -310,28 +315,43 @@ func (h *cibaGrantHandler) resolveIssuedAudiencesAndScopes(ctx context.Context,
 				ErrorDescription: "The authentication request is not bound to a resource server",
 			}
 		}
-		return []string{oauthApp.ResolveDefaultAudience(oauthApp.ClientID)}, oidcScopes, nil
-	}
-
-	resourceIdentifier := record.Resources[0]
-	rs, svcErr := h.resourceService.GetResourceServerByIdentifier(ctx, resourceIdentifier)
-	if svcErr != nil {
-		h.logger.Error(ctx, "Failed to resolve stored CIBA resource server",
-			log.String("error", svcErr.ErrorDescription.DefaultValue))
-		return nil, nil, &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to process token request",
+		audiences = []string{oauthApp.ResolveDefaultAudience(oauthApp.ClientID)}
+	} else {
+		resourceIdentifier := record.Resources[0]
+		rs, svcErr := h.resourceService.GetResourceServerByIdentifier(ctx, resourceIdentifier)
+		if svcErr != nil {
+			h.logger.Error(ctx, "Failed to resolve stored CIBA resource server",
+				log.String("error", svcErr.ErrorDescription.DefaultValue))
+			return nil, nil, &model.ErrorResponse{
+				Error:            constants.ErrorServerError,
+				ErrorDescription: "Failed to process token request",
+			}
 		}
+
+		var dErr *model.ErrorResponse
+		permissionScopes, dErr = resourceindicators.DownscopeToResourceServer(
+			ctx, h.resourceService, rs.ID, permissionScopes)
+		if dErr != nil {
+			return nil, nil, dErr
+		}
+		audiences = []string{resourceIdentifier}
 	}
 
-	downscoped, dErr := resourceindicators.DownscopeToResourceServer(
-		ctx, h.resourceService, rs.ID, permissionScopes)
-	if dErr != nil {
-		return nil, nil, dErr
+	// A reused session's AuthTime predates the authorization decision, which AuthorizedAt records;
+	// records stored before AuthorizedAt existed fall back to AuthTime.
+	establishedAt := record.AuthTime
+	if record.AuthorizedAt.After(establishedAt) {
+		establishedAt = record.AuthorizedAt
 	}
-
-	scopes := make([]string, 0, len(oidcScopes)+len(downscoped))
-	scopes = append(scopes, oidcScopes...)
-	scopes = append(scopes, downscoped...)
-	return []string{resourceIdentifier}, scopes, nil
+	scopes, errResp := excludeRevokedScopes(ctx, h.enforcementService, revocation.RevocationIdentity{
+		EstablishedAt: establishedAt,
+		Criteria: []revocation.Criterion{
+			{Type: revocation.CriterionTypeSubject, Value: record.UserID},
+			{Type: revocation.CriterionTypeApplicationKey, Value: record.ClientID},
+		},
+	}, record.UserID, audiences, oidcScopes, permissionScopes)
+	if errResp != nil {
+		return nil, nil, errResp
+	}
+	return audiences, scopes, nil
 }

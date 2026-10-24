@@ -1,6 +1,7 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {resolveAttributeRegex} from '@thunderid/utils';
 import {
   Box,
   Typography,
@@ -44,7 +45,7 @@ const renderSchemaField = <T extends Record<string, unknown>>(
   }
 
   // String fields
-  if (fieldDef.type === 'string') {
+  if (fieldDef.type === 'string' || fieldDef.type === 'email' || fieldDef.type === 'mobile') {
     const stringDef = fieldDef;
 
     // Render as Select dropdown if enum values are provided
@@ -95,9 +96,10 @@ const renderSchemaField = <T extends Record<string, unknown>>(
     // Render as TextField for regular string fields
     // Determine validation pattern
     let validationPattern;
-    if (stringDef.regex) {
+    const regex = resolveAttributeRegex(stringDef.type, stringDef.regex);
+    if (regex) {
       validationPattern = {
-        value: new RegExp(stringDef.regex),
+        value: new RegExp(regex),
         message: `${fieldLabel} format is invalid`,
       };
     }
@@ -135,7 +137,8 @@ const renderSchemaField = <T extends Record<string, unknown>>(
                 {...field}
                 value={field.value ?? ''}
                 id={fieldName}
-                type="text"
+                type={fieldDef.type === 'mobile' ? 'tel' : 'text'}
+                slotProps={{htmlInput: {inputMode: fieldDef.type === 'email' ? 'email' : undefined}}}
                 placeholder={`Enter ${fieldLabel.toLowerCase()}`}
                 fullWidth
                 required={isRequired}

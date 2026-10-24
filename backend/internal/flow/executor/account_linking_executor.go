@@ -102,6 +102,13 @@ func (e *accountLinkingExecutor) Execute(ctx *providers.NodeContext) (*providers
 // account-linking attributes are matched and any candidates are sent to verification.
 func (e *accountLinkingExecutor) resolveIdentity(ctx *providers.NodeContext,
 	execResp *providers.ExecutorResponse, logger *log.Logger) (*providers.ExecutorResponse, error) {
+	// Several users already hold this identity's link, so there is nothing to link. Picking between
+	// them is the job of the node that disambiguates them.
+	if ctx.RuntimeData[common.RuntimeKeyEntityState] == entityStateAmbiguous {
+		logger.Debug(ctx.Context, "The identity is linked to several users, skipping account linking")
+		execResp.Status = providers.ExecComplete
+		return execResp, nil
+	}
 	authenticatedID, err := e.authenticatedEntityID(ctx, execResp)
 	if err != nil {
 		return nil, err

@@ -5,6 +5,7 @@ package sharing
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 
@@ -37,7 +38,7 @@ func declaredPolicy(id, resourceID, initiatingOUID string) Policy {
 		InitiatingOUID: initiatingOUID,
 		Stage:          stageShare,
 		Declared:       true,
-		Targets:        []Target{{ID: id + "-t", Scope: ScopeRoot, OUID: rootOU}},
+		OtherTreeRoots: &OtherTreeRoots{Mode: OtherTreeRootsSelected, Units: []string{rootOU}},
 	}
 }
 
@@ -176,8 +177,8 @@ func (s *FileBasedStoreTestSuite) TestSeedsAndReadsAreSafeTogether() {
 		wg.Add(2)
 		go func(i int) {
 			defer wg.Done()
-			s.store.seed(declaredPolicy(string(rune('a'+i%26))+string(rune('0'+i/26)), testResource,
-				string(rune('A'+i%26))+string(rune('0'+i/26))))
+			s.store.seed(declaredPolicy(fmt.Sprintf("%c%c", 'a'+i%26, '0'+i/26), testResource,
+				fmt.Sprintf("%c%c", 'A'+i%26, '0'+i/26)))
 		}(i)
 		go func() {
 			defer wg.Done()
@@ -234,4 +235,21 @@ func (s *FileBasedStoreTestSuite) TestTheWholeSetReadReturnsEveryDeclaration() {
 	s.Require().NoError(err)
 	s.Equal([]string{"p-" + rootOU, "p-" + childOU, "p-" + otherOU},
 		[]string{held[0].ID, held[1].ID, held[2].ID})
+}
+
+// A declared policy depends on its issuer as much as a stored one does, so the issued-by lookup
+// reads every resource and leaves out policies other units issued.
+func (s *FileBasedStoreTestSuite) TestPoliciesIssuedByOneUnitSpanResources() {
+	s.store.seed(declaredPolicy("p1", testResource, rootOU))
+	s.store.seed(declaredPolicy("p2", "resource-2", rootOU))
+	s.store.seed(declaredPolicy("p3", testResource, otherOU))
+
+	got, err := s.store.ListPoliciesIssuedBy(context.Background(), rootOU)
+
+	s.Require().NoError(err)
+	ids := make([]string, 0, len(got))
+	for _, p := range got {
+		ids = append(ids, p.ID)
+	}
+	s.Equal([]string{"p1", "p2"}, ids)
 }

@@ -576,3 +576,121 @@ func (ts *CreateUserTypeTestSuite) postUserType(schema CreateUserTypeRequest) (i
 
 	return resp.StatusCode, errorResp
 }
+
+// getUserType fetches a user type by ID.
+func (ts *CreateUserTypeTestSuite) getUserType(schemaID string) UserType {
+	resp, err := ts.client.Get(testServerURL + "/user-types/" + schemaID)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, string(bodyBytes))
+
+	var userType UserType
+	ts.Require().NoError(json.Unmarshal(bodyBytes, &userType))
+	return userType
+}
+
+// TestCreateUserTypeWithPrimaryContacts tests that explicit primary contact mappings are stored.
+func (ts *CreateUserTypeTestSuite) TestCreateUserTypeWithPrimaryContacts() {
+	attrs := &SystemAttributes{Display: "workEmail", PrimaryEmail: "recoveryEmail", PrimaryMobile: "phone"}
+	schemaID := ts.createSchemaHelper(CreateUserTypeRequest{
+		Handle:           "primary-contact-explicit",
+		DisplayName:      "Primary Contact Explicit",
+		SystemAttributes: attrs,
+		Schema: json.RawMessage(`{
+			"workEmail": {"type": "email", "required": true, "unique": true},
+			"recoveryEmail": {"type": "email"},
+			"phone": {"type": "mobile"}
+		}`),
+	})
+	ts.createdSchemas = append(ts.createdSchemas, schemaID)
+
+	ts.Equal(attrs, ts.getUserType(schemaID).SystemAttributes)
+}
+
+// TestCreateUserTypeDefaultsSolePrimaryContacts tests that omitted mappings default to the
+// only top-level attribute of each contact type.
+func (ts *CreateUserTypeTestSuite) TestCreateUserTypeDefaultsSolePrimaryContacts() {
+	schemaID := ts.createSchemaHelper(CreateUserTypeRequest{
+		Handle:      "primary-contact-default",
+		DisplayName: "Primary Contact Default",
+		Schema: json.RawMessage(`{
+			"workEmail": {"type": "email"},
+			"phone": {"type": "mobile"},
+			"profile": {"type": "object", "properties": {"email": {"type": "email"}}}
+		}`),
+	})
+	ts.createdSchemas = append(ts.createdSchemas, schemaID)
+
+	ts.Equal(&SystemAttributes{PrimaryEmail: "workEmail", PrimaryMobile: "phone"},
+		ts.getUserType(schemaID).SystemAttributes)
+}
+
+// TestCreateUserTypeLeavesAmbiguousPrimaryContactUnset tests that an omitted mapping stays unset
+// when several top-level attributes share the contact type.
+func (ts *CreateUserTypeTestSuite) TestCreateUserTypeLeavesAmbiguousPrimaryContactUnset() {
+	schemaID := ts.createSchemaHelper(CreateUserTypeRequest{
+		Handle:      "primary-contact-ambiguous",
+		DisplayName: "Primary Contact Ambiguous",
+		Schema: json.RawMessage(`{
+			"workEmail": {"type": "email"},
+			"recoveryEmail": {"type": "email"},
+			"phone": {"type": "mobile"}
+		}`),
+	})
+	ts.createdSchemas = append(ts.createdSchemas, schemaID)
+
+	ts.Equal(&SystemAttributes{PrimaryMobile: "phone"}, ts.getUserType(schemaID).SystemAttributes)
+}
+
+// TestCreateUserTypeWithInvalidPrimaryContacts tests that each invalid mapping returns a distinct error.
+func (ts *CreateUserTypeTestSuite) TestCreateUserTypeWithInvalidPrimaryContacts() {
+	schema := json.RawMessage(`{
+		"workEmail": {"type": "email"},
+		"recoveryEmail": {"type": "email"},
+		"phone": {"type": "mobile"},
+		"profile": {"type": "object", "properties": {"email": {"type": "email"}}}
+	}`)
+	testCases := []struct {
+		name         string
+		attrs        *SystemAttributes
+		expectedCode string
+	}{
+		{"unknown attribute", &SystemAttributes{PrimaryEmail: "missing"}, "USRS-1018"},
+		{"nested attribute", &SystemAttributes{PrimaryEmail: "profile.email"}, "USRS-1018"},
+		{"type mismatch", &SystemAttributes{PrimaryEmail: "phone"}, "USRS-1019"},
+	}
+
+	for _, tc := range testCases {
+		ts.Run(tc.name, func() {
+			status, errResp := ts.postUserType(CreateUserTypeRequest{
+				Handle:           "primary-contact-invalid",
+				DisplayName:      "Primary Contact Invalid",
+				OUID:             ts.oUID,
+				SystemAttributes: tc.attrs,
+				Schema:           schema,
+			})
+			ts.Equal(http.StatusBadRequest, status)
+			ts.Equal(tc.expectedCode, errResp.Code)
+		})
+	}
+}
+
+// TestCreateUserTypeWithContactEnum tests that enum is rejected on contact types, including array items.
+func (ts *CreateUserTypeTestSuite) TestCreateUserTypeWithContactEnum() {
+	for _, schema := range []string{
+		`{"workEmail": {"type": "email", "enum": ["a@example.com"]}}`,
+		`{"phones": {"type": "array", "items": {"type": "mobile", "enum": ["+123"]}}}`,
+	} {
+		status, errResp := ts.postUserType(CreateUserTypeRequest{
+			Handle:      "contact-enum",
+			DisplayName: "Contact Enum",
+			OUID:        ts.oUID,
+			Schema:      json.RawMessage(schema),
+		})
+		ts.Equal(http.StatusBadRequest, status, schema)
+		ts.Equal("USRS-1004", errResp.Code, schema)
+	}
+}

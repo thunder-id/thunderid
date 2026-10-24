@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 // Package role provides role management functionality.
@@ -8,6 +8,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -16,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/group"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	resourcepkg "github.com/thunder-id/thunderid/internal/resource"
+	"github.com/thunder-id/thunderid/internal/revocation"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -36,6 +39,17 @@ type RoleServiceInterface interface {
 	UpdateRoleWithPermissions(ctx context.Context, id string, role RoleUpdateDetail) (
 		*RoleWithPermissions, *tidcommon.ServiceError)
 	DeleteRole(ctx context.Context, id string) *tidcommon.ServiceError
+	// ValidateDeleteRole reports whether the role may be deleted and returns what the deletion revokes.
+	ValidateDeleteRole(ctx context.Context, id string) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
+	// ValidateUpdateRolePermissions reports whether the permissions may be replaced and what that revokes.
+	ValidateUpdateRolePermissions(ctx context.Context, id string, permissions []ResourcePermissions) (
+		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
+	// ValidateGroupDeletion reports whether the group may be deleted and returns what the deletion revokes.
+	ValidateGroupDeletion(ctx context.Context, groupID string) (
+		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
+	// ValidateGroupMembershipRemoval reports whether the member may be removed and returns what that revokes.
+	ValidateGroupMembershipRemoval(ctx context.Context, groupID, memberID string) (
+		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	IsRoleDeclarative(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
 	GetAuthorizedPermissionsByResourceServer(
 		ctx context.Context, entityID string, groups, roleIDs []string, resourceServerID string,
@@ -358,10 +372,8 @@ func (rs *roleService) UpdateRoleWithPermissions(
 		return nil, &ErrorRoleNotFound
 	}
 
-	// Check if role is declarative - cannot modify declarative roles
-	if rs.isRoleDeclarative(ctx, id) {
-		logger.Debug(ctx, "Cannot modify declarative role", log.String("id", id))
-		return nil, &ErrorImmutableRole
+	if svcErr := rs.validateRoleMutable(ctx, id); svcErr != nil {
+		return nil, svcErr
 	}
 
 	// Validate organization unit exists using OU service
@@ -427,10 +439,8 @@ func (rs *roleService) DeleteRole(ctx context.Context, id string) *tidcommon.Ser
 		return nil
 	}
 
-	// Check if role is declarative - cannot delete declarative roles
-	if rs.isRoleDeclarative(ctx, id) {
-		logger.Debug(ctx, "Cannot delete declarative role", log.String("id", id))
-		return &ErrorImmutableRole
+	if svcErr := rs.validateRoleMutable(ctx, id); svcErr != nil {
+		return svcErr
 	}
 
 	// Delete all assignments for the role before deleting the role itself (cascade delete).
@@ -449,6 +459,82 @@ func (rs *roleService) DeleteRole(ctx context.Context, id string) *tidcommon.Ser
 
 	logger.Debug(ctx, "Successfully deleted role", log.String("id", id))
 	return nil
+}
+
+// ValidateDeleteRole reports whether the role may be deleted and returns what the deletion revokes.
+func (rs *roleService) ValidateDeleteRole(ctx context.Context, id string) (
+	*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
+	role, svcErr := rs.GetRoleWithPermissions(ctx, id)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := rs.validateRoleMutable(ctx, id); svcErr != nil {
+		return nil, svcErr
+	}
+	return rs.roleAccessChangeTarget(ctx, id, role.Permissions)
+}
+
+// ValidateUpdateRolePermissions runs the checks UpdateRoleWithPermissions runs on the new permissions.
+func (rs *roleService) ValidateUpdateRolePermissions(ctx context.Context, id string,
+	permissions []ResourcePermissions) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
+	role, svcErr := rs.GetRoleWithPermissions(ctx, id)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := rs.validateRoleMutable(ctx, id); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := rs.validatePermissions(ctx, permissions); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := rs.authzService.CanGrantPermissions(ctx, toPermissionSet(permissions)); svcErr != nil {
+		return nil, svcErr
+	}
+	return rs.roleAccessChangeTarget(ctx, id, droppedPermissions(role.Permissions, permissions))
+}
+
+// ValidateGroupDeletion runs the group service's checks for the deletion and returns what it revokes.
+func (rs *roleService) ValidateGroupDeletion(ctx context.Context, groupID string) (
+	*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
+	if svcErr := rs.groupService.ValidateDeleteGroup(ctx, groupID); svcErr != nil {
+		return nil, svcErr
+	}
+	scopes, svcErr := rs.groupScopes(ctx, groupID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	entityIDs, svcErr := rs.groupService.GetTransitiveMemberEntities(ctx, groupID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return &revocation.AccessRevocationTarget{EntityIDs: entityIDs, Scopes: scopes}, nil
+}
+
+// ValidateGroupMembershipRemoval runs the group service's checks for the removal and returns what it revokes.
+func (rs *roleService) ValidateGroupMembershipRemoval(ctx context.Context, groupID, memberID string) (
+	*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
+	// A removal of a non-member changes nothing, so it must not revoke anything.
+	member, svcErr := rs.groupService.GetDirectGroupMember(ctx, groupID, memberID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if member == nil {
+		return nil, &group.ErrorInvalidMemberID
+	}
+	if svcErr := rs.groupService.ValidateRemoveGroupMembers(ctx, groupID, []group.Member{*member}); svcErr != nil {
+		return nil, svcErr
+	}
+	scopes, svcErr := rs.groupScopes(ctx, groupID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	entityIDs, svcErr := expandPrincipal(ctx, rs.groupService, memberID, member.Type == group.MemberTypeGroup)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return &revocation.AccessRevocationTarget{
+		EntityIDs: entityIDs, Scopes: scopes, AssigneeType: string(member.Type),
+	}, nil
 }
 
 // GetAuthorizedPermissionsByResourceServer checks which requested permissions are authorized for the entity
@@ -724,28 +810,107 @@ func (rs *roleService) validatePermissions(
 	return nil
 }
 
-// isRoleDeclarative checks if a role is defined in declarative configuration.
-func (rs *roleService) isRoleDeclarative(ctx context.Context, roleID string) bool {
-	// Check the store mode - if it's mutable, no roles are declarative
-	storeMode := getRoleStoreMode()
-	if storeMode == serverconst.StoreModeMutable {
-		return false
+// roleAccessChangeTarget pairs the revoked permissions with every holder of the role; with none revoked
+// it skips the holders, so a change that revokes nothing is never refused over them.
+func (rs *roleService) roleAccessChangeTarget(ctx context.Context, id string,
+	revoked []ResourcePermissions) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
+	scopes, svcErr := resolveScopes(ctx, rs.resourceService, revoked)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if len(scopes) == 0 {
+		return &revocation.AccessRevocationTarget{}, nil
+	}
+	entityIDs, svcErr := rs.roleAssigneeIDs(ctx, id)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return &revocation.AccessRevocationTarget{EntityIDs: entityIDs, Scopes: scopes}, nil
+}
+
+// roleAssigneeIDs returns the distinct entities holding the role, directly or through a group.
+func (rs *roleService) roleAssigneeIDs(ctx context.Context, id string) ([]string, *tidcommon.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+
+	total, err := rs.roleStore.GetRoleAssignmentsCount(ctx, id)
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, &ResultLimitExceededInCompositeMode
+		}
+		logger.Error(ctx, "Failed to get role assignments count", log.String("id", id), log.Error(err))
+		return nil, &tidcommon.InternalServerError
 	}
 
-	// For declarative and composite modes, check with store
-	// Note: This is a placeholder implementation
-	// Actual implementation would check against declarative config
+	entityIDs := []string{}
+	seen := map[string]struct{}{}
+	for offset := 0; offset < total; offset += serverconst.MaxPageSize {
+		assignments, err := rs.roleStore.GetRoleAssignments(ctx, id, serverconst.MaxPageSize, offset)
+		if err != nil {
+			if errors.Is(err, errResultLimitExceededInCompositeMode) {
+				return nil, &ResultLimitExceededInCompositeMode
+			}
+			logger.Error(ctx, "Failed to get role assignments", log.String("id", id), log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+		for _, assignment := range assignments {
+			members, svcErr := expandPrincipal(ctx, rs.groupService, assignment.ID,
+				assignment.Type == AssigneeTypeGroup)
+			if svcErr != nil {
+				return nil, svcErr
+			}
+			for _, entityID := range members {
+				if _, ok := seen[entityID]; ok {
+					continue
+				}
+				seen[entityID] = struct{}{}
+				entityIDs = append(entityIDs, entityID)
+			}
+		}
+	}
+	return entityIDs, nil
+}
+
+// groupScopes returns the scopes membership of the group conveys, including through its ancestors.
+func (rs *roleService) groupScopes(ctx context.Context, groupID string) (
+	[]revocation.AudienceScope, *tidcommon.ServiceError) {
+	ancestors, svcErr := rs.groupService.GetTransitiveAncestorGroups(ctx, groupID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	permissionSet, svcErr := rs.GetAllPermissions(ctx, "", append([]string{groupID}, ancestors...))
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	resourceServerIDs := slices.Sorted(maps.Keys(permissionSet))
+	permissions := make([]ResourcePermissions, 0, len(resourceServerIDs))
+	for _, resourceServerID := range resourceServerIDs {
+		permissions = append(permissions, ResourcePermissions{
+			ResourceServerID: resourceServerID,
+			Permissions:      permissionSet[resourceServerID],
+		})
+	}
+	return resolveScopes(ctx, rs.resourceService, permissions)
+}
+
+// validateRoleMutable refuses a change to a declarative role, failing closed when the check errors.
+func (rs *roleService) validateRoleMutable(ctx context.Context, roleID string) *tidcommon.ServiceError {
+	// Check the store mode - if it's mutable, no roles are declarative
+	if getRoleStoreMode() == serverconst.StoreModeMutable {
+		return nil
+	}
+
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	isDeclarative, err := rs.roleStore.IsRoleDeclarative(ctx, roleID)
 	if err != nil {
-		// Log at Warn level and fail open - treat as non-declarative on error
-		// RISK: In composite mode, this could allow modification of declarative roles if the check fails
-		logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-		logger.Warn(ctx, "Failed to check if role is declarative",
-			log.String("roleID", roleID), log.Error(err))
-		return false
+		logger.Error(ctx, "Failed to check if role is declarative", log.String("roleID", roleID), log.Error(err))
+		return &tidcommon.InternalServerError
 	}
-
-	return isDeclarative
+	if isDeclarative {
+		logger.Debug(ctx, "Cannot modify declarative role", log.String("roleID", roleID))
+		return &ErrorImmutableRole
+	}
+	return nil
 }
 
 // GetResourceDependencies implements resourcedependency.Provider. Role permissions are cleaned up

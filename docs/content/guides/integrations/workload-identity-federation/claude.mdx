@@ -27,12 +27,12 @@ See [Workload Identity Federation](../overview) for what federation replaces and
 
 1. Sign in to the <ProductName /> Console at `https://localhost:8090/console`.
 2. Navigate to **Agents** → **New Agent**.
-3. Enter an **Agent Name** (for example `research-agent`).
+3. Enter an **Agent name** (for example `research-agent`).
 4. Select an owner for the agent.
 5. Click **Create Agent**.
 6. Note down the **Agent ID**, Anthropic matches on this value.
 7. Record the **Client ID** and **Client Secret**. The secret is shown once.
-8. Open the agent's **Advanced** tab. Under **OAuth 2 Configuration**, set **Default audience (aud)** to `https://api.anthropic.com`, then save.
+8. Open the agent's **Advanced** tab. Under **OAuth 2 configuration**, set **Default audience (aud)** to `https://api.anthropic.com`, then save.
 
 A new agent has the `client_credentials` grant enabled, so it can already request a token for itself. See [Agent Token](../../../agents/authentication/agent-own-token) on how to get a token.
 
@@ -229,7 +229,7 @@ Every denied assertion returns the same opaque `401` `authentication_error` with
 | The history entry points at the issuer or the signature | The token's `iss` does not equal the issuer's **Issuer URL** byte for byte, or the signing key rotated and the inline key set is stale. |
 | Deny reason `jti_reused` | The same agent token was exchanged twice. Request a new one for each exchange. |
 | Deny reason `workspace_id_required` | The rule is enabled for more than one workspace and the exchange named none. Send `workspace_id`. |
-| The exchange fails on the token lifetime | The agent token's `exp` minus `iat` exceeds the issuer's maximum, one hour by default. Lower **Token Validity** on the agent's **Tokens** tab, or raise the maximum on the issuer. |
+| The exchange fails on the token lifetime | The agent token's `exp` minus `iat` exceeds the issuer's maximum, one hour by default. Lower **Token validity** on the agent's **Tokens** tab, or raise the maximum on the issuer. |
 | A `401` with no history entry at all | The `federation_rule_id` was not recognized. Confirm it in the Claude Console and that the rule is not archived. |
 | `401` from `api.anthropic.com` | The Anthropic access token expired. Exchange again rather than caching it past `expires_in`. |
 | `403` from `api.anthropic.com` | The rule's OAuth scope is narrower than the call needs, or the service account is not a member of the rule's workspace. |

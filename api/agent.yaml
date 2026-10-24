@@ -33,7 +33,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
-        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/agentFilterParam'
         - $ref: '#/components/parameters/includeQueryParam'
       responses:
         "200":
@@ -350,6 +350,16 @@ paths:
                     description:
                       key: "error.agentservice.invalid_grant_type_description"
                       defaultValue: "One or more grant types are not supported"
+                missing-delegation-grant-type:
+                  summary: A delegated agent has no grant type that lets it act for a user
+                  value:
+                    code: "AGT-1044"
+                    message:
+                      key: "error.agentservice.missing_delegation_grant_type"
+                      defaultValue: "Missing required grant types for a delegated agent"
+                    description:
+                      key: "error.agentservice.missing_delegation_grant_type_description"
+                      defaultValue: "A delegated agent needs at least one of these grant types: {{param(grantTypes)}}"
                 ou-not-found:
                   summary: Organization unit not found
                   value:
@@ -804,7 +814,7 @@ paths:
                           profile: ["name", "family_name", "given_name"]
       responses:
         "200":
-          description: Agent updated
+          description: Agent updated, with its `status`
           content:
             application/json:
               schema:
@@ -1805,7 +1815,7 @@ components:
           - display
       description: |
         Pass `display` to populate the `display` and `ouHandle` fields in the response.
-    filterParam:
+    agentFilterParam:
       in: query
       name: filter
       required: false
@@ -1888,6 +1898,20 @@ components:
             Indicates whether the agent is immutable. When `true`, update and delete
             operations are rejected. Set by the system for declaratively provisioned agents.
           example: false
+        status:
+          $ref: '#/components/schemas/AgentAccessStatus'
+        lastLoginAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: |
+            When the agent last authenticated, including session reuse and `client_credentials`
+            tokens. Set by the server and never accepted on a write.
+
+            Absent until recorded. Recording is off for agents unless
+            `accountAccess.agent.recordLastLogin` is enabled, and the value can lag the latest
+            sign-in by up to `accountAccess.agent.lastLoginResolutionSeconds` (one hour by default).
+          example: "2026-09-09T18:22:04Z"
 
     AgentListResponse:
       type: object
@@ -1949,6 +1973,13 @@ components:
             Optional ID of the entity that should own this agent. Defaults to the authenticated
             principal creating the agent.
           example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+        delegated:
+          type: boolean
+          default: false
+          description: |
+            Whether the agent acts on behalf of a signed-in user. It decides the OAuth grant types
+            the agent is given and allowed, and is not stored. See `inboundAuthConfig`.
+          example: false
         attributes:
           type: object
           additionalProperties: true
@@ -2011,6 +2042,17 @@ components:
             OAuth/OIDC configuration for the agent. Providing this also creates an inbound
             client row (inbound auth profile fields are not required to be explicitly set).
 
+            The `client_credentials` grant type is always granted: it is added when missing, and is
+            the default when no grant types are given. A public client, which has no secret, is not
+            given it. All other requested grant types are accepted as given. When `delegated` is
+            `true`, an OAuth configuration is created if none is given, and the grant types are
+            checked:
+            - When any grant type beyond `client_credentials` is given, at least one of
+              `authorization_code`, `urn:openid:params:grant-type:ciba` and
+              `urn:ietf:params:oauth:grant-type:token-exchange` must be among them.
+            - When none beyond `client_credentials` is given, `authorization_code` and
+              `refresh_token` are added, with the `code` response type and PKCE required.
+
     UpdateAgentRequest:
       type: object
       required: [type]
@@ -2044,6 +2086,14 @@ components:
           format: uuid
           description: Admins can transfer ownership by setting this to a different entity ID.
           example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+        delegated:
+          type: boolean
+          default: false
+          description: |
+            Whether the agent acts on behalf of a signed-in user. It is not stored, so send it on
+            every update that should be held to the delegated grant rules described on
+            `inboundAuthConfig` in `CreateAgentRequest`.
+          example: false
         attributes:
           type: object
           additionalProperties: true
@@ -2128,6 +2178,18 @@ components:
             name: "Calendar Agent"
             llmModel: "claude-3-5-sonnet"
             environment: "production"
+        status:
+          allOf:
+            - $ref: '#/components/schemas/AgentAccessStatus'
+          description: The agent's status after the update. Present on update responses only.
+        lastLoginAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: |
+            When the agent last authenticated, as a read reports it. Present on update responses
+            only, and absent until recorded.
+          example: "2026-09-09T18:22:04Z"
         authFlowId:
           type: string
           example: "edc013d0-e893-4dc0-990c-3e1d203e005b"
@@ -2252,6 +2314,20 @@ components:
           items:
             $ref: '#/components/schemas/InboundAuthConfig'
           description: OAuth config without secrets.
+        status:
+          $ref: '#/components/schemas/AgentAccessStatus'
+        lastLoginAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: |
+            When the agent last authenticated, including session reuse and `client_credentials`
+            tokens. Set by the server and never accepted on a write.
+
+            Absent until recorded. Recording is off for agents unless
+            `accountAccess.agent.recordLastLogin` is enabled, and the value can lag the latest
+            sign-in by up to `accountAccess.agent.lastLoginResolutionSeconds` (one hour by default).
+          example: "2026-09-09T18:22:04Z"
 
     AgentGroup:
       type: object
@@ -2687,12 +2763,12 @@ components:
           additionalProperties:
             oneOf:
               - type: object
-                description: "Leaf property - string or number"
+                description: "Leaf property - string, email, mobile, or number"
                 required: [type]
                 properties:
                   type:
                     type: string
-                    enum: ["string", "number"]
+                    enum: ["string", "email", "mobile", "number"]
                     description: "Data type of the property"
                   required:
                     type: boolean
@@ -2705,7 +2781,7 @@ components:
                   credential:
                     type: boolean
                     default: false
-                    description: "Whether this property should be treated as a credential attribute"
+                    description: "Whether this property should be treated as a credential attribute. Not supported for email or mobile types."
                   displayName:
                     type: string
                     description: "Human-readable label shown in the UI for this property"
@@ -2713,7 +2789,7 @@ components:
                     type: array
                     items:
                       type: string
-                    description: "List of allowed values for this property"
+                    description: "List of allowed values for this property. Not supported for email or mobile types."
                   regex:
                     type: string
                     description: "Regular expression pattern for validating the property value"
@@ -2773,16 +2849,20 @@ components:
                   items:
                     oneOf:
                       - type: object
-                        description: "Array of strings or numbers"
+                        description: "Array of strings, emails, mobiles, or numbers"
                         required: [type]
                         properties:
                           type:
                             type: string
-                            enum: ["string", "number"]
+                            enum: ["string", "email", "mobile", "number"]
                           enum:
                             type: array
                             items:
                               type: string
+                            description: "List of allowed values. Not supported for email or mobile types."
+                          regex:
+                            type: string
+                            description: "Custom validation pattern. Contact types use their default when omitted or empty."
                         additionalProperties: false
                       - type: object
                         description: "Array of booleans"
@@ -2954,6 +3034,91 @@ components:
         defaultValue:
           type: string
           description: Default message in English (fallback).
+
+    AgentAccessStatus:
+      type: object
+      readOnly: true
+      description: |
+        The agent's effective access status and the reason for it. Computed when the agent is
+        read or updated, and never accepted on a write.
+      properties:
+        value:
+          type: string
+          readOnly: true
+          enum: [ACTIVE, LOCKED, SUSPENDED]
+          description: |
+            `ACTIVE`, `LOCKED` or `SUSPENDED`. When the agent is both suspended and locked,
+            `SUSPENDED` is reported.
+
+            `SUSPENDED` is an administrative hold. The suspend flow places it and the unsuspend
+            flow removes it. Any automatic lock still in force remains, so the agent returns to
+            `LOCKED` or `ACTIVE` according to its current lock state.
+
+            `LOCKED` is an automatic hold after repeated failed sign-ins with the `credential` or
+            `otp` authentication method. Automatic locking is enabled for agents by default. The
+            agent's OAuth client secret is never locked. A lock does not expire when its duration
+            is `0` or it forms at `maxConsecutiveFailures`; other locks expire on their own.
+          example: "ACTIVE"
+        details:
+          type: object
+          readOnly: true
+          description: |
+            Why the status applies and how it is cleared. Absent for `ACTIVE`.
+
+            An authentication refusal states only that the account is locked or suspended. The
+            locked methods, expiry times, and operator note are returned only here, to callers
+            allowed to read the agent.
+          properties:
+            reason:
+              type: string
+              readOnly: true
+              enum: [FAILED_ATTEMPTS, ADMINISTRATIVE_SUSPENSION]
+              description: |
+                What caused the status. `FAILED_ATTEMPTS` is an automatic lock after repeated failed
+                sign-ins. `ADMINISTRATIVE_SUSPENSION` is a suspension placed by an operator. One
+                reason covers every entry in `lockedMethods`.
+              example: "FAILED_ATTEMPTS"
+            since:
+              type: string
+              format: date-time
+              readOnly: true
+              description: When the operator placed the hold. Absent for an automatic lock.
+            operatorNote:
+              type: string
+              readOnly: true
+              maxLength: 100
+              description: |
+                The note the operator entered when placing the hold. Absent when none was entered.
+                Never included in an authentication refusal.
+              example: "Credential exposure reported by the security team"
+            lockedMethods:
+              type: array
+              readOnly: true
+              description: |
+                The automatic locks currently in force, in a stable order. Absent unless the status
+                is `LOCKED`.
+
+                With `lockGranularity` set to `authentication_method`, each method locks separately,
+                so several entries can be present, each with its own expiry. An account-wide lock is
+                reported as a single entry with the method `entity`.
+              items:
+                type: object
+                properties:
+                  method:
+                    type: string
+                    readOnly: true
+                    description: |
+                      The locked authentication method, such as `credential`, or `entity` when every
+                      method is locked.
+                    example: "credential"
+                  expiresAt:
+                    type: string
+                    format: date-time
+                    readOnly: true
+                    description: |
+                      When the lock expires. **Absent when it does not expire**: only the unlock flow
+                      clears it.
+                    example: "2026-09-08T10:15:00Z"
 
     Link:
       type: object

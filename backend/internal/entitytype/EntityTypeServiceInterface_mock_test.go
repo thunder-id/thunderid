@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -18,10 +19,19 @@ func NewEntityTypeServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *EntityTypeServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &EntityTypeServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +88,7 @@ type EntityTypeServiceInterfaceMock_CreateEntityType_Call struct {
 //   - ctx context.Context
 //   - category TypeCategory
 //   - request CreateEntityTypeRequestWithID
-func (_e *EntityTypeServiceInterfaceMock_Expecter) CreateEntityType(ctx interface{}, category interface{}, request interface{}) *EntityTypeServiceInterfaceMock_CreateEntityType_Call {
+func (_e *EntityTypeServiceInterfaceMock_Expecter) CreateEntityType(ctx any, category any, request any) *EntityTypeServiceInterfaceMock_CreateEntityType_Call {
 	return &EntityTypeServiceInterfaceMock_CreateEntityType_Call{Call: _e.mock.On("CreateEntityType", ctx, category, request)}
 }
 
@@ -143,7 +153,7 @@ type EntityTypeServiceInterfaceMock_DeleteEntityType_Call struct {
 //   - ctx context.Context
 //   - category TypeCategory
 //   - schemaID string
-func (_e *EntityTypeServiceInterfaceMock_Expecter) DeleteEntityType(ctx interface{}, category interface{}, schemaID interface{}) *EntityTypeServiceInterfaceMock_DeleteEntityType_Call {
+func (_e *EntityTypeServiceInterfaceMock_Expecter) DeleteEntityType(ctx any, category any, schemaID any) *EntityTypeServiceInterfaceMock_DeleteEntityType_Call {
 	return &EntityTypeServiceInterfaceMock_DeleteEntityType_Call{Call: _e.mock.On("DeleteEntityType", ctx, category, schemaID)}
 }
 
@@ -220,7 +230,7 @@ type EntityTypeServiceInterfaceMock_GetAttributes_Call struct {
 //   - category TypeCategory
 //   - entityType string
 //   - filter AttributeFilter
-func (_e *EntityTypeServiceInterfaceMock_Expecter) GetAttributes(ctx interface{}, category interface{}, entityType interface{}, filter interface{}) *EntityTypeServiceInterfaceMock_GetAttributes_Call {
+func (_e *EntityTypeServiceInterfaceMock_Expecter) GetAttributes(ctx any, category any, entityType any, filter any) *EntityTypeServiceInterfaceMock_GetAttributes_Call {
 	return &EntityTypeServiceInterfaceMock_GetAttributes_Call{Call: _e.mock.On("GetAttributes", ctx, category, entityType, filter)}
 }
 
@@ -252,8 +262,8 @@ func (_c *EntityTypeServiceInterfaceMock_GetAttributes_Call) Run(run func(ctx co
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_GetAttributes_Call) Return(vs []AttributeInfo, serviceError *common.ServiceError) *EntityTypeServiceInterfaceMock_GetAttributes_Call {
-	_c.Call.Return(vs, serviceError)
+func (_c *EntityTypeServiceInterfaceMock_GetAttributes_Call) Return(attributeInfos []AttributeInfo, serviceError *common.ServiceError) *EntityTypeServiceInterfaceMock_GetAttributes_Call {
+	_c.Call.Return(attributeInfos, serviceError)
 	return _c
 }
 
@@ -301,7 +311,7 @@ type EntityTypeServiceInterfaceMock_GetAttributesForEntityType_Call struct {
 //   - ctx context.Context
 //   - entityType string
 //   - filter AttributeFilter
-func (_e *EntityTypeServiceInterfaceMock_Expecter) GetAttributesForEntityType(ctx interface{}, entityType interface{}, filter interface{}) *EntityTypeServiceInterfaceMock_GetAttributesForEntityType_Call {
+func (_e *EntityTypeServiceInterfaceMock_Expecter) GetAttributesForEntityType(ctx any, entityType any, filter any) *EntityTypeServiceInterfaceMock_GetAttributesForEntityType_Call {
 	return &EntityTypeServiceInterfaceMock_GetAttributesForEntityType_Call{Call: _e.mock.On("GetAttributesForEntityType", ctx, entityType, filter)}
 }
 
@@ -328,8 +338,8 @@ func (_c *EntityTypeServiceInterfaceMock_GetAttributesForEntityType_Call) Run(ru
 	return _c
 }
 
-func (_c *EntityTypeServiceInterfaceMock_GetAttributesForEntityType_Call) Return(typeCategoryToVs map[TypeCategory][]AttributeInfo, serviceError *common.ServiceError) *EntityTypeServiceInterfaceMock_GetAttributesForEntityType_Call {
-	_c.Call.Return(typeCategoryToVs, serviceError)
+func (_c *EntityTypeServiceInterfaceMock_GetAttributesForEntityType_Call) Return(typeCategoryToAttributeInfos map[TypeCategory][]AttributeInfo, serviceError *common.ServiceError) *EntityTypeServiceInterfaceMock_GetAttributesForEntityType_Call {
+	_c.Call.Return(typeCategoryToAttributeInfos, serviceError)
 	return _c
 }
 
@@ -377,7 +387,7 @@ type EntityTypeServiceInterfaceMock_GetDisplayAttributesByHandles_Call struct {
 //   - ctx context.Context
 //   - category TypeCategory
 //   - handles []string
-func (_e *EntityTypeServiceInterfaceMock_Expecter) GetDisplayAttributesByHandles(ctx interface{}, category interface{}, handles interface{}) *EntityTypeServiceInterfaceMock_GetDisplayAttributesByHandles_Call {
+func (_e *EntityTypeServiceInterfaceMock_Expecter) GetDisplayAttributesByHandles(ctx any, category any, handles any) *EntityTypeServiceInterfaceMock_GetDisplayAttributesByHandles_Call {
 	return &EntityTypeServiceInterfaceMock_GetDisplayAttributesByHandles_Call{Call: _e.mock.On("GetDisplayAttributesByHandles", ctx, category, handles)}
 }
 
@@ -454,7 +464,7 @@ type EntityTypeServiceInterfaceMock_GetEntityType_Call struct {
 //   - category TypeCategory
 //   - schemaID string
 //   - includeDisplay bool
-func (_e *EntityTypeServiceInterfaceMock_Expecter) GetEntityType(ctx interface{}, category interface{}, schemaID interface{}, includeDisplay interface{}) *EntityTypeServiceInterfaceMock_GetEntityType_Call {
+func (_e *EntityTypeServiceInterfaceMock_Expecter) GetEntityType(ctx any, category any, schemaID any, includeDisplay any) *EntityTypeServiceInterfaceMock_GetEntityType_Call {
 	return &EntityTypeServiceInterfaceMock_GetEntityType_Call{Call: _e.mock.On("GetEntityType", ctx, category, schemaID, includeDisplay)}
 }
 
@@ -535,7 +545,7 @@ type EntityTypeServiceInterfaceMock_GetEntityTypeByHandle_Call struct {
 //   - ctx context.Context
 //   - category TypeCategory
 //   - handle string
-func (_e *EntityTypeServiceInterfaceMock_Expecter) GetEntityTypeByHandle(ctx interface{}, category interface{}, handle interface{}) *EntityTypeServiceInterfaceMock_GetEntityTypeByHandle_Call {
+func (_e *EntityTypeServiceInterfaceMock_Expecter) GetEntityTypeByHandle(ctx any, category any, handle any) *EntityTypeServiceInterfaceMock_GetEntityTypeByHandle_Call {
 	return &EntityTypeServiceInterfaceMock_GetEntityTypeByHandle_Call{Call: _e.mock.On("GetEntityTypeByHandle", ctx, category, handle)}
 }
 
@@ -613,7 +623,7 @@ type EntityTypeServiceInterfaceMock_GetEntityTypeList_Call struct {
 //   - limit int
 //   - offset int
 //   - includeDisplay bool
-func (_e *EntityTypeServiceInterfaceMock_Expecter) GetEntityTypeList(ctx interface{}, category interface{}, limit interface{}, offset interface{}, includeDisplay interface{}) *EntityTypeServiceInterfaceMock_GetEntityTypeList_Call {
+func (_e *EntityTypeServiceInterfaceMock_Expecter) GetEntityTypeList(ctx any, category any, limit any, offset any, includeDisplay any) *EntityTypeServiceInterfaceMock_GetEntityTypeList_Call {
 	return &EntityTypeServiceInterfaceMock_GetEntityTypeList_Call{Call: _e.mock.On("GetEntityTypeList", ctx, category, limit, offset, includeDisplay)}
 }
 
@@ -699,7 +709,7 @@ type EntityTypeServiceInterfaceMock_GetEntityTypeSchema_Call struct {
 //   - ctx context.Context
 //   - category TypeCategory
 //   - handle string
-func (_e *EntityTypeServiceInterfaceMock_Expecter) GetEntityTypeSchema(ctx interface{}, category interface{}, handle interface{}) *EntityTypeServiceInterfaceMock_GetEntityTypeSchema_Call {
+func (_e *EntityTypeServiceInterfaceMock_Expecter) GetEntityTypeSchema(ctx any, category any, handle any) *EntityTypeServiceInterfaceMock_GetEntityTypeSchema_Call {
 	return &EntityTypeServiceInterfaceMock_GetEntityTypeSchema_Call{Call: _e.mock.On("GetEntityTypeSchema", ctx, category, handle)}
 }
 
@@ -732,6 +742,80 @@ func (_c *EntityTypeServiceInterfaceMock_GetEntityTypeSchema_Call) Return(entity
 }
 
 func (_c *EntityTypeServiceInterfaceMock_GetEntityTypeSchema_Call) RunAndReturn(run func(ctx context.Context, category TypeCategory, handle string) (*EntityType, *common.ServiceError)) *EntityTypeServiceInterfaceMock_GetEntityTypeSchema_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetResourceDependencies provides a mock function for the type EntityTypeServiceInterfaceMock
+func (_mock *EntityTypeServiceInterfaceMock) GetResourceDependencies(ctx context.Context, resourceType string, id string) ([]resourcedependency.ResourceDependency, error) {
+	ret := _mock.Called(ctx, resourceType, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetResourceDependencies")
+	}
+
+	var r0 []resourcedependency.ResourceDependency
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) ([]resourcedependency.ResourceDependency, error)); ok {
+		return returnFunc(ctx, resourceType, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) []resourcedependency.ResourceDependency); ok {
+		r0 = returnFunc(ctx, resourceType, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]resourcedependency.ResourceDependency)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, resourceType, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EntityTypeServiceInterfaceMock_GetResourceDependencies_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetResourceDependencies'
+type EntityTypeServiceInterfaceMock_GetResourceDependencies_Call struct {
+	*mock.Call
+}
+
+// GetResourceDependencies is a helper method to define mock.On call
+//   - ctx context.Context
+//   - resourceType string
+//   - id string
+func (_e *EntityTypeServiceInterfaceMock_Expecter) GetResourceDependencies(ctx any, resourceType any, id any) *EntityTypeServiceInterfaceMock_GetResourceDependencies_Call {
+	return &EntityTypeServiceInterfaceMock_GetResourceDependencies_Call{Call: _e.mock.On("GetResourceDependencies", ctx, resourceType, id)}
+}
+
+func (_c *EntityTypeServiceInterfaceMock_GetResourceDependencies_Call) Run(run func(ctx context.Context, resourceType string, id string)) *EntityTypeServiceInterfaceMock_GetResourceDependencies_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityTypeServiceInterfaceMock_GetResourceDependencies_Call) Return(resourceDependencys []resourcedependency.ResourceDependency, err error) *EntityTypeServiceInterfaceMock_GetResourceDependencies_Call {
+	_c.Call.Return(resourceDependencys, err)
+	return _c
+}
+
+func (_c *EntityTypeServiceInterfaceMock_GetResourceDependencies_Call) RunAndReturn(run func(ctx context.Context, resourceType string, id string) ([]resourcedependency.ResourceDependency, error)) *EntityTypeServiceInterfaceMock_GetResourceDependencies_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -775,7 +859,7 @@ type EntityTypeServiceInterfaceMock_GetUniqueAttributes_Call struct {
 //   - ctx context.Context
 //   - category TypeCategory
 //   - entityType string
-func (_e *EntityTypeServiceInterfaceMock_Expecter) GetUniqueAttributes(ctx interface{}, category interface{}, entityType interface{}) *EntityTypeServiceInterfaceMock_GetUniqueAttributes_Call {
+func (_e *EntityTypeServiceInterfaceMock_Expecter) GetUniqueAttributes(ctx any, category any, entityType any) *EntityTypeServiceInterfaceMock_GetUniqueAttributes_Call {
 	return &EntityTypeServiceInterfaceMock_GetUniqueAttributes_Call{Call: _e.mock.On("GetUniqueAttributes", ctx, category, entityType)}
 }
 
@@ -839,7 +923,7 @@ type EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call struct {
 // ResolveEntityTypeHandles is a helper method to define mock.On call
 //   - ctx context.Context
 //   - entityType *EntityType
-func (_e *EntityTypeServiceInterfaceMock_Expecter) ResolveEntityTypeHandles(ctx interface{}, entityType interface{}) *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call {
+func (_e *EntityTypeServiceInterfaceMock_Expecter) ResolveEntityTypeHandles(ctx any, entityType any) *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call {
 	return &EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call{Call: _e.mock.On("ResolveEntityTypeHandles", ctx, entityType)}
 }
 
@@ -911,7 +995,7 @@ type EntityTypeServiceInterfaceMock_UpdateEntityType_Call struct {
 //   - category TypeCategory
 //   - schemaID string
 //   - request UpdateEntityTypeRequest
-func (_e *EntityTypeServiceInterfaceMock_Expecter) UpdateEntityType(ctx interface{}, category interface{}, schemaID interface{}, request interface{}) *EntityTypeServiceInterfaceMock_UpdateEntityType_Call {
+func (_e *EntityTypeServiceInterfaceMock_Expecter) UpdateEntityType(ctx any, category any, schemaID any, request any) *EntityTypeServiceInterfaceMock_UpdateEntityType_Call {
 	return &EntityTypeServiceInterfaceMock_UpdateEntityType_Call{Call: _e.mock.On("UpdateEntityType", ctx, category, schemaID, request)}
 }
 
@@ -992,7 +1076,7 @@ type EntityTypeServiceInterfaceMock_ValidateEntity_Call struct {
 //   - entityType string
 //   - attributes json.RawMessage
 //   - skipCredentialRequired bool
-func (_e *EntityTypeServiceInterfaceMock_Expecter) ValidateEntity(ctx interface{}, category interface{}, entityType interface{}, attributes interface{}, skipCredentialRequired interface{}) *EntityTypeServiceInterfaceMock_ValidateEntity_Call {
+func (_e *EntityTypeServiceInterfaceMock_Expecter) ValidateEntity(ctx any, category any, entityType any, attributes any, skipCredentialRequired any) *EntityTypeServiceInterfaceMock_ValidateEntity_Call {
 	return &EntityTypeServiceInterfaceMock_ValidateEntity_Call{Call: _e.mock.On("ValidateEntity", ctx, category, entityType, attributes, skipCredentialRequired)}
 }
 
@@ -1078,7 +1162,7 @@ type EntityTypeServiceInterfaceMock_ValidateEntityUniqueness_Call struct {
 //   - entityType string
 //   - attributes json.RawMessage
 //   - exists func(map[string]interface{}) (bool, error)
-func (_e *EntityTypeServiceInterfaceMock_Expecter) ValidateEntityUniqueness(ctx interface{}, category interface{}, entityType interface{}, attributes interface{}, exists interface{}) *EntityTypeServiceInterfaceMock_ValidateEntityUniqueness_Call {
+func (_e *EntityTypeServiceInterfaceMock_Expecter) ValidateEntityUniqueness(ctx any, category any, entityType any, attributes any, exists any) *EntityTypeServiceInterfaceMock_ValidateEntityUniqueness_Call {
 	return &EntityTypeServiceInterfaceMock_ValidateEntityUniqueness_Call{Call: _e.mock.On("ValidateEntityUniqueness", ctx, category, entityType, attributes, exists)}
 }
 

@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 )
 
 func TestAuthZENPDPConnectionSettingsRoundTripThroughProperties(t *testing.T) {
@@ -20,8 +22,13 @@ func TestAuthZENPDPConnectionSettingsRoundTripThroughProperties(t *testing.T) {
 			Attributes: []SubjectAttributeRow{{Attribute: "status", PDPAttribute: "account_status"}},
 		}},
 	}
+	expected.AuthenticationProperties = testAuthProperties(t, outboundauth.Authentication{
+		Type: string(outboundauth.TypeBearer), Properties: map[string]string{"token": "secret"},
+	})
 	properties, err := encodeAuthZENPDPProperties(expected)
 	require.NoError(t, err)
+	require.NotContains(t, properties, `"authenticationScheme"`)
+	require.Contains(t, properties, `"authentication_type"`)
 	actual, err := (&authZENPDPStore{}).buildAuthZENPDPConnection(map[string]interface{}{
 		"id": []byte(expected.ID), "name": expected.Name, "description": expected.Description,
 		"properties": []byte(properties),

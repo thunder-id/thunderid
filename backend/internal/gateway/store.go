@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
 	dbprovider "github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 )
 
 // storeInterface is the persistence a gateway service needs.
@@ -28,14 +28,12 @@ type storeInterface interface {
 }
 
 type store struct {
-	dbProvider   dbprovider.DBProviderInterface
-	deploymentID string
+	dbProvider dbprovider.DBProviderInterface
 }
 
 func newStore() storeInterface {
 	return &store{
-		dbProvider:   dbprovider.GetDBProvider(),
-		deploymentID: config.GetServerRuntime().Config.Server.Identifier,
+		dbProvider: dbprovider.GetDBProvider(),
 	}
 }
 
@@ -44,7 +42,7 @@ func (s *store) List(ctx context.Context) ([]Gateway, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
-	rows, err := dbClient.QueryContext(ctx, queryListGateways, s.deploymentID)
+	rows, err := dbClient.QueryContext(ctx, queryListGateways, deployment.Resolve(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to list the gateways: %w", err)
 	}
@@ -64,7 +62,7 @@ func (s *store) GetByID(ctx context.Context, id string) (*Gateway, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
-	rows, err := dbClient.QueryContext(ctx, queryGetGatewayByID, id, s.deploymentID)
+	rows, err := dbClient.QueryContext(ctx, queryGetGatewayByID, id, deployment.Resolve(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the gateway: %w", err)
 	}
@@ -79,7 +77,7 @@ func (s *store) GetByName(ctx context.Context, name string) (*Gateway, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
-	rows, err := dbClient.QueryContext(ctx, queryGetGatewayByName, name, s.deploymentID)
+	rows, err := dbClient.QueryContext(ctx, queryGetGatewayByName, name, deployment.Resolve(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up the gateway name: %w", err)
 	}
@@ -96,7 +94,7 @@ func (s *store) GetByBaseURL(ctx context.Context, baseURL string) (*Gateway, err
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
-	rows, err := dbClient.QueryContext(ctx, queryGetGatewayByBaseURL, baseURL, s.deploymentID)
+	rows, err := dbClient.QueryContext(ctx, queryGetGatewayByBaseURL, baseURL, deployment.Resolve(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up the gateway: %w", err)
 	}
@@ -111,7 +109,7 @@ func (s *store) Count(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
-	rows, err := dbClient.QueryContext(ctx, queryCountGateways, s.deploymentID)
+	rows, err := dbClient.QueryContext(ctx, queryCountGateways, deployment.Resolve(ctx))
 	if err != nil {
 		return 0, fmt.Errorf("failed to count the gateways: %w", err)
 	}
@@ -144,7 +142,7 @@ func (s *store) Create(ctx context.Context, gw *Gateway, limit int) (*Gateway, e
 		// Each step runs only if the one before it succeeded; the first failure rolls back both.
 		dbClient, err := s.dbProvider.GetConfigDBClient()
 		if err == nil {
-			_, err = dbClient.ExecuteContext(txCtx, queryClearDefaultGateway, s.deploymentID)
+			_, err = dbClient.ExecuteContext(txCtx, queryClearDefaultGateway, deployment.Resolve(txCtx))
 		}
 		if err == nil {
 			created, err = s.insert(txCtx, gw, limit)
@@ -191,7 +189,7 @@ func (s *store) insert(ctx context.Context, gw *Gateway, limit int) (*Gateway, e
 	// cannot fail once the write is committed. No row means the capacity check refused it.
 	rows, err := dbClient.QueryContext(ctx, queryInsertGateway,
 		gw.ID, gw.Name, gw.BaseURL, gw.Key, gw.CACertificate, gw.IsDefault,
-		s.deploymentID, s.deploymentID, limit)
+		deployment.Resolve(ctx), deployment.Resolve(ctx), limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to register the gateway: %w", err)
 	}
@@ -207,7 +205,7 @@ func (s *store) Update(ctx context.Context, gw *Gateway) error {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 	_, err = dbClient.ExecuteContext(ctx, queryUpdateGateway,
-		gw.ID, gw.Name, gw.BaseURL, gw.Key, gw.CACertificate, s.deploymentID)
+		gw.ID, gw.Name, gw.BaseURL, gw.Key, gw.CACertificate, deployment.Resolve(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to update the gateway: %w", err)
 	}
@@ -219,7 +217,7 @@ func (s *store) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
-	if _, err := dbClient.ExecuteContext(ctx, queryDeleteGateway, id, s.deploymentID); err != nil {
+	if _, err := dbClient.ExecuteContext(ctx, queryDeleteGateway, id, deployment.Resolve(ctx)); err != nil {
 		return fmt.Errorf("failed to remove the gateway: %w", err)
 	}
 	return nil

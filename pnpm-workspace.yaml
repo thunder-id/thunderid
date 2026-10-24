@@ -36,8 +36,8 @@ catalog:
   '@testing-library/jest-dom': 6.9.1
   '@testing-library/react': 16.3.0
   '@testing-library/user-event': 14.6.1
-  '@thunderid/react': 1.1.0
-  '@thunderid/react-router': 1.1.0
+  '@thunderid/react': 1.3.2
+  '@thunderid/react-router': 1.2.2
   '@types/lodash-es': 4.17.12
   '@types/node': 24.7.2
   '@types/react': 19.2.14
@@ -47,12 +47,12 @@ catalog:
   '@vitejs/plugin-react': 6.0.2
   '@vitest/browser-playwright': 4.1.10
   '@vitest/coverage-istanbul': 4.1.10
-  '@wso2/oxygen-ui': 0.13.1
-  '@wso2/oxygen-ui-icons-react': 0.13.1
+  '@wso2/oxygen-ui': 0.16.0
+  '@wso2/oxygen-ui-icons-react': 0.16.0
   babel-plugin-react-compiler: 19.1.0-rc.3
   clsx: 2.1.1
   dayjs: 1.11.18
-  dompurify: 3.4.12
+  dompurify: 3.4.17
   eslint: 9.39.5
   framer-motion: 12.39.0
   globals: 16.4.0
@@ -60,7 +60,7 @@ catalog:
   jsdom: 27.0.1
   lodash-es: 4.18.1
   lucide-react: 0.545.0
-  next: 16.3.8
+  next: 16.4.1
   playwright: 1.60.0
   prettier: 3.6.2
   react: 19.2.3
@@ -75,10 +75,10 @@ catalog:
   turbo: 2.10.2
   typescript: 5.9.3
   typescript-eslint: 8.57.2
-  vite: 8.0.16
+  vite: 8.1.6
   vite-plugin-svgr: 5.2.0
   vitest: 4.1.10
-  zod: 4.3.6
+  zod: 4.6.6
 
 overrides:
   # JUSTIFICATION: Fixes GHSA-w7jw-789q-3m8p and GHSA-395f-4hp3-45gv (quadratic-complexity DoS in
@@ -112,7 +112,12 @@ overrides:
   # JUSTIFICATION: i18next 26 breaks compatibility, gives a white screen issue on Console when navigating with "TypeError: n.getResourceBundle"
   i18next: '25.6.0'
   dompurify: '>=3.4.13'
-  follow-redirects: 1.16.0
+  # JUSTIFICATION: Fixes GHSA-q3jh-wrc6-jgq8 and GHSA-8r9p-f939-6h3c: follow-redirects can forward credential
+  # headers on cross-origin redirects. Enters the tree only through http-proxy@1.18.1 (docs dev server, via
+  # @docusaurus/core > webpack-dev-server > http-proxy-middleware). Nothing blocks the real fix: http-proxy accepts
+  # ^1.0.0, so this only keeps affected versions out. Added 2026-05-14, narrowed and raised 2026-10-21.
+  # Remove once http-proxy (or its replacement in webpack-dev-server) requires follow-redirects >=1.16.1.
+  follow-redirects@<1.16.1: '>=1.16.1'
   unhead: 2.1.13
   minimatch@>=5.0.0 <5.1.8: '>=5.1.8'
   minimatch@<3.1.4: '>=3.1.4'
@@ -164,8 +169,13 @@ overrides:
   uuid: 11.1.1
   # JUSTIFICATION: Fixes GHSA-r7qp-cfhv-p84w — node-tar applies PAX size override to intermediary GNU long-name/link headers causing tar parser interpretation differential (file smuggling).
   tar: '>=7.5.16'
-  # JUSTIFICATION: Fixes GHSA-9cwx-2883-4wfx — launch-editor NTLMv2 hash disclosure via UNC path handling on Windows (transitive via vite and other tooling).
-  launch-editor: '>=2.14.1'
+  # JUSTIFICATION: Fixes GHSA-v6wh-96g9-6wx3 (NTLMv2 hash disclosure via UNC paths) and GHSA-587h-7wmj-h5pm
+  # (bypassable fs.existsSync() existence check), both Windows-only launch-editor flaws. 2.14.2 also fixes the
+  # medium GHSA-r825-w8mm-5pxw and GHSA-698v-4r3x-3vcv. Enters the tree only through webpack-dev-server@5.2.6
+  # (docs dev server). Nothing blocks the real fix: webpack-dev-server accepts ^2.14.1, so this only keeps
+  # affected versions out. Added 2026-06-16, narrowed and raised 2026-10-21.
+  # Remove once webpack-dev-server requires launch-editor >=2.14.2.
+  launch-editor@<2.14.2: '>=2.14.2'
   # JUSTIFICATION: Fixes GHSA-86vr-4h7v-f9x9 — @babel/core arbitrary file read via sourceMappingURL comment.
   # Bounded to <8 so it stays on the patched 7.x line: @docusaurus/core and @vitest/coverage-istanbul
   # require Babel 7 and break on the 8.x ESM export changes.
@@ -245,6 +255,15 @@ overrides:
   # resolver dedupe this edge onto the 4.x major, which those consumers were never tested against.
   # 3.1.8 is a patch release on the 3.1.x line already resolved here (3.1.6), so no API change.
   fast-uri: '>=3.1.8 <4'
+  # JUSTIFICATION: Fixes GHSA-mrhx-c7xc-m3w5, memory exhaustion while validating oversized
+  # constrained collections. Enters through @codecov/vite-plugin@2.0.1 >
+  # @codecov/bundler-plugin-core@2.0.1 > zod@3.25.76 in the Console, Console CP and Gate builds.
+  # The latest Codecov release still requires zod ^3.22.4, and no patched 3.x release exists. The
+  # plugin only validates its options and CI metadata with zod, which works on 4.6.6. Capped below
+  # 5 so a future major release is not forced on it.
+  # Added 2026-10-24. Remove once @codecov/bundler-plugin-core requires zod >=4.6.6.
+  # Tracking: https://github.com/thunder-id/thunderid/issues/6036
+  '@codecov/bundler-plugin-core>zod': '>=4.6.6 <5'
 
 packageExtensions:
   '@hookform/resolvers':
@@ -254,7 +273,7 @@ packageExtensions:
 peerDependencyRules:
   allowedVersions:
     # JUSTIFICATION: @codecov/vite-plugin@2.0.1 declares a vite peer range of
-    # 4.x || 5.x || 6.x, but this workspace pins vite to 8.0.16. Bundle analysis
+    # 4.x || 5.x || 6.x, but this workspace pins vite to 8.1.6. Bundle analysis
     # was verified to run correctly against this build (the plugin collects stats
     # during the build and uploads via OIDC in CI), so Vite 8 is explicitly
     # allowed for this plugin's vite peer.

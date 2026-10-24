@@ -99,6 +99,11 @@ func (suite *SMSOTPAuthTestSuite) SetupSuite() {
 				Value:    "JSON",
 				IsSecret: false,
 			},
+			{
+				Name:     "http_headers",
+				Value:    "X-SMS-OTP-Test: integration",
+				IsSecret: false,
+			},
 		},
 	}
 
@@ -190,6 +195,8 @@ func (suite *SMSOTPAuthTestSuite) TestSendOTPSuccess() {
 	lastMessage := suite.mockServer.GetLastMessage()
 	suite.Require().NotNil(lastMessage, "OTP message should be sent to mock server")
 	suite.NotEmpty(lastMessage.OTP, "OTP should be extractable from message")
+	suite.Equal("integration", lastMessage.Headers[http.CanonicalHeaderKey("X-SMS-OTP-Test")],
+		"The configured header should be present on the outbound request, got %v", lastMessage.Headers)
 }
 
 func (suite *SMSOTPAuthTestSuite) TestSendOTPInvalidSender() {

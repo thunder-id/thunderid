@@ -4,6 +4,7 @@
 package granthandlers
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"slices"
@@ -271,6 +272,7 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 	if actorClaims == nil && oauthApp.ShouldAppendActorClaim() {
 		actorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}
 	}
+	extendDelegationChain(actorClaims, subjectClaims, h.cfg.JWT.Issuer)
 
 	// Determine final scopes
 	finalScopes, errResp := h.getScopes(
@@ -544,4 +546,29 @@ func (h *tokenExchangeGrantHandler) getScopes(
 	}
 
 	return validRequestedScopes, nil
+}
+
+// extendDelegationChain nests a self-issued subject token's act claim under the current actor, keeping
+// the delegation history (RFC 8693 Section 4.1). It replaces the actor_token's own chain and does not
+// repeat an actor that already heads it. An external issuer's chain is not carried, since it names
+// actors in that issuer's namespace.
+func extendDelegationChain(actorClaims, subjectClaims *tokenservice.SubjectTokenClaims, serverIssuer string) {
+	subjectAct := subjectClaims.NestedAct
+	if actorClaims == nil || len(subjectAct) == 0 || subjectClaims.Iss != serverIssuer {
+		return
+	}
+	if isCurrentActor(subjectAct, actorClaims, serverIssuer) {
+		subjectAct, _ = subjectAct["act"].(map[string]interface{})
+	}
+	actorClaims.NestedAct = subjectAct
+}
+
+// isCurrentActor reports whether the act claim names the given actor. A missing issuer on either side
+// means this server, which records the authenticated client as an actor without one.
+func isCurrentActor(
+	act map[string]interface{}, actorClaims *tokenservice.SubjectTokenClaims, serverIssuer string,
+) bool {
+	sub, _ := act["sub"].(string)
+	iss, _ := act["iss"].(string)
+	return sub == actorClaims.Sub && cmp.Or(iss, serverIssuer) == cmp.Or(actorClaims.Iss, serverIssuer)
 }

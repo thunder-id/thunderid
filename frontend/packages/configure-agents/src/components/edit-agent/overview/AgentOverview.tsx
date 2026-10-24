@@ -7,7 +7,6 @@ import {
   LangChainLogo,
   useExternalLinkConfirmation,
 } from '@thunderid/components';
-import {OAuth2GrantTypes} from '@thunderid/configure-applications';
 import {useGetUserTypes} from '@thunderid/configure-user-types';
 import {useGetUsers} from '@thunderid/configure-users';
 import {useConfig, useRuntimeUrl} from '@thunderid/contexts';
@@ -17,6 +16,7 @@ import {ArrowRight, ArrowUpRight} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {Agent, OAuthAgentConfig} from '../../../models/agent';
+import {hasDelegationGrant} from '../../../utils/isDelegatedAgent';
 import AttributesSummarySection from '../attributes/AttributesSummarySection';
 
 const formatUserLabel = (user: {id: string; display?: string; attributes?: Record<string, unknown>}): string => {
@@ -153,7 +153,7 @@ export default function AgentOverview({
     return match ? formatUserLabel(match) : agent.owner;
   }, [usersData, agent.owner]);
 
-  const isDelegated = oauth2Config?.grantTypes?.includes(OAuth2GrantTypes.AUTHORIZATION_CODE) ?? false;
+  const isDelegated = hasDelegationGrant(oauth2Config?.grantTypes);
   const allowedUserTypes = (agent.allowedUserTypes ?? []).map((handle) =>
     getUserTypeLabel(userTypesData?.types ?? [], handle),
   );
@@ -198,12 +198,12 @@ export default function AgentOverview({
         )}
         {ownerLabel && <CopyableField label={t('agents:edit.general.labels.ownerId', 'Owner ID')} value={ownerLabel} />}
         <CopyableField
-          label={t('agents:edit.overview.agentDetails.organizationUnitId', 'Organization Unit ID')}
+          label={t('agents:edit.overview.agentDetails.organizationUnitId', 'Organization unit ID')}
           value={agent.ouId}
         />
         {agent.ouHandle && (
           <CopyableField
-            label={t('agents:edit.overview.agentDetails.organizationUnitHandle', 'Organization Unit Handle')}
+            label={t('agents:edit.overview.agentDetails.organizationUnitHandle', 'Organization unit handle')}
             value={agent.ouHandle}
           />
         )}
@@ -213,7 +213,7 @@ export default function AgentOverview({
 
   const endpointsCard = (
     <OverviewCard
-      title={t('agents:edit.overview.endpoints.title', 'Useful Endpoints')}
+      title={t('agents:edit.overview.endpoints.title', 'Useful endpoints')}
       description={t(
         'agents:edit.overview.endpoints.description',
         'For authenticating this agent, on its own or on behalf of a user.',
@@ -246,7 +246,7 @@ export default function AgentOverview({
       headerAction={
         onGoToAdvanced && (
           <Button size="small" endIcon={<ArrowRight size={11} />} onClick={onGoToAdvanced}>
-            {t('agents:edit.overview.accessMode.editAdvanced', 'Edit in Advanced')}
+            {t('agents:edit.overview.accessMode.editAdvanced', 'Edit in advanced')}
           </Button>
         )
       }

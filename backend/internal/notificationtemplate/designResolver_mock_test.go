@@ -17,10 +17,19 @@ func newDesignResolverMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *designResolverMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &designResolverMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -76,7 +85,7 @@ type designResolverMock_ResolveDesignContent_Call struct {
 //   - themeID string
 //   - colorScheme string
 //   - content string
-func (_e *designResolverMock_Expecter) ResolveDesignContent(ctx interface{}, themeID interface{}, colorScheme interface{}, content interface{}) *designResolverMock_ResolveDesignContent_Call {
+func (_e *designResolverMock_Expecter) ResolveDesignContent(ctx any, themeID any, colorScheme any, content any) *designResolverMock_ResolveDesignContent_Call {
 	return &designResolverMock_ResolveDesignContent_Call{Call: _e.mock.On("ResolveDesignContent", ctx, themeID, colorScheme, content)}
 }
 

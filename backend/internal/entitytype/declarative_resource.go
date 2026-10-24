@@ -123,6 +123,37 @@ func (e *entityTypeExporter) ValidateResource(ctx context.Context,
 	return schema.DisplayName, nil
 }
 
+// ViewResource shows an exported entity type as a read of it returns it. The export writes the
+// schema as a JSON string, which the read returns as the JSON itself.
+func (e *entityTypeExporter) ViewResource(_ context.Context, document *yaml.Node) (interface{}, error) {
+	return declarativeresource.DecodeView(document, func(exported *EntityTypeRequestWithID) (
+		interface{}, error) {
+		var schema json.RawMessage
+		var err error
+		switch v := exported.Schema.(type) {
+		case nil:
+		case string:
+			schema = json.RawMessage(v)
+		default:
+			schema, err = json.Marshal(v)
+		}
+		if schema != nil && !json.Valid(schema) {
+			return nil, fmt.Errorf("schema field contains invalid JSON")
+		}
+
+		return &EntityType{
+			ID:                    exported.ID,
+			Category:              e.category,
+			Handle:                exported.Handle,
+			DisplayName:           exported.DisplayName,
+			OUID:                  exported.OUID,
+			AllowSelfRegistration: exported.AllowSelfRegistration,
+			SystemAttributes:      exported.SystemAttributes,
+			Schema:                schema,
+		}, err
+	})
+}
+
 // GetResourceRules returns the parameterization rules for entity types.
 func (e *entityTypeExporter) GetResourceRules() *declarativeresource.ResourceRules {
 	return &declarativeresource.ResourceRules{}
@@ -310,10 +341,13 @@ func validateEntityType(schemaDTO *EntityType) error {
 		return fmt.Errorf("invalid schema for entity type '%s': %w", schemaDTO.Handle, compileErr)
 	}
 
-	if svcErr := validateSystemAttributes(compiledSchema, schemaDTO.SystemAttributes); svcErr != nil {
+	systemAttrs, svcErr := validateSystemAttributes(
+		schemaDTO.Category, compiledSchema, schemaDTO.SystemAttributes)
+	if svcErr != nil {
 		return fmt.Errorf("invalid system attributes for entity type '%s': %s",
 			schemaDTO.Handle, svcErr.ErrorDescription)
 	}
+	schemaDTO.SystemAttributes = systemAttrs
 
 	return nil
 }

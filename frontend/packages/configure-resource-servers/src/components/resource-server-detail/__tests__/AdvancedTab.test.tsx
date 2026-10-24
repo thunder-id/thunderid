@@ -71,7 +71,7 @@ describe('AdvancedTab', () => {
       />,
     );
 
-    const label = screen.getByText('Identifier (Audience)');
+    const label = screen.getByText('Identifier (audience)');
     expect(label.tagName.toLowerCase()).toBe('label');
     expect(label).toHaveClass('MuiFormLabel-root');
   });

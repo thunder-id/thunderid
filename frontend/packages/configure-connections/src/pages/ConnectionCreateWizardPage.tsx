@@ -1,13 +1,14 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {FullScreenCreationWizardLayout} from '@thunderid/components';
+import {DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Box, Button, Paper, Stack, Typography} from '@wso2/oxygen-ui';
 import {type JSX, useMemo, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import useConnectionMeta from '../api/useConnectionMeta';
 import useCreateConnection from '../api/useCreateConnection';
 import ConnectionCreateHint from '../components/ConnectionCreateHint';
 import ConnectionForm from '../components/ConnectionForm';
@@ -21,14 +22,23 @@ import {CONNECTION_FORM_FIELDS, fieldsForMode} from '../config/connectionFormFie
 import {VENDOR_META_BY_TYPE} from '../config/connectionVendorMeta';
 import {POLICY_DECISION_POINT_TYPE} from '../constants/connection-wizard';
 import useConnectionRoutes from '../hooks/useConnectionRoutes';
-import {type ConnectionResponse, type ConnectionType, ConnectionTypes} from '../models/connection';
 import {
+  type ConnectionResponse,
+  type ConnectionType,
+  ConnectionTypes,
+  type OutboundAuthMethod,
+} from '../models/connection';
+import {
+  AUTH_ADDITIONAL_PROPERTIES_FIELD,
+  AUTH_TYPE_FIELD,
+  authenticationAdditionalPropertiesError,
   type ConnectionFormValues,
   emptyFormValues,
   formValuesToRequest,
   validateConnectionForm,
 } from '../utils/connectionFormMapping';
 import isConflictError from '../utils/isConflictError';
+import {decodeKeyValuePairs} from '../utils/keyValuePairs';
 
 const Step = {TYPE: 'TYPE', PROTOCOL: 'PROTOCOL', NAME: 'NAME', CONFIGURE: 'CONFIGURE'} as const;
 type Step = (typeof Step)[keyof typeof Step];
@@ -62,6 +72,12 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
       ? selectedType
       : ConnectionTypes.OIDC;
   const createMutation = useCreateConnection(activeType);
+  // The same query the configure step's form reads, so only the selected method's properties are sent.
+  const {data: connectionMeta} = useConnectionMeta(step === Step.CONFIGURE ? activeType : undefined);
+  const authenticationMethods: OutboundAuthMethod[] = useMemo(
+    () => connectionMeta?.authentication.methods ?? [],
+    [connectionMeta],
+  );
   const meta = VENDOR_META_BY_TYPE[activeType];
   const fields = CONNECTION_FORM_FIELDS[activeType];
   const createFields = useMemo(() => fieldsForMode(activeType, 'create'), [activeType]);
@@ -79,7 +95,19 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
 
   const trimmedName: string = connectionName.trim();
   const values: ConnectionFormValues = {...emptyValues, ...editedValues, name: trimmedName};
-  const formValid: boolean = Object.keys(validateConnectionForm(values, createFields, 'create')).length === 0;
+  const formErrors: Record<string, string> = validateConnectionForm(values, createFields, 'create');
+  const selectedAuthenticationMethod: OutboundAuthMethod | undefined = authenticationMethods.find(
+    (method) => method.type === values[AUTH_TYPE_FIELD],
+  );
+  const additionalPropertiesMissing: boolean =
+    Boolean(selectedAuthenticationMethod?.additionalProperties?.required) &&
+    decodeKeyValuePairs(values[AUTH_ADDITIONAL_PROPERTIES_FIELD] ?? '', 'pairs').length === 0;
+  const formValid: boolean =
+    Object.keys(formErrors).length === 0 &&
+    !additionalPropertiesMissing &&
+    !authenticationAdditionalPropertiesError(values, authenticationMethods);
+  // The name is entered on its own step, so a format rule on it is reported there.
+  const nameFormatError: string | null = trimmedName && formErrors['name'] ? t(formErrors['name']) : null;
 
   const close = (): void => {
     void navigate(routes.connections.list());
@@ -118,7 +146,11 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
     }
     setNameError(null);
     setGeneralError(null);
-    const payload = formValuesToRequest(values, fields, {mode: 'create', secretReplaced: true});
+    const payload = formValuesToRequest(values, fields, {
+      mode: 'create',
+      secretReplaced: true,
+      authenticationMethods,
+    });
     createMutation.mutate(payload, {
       onSuccess: (created: ConnectionResponse) => void navigate(routes.connections.detail(activeType, created.id)),
       onError: (error: Error) => {
@@ -138,7 +170,7 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
       ? [
           {
             key: 'pdp',
-            label: t('wizard.type.policyDecisionPoint.label', 'Policy Decision Point (PDP)'),
+            label: t('wizard.type.policyDecisionPoint.label', 'Policy decision point (PDP)'),
             onClick: () => {
               setSelectedType(POLICY_DECISION_POINT_TYPE);
               setStep(Step.PROTOCOL);
@@ -156,7 +188,7 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
           {
             key: 'configure',
             label: isAuthZENPDP
-              ? t('detail.configuration.title', 'Connection Configuration')
+              ? t('detail.configuration.title', 'Connection configuration')
               : t('form.chrome.configure', 'Configure connection'),
           },
         ]
@@ -197,7 +229,7 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
           </Button>
           <Button
             variant="contained"
-            disabled={!trimmedName}
+            disabled={!trimmedName || Boolean(nameFormatError)}
             onClick={() => setStep(Step.CONFIGURE)}
             data-testid="wizard-continue"
           >
@@ -229,6 +261,7 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
 
   return (
     <FullScreenCreationWizardLayout onClose={close} progress={progress} breadcrumbItems={crumbs} footer={footer}>
+      <DocumentTitle title={t('wizard.title', 'Add custom connection')} />
       {step === Step.TYPE && (
         <SelectConnectionType
           selectedType={selectedType}
@@ -254,7 +287,7 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
             setNameError(null);
             setGeneralError(null);
           }}
-          nameError={nameError}
+          nameError={nameError ?? nameFormatError}
         />
       )}
 
@@ -271,7 +304,7 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
           <Stack direction="column" spacing={1}>
             <Typography variant="h1" gutterBottom>
               {isAuthZENPDP
-                ? t('detail.configuration.title', 'Connection Configuration')
+                ? t('detail.configuration.title', 'Connection configuration')
                 : t('wizard.configure.heading')}
             </Typography>
             <Typography variant="subtitle1" gutterBottom>
@@ -303,6 +336,7 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
               hasStoredSecret={false}
               vendorDisplayName={meta.displayName}
               showNameField={false}
+              showAuthentication={!isAuthZENPDP && activeType !== ConnectionTypes.SMS_GATEWAY}
               onFieldChange={(name, value) => {
                 clearCreateError();
                 setEditedValues((prev) => ({...prev, [name]: value}));

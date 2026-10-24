@@ -33,13 +33,13 @@ const mockLocationState = {
 
 let mockPathname = '/import/summary';
 
-// "Import Configuration" is used both as the breadcrumb label (upload.breadcrumb.openProject)
+// "Import configuration" is used both as the breadcrumb label (upload.breadcrumb.openProject)
 // and as the submit button label (summary.import.action). Disambiguate by element tag: the
 // submit action is a real <button>, the breadcrumb item is a non-button element with role="button".
 const getImportConfigurationButton = (): HTMLElement =>
-  screen.getAllByRole('button', {name: 'Import Configuration'}).find((el) => el.tagName === 'BUTTON')!;
+  screen.getAllByRole('button', {name: 'Import configuration'}).find((el) => el.tagName === 'BUTTON')!;
 const getImportConfigurationBreadcrumb = (): HTMLElement =>
-  screen.getAllByRole('button', {name: 'Import Configuration'}).find((el) => el.tagName !== 'BUTTON')!;
+  screen.getAllByRole('button', {name: 'Import configuration'}).find((el) => el.tagName !== 'BUTTON')!;
 
 const {mockUseGetAgentTypes} = vi.hoisted(() => ({mockUseGetAgentTypes: vi.fn(() => ({data: undefined}))}));
 
@@ -132,13 +132,13 @@ describe('ImportConfigurationSummaryPage', () => {
     it('renders page title', () => {
       render(<ImportConfigurationSummaryPage />);
 
-      expect(screen.getByText('Configuration Summary')).toBeInTheDocument();
+      expect(screen.getByText('Configuration summary')).toBeInTheDocument();
     });
 
     it('renders resource summary section', () => {
       render(<ImportConfigurationSummaryPage />);
 
-      expect(screen.getByText('Project Details')).toBeInTheDocument();
+      expect(screen.getByText('Project details')).toBeInTheDocument();
     });
 
     it('renders environment variables section', () => {
@@ -150,7 +150,7 @@ describe('ImportConfigurationSummaryPage', () => {
     it('renders import test section', () => {
       render(<ImportConfigurationSummaryPage />);
 
-      expect(screen.getByText('Import Test Status')).toBeInTheDocument();
+      expect(screen.getByText('Import test status')).toBeInTheDocument();
     });
 
     it('displays resource counts', () => {
@@ -221,7 +221,7 @@ describe('ImportConfigurationSummaryPage', () => {
           render(<ImportConfigurationSummaryPage />);
 
           expect(screen.getByText('agent-1')).toBeInTheDocument();
-          expect(screen.getByText('Unnamed Agent')).toBeInTheDocument();
+          expect(screen.getByText('Unnamed agent')).toBeInTheDocument();
           expect(screen.queryByText('Hidden')).not.toBeInTheDocument();
         },
       );
@@ -506,7 +506,7 @@ describe('ImportConfigurationSummaryPage', () => {
 
       render(<ImportConfigurationSummaryPage />);
 
-      expect(screen.getByText('Configuration Summary')).toBeInTheDocument();
+      expect(screen.getByText('Configuration summary')).toBeInTheDocument();
     });
 
     it('handles missing env data', () => {
@@ -515,7 +515,7 @@ describe('ImportConfigurationSummaryPage', () => {
       render(<ImportConfigurationSummaryPage />);
 
       // Page still renders without env data
-      expect(screen.getByText('Configuration Summary')).toBeInTheDocument();
+      expect(screen.getByText('Configuration summary')).toBeInTheDocument();
     });
 
     it('handles empty resource arrays', () => {
@@ -527,7 +527,7 @@ describe('ImportConfigurationSummaryPage', () => {
 
       render(<ImportConfigurationSummaryPage />);
 
-      expect(screen.getByText('Configuration Summary')).toBeInTheDocument();
+      expect(screen.getByText('Configuration summary')).toBeInTheDocument();
     });
 
     it('handles undefined resource arrays', () => {
@@ -535,7 +535,7 @@ describe('ImportConfigurationSummaryPage', () => {
 
       render(<ImportConfigurationSummaryPage />);
 
-      expect(screen.getByText('Configuration Summary')).toBeInTheDocument();
+      expect(screen.getByText('Configuration summary')).toBeInTheDocument();
     });
   });
 
@@ -544,7 +544,7 @@ describe('ImportConfigurationSummaryPage', () => {
       render(<ImportConfigurationSummaryPage />);
 
       // Test validates that the page renders successfully
-      expect(screen.getByText('Configuration Summary')).toBeInTheDocument();
+      expect(screen.getByText('Configuration summary')).toBeInTheDocument();
     });
 
     it('logs warning for invalid file types', () => {
@@ -558,7 +558,7 @@ describe('ImportConfigurationSummaryPage', () => {
       render(<ImportConfigurationSummaryPage />);
 
       // Page renders successfully with env data
-      expect(screen.getByText('Configuration Summary')).toBeInTheDocument();
+      expect(screen.getByText('Configuration summary')).toBeInTheDocument();
     });
   });
 
@@ -622,7 +622,7 @@ describe('ImportConfigurationSummaryPage', () => {
       render(<ImportConfigurationSummaryPage />);
 
       await waitFor(() => {
-        expect(screen.getByText('Import Test failures')).toBeInTheDocument();
+        expect(screen.getByText('Import test failures')).toBeInTheDocument();
         expect(screen.getByText(/MyApp/)).toBeInTheDocument();
         expect(screen.getByText(/The uploaded YAML content could not be parsed\./)).toBeInTheDocument();
         expect(screen.queryByText(/raw server text/)).not.toBeInTheDocument();
@@ -820,7 +820,7 @@ describe('ImportConfigurationSummaryPage', () => {
       expect(screen.getByText('OIDC')).toBeInTheDocument();
       expect(screen.getByText('SMTP')).toBeInTheDocument();
       expect(screen.getByText('customer')).toBeInTheDocument();
-      expect(screen.getAllByText('Self Registration')).toHaveLength(2);
+      expect(screen.getAllByText('Self registration')).toHaveLength(2);
       expect(screen.getByText('Enterprise Agent')).toBeInTheDocument();
 
       // Handle detail lines shown when distinct from the name.
@@ -884,10 +884,10 @@ describe('ImportConfigurationSummaryPage', () => {
       expect(screen.getByText('Flow 1')).toBeInTheDocument();
       expect(screen.getByText('Theme 1')).toBeInTheDocument();
       expect(screen.getByText('Schema 1')).toBeInTheDocument();
-      expect(screen.getByText('Agent Type 1')).toBeInTheDocument();
-      expect(screen.getByText('Unnamed Translation')).toBeInTheDocument();
+      expect(screen.getByText('Agent type 1')).toBeInTheDocument();
+      expect(screen.getByText('Unnamed translation')).toBeInTheDocument();
       expect(screen.getByText('User 1')).toBeInTheDocument();
-      expect(screen.getByText('Unnamed Group')).toBeInTheDocument();
+      expect(screen.getByText('Unnamed group')).toBeInTheDocument();
     });
 
     it('renders credential configurations and presentation definitions with chips and detail lines', () => {
@@ -898,8 +898,8 @@ describe('ImportConfigurationSummaryPage', () => {
 
       render(<ImportConfigurationSummaryPage />);
 
-      expect(screen.getByText('Credential Configurations: 1')).toBeInTheDocument();
-      expect(screen.getByText('Presentation Definitions: 1')).toBeInTheDocument();
+      expect(screen.getByText('Credential configurations: 1')).toBeInTheDocument();
+      expect(screen.getByText('Presentation definitions: 1')).toBeInTheDocument();
       expect(screen.getByText('My Credential')).toBeInTheDocument();
       expect(screen.getByText('My Presentation')).toBeInTheDocument();
       expect(screen.getByText('VCT-1')).toBeInTheDocument();
@@ -916,8 +916,8 @@ describe('ImportConfigurationSummaryPage', () => {
 
       render(<ImportConfigurationSummaryPage />);
 
-      expect(screen.getByText('Unnamed Credential Configuration')).toBeInTheDocument();
-      expect(screen.getByText('Unnamed Presentation Definition')).toBeInTheDocument();
+      expect(screen.getByText('Unnamed credential configuration')).toBeInTheDocument();
+      expect(screen.getByText('Unnamed presentation definition')).toBeInTheDocument();
     });
   });
 

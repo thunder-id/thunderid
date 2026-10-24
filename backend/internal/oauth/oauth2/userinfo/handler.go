@@ -118,11 +118,11 @@ func (h *userInfoHandler) writeUserInfoResponse(ctx context.Context, w http.Resp
 	case providers.UserInfoResponseTypeJWS:
 		w.Header().Set(serverconst.ContentTypeHeaderName, serverconst.ContentTypeJWT)
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(result.JWTBody))
+		_, _ = w.Write([]byte(result.JWTBody)) //nolint:gosec // G705: server-issued JWT, not HTML
 	case providers.UserInfoResponseTypeJWE, providers.UserInfoResponseTypeNESTEDJWT:
 		w.Header().Set(serverconst.ContentTypeHeaderName, serverconst.ContentTypeJWT)
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(result.JWTBody))
+		_, _ = w.Write([]byte(result.JWTBody)) //nolint:gosec // G705: server-issued JWT, not HTML
 	default:
 		utils.WriteSuccessResponse(ctx, w, http.StatusOK, result.JSONBody)
 	}

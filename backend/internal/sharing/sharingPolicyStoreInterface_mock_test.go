@@ -16,10 +16,19 @@ func newSharingPolicyStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *sharingPolicyStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &sharingPolicyStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -72,7 +81,7 @@ type sharingPolicyStoreInterfaceMock_CountPoliciesForResource_Call struct {
 //   - ctx context.Context
 //   - rt ResourceType
 //   - resourceID string
-func (_e *sharingPolicyStoreInterfaceMock_Expecter) CountPoliciesForResource(ctx interface{}, rt interface{}, resourceID interface{}) *sharingPolicyStoreInterfaceMock_CountPoliciesForResource_Call {
+func (_e *sharingPolicyStoreInterfaceMock_Expecter) CountPoliciesForResource(ctx any, rt any, resourceID any) *sharingPolicyStoreInterfaceMock_CountPoliciesForResource_Call {
 	return &sharingPolicyStoreInterfaceMock_CountPoliciesForResource_Call{Call: _e.mock.On("CountPoliciesForResource", ctx, rt, resourceID)}
 }
 
@@ -134,7 +143,7 @@ type sharingPolicyStoreInterfaceMock_CreatePolicy_Call struct {
 // CreatePolicy is a helper method to define mock.On call
 //   - ctx context.Context
 //   - p Policy
-func (_e *sharingPolicyStoreInterfaceMock_Expecter) CreatePolicy(ctx interface{}, p interface{}) *sharingPolicyStoreInterfaceMock_CreatePolicy_Call {
+func (_e *sharingPolicyStoreInterfaceMock_Expecter) CreatePolicy(ctx any, p any) *sharingPolicyStoreInterfaceMock_CreatePolicy_Call {
 	return &sharingPolicyStoreInterfaceMock_CreatePolicy_Call{Call: _e.mock.On("CreatePolicy", ctx, p)}
 }
 
@@ -194,7 +203,7 @@ type sharingPolicyStoreInterfaceMock_DeleteOverlayValue_Call struct {
 //   - resourceID string
 //   - ouID string
 //   - fieldKey string
-func (_e *sharingPolicyStoreInterfaceMock_Expecter) DeleteOverlayValue(ctx interface{}, rt interface{}, resourceID interface{}, ouID interface{}, fieldKey interface{}) *sharingPolicyStoreInterfaceMock_DeleteOverlayValue_Call {
+func (_e *sharingPolicyStoreInterfaceMock_Expecter) DeleteOverlayValue(ctx any, rt any, resourceID any, ouID any, fieldKey any) *sharingPolicyStoreInterfaceMock_DeleteOverlayValue_Call {
 	return &sharingPolicyStoreInterfaceMock_DeleteOverlayValue_Call{Call: _e.mock.On("DeleteOverlayValue", ctx, rt, resourceID, ouID, fieldKey)}
 }
 
@@ -268,7 +277,7 @@ type sharingPolicyStoreInterfaceMock_DeleteOverlayValuesForOU_Call struct {
 //   - rt ResourceType
 //   - resourceID string
 //   - ouID string
-func (_e *sharingPolicyStoreInterfaceMock_Expecter) DeleteOverlayValuesForOU(ctx interface{}, rt interface{}, resourceID interface{}, ouID interface{}) *sharingPolicyStoreInterfaceMock_DeleteOverlayValuesForOU_Call {
+func (_e *sharingPolicyStoreInterfaceMock_Expecter) DeleteOverlayValuesForOU(ctx any, rt any, resourceID any, ouID any) *sharingPolicyStoreInterfaceMock_DeleteOverlayValuesForOU_Call {
 	return &sharingPolicyStoreInterfaceMock_DeleteOverlayValuesForOU_Call{Call: _e.mock.On("DeleteOverlayValuesForOU", ctx, rt, resourceID, ouID)}
 }
 
@@ -335,7 +344,7 @@ type sharingPolicyStoreInterfaceMock_DeletePolicy_Call struct {
 // DeletePolicy is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *sharingPolicyStoreInterfaceMock_Expecter) DeletePolicy(ctx interface{}, id interface{}) *sharingPolicyStoreInterfaceMock_DeletePolicy_Call {
+func (_e *sharingPolicyStoreInterfaceMock_Expecter) DeletePolicy(ctx any, id any) *sharingPolicyStoreInterfaceMock_DeletePolicy_Call {
 	return &sharingPolicyStoreInterfaceMock_DeletePolicy_Call{Call: _e.mock.On("DeletePolicy", ctx, id)}
 }
 
@@ -405,7 +414,7 @@ type sharingPolicyStoreInterfaceMock_GetOverlayValues_Call struct {
 //   - rt ResourceType
 //   - resourceID string
 //   - ouID string
-func (_e *sharingPolicyStoreInterfaceMock_Expecter) GetOverlayValues(ctx interface{}, rt interface{}, resourceID interface{}, ouID interface{}) *sharingPolicyStoreInterfaceMock_GetOverlayValues_Call {
+func (_e *sharingPolicyStoreInterfaceMock_Expecter) GetOverlayValues(ctx any, rt any, resourceID any, ouID any) *sharingPolicyStoreInterfaceMock_GetOverlayValues_Call {
 	return &sharingPolicyStoreInterfaceMock_GetOverlayValues_Call{Call: _e.mock.On("GetOverlayValues", ctx, rt, resourceID, ouID)}
 }
 
@@ -481,7 +490,7 @@ type sharingPolicyStoreInterfaceMock_GetPolicy_Call struct {
 // GetPolicy is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *sharingPolicyStoreInterfaceMock_Expecter) GetPolicy(ctx interface{}, id interface{}) *sharingPolicyStoreInterfaceMock_GetPolicy_Call {
+func (_e *sharingPolicyStoreInterfaceMock_Expecter) GetPolicy(ctx any, id any) *sharingPolicyStoreInterfaceMock_GetPolicy_Call {
 	return &sharingPolicyStoreInterfaceMock_GetPolicy_Call{Call: _e.mock.On("GetPolicy", ctx, id)}
 }
 
@@ -549,7 +558,7 @@ type sharingPolicyStoreInterfaceMock_GetPolicyByInitiator_Call struct {
 //   - rt ResourceType
 //   - resourceID string
 //   - initiatingOUID string
-func (_e *sharingPolicyStoreInterfaceMock_Expecter) GetPolicyByInitiator(ctx interface{}, rt interface{}, resourceID interface{}, initiatingOUID interface{}) *sharingPolicyStoreInterfaceMock_GetPolicyByInitiator_Call {
+func (_e *sharingPolicyStoreInterfaceMock_Expecter) GetPolicyByInitiator(ctx any, rt any, resourceID any, initiatingOUID any) *sharingPolicyStoreInterfaceMock_GetPolicyByInitiator_Call {
 	return &sharingPolicyStoreInterfaceMock_GetPolicyByInitiator_Call{Call: _e.mock.On("GetPolicyByInitiator", ctx, rt, resourceID, initiatingOUID)}
 }
 
@@ -628,7 +637,7 @@ type sharingPolicyStoreInterfaceMock_ListAllPoliciesForResource_Call struct {
 //   - ctx context.Context
 //   - rt ResourceType
 //   - resourceID string
-func (_e *sharingPolicyStoreInterfaceMock_Expecter) ListAllPoliciesForResource(ctx interface{}, rt interface{}, resourceID interface{}) *sharingPolicyStoreInterfaceMock_ListAllPoliciesForResource_Call {
+func (_e *sharingPolicyStoreInterfaceMock_Expecter) ListAllPoliciesForResource(ctx any, rt any, resourceID any) *sharingPolicyStoreInterfaceMock_ListAllPoliciesForResource_Call {
 	return &sharingPolicyStoreInterfaceMock_ListAllPoliciesForResource_Call{Call: _e.mock.On("ListAllPoliciesForResource", ctx, rt, resourceID)}
 }
 
@@ -704,7 +713,7 @@ type sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call struct {
 //   - resourceID string
 //   - limit int
 //   - offset int
-func (_e *sharingPolicyStoreInterfaceMock_Expecter) ListPoliciesForResource(ctx interface{}, rt interface{}, resourceID interface{}, limit interface{}, offset interface{}) *sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call {
+func (_e *sharingPolicyStoreInterfaceMock_Expecter) ListPoliciesForResource(ctx any, rt any, resourceID any, limit any, offset any) *sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call {
 	return &sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call{Call: _e.mock.On("ListPoliciesForResource", ctx, rt, resourceID, limit, offset)}
 }
 
@@ -751,6 +760,74 @@ func (_c *sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call) RunAndRe
 	return _c
 }
 
+// ListPoliciesIssuedBy provides a mock function for the type sharingPolicyStoreInterfaceMock
+func (_mock *sharingPolicyStoreInterfaceMock) ListPoliciesIssuedBy(ctx context.Context, ouID string) ([]Policy, error) {
+	ret := _mock.Called(ctx, ouID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListPoliciesIssuedBy")
+	}
+
+	var r0 []Policy
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]Policy, error)); ok {
+		return returnFunc(ctx, ouID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []Policy); ok {
+		r0 = returnFunc(ctx, ouID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]Policy)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, ouID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// sharingPolicyStoreInterfaceMock_ListPoliciesIssuedBy_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListPoliciesIssuedBy'
+type sharingPolicyStoreInterfaceMock_ListPoliciesIssuedBy_Call struct {
+	*mock.Call
+}
+
+// ListPoliciesIssuedBy is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ouID string
+func (_e *sharingPolicyStoreInterfaceMock_Expecter) ListPoliciesIssuedBy(ctx any, ouID any) *sharingPolicyStoreInterfaceMock_ListPoliciesIssuedBy_Call {
+	return &sharingPolicyStoreInterfaceMock_ListPoliciesIssuedBy_Call{Call: _e.mock.On("ListPoliciesIssuedBy", ctx, ouID)}
+}
+
+func (_c *sharingPolicyStoreInterfaceMock_ListPoliciesIssuedBy_Call) Run(run func(ctx context.Context, ouID string)) *sharingPolicyStoreInterfaceMock_ListPoliciesIssuedBy_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *sharingPolicyStoreInterfaceMock_ListPoliciesIssuedBy_Call) Return(policys []Policy, err error) *sharingPolicyStoreInterfaceMock_ListPoliciesIssuedBy_Call {
+	_c.Call.Return(policys, err)
+	return _c
+}
+
+func (_c *sharingPolicyStoreInterfaceMock_ListPoliciesIssuedBy_Call) RunAndReturn(run func(ctx context.Context, ouID string) ([]Policy, error)) *sharingPolicyStoreInterfaceMock_ListPoliciesIssuedBy_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ListPoliciesRelevantToChain provides a mock function for the type sharingPolicyStoreInterfaceMock
 func (_mock *sharingPolicyStoreInterfaceMock) ListPoliciesRelevantToChain(ctx context.Context, rt ResourceType, resourceID string, chainOUIDs []string) ([]Policy, error) {
 	ret := _mock.Called(ctx, rt, resourceID, chainOUIDs)
@@ -789,7 +866,7 @@ type sharingPolicyStoreInterfaceMock_ListPoliciesRelevantToChain_Call struct {
 //   - rt ResourceType
 //   - resourceID string
 //   - chainOUIDs []string
-func (_e *sharingPolicyStoreInterfaceMock_Expecter) ListPoliciesRelevantToChain(ctx interface{}, rt interface{}, resourceID interface{}, chainOUIDs interface{}) *sharingPolicyStoreInterfaceMock_ListPoliciesRelevantToChain_Call {
+func (_e *sharingPolicyStoreInterfaceMock_Expecter) ListPoliciesRelevantToChain(ctx any, rt any, resourceID any, chainOUIDs any) *sharingPolicyStoreInterfaceMock_ListPoliciesRelevantToChain_Call {
 	return &sharingPolicyStoreInterfaceMock_ListPoliciesRelevantToChain_Call{Call: _e.mock.On("ListPoliciesRelevantToChain", ctx, rt, resourceID, chainOUIDs)}
 }
 
@@ -857,7 +934,7 @@ type sharingPolicyStoreInterfaceMock_ReplacePolicyContents_Call struct {
 //   - ctx context.Context
 //   - p Policy
 //   - expectedVersion int
-func (_e *sharingPolicyStoreInterfaceMock_Expecter) ReplacePolicyContents(ctx interface{}, p interface{}, expectedVersion interface{}) *sharingPolicyStoreInterfaceMock_ReplacePolicyContents_Call {
+func (_e *sharingPolicyStoreInterfaceMock_Expecter) ReplacePolicyContents(ctx any, p any, expectedVersion any) *sharingPolicyStoreInterfaceMock_ReplacePolicyContents_Call {
 	return &sharingPolicyStoreInterfaceMock_ReplacePolicyContents_Call{Call: _e.mock.On("ReplacePolicyContents", ctx, p, expectedVersion)}
 }
 
@@ -923,7 +1000,7 @@ type sharingPolicyStoreInterfaceMock_SetOverlayValue_Call struct {
 //   - ouID string
 //   - fieldKey string
 //   - value []string
-func (_e *sharingPolicyStoreInterfaceMock_Expecter) SetOverlayValue(ctx interface{}, rt interface{}, resourceID interface{}, ouID interface{}, fieldKey interface{}, value interface{}) *sharingPolicyStoreInterfaceMock_SetOverlayValue_Call {
+func (_e *sharingPolicyStoreInterfaceMock_Expecter) SetOverlayValue(ctx any, rt any, resourceID any, ouID any, fieldKey any, value any) *sharingPolicyStoreInterfaceMock_SetOverlayValue_Call {
 	return &sharingPolicyStoreInterfaceMock_SetOverlayValue_Call{Call: _e.mock.On("SetOverlayValue", ctx, rt, resourceID, ouID, fieldKey, value)}
 }
 

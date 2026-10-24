@@ -17,10 +17,19 @@ func NewGroupMembershipProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *GroupMembershipProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &GroupMembershipProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -74,7 +83,7 @@ type GroupMembershipProviderMock_GetTransitiveAncestorGroups_Call struct {
 // GetTransitiveAncestorGroups is a helper method to define mock.On call
 //   - ctx context.Context
 //   - groupID string
-func (_e *GroupMembershipProviderMock_Expecter) GetTransitiveAncestorGroups(ctx interface{}, groupID interface{}) *GroupMembershipProviderMock_GetTransitiveAncestorGroups_Call {
+func (_e *GroupMembershipProviderMock_Expecter) GetTransitiveAncestorGroups(ctx any, groupID any) *GroupMembershipProviderMock_GetTransitiveAncestorGroups_Call {
 	return &GroupMembershipProviderMock_GetTransitiveAncestorGroups_Call{Call: _e.mock.On("GetTransitiveAncestorGroups", ctx, groupID)}
 }
 
@@ -142,7 +151,7 @@ type GroupMembershipProviderMock_GetTransitiveGroupsForEntity_Call struct {
 // GetTransitiveGroupsForEntity is a helper method to define mock.On call
 //   - ctx context.Context
 //   - entityID string
-func (_e *GroupMembershipProviderMock_Expecter) GetTransitiveGroupsForEntity(ctx interface{}, entityID interface{}) *GroupMembershipProviderMock_GetTransitiveGroupsForEntity_Call {
+func (_e *GroupMembershipProviderMock_Expecter) GetTransitiveGroupsForEntity(ctx any, entityID any) *GroupMembershipProviderMock_GetTransitiveGroupsForEntity_Call {
 	return &GroupMembershipProviderMock_GetTransitiveGroupsForEntity_Call{Call: _e.mock.On("GetTransitiveGroupsForEntity", ctx, entityID)}
 }
 

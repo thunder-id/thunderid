@@ -60,12 +60,12 @@ export default function AgentAccessTokenSection({
       subjectValue={agent.id}
       subjectType="agent"
       copy={{
-        attributesTitle: t('agents:edit.tokens.agent.attributes.title', 'Access Token Attributes'),
+        attributesTitle: t('agents:edit.tokens.agent.attributes.title', 'Access token attributes'),
         attributesDescription: t(
           'agents:edit.tokens.agent.attributes.description',
           'Extra attributes to add to the access token this agent receives for itself.',
         ),
-        attributesLabel: t('agents:edit.tokens.agent.attributes.label', 'Add or Remove Attributes'),
+        attributesLabel: t('agents:edit.tokens.agent.attributes.label', 'Add or remove attributes'),
         attributesHint: t(
           'agents:edit.tokens.agent.attributes.hint',
           'Click on agent attributes to add them to its access token.',
@@ -74,12 +74,12 @@ export default function AgentAccessTokenSection({
           'agents:edit.tokens.agent.attributes.empty',
           'No attributes available. Configure attributes for this agent in the Attributes tab.',
         ),
-        validityTitle: t('agents:edit.tokens.agent.validity.title', 'Token Validity'),
+        validityTitle: t('agents:edit.tokens.agent.validity.title', 'Token validity'),
         validityDescription: t(
           'agents:edit.tokens.agent.validity.description',
           'How long this access token remains valid before expiration.',
         ),
-        validityLabel: t('agents:edit.tokens.agent.validity.label', 'Token Validity'),
+        validityLabel: t('agents:edit.tokens.agent.validity.label', 'Token validity'),
         validityHint: t(
           'agents:edit.tokens.agent.validity.hint',
           'Token validity period in seconds (e.g., 3600 for 1 hour).',

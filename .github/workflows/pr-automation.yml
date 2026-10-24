@@ -1,0 +1,201 @@
+name: "🤖 PR Automation"
+
+# Uses pull_request_target (not pull_request) so PRs opened from forks get the
+# GOOGLE_CHAT_WEBHOOK secret and a token that can comment on and close the PR.
+# Only PR metadata is read; PR code is never checked out or run.
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize]
+
+jobs:
+  check-size:
+    name: "📏 Check PR Size"
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pr-size-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    permissions:
+      pull-requests: write
+    outputs:
+      closed: ${{ steps.size.outputs.closed }}
+    steps:
+      - name: Close PR if too large
+        id: size
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PROJECT_MAINTAINERS: ${{ vars.PROJECT_MAINTAINERS }}
+          PR_SIZE_LIMIT: ${{ vars.PR_SIZE_LIMIT }}
+        with:
+          script: |
+            const MAX_LINES = parseInt(process.env.PR_SIZE_LIMIT, 10) || 3000;
+            const APPROVAL_LABEL = 'large-pr-approved';
+
+            // Files that are not counted towards the PR size: tests, docs, config,
+            // generated files and API specs.
+            const EXCLUDED = [
+              /_test\.go$/,
+              /^tests\//,
+              /^backend\/tests\//,
+              /\.(test|spec)\.[cm]?[jt]sx?$/,
+              /\/__tests__\//,
+              /\/__mocks__\//,
+              /\/testdata\//,
+              /^docs\//,
+              /(^|\/)package\.json$/,
+              /(^|\/)pnpm-lock\.yaml$/,
+              /(^|\/)pnpm-workspace\.yaml$/,
+              /(^|\/)go\.(mod|sum)$/,
+              /(^|\/)tsconfig[^/]*\.json$/,
+              /(^|\/)[^/]+\.config\.[cm]?[jt]s$/,
+              /\/locales\/(?!en-US)/,
+              /^api\/.*\.ya?ml$/,
+            ];
+
+            const pr = context.payload.pull_request;
+            const { owner, repo } = context.repo;
+
+            if (pr.user.login === 'thunder-automation-bot') {
+              core.info('PR is opened by the automation bot. Skipping.');
+              return;
+            }
+
+            if (pr.labels.some(l => l.name === APPROVAL_LABEL)) {
+              const maintainers = (process.env.PROJECT_MAINTAINERS || '')
+                .split(',')
+                .map(m => m.trim().toLowerCase())
+                .filter(Boolean);
+              const events = await github.paginate(github.rest.issues.listEvents, {
+                owner, repo, issue_number: pr.number, per_page: 100,
+              });
+              const labeled = events
+                .filter(e => e.event === 'labeled' && e.label?.name === APPROVAL_LABEL)
+                .pop();
+              const labeledBy = labeled?.actor?.login;
+              if (labeledBy && maintainers.includes(labeledBy.toLowerCase())) {
+                core.info(`${APPROVAL_LABEL} added by maintainer ${labeledBy}. Skipping.`);
+                return;
+              }
+              core.info(`Ignoring ${APPROVAL_LABEL} added by ${labeledBy}, who is not a maintainer.`);
+            }
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner, repo, pull_number: pr.number, per_page: 100,
+            });
+            const lines = files
+              .filter(f => f.status !== 'removed' && !EXCLUDED.some(p => p.test(f.filename)))
+              .reduce((sum, f) => sum + f.additions + f.deletions, 0);
+            core.info(`Reviewable lines: ${lines} (limit ${MAX_LINES}).`);
+            if (lines <= MAX_LINES) {
+              return;
+            }
+
+            // Hidden marker to find an earlier size check comment, so a reopened PR
+            // is not commented on again.
+            const MARKER = '<!-- pr-size-check -->';
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: pr.number, per_page: 100,
+            });
+            const alreadyCommented = comments.some(c => c.body?.includes(MARKER));
+
+            const body = [
+              MARKER,
+              `Hi @${pr.user.login}, thanks for the contribution!`,
+              '',
+              `This PR changes ${lines} lines, above our limit of ${MAX_LINES}. Large PRs are hard to review, so it's closed automatically.`,
+              '',
+              'Please split it into smaller PRs. Each PR should be independently mergeable: it builds, passes tests and doesn\'t break existing features.',
+              'If it can\'t be split, comment with the reason and a maintainer will take a look.',
+            ].join('\n');
+            if (!alreadyCommented) {
+              await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body });
+            }
+            await github.rest.pulls.update({ owner, repo, pull_number: pr.number, state: 'closed' });
+            core.setOutput('closed', 'true');
+
+  notify-google-chat:
+    needs: check-size
+    permissions: {}
+    if: |
+      !cancelled()
+      && (github.event.action == 'opened' || github.event.action == 'reopened' || needs.check-size.outputs.closed == 'true')
+      && !contains(format(',{0},', vars.PROJECT_MEMBERS), format(',{0},', github.actor))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Notification to Google Chat
+        env:
+          GOOGLE_CHAT_WEBHOOK: ${{ secrets.GOOGLE_CHAT_WEBHOOK }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_CREATOR: ${{ github.event.pull_request.user.login }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          PR_ACTION: ${{ github.event.action }}
+          PR_CLOSED_TOO_LARGE: ${{ needs.check-size.outputs.closed }}
+        run: |
+          if [ -z "$GOOGLE_CHAT_WEBHOOK" ]; then
+            echo "GOOGLE_CHAT_WEBHOOK secret is not set. Skipping notification."
+            exit 1
+          fi
+
+          # Set header title based on the size check result and the action (opened or reopened).
+          if [ "$PR_CLOSED_TOO_LARGE" = "true" ]; then
+            header_title="Github PR - Closed (too large)"
+          elif [ "$PR_ACTION" = "reopened" ]; then
+            header_title="Github PR - Reopened"
+          else
+            header_title="Github PR - Opened"
+          fi
+
+          jq -n \
+            --arg title "$PR_TITLE" \
+            --arg creator "$PR_CREATOR" \
+            --arg url "$PR_URL" \
+            --arg base "$PR_BASE" \
+            --arg header "$header_title" \
+            '{
+              "cards": [{
+                "header": {
+                  "title": $header,
+                  "imageUrl": "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f500.png",
+                  "imageStyle": "AVATAR"
+                },
+                "sections": [{
+                  "widgets": [
+                    {
+                      "keyValue": {
+                        "topLabel": "Title",
+                        "content": $title
+                      }
+                    },
+                    {
+                      "keyValue": {
+                        "topLabel": "Target Branch",
+                        "content": $base
+                      }
+                    },
+                    {
+                      "keyValue": {
+                        "topLabel": "Created By",
+                        "content": $creator
+                      }
+                    },
+                    {
+                      "buttons": [{
+                        "textButton": {
+                          "text": "VIEW PR",
+                          "onClick": {
+                            "openLink": {
+                              "url": $url
+                            }
+                          }
+                        }
+                      }]
+                    }
+                  ]
+                }]
+              }]
+            }' > payload.json
+
+          curl -X POST -H "Content-Type: application/json" \
+            -d @payload.json \
+            "$GOOGLE_CHAT_WEBHOOK"

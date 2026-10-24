@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/common"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -52,16 +53,19 @@ type PasskeyServiceInterface interface {
 type passkeyService struct {
 	entityService entity.EntityServiceInterface
 	sessionStore  sessionStoreInterface
+	governance    identitygovernance.IdentityGovernanceServiceInterface
 	logger        *log.Logger
 }
 
 // newPasskeyService creates a new instance of passkey service.
 func newPasskeyService(
 	entitySvc entity.EntityServiceInterface, sessionStore sessionStoreInterface,
+	governance identitygovernance.IdentityGovernanceServiceInterface,
 ) PasskeyServiceInterface {
 	return &passkeyService{
 		entityService: entitySvc,
 		sessionStore:  sessionStore,
+		governance:    governance,
 		logger:        log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 	}
 }
@@ -87,6 +91,10 @@ func (w *passkeyService) StartRegistration(
 	// Retrieve entity
 	coreEntity, svcErr := w.getEntity(ctx, req.UserID)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	if svcErr := w.refuseSuspendedEnrolment(ctx, req.UserID, logger); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -213,6 +221,10 @@ func (w *passkeyService) FinishRegistration(ctx context.Context, req *PasskeyReg
 	// Retrieve entity
 	coreEntity, svcErr := w.getEntity(ctx, userID)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	if svcErr := w.refuseSuspendedEnrolment(ctx, userID, logger); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -503,13 +515,28 @@ func (w *passkeyService) FinishAuthentication(ctx context.Context, req *PasskeyA
 	}, nil
 }
 
+// refuseSuspendedEnrolment refuses a passkey enrolment for a suspended identity.
+func (w *passkeyService) refuseSuspendedEnrolment(ctx context.Context, userID string,
+	logger *log.Logger) *tidcommon.ServiceError {
+	suspended, svcErr := w.governance.IsSuspended(ctx, userID)
+	if svcErr != nil {
+		return &tidcommon.InternalServerError
+	}
+	if suspended {
+		logger.Debug(ctx, "Refused a passkey enrolment for a suspended identity",
+			log.MaskedString("userID", userID))
+		return &common.ErrorAccountSuspended
+	}
+	return nil
+}
+
 // getEntity retrieves an entity by ID, mapping entity-layer errors to passkey service errors.
 func (w *passkeyService) getEntity(
 	ctx context.Context, entityID string,
 ) (*providers.Entity, *tidcommon.ServiceError) {
 	logger := w.logger.With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
-	e, err := w.entityService.GetEntity(ctx, entityID)
+	e, err := w.entityService.GetEntityProfile(ctx, entityID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			logger.Debug(ctx, "Entity not found", log.MaskedString("entityID", entityID))

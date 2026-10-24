@@ -160,6 +160,7 @@ const sidebars: SidebarsConfig = {
                 {type: 'doc', id: 'use-cases/b2c/build-users', label: 'Model Your Users'},
                 {type: 'doc', id: 'use-cases/b2c/build-access', label: 'Define Access'},
                 {type: 'doc', id: 'use-cases/b2c/build-flows', label: 'Build the Flows'},
+                {type: 'doc', id: 'use-cases/b2c/build-notifications', label: 'Customize Notifications'},
                 {type: 'doc', id: 'use-cases/b2c/build-application', label: 'Register the Application'},
                 {type: 'doc', id: 'use-cases/b2c/build-onboarding', label: 'Onboard Internal Staff'},
                 {type: 'doc', id: 'use-cases/b2c/build-sessions', label: 'Keep Them Signed In'},
@@ -547,7 +548,12 @@ const sidebars: SidebarsConfig = {
                 {
                   type: 'doc',
                   id: 'guides/mcp/mcp-clients/register-a-client',
-                  label: 'Register in the Console',
+                  label: 'Configure Manually',
+                },
+                {
+                  type: 'doc',
+                  id: 'guides/mcp/mcp-clients/client-id-metadata-document',
+                  label: 'Client ID Metadata Document',
                 },
                 {
                   type: 'doc',
@@ -627,6 +633,11 @@ const sidebars: SidebarsConfig = {
                 },
                 {
                   type: 'doc',
+                  id: 'guides/identity-providers/link-accounts',
+                  label: 'Link Accounts',
+                },
+                {
+                  type: 'doc',
                   id: 'guides/identity-providers/token-exchange-idp',
                   label: 'Token Exchange',
                   key: 'idp-token-exchange',
@@ -673,8 +684,13 @@ const sidebars: SidebarsConfig = {
                 },
                 {
                   type: 'doc',
-                  id: 'guides/smtp-server/smtp-server-configuration',
-                  label: 'SMTP Server',
+                  id: 'guides/notifications/template-tokens',
+                  label: 'Notification Template Tokens',
+                },
+                {
+                  type: 'doc',
+                  id: 'guides/notifications/email-providers',
+                  label: 'Email Providers',
                 },
                 {
                   type: 'doc',
@@ -1112,6 +1128,11 @@ const sidebars: SidebarsConfig = {
           label: 'Tokens',
         },
         {
+          type: 'doc',
+          id: 'key-concepts/resource-sharing',
+          label: 'Resource Sharing',
+        },
+        {
           type: 'category',
           label: 'Import and Export',
           collapsible: true,
@@ -1131,11 +1152,6 @@ const sidebars: SidebarsConfig = {
               type: 'doc',
               id: 'guides/resource-export',
               label: 'Export Resources',
-            },
-            {
-              type: 'doc',
-              id: 'guides/declarative-configurations/templates',
-              label: 'Template Resources',
             },
             {
               type: 'doc',

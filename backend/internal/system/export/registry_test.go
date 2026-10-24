@@ -95,6 +95,7 @@ type mockResourceExporter struct {
 	getByIDErr        *tidcommon.ServiceError
 	validateName      string
 	validateExportErr *ExportError
+	rules             *declarativeresource.ResourceRules
 }
 
 func (m *mockResourceExporter) GetResourceType() string {
@@ -122,5 +123,5 @@ func (m *mockResourceExporter) ValidateResource(
 }
 
 func (m *mockResourceExporter) GetResourceRules() *declarativeresource.ResourceRules {
-	return &declarativeresource.ResourceRules{}
+	return m.rules
 }

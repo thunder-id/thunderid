@@ -36,35 +36,6 @@ vi.mock('../../cimd/CimdDocumentSection', () => ({
   default: () => <div data-testid="cimd-document-section">CimdDocumentSection</div>,
 }));
 
-vi.mock('../../../RegenerateSecretDialog', () => ({
-  default: ({
-    open,
-    applicationId,
-    onSuccess,
-  }: {
-    open: boolean;
-    applicationId: string | null;
-    onClose: () => void;
-    onSuccess?: (clientSecret: string) => void;
-  }) =>
-    open ? (
-      <div data-testid="regenerate-dialog" data-application-id={applicationId}>
-        <button type="button" onClick={() => onSuccess?.('new-test-secret')} data-testid="dialog-success">
-          Trigger Success
-        </button>
-      </div>
-    ) : null,
-}));
-
-vi.mock('../../../ClientSecretSuccessDialog', () => ({
-  default: ({open, clientSecret}: {open: boolean; clientSecret: string}) =>
-    open ? (
-      <div data-testid="secret-dialog" data-client-secret={clientSecret}>
-        Secret dialog
-      </div>
-    ) : null,
-}));
-
 describe('McpConnectTab', () => {
   const mockOnFieldChange = vi.fn();
 
@@ -102,6 +73,13 @@ describe('McpConnectTab', () => {
     tokenEndpointAuthMethod: 'client_secret_basic',
   } as OAuth2Config;
 
+  const jwtBearerOnlyOAuth2Config: OAuth2Config = {
+    clientId: 'mcp-jwt-bearer-client-id',
+    grantTypes: ['urn:ietf:params:oauth:grant-type:jwt-bearer'],
+    publicClient: false,
+    tokenEndpointAuthMethod: 'client_secret_basic',
+  } as OAuth2Config;
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -117,7 +95,7 @@ describe('McpConnectTab', () => {
         />,
       );
 
-      expect(screen.getByText('On behalf of a user (Authorization Code + PKCE)')).toBeInTheDocument();
+      expect(screen.getByText('On behalf of a user (authorization code + PKCE)')).toBeInTheDocument();
     });
 
     it('renders the machine-to-machine badge for a client_credentials-only client', () => {
@@ -130,7 +108,50 @@ describe('McpConnectTab', () => {
         />,
       );
 
-      expect(screen.getByText('On its own behalf (Client Credentials)')).toBeInTheDocument();
+      expect(screen.getByText('On its own behalf (client credentials)')).toBeInTheDocument();
+    });
+
+    it('renders the JWT bearer badge for a client that only redeems assertions', () => {
+      render(
+        <McpConnectTab
+          application={buildApplication({type: 'mcp'})}
+          oauth2Config={jwtBearerOnlyOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+          isReadOnly={false}
+        />,
+      );
+
+      expect(screen.getByText('On behalf of a user (JWT bearer with ID-JAG)')).toBeInTheDocument();
+      expect(screen.queryByText('On behalf of a user (authorization code + PKCE)')).not.toBeInTheDocument();
+    });
+
+    it('keeps the user-delegated badge when the JWT bearer grant is paired with authorization_code', () => {
+      render(
+        <McpConnectTab
+          application={buildApplication({type: 'mcp'})}
+          oauth2Config={{
+            ...jwtBearerOnlyOAuth2Config,
+            grantTypes: ['authorization_code', 'urn:ietf:params:oauth:grant-type:jwt-bearer'],
+          }}
+          onFieldChange={mockOnFieldChange}
+          isReadOnly={false}
+        />,
+      );
+
+      expect(screen.getByText('On behalf of a user (authorization code + PKCE)')).toBeInTheDocument();
+    });
+
+    it('keeps the machine-to-machine badge for an m2m application that also has the JWT bearer grant', () => {
+      render(
+        <McpConnectTab
+          application={buildApplication({type: 'm2m'})}
+          oauth2Config={jwtBearerOnlyOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+          isReadOnly={false}
+        />,
+      );
+
+      expect(screen.getByText('On its own behalf (client credentials)')).toBeInTheDocument();
     });
   });
 
@@ -150,29 +171,51 @@ describe('McpConnectTab', () => {
     });
   });
 
-  describe('Client secret management', () => {
-    it('shows the masked secret field and a Generate button for a confidential client', () => {
+  describe('Credentials tab pointer', () => {
+    const pointerText = /Manage the client secret and keys on the/;
+
+    it('points a confidential client to the Credentials tab and switches to it when clicked', async () => {
+      const user = userEvent.setup();
+      const onGoToCredentials = vi.fn();
       render(
         <McpConnectTab
           application={buildApplication()}
           oauth2Config={m2mOAuth2Config}
           onFieldChange={mockOnFieldChange}
           isReadOnly={false}
+          onGoToCredentials={onGoToCredentials}
         />,
       );
 
-      expect(screen.getByText('Client Secret')).toBeInTheDocument();
-      expect(screen.getByDisplayValue('••••••••••••••••')).toBeInTheDocument();
-      expect(screen.getByRole('button', {name: 'Generate'})).toBeInTheDocument();
+      expect(screen.getByText(pointerText)).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', {name: 'Credentials tab'}));
+
+      expect(onGoToCredentials).toHaveBeenCalledTimes(1);
     });
 
-    it('hides the secret row for a public client', () => {
+    it('points a private_key_jwt client to the Credentials tab, where its keys are managed', () => {
       render(
         <McpConnectTab
           application={buildApplication()}
-          oauth2Config={userDelegatedOAuth2Config}
+          oauth2Config={{...m2mOAuth2Config, tokenEndpointAuthMethod: 'private_key_jwt'}}
           onFieldChange={mockOnFieldChange}
           isReadOnly={false}
+          onGoToCredentials={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByRole('button', {name: 'Credentials tab'})).toBeInTheDocument();
+    });
+
+    it('no longer shows the client secret field or a Generate action', () => {
+      render(
+        <McpConnectTab
+          application={buildApplication()}
+          oauth2Config={m2mOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+          isReadOnly={false}
+          onGoToCredentials={vi.fn()}
         />,
       );
 
@@ -180,8 +223,21 @@ describe('McpConnectTab', () => {
       expect(screen.queryByRole('button', {name: 'Generate'})).not.toBeInTheDocument();
     });
 
-    it('opens the regenerate secret dialog when Generate is clicked', async () => {
-      const user = userEvent.setup();
+    it('does not point a public client to the Credentials tab', () => {
+      render(
+        <McpConnectTab
+          application={buildApplication()}
+          oauth2Config={userDelegatedOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+          isReadOnly={false}
+          onGoToCredentials={vi.fn()}
+        />,
+      );
+
+      expect(screen.queryByText(pointerText)).not.toBeInTheDocument();
+    });
+
+    it('does not show the pointer when there is no Credentials tab to go to', () => {
       render(
         <McpConnectTab
           application={buildApplication()}
@@ -191,39 +247,7 @@ describe('McpConnectTab', () => {
         />,
       );
 
-      await user.click(screen.getByRole('button', {name: 'Generate'}));
-
-      expect(screen.getByTestId('regenerate-dialog')).toBeInTheDocument();
-    });
-
-    it('shows the new secret once after the dialog reports success', async () => {
-      const user = userEvent.setup();
-      render(
-        <McpConnectTab
-          application={buildApplication()}
-          oauth2Config={m2mOAuth2Config}
-          onFieldChange={mockOnFieldChange}
-          isReadOnly={false}
-        />,
-      );
-
-      await user.click(screen.getByRole('button', {name: 'Generate'}));
-      await user.click(screen.getByTestId('dialog-success'));
-
-      expect(screen.getByTestId('secret-dialog')).toHaveAttribute('data-client-secret', 'new-test-secret');
-    });
-
-    it('disables the Generate button when the application is read-only', () => {
-      render(
-        <McpConnectTab
-          application={buildApplication({isReadOnly: true})}
-          oauth2Config={m2mOAuth2Config}
-          onFieldChange={mockOnFieldChange}
-          isReadOnly
-        />,
-      );
-
-      expect(screen.getByRole('button', {name: 'Generate'})).toBeDisabled();
+      expect(screen.queryByText(pointerText)).not.toBeInTheDocument();
     });
   });
 
@@ -233,6 +257,19 @@ describe('McpConnectTab', () => {
         <McpConnectTab
           application={buildApplication()}
           oauth2Config={userDelegatedOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+          isReadOnly={false}
+        />,
+      );
+
+      expect(screen.getByTestId('mcp-access-section')).toBeInTheDocument();
+    });
+
+    it('renders the access section for a JWT bearer-only client', () => {
+      render(
+        <McpConnectTab
+          application={buildApplication({type: 'mcp'})}
+          oauth2Config={jwtBearerOnlyOAuth2Config}
           onFieldChange={mockOnFieldChange}
           isReadOnly={false}
         />,

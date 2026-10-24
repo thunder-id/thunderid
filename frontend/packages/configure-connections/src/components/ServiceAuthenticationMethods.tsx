@@ -1,7 +1,8 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {FormControl, FormHelperText, FormLabel, MenuItem, Select, Stack} from '@wso2/oxygen-ui';
+import {Box, Button, FormControl, FormLabel, MenuItem, Select, Stack, TextField} from '@wso2/oxygen-ui';
+import {RotateCcw} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import KeyValuePairsField from './KeyValuePairsField';
@@ -15,7 +16,6 @@ interface ServiceAuthenticationMethodsProps {
   basicPassword: string;
   httpHeaders: string;
   hasStoredHTTPHeaders: boolean;
-  headersReplacing: boolean;
   hasStoredSecret: boolean;
   replacing: boolean;
   errors?: {
@@ -25,7 +25,6 @@ interface ServiceAuthenticationMethodsProps {
     httpHeaders?: string;
   };
   onChange: (name: string, value: string) => void;
-  onHeadersReplacingChange: (replacing: boolean) => void;
   onReplacingChange: (replacing: boolean) => void;
 }
 
@@ -36,12 +35,10 @@ export default function ServiceAuthenticationMethods({
   basicPassword,
   httpHeaders,
   hasStoredHTTPHeaders,
-  headersReplacing,
   hasStoredSecret,
   replacing,
   errors = {},
   onChange,
-  onHeadersReplacingChange,
   onReplacingChange,
 }: ServiceAuthenticationMethodsProps): JSX.Element {
   const {t} = useTranslation('connections');
@@ -65,12 +62,6 @@ export default function ServiceAuthenticationMethods({
           </MenuItem>
           <MenuItem value={AuthenticationMethods.API_KEY}>{t('form.fields.authScheme.apiKey', 'API key')}</MenuItem>
         </Select>
-        <FormHelperText>
-          {t(
-            'form.fields.authScheme.hint',
-            'Choose how ThunderID authenticates requests sent to this policy decision point.',
-          )}
-        </FormHelperText>
       </FormControl>
 
       {method === AuthenticationMethods.BEARER && (
@@ -88,19 +79,36 @@ export default function ServiceAuthenticationMethods({
       )}
 
       {method === AuthenticationMethods.BASIC && (
-        <Stack direction="column" spacing={1}>
-          <MaskedSecretField
-            id="connection-field-basicUsername"
-            label={t('form.fields.basicUsername.label', 'Username')}
-            value={basicUsername}
-            onChange={(value) => onChange('basicUsername', value)}
-            hasStoredSecret={hasStoredSecret}
-            replacing={replacing}
-            onReplacingChange={onReplacingChange}
-            error={errors.basicUsername}
-            hint={t('form.fields.basicUsername.hint', 'Username sent with each PDP request.')}
-            required
-          />
+        <Box
+          data-testid="basic-credentials-fields"
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: '1fr',
+              sm: hasStoredSecret && !replacing ? 'repeat(2, minmax(0, 1fr)) auto' : 'repeat(2, minmax(0, 1fr))',
+            },
+            gap: 2,
+          }}
+        >
+          <FormControl fullWidth required error={Boolean(errors.basicUsername)}>
+            <FormLabel htmlFor="connection-field-basicUsername">
+              {t('form.fields.basicUsername.label', 'Username')}
+            </FormLabel>
+            <TextField
+              id="connection-field-basicUsername"
+              fullWidth
+              value={basicUsername}
+              disabled={hasStoredSecret && !replacing}
+              onChange={(event) => onChange('basicUsername', event.target.value)}
+              error={Boolean(errors.basicUsername)}
+              helperText={
+                errors.basicUsername ??
+                (hasStoredSecret && !replacing
+                  ? undefined
+                  : t('form.fields.basicUsername.hint', 'Username sent with each PDP request.'))
+              }
+            />
+          </FormControl>
           <MaskedSecretField
             id="connection-field-basicPassword"
             label={t('form.fields.basicPassword.label', 'Password')}
@@ -109,11 +117,23 @@ export default function ServiceAuthenticationMethods({
             hasStoredSecret={hasStoredSecret}
             replacing={replacing}
             onReplacingChange={onReplacingChange}
+            showStoredControls={false}
             error={errors.basicPassword}
             hint={t('form.fields.basicPassword.hint', 'Password sent with each PDP request.')}
             required
           />
-        </Stack>
+          {hasStoredSecret && !replacing && (
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<RotateCcw size={16} />}
+              onClick={() => onReplacingChange(true)}
+              sx={{alignSelf: 'end', justifySelf: {xs: 'end', sm: 'start'}, whiteSpace: 'nowrap'}}
+            >
+              {t('form.secret.update', 'Update')}
+            </Button>
+          )}
+        </Box>
       )}
 
       {method === AuthenticationMethods.API_KEY && (
@@ -130,11 +150,7 @@ export default function ServiceAuthenticationMethods({
             )}
             namePlaceholder="X-API-Key"
             addLabel={t('form.fields.authzenHeaders.add', 'Add header')}
-            hasStoredValue={hasStoredHTTPHeaders}
-            replacing={headersReplacing}
-            onReplacingChange={onHeadersReplacingChange}
-            replaceLabel={t('form.secret.update', 'Update')}
-            storedHint={t('form.headers.keepHelp', 'Leave unchanged to keep the configured headers.')}
+            hasStoredValues={hasStoredHTTPHeaders}
           />
         </Stack>
       )}

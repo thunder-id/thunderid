@@ -66,7 +66,7 @@ export default function ScopeSection({
   return (
     <Box>
       <Typography variant="subtitle2" sx={{mb: 1}}>
-        {t('applications:edit.token.scopes_card.title', 'Scopes & User Attribute Mappings')}
+        {t('applications:edit.token.scopes_card.title', 'Scopes & user attribute mappings')}
       </Typography>
       <Typography variant="body2" color="text.disabled" sx={{mb: 2}}>
         {t('applications:edit.token.scopes_card.description', {

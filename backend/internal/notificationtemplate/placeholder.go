@@ -26,20 +26,19 @@ var placeholderRegex = regexp.MustCompile(`(?s)\{\{(.*?)\}\}`)
 // no surrounding spaces. Examples: ctx(otp), t(otp.email.subject), design(palette.primary.main).
 var validPlaceholderRegex = regexp.MustCompile(`^(ctx|t|design)\((` + placeholderKeyPattern + `)\)$`)
 
-// Render-time matchers for the two functions the renderer substitutes itself (design is delegated to the
-// design service). They are built from placeholderKeyPattern, the same grammar validPlaceholderRegex
-// enforces on write.
+// Render-time matchers built from placeholderKeyPattern. The renderer substitutes {{t}}/{{ctx}} itself
+// and delegates {{design}} to the design service, using designPlaceholderRegex only to strip unresolved
+// tokens.
 var (
 	// translationPlaceholderRegex matches a {{t(key)}} translation reference in a stored field.
 	translationPlaceholderRegex = regexp.MustCompile(`\{\{t\((` + placeholderKeyPattern + `)\)\}\}`)
 
 	// contextPlaceholderRegex matches a {{ctx(key)}} context reference in a stored field.
 	contextPlaceholderRegex = regexp.MustCompile(`\{\{ctx\((` + placeholderKeyPattern + `)\)\}\}`)
-)
 
-// designPlaceholderPrefix is the opening of a {{design(...)}} token, used to detect a token left
-// unresolved after substitution so the render can fail closed.
-const designPlaceholderPrefix = "{{" + placeholderFuncDesign + "("
+	// designPlaceholderRegex matches a {{design(key)}} token, used to strip any left unresolved to empty.
+	designPlaceholderRegex = regexp.MustCompile(`\{\{design\((` + placeholderKeyPattern + `)\)\}\}`)
+)
 
 // unresolvedBeforeContext returns the first unresolved t/design or malformed placeholder.
 // Valid ctx placeholders are allowed for the following context pass.

@@ -103,6 +103,13 @@ func (e *definitionExporter) GetResourceRules() *declarativeresource.ResourceRul
 	}
 }
 
+// ViewResource shows an exported presentation definition as a read of it returns it.
+func (e *definitionExporter) ViewResource(_ context.Context, document *yaml.Node) (interface{}, error) {
+	return declarativeresource.DecodeView(document, func(dto *PresentationDefinitionDTO) (interface{}, error) {
+		return toResponse(*dto), nil
+	})
+}
+
 // definitionRequestWithID is the YAML shape of a declarative presentation
 // definition: the management request body plus the stable resource ID. The
 // claim sets, claim/value constraints and trust fields mirror the JSON request.

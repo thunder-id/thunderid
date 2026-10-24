@@ -1,8 +1,9 @@
 # Frontend — Agent Guide
 
-Read with the root [AGENTS.md](../AGENTS.md). The frontend is a pnpm monorepo under `frontend/` with two React apps —
-`frontend/apps/console` (admin console) and `frontend/apps/gate` (login, registration, recovery) — plus shared and
-feature packages under `frontend/packages/`.
+Read with the root [AGENTS.md](../AGENTS.md). The frontend is a pnpm monorepo under `frontend/` with three React apps,
+`frontend/apps/console` (admin console), `frontend/apps/console-cp` (the console the control plane serves: the same
+shell plus gateway management, with every administration operation running natively rather than through a flow) and
+`frontend/apps/gate` (login, registration, recovery), plus shared and feature packages under `frontend/packages/`.
 
 For feature-package layout and app boundaries, see the
 [Frontend Development overview](../docs/community/contributing/contributing-code/frontend-development/overview.mdx).
@@ -33,6 +34,29 @@ existing dependency: add that exact subpath as a string literal to the package's
 next to the existing `// Peer dep subpaths are not matched by exact string - add them explicitly.` entries (see
 `packages/configure-resource-servers/rolldown.config.js`). Do this for every subpath actually imported by the package's
 source, not just `@thunderid/logger/react`.
+
+## UI Components and Styling
+
+Read [.agent/skills/ui-development/SKILL.md](../.agent/skills/ui-development/SKILL.md) before writing or changing any
+UI: a page, dialog, form, table, card, shared component, or styling. The rules that matter most:
+
+- Reuse before you build. Check `@thunderid/components` first, then Oxygen UI's own components, and write a new
+  component only when neither has it. A component a second package needs moves into `@thunderid/components`. It is never
+  copied.
+- Import components from `@wso2/oxygen-ui` and icons from `@wso2/oxygen-ui-icons-react`. Never import from `@mui/*` or
+  `lucide-react`. For a product category (Overview, Deploy, Gateways, and others), use the icon the WSO2 unification
+  guidelines assign to it, listed in the skill's Category Icons table.
+- Style with `sx` and theme tokens (`p: 2`, `color: 'text.secondary'`, `Typography variant`). No hex or `rgba()` colors,
+  `px` spacing, `style={{}}`, or CSS files.
+- Follow the existing page anatomy: `PageContent` + `PageTitle` + `DocumentTitle` for pages in the app shell,
+  `FullScreenCreationWizardLayout` for create flows, `SettingsCard` sections and `UnsavedChangesBar` on edit pages.
+- Read a component's docs before using or reconfiguring it. The Oxygen Storybook (https://wso2.github.io/oxygen-ui, and
+  the story source at the pinned version's git tag) says which variant to use when, for example for `ListingTable`. The
+  bundled `node_modules/@wso2/oxygen-ui/.ai/` docs are a quick reference but can lag the stories. Use a documented prop
+  before writing custom styling.
+- Meet WCAG 2.1 AA, as Oxygen does. Follow each component's Accessibility section in Storybook: every control has an
+  accessible name, nothing clickable is a `Box` or `Typography`, focus stays visible, and state is never shown by color
+  alone.
 
 ## Route Configuration — Never Hardcode a Path
 

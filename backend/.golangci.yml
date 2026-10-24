@@ -1,12 +1,11 @@
 # Copyright 2025 The ThunderID Authors
 # SPDX-License-Identifier: Apache-2.0
 
+version: "2"
 run:
-  timeout: 5m
   allow-parallel-runners: true
-
 linters:
-  disable-all: true
+  default: none
   enable:
     - dupl
     - errcheck
@@ -14,11 +13,8 @@ linters:
     - goconst
     - gocritic
     - gocyclo
-    - gofmt
-    - goimports
     - goprintffuncname
     - gosec
-    - gosimple
     - govet
     - ineffassign
     - lll
@@ -27,60 +23,116 @@ linters:
     - prealloc
     - revive
     - staticcheck
-    - typecheck
     - unconvert
     - unparam
     - unused
     - whitespace
-
-linters-settings:
-  errcheck:
-    check-blank: false
-    check-type-assertions: false
-  gci:
-    sections:
-      - standard
-      - default
-      - prefix(github.com/thunder-id/thunderid)
-  govet:
-    enable-all: true
-    disable:
-      - fieldalignment
-      - shadow
-  gocritic:
-    disabled-checks:
-      - exitAfterDefer
-      - ifElseChain
-      - elseif
-    enabled-tags:
-      - diagnostic
-  goimports:
-    local-prefixes: github.com/thunder-id/thunderid
-  misspell:
-    locale: US
-    ignore-words:
-      - cancelled
-  lll:
-    line-length: 120
-    tab-width: 4
-  revive:
+  settings:
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+    gocritic:
+      disabled-checks:
+        - exitAfterDefer
+        - ifElseChain
+        - elseif
+      enabled-tags:
+        - diagnostic
+    goconst:
+      exclude-types:
+        - Call
+        - CompositeLit
+    gosec:
+      excludes:
+        - G117
+        - G124
+    govet:
+      disable:
+        - fieldalignment
+        - shadow
+      enable-all: true
+    lll:
+      line-length: 120
+      tab-width: 4
+    misspell:
+      locale: US
+      ignore-rules:
+        - cancelled
+    revive:
+      rules:
+        - name: struct-tag
+          arguments:
+            - json,inline
+        - name: var-naming
+        - name: redundant-import-alias
+        - name: comment-spacings
+        - name: exported
+          arguments:
+            - disableStutteringCheck
+        - name: package-comments
+    staticcheck:
+      checks:
+        - all
+        - -QF1008
+        - -QF1011
+        - -ST1003
+        - -ST1012
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        - -ST1023
+  exclusions:
+    generated: lax
+    # Findings from analyzers that are newer in golangci-lint v2, in code that predates the upgrade.
+    # Scoped to the affected files so the checks still apply everywhere else.
     rules:
-      - name: struct-tag
-        arguments: [ "json,inline" ]
-      - name: var-naming
-      - name: redundant-import-alias
-      - name: comment-spacings
-      - name: exported
-        arguments:
-          - disableStutteringCheck
-      - name: package-comments
-
+      - path: _test\.go
+        text: G101
+        linters:
+          - gosec
+      - path: internal/system/jose/jwe/utils\.go
+        text: G115
+        linters:
+          - gosec
+      - path: internal/oauth/oauth2/resourceindicators/resourceindicators\.go
+        text: G602
+        linters:
+          - gosec
+      - path: (cmd/server/servicemanager|internal/connection/email_smtp|internal/entity/store_constants)\.go
+        linters:
+          - prealloc
+      - path: internal/(attestation/decoder|oauth/jwks/service)\.go
+        text: SA1019
+        linters:
+          - staticcheck
+    paths:
+      - tests/mocks
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  max-same-issues: 0
   max-issues-per-linter: 0
-  exclude-use-default: false
-  exclude-dirs:
-    - tests/mocks
-
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/thunder-id/thunderid)
+    goimports:
+      local-prefixes:
+        - github.com/thunder-id/thunderid
+  exclusions:
+    generated: lax
+    paths:
+      - tests/mocks
+      - third_party$
+      - builtin$
+      - examples$
 output:
   show-stats: true

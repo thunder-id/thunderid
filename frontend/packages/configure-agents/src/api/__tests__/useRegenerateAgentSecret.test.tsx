@@ -103,6 +103,9 @@ describe('useRegenerateAgentSecret', () => {
     // Base64url with no padding — 32 bytes encodes to 43 chars
     expect(oauthCfg?.clientSecret).toMatch(/^[A-Za-z0-9_-]{43}$/);
 
+    // The server does not store the delegated flag, so the PUT says whether the agent has it.
+    expect((putCall.data as {delegated?: boolean}).delegated).toBe(false);
+
     // Stripped server-generated fields are not echoed back on PUT.
     expect((putCall.data as {id?: string}).id).toBeUndefined();
     expect((putCall.data as {clientId?: string}).clientId).toBeUndefined();

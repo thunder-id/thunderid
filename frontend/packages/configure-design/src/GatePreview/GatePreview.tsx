@@ -375,7 +375,7 @@ export default function GatePreview({
               >
                 <Typography variant="caption" color="text.disabled" sx={{fontSize: 10}}>
                   {displayName
-                    ? t('themes.builder.preview.title_with_name', '{{name}} — Preview', {name: displayName})
+                    ? t('themes.builder.preview.title_with_name', '{{name}} — preview', {name: displayName})
                     : t('themes.builder.preview.label', 'Preview')}
                 </Typography>
               </Box>
@@ -419,7 +419,7 @@ export default function GatePreview({
             )}
             <iframe
               ref={iframeCallbackRef}
-              title={t('themes.builder.preview.iframe_title', 'Gate Preview')}
+              title={t('themes.builder.preview.iframe_title', 'Gate preview')}
               style={{border: 'none', transformOrigin: 'top left', position: 'absolute', top: 0, left: 0}}
             />
             {iframeDoc?.getElementById('root') &&

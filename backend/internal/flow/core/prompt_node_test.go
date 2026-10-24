@@ -2086,6 +2086,34 @@ func (s *PromptOnlyNodeTestSuite) TestEnrichInputsFromForwardedData_ClaimNeverSa
 	s.Equal("password", resp.Inputs[0].Identifier, "a claim must not satisfy a credential input")
 }
 
+// A forwarded input offering options is a choice the user makes, so a claim of the same name never
+// answers it, while a plain input the claim holds is still taken from the claim.
+func (s *PromptOnlyNodeTestSuite) TestEnrichInputsFromForwardedData_ClaimNeverSatisfiesAChoice() {
+	node := newPromptNode("prompt-1", map[string]interface{}{}, false, false)
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow",
+		UserInputs:  map[string]string{},
+		RuntimeData: externalIdentityData(map[string]interface{}{
+			testEmailAttr: "a@example.com", "username": "a@example.com",
+		}),
+		ForwardedData: map[string]interface{}{
+			common.ForwardedDataKeyInputs: []providers.Input{
+				{Identifier: testEmailAttr, Type: "TEXT_INPUT", Required: true},
+				{Identifier: "username", Type: providers.InputTypeSelect,
+					Options: []string{"a@example.com", "b@example.com"}},
+			},
+		},
+	}
+	resp, err := node.Execute(ctx)
+
+	s.Nil(err)
+	s.NotNil(resp)
+	s.Require().Len(resp.Inputs, 1)
+	s.Equal("username", resp.Inputs[0].Identifier, "a claim must not answer a choice between options")
+	s.Equal([]string{"a@example.com", "b@example.com"}, resp.Inputs[0].Options)
+}
+
 func (s *PromptOnlyNodeTestSuite) TestEnrichInputsFromForwardedData_DoesNotDuplicateExistingInput() {
 	node := newPromptNode("prompt-1", map[string]interface{}{}, false, false)
 	pn := node.(PromptNodeInterface)
@@ -3407,4 +3435,84 @@ func (s *PromptOnlyNodeTestSuite) TestFilteredMeta_FilteredOutActionsDropped() {
 		"single ACR filter must trigger auto-selection and complete the node")
 	s.Equal("otp-node", resp.NextNodeID)
 	s.Nil(resp.Meta, "meta is not returned for a completed (auto-selected) chooser node")
+}
+
+func (s *PromptOnlyNodeTestSuite) TestBuildSyntheticComponentList_SelectCarriesOptions() {
+	node := &promptNode{}
+	inputs := []providers.Input{
+		{
+			Identifier:  "tier",
+			Type:        providers.InputTypeSelect,
+			Required:    true,
+			DisplayName: "Tier",
+			Options:     []string{"Gold", "Platinum", "Bronze"},
+		},
+		{Identifier: "nickname", Type: providers.InputTypeText},
+	}
+
+	synthetic, promotions := node.buildSyntheticComponentList(
+		inputs, map[string]map[string]interface{}{}, map[string]struct{}{})
+
+	s.Empty(promotions)
+	s.Len(synthetic, 2)
+
+	tier, ok := synthetic[0].(map[string]interface{})
+	s.True(ok)
+	s.Equal(providers.InputTypeSelect, tier["type"])
+	s.Equal(true, tier["required"])
+	s.Equal([]string{"Gold", "Platinum", "Bronze"}, tier["options"])
+
+	// Non-select inputs must not gain an options key.
+	nickname, ok := synthetic[1].(map[string]interface{})
+	s.True(ok)
+	_, hasOptions := nickname["options"]
+	s.False(hasOptions)
+}
+
+func (s *PromptOnlyNodeTestSuite) TestBuildSyntheticComponentList_SelectWithoutOptionsOmitsKey() {
+	node := &promptNode{}
+	inputs := []providers.Input{{Identifier: "tier", Type: providers.InputTypeSelect}}
+
+	synthetic, _ := node.buildSyntheticComponentList(
+		inputs, map[string]map[string]interface{}{}, map[string]struct{}{})
+
+	s.Len(synthetic, 1)
+	tier, _ := synthetic[0].(map[string]interface{})
+	_, hasOptions := tier["options"]
+	s.False(hasOptions)
+}
+
+func (s *PromptOnlyNodeTestSuite) TestBuildSyntheticComponentList_KeepsMetaTextInputForSelect() {
+	node := &promptNode{}
+	metaComps := map[string]map[string]interface{}{
+		"tier": {"id": "tier", "ref": "tier", "type": "TEXT_INPUT"},
+	}
+	inputs := []providers.Input{{
+		Identifier: "tier",
+		Type:       providers.InputTypeSelect,
+		Options:    []string{"Gold", "Bronze"},
+	}}
+
+	synthetic, promotions := node.buildSyntheticComponentList(
+		inputs, metaComps, map[string]struct{}{})
+
+	s.Empty(synthetic)
+	s.Empty(promotions)
+}
+
+func (s *PromptOnlyNodeTestSuite) TestBuildSyntheticComponentList_KeepsExistingSelectMeta() {
+	node := &promptNode{}
+	metaComps := map[string]map[string]interface{}{
+		"tier": {"id": "tier", "ref": "tier", "type": "SELECT", "options": []interface{}{}},
+	}
+	inputs := []providers.Input{{
+		Identifier: "tier",
+		Type:       providers.InputTypeSelect,
+		Options:    []string{"Gold"},
+	}}
+
+	_, promotions := node.buildSyntheticComponentList(
+		inputs, metaComps, map[string]struct{}{})
+
+	s.Empty(promotions)
 }

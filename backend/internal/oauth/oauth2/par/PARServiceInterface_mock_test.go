@@ -18,10 +18,19 @@ func NewPARServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *PARServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &PARServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -84,7 +93,7 @@ type PARServiceInterfaceMock_HandlePushedAuthorizationRequest_Call struct {
 //   - resources []string
 //   - oauthApp *providers.OAuthClient
 //   - dpopHeaderJkt string
-func (_e *PARServiceInterfaceMock_Expecter) HandlePushedAuthorizationRequest(ctx interface{}, params interface{}, resources interface{}, oauthApp interface{}, dpopHeaderJkt interface{}) *PARServiceInterfaceMock_HandlePushedAuthorizationRequest_Call {
+func (_e *PARServiceInterfaceMock_Expecter) HandlePushedAuthorizationRequest(ctx any, params any, resources any, oauthApp any, dpopHeaderJkt any) *PARServiceInterfaceMock_HandlePushedAuthorizationRequest_Call {
 	return &PARServiceInterfaceMock_HandlePushedAuthorizationRequest_Call{Call: _e.mock.On("HandlePushedAuthorizationRequest", ctx, params, resources, oauthApp, dpopHeaderJkt)}
 }
 
@@ -176,7 +185,7 @@ type PARServiceInterfaceMock_ResolvePushedAuthorizationRequest_Call struct {
 //   - ctx context.Context
 //   - requestURI string
 //   - clientID string
-func (_e *PARServiceInterfaceMock_Expecter) ResolvePushedAuthorizationRequest(ctx interface{}, requestURI interface{}, clientID interface{}) *PARServiceInterfaceMock_ResolvePushedAuthorizationRequest_Call {
+func (_e *PARServiceInterfaceMock_Expecter) ResolvePushedAuthorizationRequest(ctx any, requestURI any, clientID any) *PARServiceInterfaceMock_ResolvePushedAuthorizationRequest_Call {
 	return &PARServiceInterfaceMock_ResolvePushedAuthorizationRequest_Call{Call: _e.mock.On("ResolvePushedAuthorizationRequest", ctx, requestURI, clientID)}
 }
 

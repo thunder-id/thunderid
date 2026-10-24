@@ -282,3 +282,53 @@ export function toggleFacet(filters: EcosystemFilters, group: EcosystemFacetGrou
   const next = current.includes(key) ? current.filter((k) => k !== key) : [...current, key];
   return {...filters, [group]: next};
 }
+
+/**
+ * The query parameter for each part of the filters, named after the panel
+ * headings so a shared link reads the way the page does
+ * (e.g. ?type=official-sdk&platform=mobile&q=react).
+ */
+const FILTER_PARAMS: Record<keyof EcosystemFilters, string> = {
+  query: 'q',
+  groups: 'type',
+  categories: 'platform',
+  availability: 'status',
+};
+
+/**
+ * Reads filters from a query string.
+ *
+ * Only values the listing can actually show are kept: types and platforms come
+ * from the registry, so a stale or hand-edited link narrows by what still
+ * exists instead of rendering a chip for something that does not.
+ */
+export function filtersFromSearch(search: string, entries: EcosystemEntry[]): EcosystemFilters {
+  const params = new URLSearchParams(search);
+  const known = <T extends string>(param: string, allowed: ReadonlySet<string>): T[] =>
+    [...new Set(params.getAll(param))].filter((value) => allowed.has(value)) as T[];
+
+  return {
+    query: params.get(FILTER_PARAMS.query) ?? '',
+    groups: known(FILTER_PARAMS.groups, new Set(entries.map(groupOf))),
+    categories: known(FILTER_PARAMS.categories, new Set(entries.map((entry) => entry.category))),
+    availability: known(FILTER_PARAMS.availability, new Set(Object.keys(AVAILABILITY_LABELS))),
+  };
+}
+
+/**
+ * Writes filters into a query string, replacing only the filter parameters so
+ * anything else on the URL survives. Empty filters are left out, so the
+ * unfiltered listing keeps its bare URL.
+ */
+export function filtersToSearch(filters: EcosystemFilters, search: string): string {
+  const params = new URLSearchParams(search);
+  for (const param of Object.values(FILTER_PARAMS)) params.delete(param);
+
+  if (filters.query) params.set(FILTER_PARAMS.query, filters.query);
+  for (const group of ['groups', 'categories', 'availability'] as const) {
+    for (const value of filters[group]) params.append(FILTER_PARAMS[group], value);
+  }
+
+  const query = params.toString();
+  return query ? `?${query}` : '';
+}

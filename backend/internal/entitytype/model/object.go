@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package model
@@ -50,7 +50,7 @@ func (p *object) validateValue(ctx context.Context, value interface{}, path stri
 	valueMap, ok := value.(map[string]interface{})
 	if !ok {
 		logger.Debug(ctx, "Expected object but got different type",
-			log.String("property", path), log.String("value", fmt.Sprintf("%v", value)))
+			log.String("property", path))
 		return false, nil
 	}
 
@@ -99,7 +99,7 @@ func (p *object) validateUniqueness(ctx context.Context,
 	valueMap, ok := value.(map[string]interface{})
 	if !ok {
 		logger.Debug(ctx, "Expected object but got different type",
-			log.String("property", path), log.String("value", fmt.Sprintf("%v", value)))
+			log.String("property", path))
 		return false, nil
 	}
 

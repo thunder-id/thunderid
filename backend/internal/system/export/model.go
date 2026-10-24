@@ -24,6 +24,7 @@ type ExportRequest struct {
 	ServerConfigs            []string `json:"serverConfigs,omitempty"`
 	CredentialConfigurations []string `json:"credentialConfigurations,omitempty"`
 	PresentationDefinitions  []string `json:"presentationDefinitions,omitempty"`
+	NotificationTemplates    []string `json:"notificationTemplates,omitempty"`
 
 	Options *ExportOptions `json:"options,omitempty"`
 }
@@ -100,6 +101,7 @@ type ExportSummary struct {
 }
 
 // ExportError represents errors that occurred during export.
+//
 // Deprecated: Use declarativeresource.ExportError instead.
 type ExportError = declarativeresource.ExportError
 

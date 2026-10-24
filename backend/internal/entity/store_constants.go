@@ -19,6 +19,9 @@ const (
 	// SystemAttributesColumn represents the SYSTEM_ATTRIBUTES column name in the database.
 	SystemAttributesColumn = "SYSTEM_ATTRIBUTES"
 
+	// entityCountByCategoryBaseQuery counts the entities of a category; the builders add their conditions.
+	entityCountByCategoryBaseQuery = `SELECT COUNT(*) as total FROM "ENTITY" WHERE CATEGORY = $1`
+
 	// MaxIndexedAttributesCount is the maximum number of indexed attributes allowed.
 	MaxIndexedAttributesCount = 20
 
@@ -30,11 +33,6 @@ const (
 	identifierSourceSystem = "system"
 	// identifierSourceAttribute marks an ENTITY_IDENTIFIER row derived from schema attributes.
 	identifierSourceAttribute = "attribute"
-
-	// linkedIDIndexName is the unique index that holds a linked subject to one entity, and
-	// linkedIDIndexColumns is its column list as SQLite reports it.
-	linkedIDIndexName    = "idx_entity_identifier_linked_id"
-	linkedIDIndexColumns = "ENTITY_IDENTIFIER.DEPLOYMENT_ID, ENTITY_IDENTIFIER.NAME, ENTITY_IDENTIFIER.VALUE"
 )
 
 var (
@@ -46,34 +44,35 @@ var (
 	// QueryGetEntityList is the query to get a list of entities by category.
 	QueryGetEntityList = model.DBQuery{
 		ID: "ASQ-ENTITY_MGT-02",
-		Query: `SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" ` +
+		Query: `SELECT ID, OU_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" ` +
 			`WHERE CATEGORY = $4 AND DEPLOYMENT_ID = $3 ORDER BY ID LIMIT $1 OFFSET $2`,
 	}
 	// QuerySearchEntityList is the query to search entities across all categories.
 	QuerySearchEntityList = model.DBQuery{
 		ID: "ASQ-ENTITY_MGT-03",
-		Query: `SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" ` +
+		Query: `SELECT ID, OU_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" ` +
 			`WHERE DEPLOYMENT_ID = $3 ORDER BY ID LIMIT $1 OFFSET $2`,
 	}
 	// QueryCreateEntity is the query to create a new entity.
 	QueryCreateEntity = model.DBQuery{
 		ID: "ASQ-ENTITY_MGT-04",
 		Query: `INSERT INTO "ENTITY" ` +
-			`(ID, DEPLOYMENT_ID, CATEGORY, TYPE, STATE, OU_ID, ` +
+			`(ID, DEPLOYMENT_ID, CATEGORY, TYPE, OU_ID, ` +
 			`ATTRIBUTES, SYSTEM_ATTRIBUTES, CREDENTIALS, SYSTEM_CREDENTIALS, CREATED_AT, UPDATED_AT) ` +
-			`VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+			`VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 	}
 	// QueryGetEntityByID is the query to get an entity by ID.
 	QueryGetEntityByID = model.DBQuery{
 		ID: "ASQ-ENTITY_MGT-05",
-		Query: `SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, SYSTEM_ATTRIBUTES ` +
+		Query: `SELECT ID, OU_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES ` +
 			`FROM "ENTITY" WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
-	// QueryUpdateEntity is the query to fully update an entity including system attributes.
+	// QueryUpdateEntity is the query to fully update an entity including system attributes. It does
+	// not write lifecycle state, which lives in ENTITY_RUNTIME_DATA.
 	QueryUpdateEntity = model.DBQuery{
 		ID: "ASQ-ENTITY_MGT-06",
-		Query: `UPDATE "ENTITY" SET OU_ID = $2, TYPE = $3, STATE = $4, ATTRIBUTES = $5, SYSTEM_ATTRIBUTES = $6, ` +
-			`UPDATED_AT = $7 WHERE ID = $1 AND DEPLOYMENT_ID = $8`,
+		Query: `UPDATE "ENTITY" SET OU_ID = $2, TYPE = $3, ATTRIBUTES = $4, SYSTEM_ATTRIBUTES = $5, ` +
+			`UPDATED_AT = $6 WHERE ID = $1 AND DEPLOYMENT_ID = $7`,
 	}
 	// QueryUpdateAttributes is the query to update only the schema attributes of an entity.
 	QueryUpdateAttributes = model.DBQuery{
@@ -103,7 +102,7 @@ var (
 	// QueryGetEntityWithCredentials is the query to get an entity with all credential columns.
 	QueryGetEntityWithCredentials = model.DBQuery{
 		ID: "ASQ-ENTITY_MGT-12",
-		Query: `SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, ` +
+		Query: `SELECT ID, OU_ID, CATEGORY, TYPE, ATTRIBUTES, ` +
 			`SYSTEM_ATTRIBUTES, CREDENTIALS, SYSTEM_CREDENTIALS ` +
 			`FROM "ENTITY" WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
@@ -189,7 +188,7 @@ func buildEntityCountQueryByOUIDs(
 	deploymentID string,
 ) (model.DBQuery, []interface{}, error) {
 	queryID := "ASQ-ENTITY_MGT-20"
-	baseQuery := `SELECT COUNT(*) as total FROM "ENTITY" WHERE CATEGORY = $1`
+	baseQuery := entityCountByCategoryBaseQuery
 	args := []interface{}{category}
 
 	if len(filters) > 0 {
@@ -222,7 +221,7 @@ func buildEntityListQueryByOUIDs(
 	limit, offset int, deploymentID string,
 ) (model.DBQuery, []interface{}, error) {
 	queryID := "ASQ-ENTITY_MGT-21"
-	baseQuery := `SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, SYSTEM_ATTRIBUTES ` +
+	baseQuery := `SELECT ID, OU_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES ` +
 		`FROM "ENTITY" WHERE CATEGORY = $1`
 	args := []interface{}{category}
 	var query model.DBQuery
@@ -265,6 +264,136 @@ func buildEntityListQueryByOUIDs(
 		PostgresQuery: postgresQuery,
 		SQLiteQuery:   sqliteQuery,
 	}, args, nil
+}
+
+// buildEntityCountQueryBySystemAttributes constructs a query to count the entities a system attribute
+// query selects.
+func buildEntityCountQueryBySystemAttributes(
+	category string, sysQuery SystemAttributeQuery, indexedAttrs map[string]bool, deploymentID string,
+) (model.DBQuery, []interface{}, error) {
+	query, args, err := buildSystemAttributeConditions(
+		"ASQ-ENTITY_MGT-32", entityCountByCategoryBaseQuery, category, sysQuery, indexedAttrs)
+	if err != nil {
+		return model.DBQuery{}, nil, err
+	}
+	query, args = utils.AppendDeploymentIDToFilterQuery(query, args, deploymentID)
+	return query, args, nil
+}
+
+// buildEntityListQueryBySystemAttributes constructs a paginated query to list the entities a system
+// attribute query selects.
+func buildEntityListQueryBySystemAttributes(
+	category string, sysQuery SystemAttributeQuery, indexedAttrs map[string]bool,
+	limit, offset int, deploymentID string,
+) (model.DBQuery, []interface{}, error) {
+	baseQuery := `SELECT ID, OU_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES ` +
+		`FROM "ENTITY" WHERE CATEGORY = $1`
+	query, args, err := buildSystemAttributeConditions(
+		"ASQ-ENTITY_MGT-33", baseQuery, category, sysQuery, indexedAttrs)
+	if err != nil {
+		return model.DBQuery{}, nil, err
+	}
+	query, args = utils.AppendDeploymentIDToFilterQuery(query, args, deploymentID)
+	postgresQuery, err := buildPaginatedQuery(query.PostgresQuery, len(args), "$")
+	if err != nil {
+		return model.DBQuery{}, nil, err
+	}
+	sqliteQuery, err := buildPaginatedQuery(query.SQLiteQuery, len(args), "?")
+	if err != nil {
+		return model.DBQuery{}, nil, err
+	}
+
+	args = append(args, limit, offset)
+	return model.DBQuery{
+		ID:            query.ID,
+		Query:         postgresQuery,
+		PostgresQuery: postgresQuery,
+		SQLiteQuery:   sqliteQuery,
+	}, args, nil
+}
+
+// buildEntityCountQueryBySystemAttributesAndOUIDs constructs a query to count the entities a system
+// attribute query selects within the given organization units.
+func buildEntityCountQueryBySystemAttributesAndOUIDs(
+	category string, sysQuery SystemAttributeQuery, ouIDs []string, indexedAttrs map[string]bool,
+	deploymentID string,
+) (model.DBQuery, []interface{}, error) {
+	query, args, err := buildSystemAttributeConditions(
+		"ASQ-ENTITY_MGT-34", entityCountByCategoryBaseQuery, category, sysQuery, indexedAttrs)
+	if err != nil {
+		return model.DBQuery{}, nil, err
+	}
+	query, args = appendOUIDsINClause(query, args, ouIDs)
+	query, args = utils.AppendDeploymentIDToFilterQuery(query, args, deploymentID)
+	return query, args, nil
+}
+
+// buildEntityListQueryBySystemAttributesAndOUIDs constructs a paginated query to list the entities a
+// system attribute query selects within the given organization units.
+func buildEntityListQueryBySystemAttributesAndOUIDs(
+	category string, sysQuery SystemAttributeQuery, ouIDs []string, indexedAttrs map[string]bool,
+	limit, offset int, deploymentID string,
+) (model.DBQuery, []interface{}, error) {
+	baseQuery := `SELECT ID, OU_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES ` +
+		`FROM "ENTITY" WHERE CATEGORY = $1`
+	query, args, err := buildSystemAttributeConditions(
+		"ASQ-ENTITY_MGT-35", baseQuery, category, sysQuery, indexedAttrs)
+	if err != nil {
+		return model.DBQuery{}, nil, err
+	}
+	query, args = appendOUIDsINClause(query, args, ouIDs)
+	query, args = utils.AppendDeploymentIDToFilterQuery(query, args, deploymentID)
+	postgresQuery, err := buildPaginatedQuery(query.PostgresQuery, len(args), "$")
+	if err != nil {
+		return model.DBQuery{}, nil, err
+	}
+	sqliteQuery, err := buildPaginatedQuery(query.SQLiteQuery, len(args), "?")
+	if err != nil {
+		return model.DBQuery{}, nil, err
+	}
+
+	args = append(args, limit, offset)
+	return model.DBQuery{
+		ID:            query.ID,
+		Query:         postgresQuery,
+		PostgresQuery: postgresQuery,
+		SQLiteQuery:   sqliteQuery,
+	}, args, nil
+}
+
+// buildSystemAttributeConditions appends the conditions of a system attribute query to a base query
+// that selects a category. The system attribute keys are validated and written in as literals, so the
+// expression indexes on them apply.
+func buildSystemAttributeConditions(
+	queryID, baseQuery, category string, sysQuery SystemAttributeQuery, indexedAttrs map[string]bool,
+) (model.DBQuery, []interface{}, error) {
+	if len(sysQuery.SystemAttributes) == 0 {
+		return model.DBQuery{}, nil, fmt.Errorf("at least one system attribute filter is required")
+	}
+
+	args := []interface{}{category}
+	query, filterArgs, err := buildFilterQueryWithOffset(
+		queryID, baseQuery, sysQuery.Attributes, indexedAttrs, len(args))
+	if err != nil {
+		return model.DBQuery{}, nil, err
+	}
+	args = append(args, filterArgs...)
+
+	keys := make([]string, 0, len(sysQuery.SystemAttributes))
+	for key := range sysQuery.SystemAttributes {
+		if err := utils.ValidateKey(key); err != nil {
+			return model.DBQuery{}, nil, fmt.Errorf("invalid system attribute filter key: %w", err)
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		query.PostgresQuery += utils.BuildPostgresJSONCondition(SystemAttributesColumn, key, len(args)+1)
+		query.SQLiteQuery += utils.BuildSQLiteJSONCondition(SystemAttributesColumn, key)
+		args = append(args, sysQuery.SystemAttributes[key])
+	}
+	query.Query = query.PostgresQuery
+	return query, args, nil
 }
 
 // buildIdentifyQuery constructs a query to identify an entity based on the provided filters.
@@ -403,7 +532,7 @@ func buildEntityListQuery(
 	category string, filters map[string]interface{}, indexedAttrs map[string]bool,
 	limit, offset int, deploymentID string,
 ) (model.DBQuery, []interface{}, error) {
-	baseQuery := `SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY"`
+	baseQuery := `SELECT ID, OU_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY"`
 	queryID := "ASQ-ENTITY_MGT-25"
 
 	if len(filters) > 0 {
@@ -616,7 +745,7 @@ func buildIdentifyQueryHybrid(
 func buildGetEntitiesByIDsQuery(entityIDs []string, deploymentID string) (model.DBQuery, []interface{}, error) {
 	return buildEntityINClauseQuery(
 		"ASQ-ENTITY_MGT-29",
-		`SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, SYSTEM_ATTRIBUTES `+
+		`SELECT ID, OU_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES `+
 			`FROM "ENTITY" WHERE ID IN (%s) AND DEPLOYMENT_ID = %s`,
 		entityIDs, deploymentID,
 	)

@@ -26,6 +26,7 @@ import {
   OtherDownloadsHeaderTitle,
   OtherDownloadsOsIcon,
 } from '@site/src/components/OtherDownloadsGrid';
+import useIsDarkMode from '@site/src/hooks/useIsDarkMode';
 import usePlatform from '@site/src/hooks/usePlatform';
 
 const OS_LABELS: Record<DistributionAsset['os'], string> = {
@@ -693,6 +694,7 @@ function ReleaseCard({release}: {release: ReleaseEntry}) {
 }
 
 export default function ReleasesPage() {
+  const eyebrowColor = useIsDarkMode() ? '#8bf9fa' : '#1a6fe8';
   const {siteConfig} = useDocusaurusContext();
   const project = siteConfig.customFields?.product as DocusaurusProductConfig | undefined;
   const productName = project?.project?.name ?? siteConfig.title;
@@ -773,10 +775,10 @@ export default function ReleasesPage() {
               fontWeight: 600,
               letterSpacing: '0.18em',
               textTransform: 'uppercase',
-              color: '#8bf9fa',
+              color: eyebrowColor,
             }}
           >
-            <Box component="span" sx={{width: 5, height: 5, borderRadius: '50%', bgcolor: '#8bf9fa', boxShadow: '0 0 10px #8bf9fa'}} />
+            <Box component="span" sx={{width: 5, height: 5, borderRadius: '50%', bgcolor: eyebrowColor, boxShadow: `0 0 10px ${eyebrowColor}`}} />
             Downloads &amp; Changelog
           </Box>
 

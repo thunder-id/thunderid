@@ -600,6 +600,36 @@ func (suite *HTTPUtilTestSuite) TestFilterSensitiveHeaders() {
 	}
 }
 
+// Client-credential query parameters are stripped while everything else is preserved verbatim.
+func (suite *HTTPUtilTestSuite) TestFilterSensitiveQueryParams_StripsCredentials() {
+	filtered := FilterSensitiveQueryParams(map[string][]string{
+		"client_secret":         {"s3cret"},
+		"client_assertion":      {"eyJ..."},
+		"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
+		"id_token_hint":         {"eyJhbGc..."},
+		"login_hint":            {"alice@example.com"},
+		"scope":                 {"openid", "profile"},
+	})
+
+	_, hasSecret := filtered["client_secret"]
+	_, hasAssertion := filtered["client_assertion"]
+	_, hasAssertionType := filtered["client_assertion_type"]
+	assert.False(suite.T(), hasSecret, "client_secret must be stripped")
+	assert.False(suite.T(), hasAssertion, "client_assertion must be stripped")
+	assert.False(suite.T(), hasAssertionType, "client_assertion_type must be stripped")
+
+	// User hints and ordinary parameters are not client credentials and must survive.
+	assert.Equal(suite.T(), []string{"eyJhbGc..."}, filtered["id_token_hint"])
+	assert.Equal(suite.T(), []string{"alice@example.com"}, filtered["login_hint"])
+	assert.Equal(suite.T(), []string{"openid", "profile"}, filtered["scope"])
+}
+
+// A nil or empty map is returned unchanged rather than allocated.
+func (suite *HTTPUtilTestSuite) TestFilterSensitiveQueryParams_EmptyInput() {
+	assert.Nil(suite.T(), FilterSensitiveQueryParams(nil))
+	assert.Empty(suite.T(), FilterSensitiveQueryParams(map[string][]string{}))
+}
+
 func (suite *HTTPUtilTestSuite) TestSanitizeRawMultiValueStringMap() {
 	testCases := []struct {
 		name     string

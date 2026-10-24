@@ -18,7 +18,7 @@ import (
 )
 
 func TestServerConfigExporter_Type(t *testing.T) {
-	exporter := newServerConfigExporter(NewServerConfigServiceMock(t))
+	exporter := newServerConfigExporter(NewServerConfigServiceMock(t), nil)
 	assert.Equal(t, "server_config", exporter.GetResourceType())
 	assert.Equal(t, "ServerConfig", exporter.GetParameterizerType())
 }
@@ -27,7 +27,7 @@ func TestServerConfigExporter_GetAllResourceIDs(t *testing.T) {
 	service := NewServerConfigServiceMock(t)
 	service.EXPECT().ListConfigNames(mock.Anything).Return([]ConfigName{ConfigNameCORS}, nil)
 
-	ids, svcErr := newServerConfigExporter(service).GetAllResourceIDs(context.Background())
+	ids, svcErr := newServerConfigExporter(service, nil).GetAllResourceIDs(context.Background())
 	assert.Nil(t, svcErr)
 	assert.Equal(t, []string{"cors"}, ids)
 }
@@ -36,7 +36,7 @@ func TestServerConfigExporter_GetAllResourceIDs_Error(t *testing.T) {
 	service := NewServerConfigServiceMock(t)
 	service.EXPECT().ListConfigNames(mock.Anything).Return(nil, &common.InternalServerError)
 
-	_, svcErr := newServerConfigExporter(service).GetAllResourceIDs(context.Background())
+	_, svcErr := newServerConfigExporter(service, nil).GetAllResourceIDs(context.Background())
 	assert.Same(t, &common.InternalServerError, svcErr)
 }
 
@@ -45,7 +45,7 @@ func TestServerConfigExporter_GetResourceByID_ExportsEffectiveValue(t *testing.T
 	service.EXPECT().GetConfig(mock.Anything, ConfigNameCORS).
 		Return(ServerConfigLayers{Merged: mergedValue}, nil)
 
-	resource, name, svcErr := newServerConfigExporter(service).GetResourceByID(context.Background(), "cors")
+	resource, name, svcErr := newServerConfigExporter(service, nil).GetResourceByID(context.Background(), "cors")
 	assert.Nil(t, svcErr)
 	assert.Equal(t, "cors", name)
 
@@ -61,12 +61,12 @@ func TestServerConfigExporter_GetResourceByID_Error(t *testing.T) {
 	service.EXPECT().GetConfig(mock.Anything, ConfigNameCORS).
 		Return(ServerConfigLayers{}, &common.InternalServerError)
 
-	_, _, svcErr := newServerConfigExporter(service).GetResourceByID(context.Background(), "cors")
+	_, _, svcErr := newServerConfigExporter(service, nil).GetResourceByID(context.Background(), "cors")
 	assert.Same(t, &common.InternalServerError, svcErr)
 }
 
 func TestServerConfigExporter_ValidateResource(t *testing.T) {
-	exporter := newServerConfigExporter(NewServerConfigServiceMock(t))
+	exporter := newServerConfigExporter(NewServerConfigServiceMock(t), nil)
 
 	name, exportErr := exporter.ValidateResource(context.Background(),
 		&serverConfigExportDoc{Name: "cors"}, "cors", log.GetLogger())
@@ -75,14 +75,14 @@ func TestServerConfigExporter_ValidateResource(t *testing.T) {
 }
 
 func TestServerConfigExporter_ValidateResource_WrongType(t *testing.T) {
-	exporter := newServerConfigExporter(NewServerConfigServiceMock(t))
+	exporter := newServerConfigExporter(NewServerConfigServiceMock(t), nil)
 
 	_, exportErr := exporter.ValidateResource(context.Background(), "not a doc", "cors", log.GetLogger())
 	assert.NotNil(t, exportErr)
 }
 
 func TestServerConfigExporter_ValidateResource_EmptyName(t *testing.T) {
-	exporter := newServerConfigExporter(NewServerConfigServiceMock(t))
+	exporter := newServerConfigExporter(NewServerConfigServiceMock(t), nil)
 
 	_, exportErr := exporter.ValidateResource(context.Background(),
 		&serverConfigExportDoc{Name: ""}, "cors", log.GetLogger())

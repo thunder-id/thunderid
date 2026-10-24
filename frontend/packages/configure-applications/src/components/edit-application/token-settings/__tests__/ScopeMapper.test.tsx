@@ -56,16 +56,16 @@ describe('ScopeMapper', () => {
     const profileScope = screen.getByRole('button', {name: /profile/i});
     await user.click(profileScope);
 
-    expect(screen.getByText('Mapped Attributes')).toBeInTheDocument();
-    expect(screen.getByText('Available Attributes')).toBeInTheDocument();
+    expect(screen.getByText('Mapped attributes')).toBeInTheDocument();
+    expect(screen.getByText('Available attributes')).toBeInTheDocument();
   });
 
-  it('shows "Mapped Attributes" and "Available Attributes" labels when a scope is selected', () => {
+  it('shows "Mapped attributes" and "Available attributes" labels when a scope is selected', () => {
     render(<ScopeMapper {...defaultProps} />);
 
     // First scope is auto-selected on mount
-    expect(screen.getByText('Mapped Attributes')).toBeInTheDocument();
-    expect(screen.getByText('Available Attributes')).toBeInTheDocument();
+    expect(screen.getByText('Mapped attributes')).toBeInTheDocument();
+    expect(screen.getByText('Available attributes')).toBeInTheDocument();
   });
 
   it('clicking an available attribute chip calls onScopeClaimsChange with it added to the selected scope', async () => {
@@ -75,7 +75,7 @@ describe('ScopeMapper', () => {
     render(<ScopeMapper {...defaultProps} scopeClaims={{openid: []}} onScopeClaimsChange={onScopeClaimsChange} />);
 
     // email is an available attribute (not in DEFAULT_TOKEN_ATTRIBUTES mock)
-    const availableSection = screen.getByText('Available Attributes').closest('div')!.parentElement!;
+    const availableSection = screen.getByText('Available attributes').closest('div')!.parentElement!;
     await user.click(within(availableSection).getByText('email'));
 
     expect(onScopeClaimsChange).toHaveBeenCalledWith({openid: ['email']});
@@ -89,7 +89,7 @@ describe('ScopeMapper', () => {
       <ScopeMapper {...defaultProps} scopeClaims={{openid: ['email']}} onScopeClaimsChange={onScopeClaimsChange} />,
     );
 
-    const mappedSection = screen.getByText('Mapped Attributes').closest('div')!.parentElement!;
+    const mappedSection = screen.getByText('Mapped attributes').closest('div')!.parentElement!;
     const emailChipRoot = within(mappedSection).getByText('email').closest('.MuiChip-root')!;
     const deleteIcon = emailChipRoot.querySelector('.MuiChip-deleteIcon')!;
 
@@ -108,7 +108,7 @@ describe('ScopeMapper', () => {
     render(<ScopeMapper {...defaultProps} />);
 
     // Mapped Attributes panel visible means a scope was auto-selected
-    expect(screen.getByText('Mapped Attributes')).toBeInTheDocument();
+    expect(screen.getByText('Mapped attributes')).toBeInTheDocument();
   });
 
   it('shows "all mapped" message when all available attributes are already mapped to the selected scope', () => {

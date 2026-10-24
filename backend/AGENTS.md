@@ -6,6 +6,8 @@ For the canonical, deeper reference (flat package/file layout, export rules, log
 
 ## When to Load Other Guides
 
+- Writing or changing any backend Go code → read [.agent/skills/backend/SKILL.md](../.agent/skills/backend/SKILL.md) first.
+- Writing or fixing tests → read [.agent/skills/backend-tests/SKILL.md](../.agent/skills/backend-tests/SKILL.md).
 - Touching `store.go`, schema, or queries → read [.agent/skills/db/SKILL.md](../.agent/skills/db/SKILL.md).
 - Changing any interface → regenerate mocks with `make mockery`. CI's `verify_mocks` job fails if mocks are out of sync. Never hand-edit mock files.
 

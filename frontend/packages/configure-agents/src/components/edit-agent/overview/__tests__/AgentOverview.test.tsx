@@ -115,6 +115,19 @@ describe('AgentOverview', () => {
     expect(screen.getByText('Person')).toBeInTheDocument();
   });
 
+  it('shows delegated mode as enabled for an agent that holds CIBA but no authorization_code', () => {
+    render(
+      <AgentOverview
+        agent={baseAgent}
+        oauth2Config={{grantTypes: ['client_credentials', 'urn:openid:params:grant-type:ciba'], responseTypes: []}}
+      />,
+    );
+
+    // Own identity and delegated mode are both on, so neither row reads Disabled.
+    expect(screen.getAllByText('Enabled')).toHaveLength(2);
+    expect(screen.queryByText('Disabled')).not.toBeInTheDocument();
+  });
+
   it('falls back to the handle when an allowed user type is not found', () => {
     render(
       <AgentOverview agent={{...baseAgent, allowedUserTypes: ['unknown']}} oauth2Config={delegatedOauth2Config} />,
@@ -128,7 +141,7 @@ describe('AgentOverview', () => {
     const onGoToAdvanced = vi.fn();
     render(<AgentOverview agent={baseAgent} onGoToAdvanced={onGoToAdvanced} />);
 
-    await user.click(screen.getByRole('button', {name: 'Edit in Advanced'}));
+    await user.click(screen.getByRole('button', {name: 'Edit in advanced'}));
 
     expect(onGoToAdvanced).toHaveBeenCalledTimes(1);
   });

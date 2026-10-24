@@ -16,10 +16,19 @@ func NewDirectAuthGuardInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *DirectAuthGuardInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &DirectAuthGuardInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -63,7 +72,7 @@ type DirectAuthGuardInterfaceMock_Wrap_Call struct {
 
 // Wrap is a helper method to define mock.On call
 //   - next http.HandlerFunc
-func (_e *DirectAuthGuardInterfaceMock_Expecter) Wrap(next interface{}) *DirectAuthGuardInterfaceMock_Wrap_Call {
+func (_e *DirectAuthGuardInterfaceMock_Expecter) Wrap(next any) *DirectAuthGuardInterfaceMock_Wrap_Call {
 	return &DirectAuthGuardInterfaceMock_Wrap_Call{Call: _e.mock.On("Wrap", next)}
 }
 

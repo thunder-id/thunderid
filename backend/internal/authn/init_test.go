@@ -72,7 +72,7 @@ var directAPIPaths = []string{
 func (suite *AuthenticationInitTestSuite) initialize(directAPIEnabled bool) (*http.ServeMux,
 	DirectAuthGuardInterface) {
 	mux := http.NewServeMux()
-	_, guard := Initialize(mux, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+	_, guard := Initialize(mux, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		authnconfig.Config{DirectAuthSecret: "test-secret", DirectAPIEnabled: directAPIEnabled})
 	return mux, guard
 }

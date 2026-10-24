@@ -105,7 +105,7 @@ function FederationProperties({resource, onChange}: CommonResourcePropertiesProp
             onChange={(checked) => handleBooleanPropertyChange('allowAuthenticationWithoutLocalUser', checked)}
             label={t(
               'flows:core.executions.federation.allowAuthenticationWithoutLocalUser.label',
-              'Allow Authentication Without Local User',
+              'Allow authentication without local user',
             )}
             hint={t(
               'flows:core.executions.federation.allowAuthenticationWithoutLocalUser.hint',
@@ -117,7 +117,7 @@ function FederationProperties({resource, onChange}: CommonResourcePropertiesProp
             onChange={(checked) => handleBooleanPropertyChange('allowRegistrationWithExistingUser', checked)}
             label={t(
               'flows:core.executions.federation.allowRegistrationWithExistingUser.label',
-              'Allow Registration With Existing User',
+              'Allow registration with existing user',
             )}
             hint={t(
               'flows:core.executions.federation.allowRegistrationWithExistingUser.hint',

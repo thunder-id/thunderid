@@ -22,11 +22,11 @@ lib/
 android/                        Kotlin method channel handler
 ios/                            Swift method channel handler (SPM package + CocoaPods podspec)
 test/                           Unit tests
-samples/quickstart/             Demo app, not part of the package
 tests/e2e/                      End-to-end suite
+playground/                     App for exercising the plugin from source
 ```
 
-The layering runs client → channel → widgets → sample. The Dart client performs no networking of its own: it delegates across a `MethodChannel` to the native SDK, which means a change in behaviour may originate in the native SDK rather than here.
+The layering runs client → channel → widgets. The Dart client performs no networking of its own: it delegates across a `MethodChannel` to the native SDK, which means a change in behaviour may originate in the native SDK rather than here.
 
 Every widget ships in two variants: a **styled** one with Material 3 defaults, such as `SignInButton`, and a **base** slot-based one for full customization, such as `BaseSignInButton`.
 
@@ -38,7 +38,11 @@ flutter analyze
 flutter test
 ```
 
-Build the sample from `samples/quickstart`, for example `flutter build apk --debug` or `flutter build ios --debug --simulator`.
+The quickstart sample lives in [`quickstarts/flutter`](https://github.com/thunder-id/samples/tree/main/quickstarts/flutter) in the samples repository and depends on the published package. `tests/e2e/scripts/prepare-sample.sh` fetches it into `tests/e2e/.samples` and points it at your checkout with a `pubspec_overrides.yaml`. Build it from `tests/e2e/.samples/quickstarts/flutter`, for example `flutter build apk --debug` or `flutter build ios --debug --simulator`.
+
+## Playground
+
+`playground/` is a Flutter app that depends on the plugin through `path: ..`, so it always runs your changes. It has four tabs: capability checks for each SDK feature with a pass or fail reason, a component explorer with live controls and generated Flutter code, a session inspector for tokens and claims, and an SDK event log. Copy `.env.example` to `.env`, fill in your server URL and application, then run `flutter run` from `playground/`. The pull request builder analyzes and builds it, so keep its checks and stories in step when you change a capability or a widget.
 
 ## Code Style
 

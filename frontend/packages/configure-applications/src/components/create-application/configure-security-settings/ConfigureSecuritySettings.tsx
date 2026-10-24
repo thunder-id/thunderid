@@ -42,7 +42,7 @@ export default function ConfigureSecuritySettings({
     <Stack direction="column" spacing={3} data-testid="application-configure-security-settings">
       <Stack direction="column" spacing={1}>
         <Typography variant="h1" gutterBottom>
-          {t('applications:onboarding.configure.security.title', 'Sign-in Experience')}
+          {t('applications:onboarding.configure.security.title', 'Sign-in experience')}
         </Typography>
       </Stack>
 

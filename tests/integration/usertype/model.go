@@ -15,7 +15,9 @@ const (
 
 // SystemAttributes holds system-level metadata for a user type.
 type SystemAttributes struct {
-	Display string `json:"display,omitempty"`
+	Display       string `json:"display,omitempty"`
+	PrimaryEmail  string `json:"primaryEmail,omitempty"`
+	PrimaryMobile string `json:"primaryMobile,omitempty"`
 }
 
 // UserType represents the user type model for tests

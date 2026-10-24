@@ -309,7 +309,7 @@ var (
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
 		AllowedUserTypes:          []string{"assurance_test_user"},
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+			"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 		},
 	}
 
@@ -475,12 +475,12 @@ func (ts *AssuranceTestSuite) TearDownSuite() {
 		_ = testutils.DeleteNotificationSender(senderID)
 	}
 
-	if assuranceTestOU.ID != "" {
-		_ = testutils.DeleteOrganizationUnit(assuranceTestOU.ID)
-	}
-
 	if assuranceEntityTypeID != "" {
 		_ = testutils.DeleteUserType(assuranceEntityTypeID)
+	}
+
+	if assuranceTestOU.ID != "" {
+		_ = testutils.DeleteOrganizationUnit(assuranceTestOU.ID)
 	}
 }
 

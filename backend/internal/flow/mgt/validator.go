@@ -149,6 +149,12 @@ var requiredExecutorsByFlowType = map[providers.FlowType][]string{
 	},
 }
 
+// companionExecutor is an executor that must appear alongside another, running in the given mode.
+type companionExecutor struct {
+	name string
+	mode string
+}
+
 // companionExecutors maps an executor to executors that must appear alongside it in the same flow,
 // independent of flow type.
 //
@@ -156,9 +162,12 @@ var requiredExecutorsByFlowType = map[providers.FlowType][]string{
 // tokens those sessions hold are covered by the subject criterion that CriteriaRevocationExecutor
 // persists, which is why session termination does not enumerate token families per application. A
 // flow that terminates without it would therefore delete sessions while their tokens stay live, so
-// the pairing is required rather than conventional.
-var companionExecutors = map[string][]string{
-	executormeta.ExecutorNameSessionRevocation: {executormeta.ExecutorNameCriteriaRevocation},
+// the pairing is required rather than conventional. Only the revoke mode counts: the advance_cutoff
+// mode writes nothing for a revoke-all plan, so it alone would leave those tokens live.
+var companionExecutors = map[string][]companionExecutor{
+	executormeta.ExecutorNameSessionRevocation: {
+		{name: executormeta.ExecutorNameCriteriaRevocation, mode: executormeta.ExecutorModeRevoke},
+	},
 }
 
 // validateFlowTypeBasedConstraints checks forbidden and required executor rules for the flow type.
@@ -183,7 +192,7 @@ func (v *flowValidator) validateCompanionExecutors(
 			continue
 		}
 		for _, companion := range companions {
-			if presentExecutors[companion] {
+			if hasExecutorInMode(nodes, companion.name, companion.mode) {
 				continue
 			}
 			return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
@@ -192,7 +201,7 @@ func (v *flowValidator) validateCompanionExecutors(
 					"'{{param(companionExecutorName)}}' in the same flow",
 				Params: map[string]string{
 					"executorName":          name,
-					"companionExecutorName": companion,
+					"companionExecutorName": companion.name,
 				},
 			})
 		}
@@ -231,6 +240,26 @@ func collectPresentExecutors(nodes []providers.NodeDefinition) map[string]bool {
 		}
 	}
 	return present
+}
+
+// hasExecutorInMode reports whether a TASK_EXECUTION node runs the named executor in the given mode,
+// taking the executor's default mode for a node that omits one.
+func hasExecutorInMode(nodes []providers.NodeDefinition, name, mode string) bool {
+	meta, _ := executormeta.MetaFor(name)
+	for _, node := range nodes {
+		if node.Type != string(common.NodeTypeTaskExecution) || node.Executor == nil ||
+			node.Executor.Name != name {
+			continue
+		}
+		effectiveMode := node.Executor.Mode
+		if effectiveMode == "" {
+			effectiveMode = meta.DefaultMode
+		}
+		if effectiveMode == mode {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------------

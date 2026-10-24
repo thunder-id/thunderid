@@ -59,7 +59,7 @@ describe('ResourceSummaryTable', () => {
     it('renders table headers', () => {
       render(<ResourceSummaryTable items={mockItems} />);
 
-      expect(screen.getByText('Resource Type')).toBeInTheDocument();
+      expect(screen.getByText('Resource type')).toBeInTheDocument();
       expect(screen.getByText('Count')).toBeInTheDocument();
     });
   });
@@ -260,13 +260,13 @@ describe('ResourceSummaryTable', () => {
       render(<ResourceSummaryTable items={mockItems} showStatus={true} />);
 
       expect(screen.getByText('Item')).toBeInTheDocument();
-      expect(screen.queryByText('Resource Type')).not.toBeInTheDocument();
+      expect(screen.queryByText('Resource type')).not.toBeInTheDocument();
     });
 
-    it('shows "Resource Type" header when both flags are false', () => {
+    it('shows "Resource type" header when both flags are false', () => {
       render(<ResourceSummaryTable items={mockItems} showStatus={false} showDependencies={false} />);
 
-      expect(screen.getByText('Resource Type')).toBeInTheDocument();
+      expect(screen.getByText('Resource type')).toBeInTheDocument();
       expect(screen.queryByText('Item')).not.toBeInTheDocument();
     });
 
@@ -299,7 +299,7 @@ describe('ResourceSummaryTable', () => {
     it('falls back to default t function when not provided', () => {
       render(<ResourceSummaryTable items={mockItems} />);
 
-      expect(screen.getByText('Resource Type')).toBeInTheDocument();
+      expect(screen.getByText('Resource type')).toBeInTheDocument();
     });
   });
 

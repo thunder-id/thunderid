@@ -167,15 +167,15 @@ describe('Preview', () => {
     renderComponent();
 
     expect(screen.getByText('Username')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Enter your Username')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Enter your username')).toBeInTheDocument();
     expect(screen.getByText('Password')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Enter your Password')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Enter your password')).toBeInTheDocument();
   });
 
   it('should render sign in button', () => {
     renderComponent();
 
-    expect(screen.getByRole('button', {name: 'Sign In'})).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Sign in'})).toBeInTheDocument();
   });
 
   it('should not render username/password fields when disabled', () => {
@@ -188,7 +188,7 @@ describe('Preview', () => {
 
     expect(screen.queryByText('Username')).not.toBeInTheDocument();
     expect(screen.queryByText('Password')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', {name: 'Sign In'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Sign in'})).not.toBeInTheDocument();
   });
 
   it('should render social login buttons for enabled providers', () => {
@@ -272,7 +272,7 @@ describe('Preview', () => {
   it('should apply theme primary color to sign in button background', () => {
     renderComponent();
 
-    const signInButton = screen.getByRole('button', {name: 'Sign In'});
+    const signInButton = screen.getByRole('button', {name: 'Sign in'});
     // Buttons omit variant="contained" to avoid CSS-variable specificity issues with
     // the outer app's theme; visual styles are applied entirely through the sx prop.
     expect(signInButton).not.toHaveClass('MuiButton-containedPrimary');
@@ -282,7 +282,7 @@ describe('Preview', () => {
   it('should apply contrastText color to sign in button label', () => {
     renderComponent();
 
-    const signInButton = screen.getByRole('button', {name: 'Sign In'});
+    const signInButton = screen.getByRole('button', {name: 'Sign in'});
     expect(signInButton).toHaveStyle({color: '#FFFFFF'});
   });
 
@@ -297,8 +297,8 @@ describe('Preview', () => {
   it('should render input fields as disabled', () => {
     renderComponent();
 
-    const usernameInput = screen.getByPlaceholderText('Enter your Username');
-    const passwordInput = screen.getByPlaceholderText('Enter your Password');
+    const usernameInput = screen.getByPlaceholderText('Enter your username');
+    const passwordInput = screen.getByPlaceholderText('Enter your password');
 
     expect(usernameInput).toBeDisabled();
     expect(passwordInput).toBeDisabled();
@@ -398,7 +398,7 @@ describe('Preview', () => {
 
     expect(screen.getByText('Username')).toBeInTheDocument();
     expect(screen.getByText('Password')).toBeInTheDocument();
-    expect(screen.getByRole('button', {name: 'Sign In'})).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Sign in'})).toBeInTheDocument();
     expect(screen.queryByText('or')).not.toBeInTheDocument();
   });
 
@@ -413,7 +413,7 @@ describe('Preview', () => {
 
     expect(screen.queryByText('Username')).not.toBeInTheDocument();
     expect(screen.queryByText('Password')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', {name: 'Sign In'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Sign in'})).not.toBeInTheDocument();
     expect(screen.getByRole('button', {name: /Continue with Google/i})).toBeInTheDocument();
     expect(screen.getByRole('button', {name: /Continue with GitHub/i})).toBeInTheDocument();
   });
@@ -426,7 +426,7 @@ describe('Preview', () => {
         },
       });
 
-      expect(screen.getByText('Mobile Number')).toBeInTheDocument();
+      expect(screen.getByText('Mobile number')).toBeInTheDocument();
       expect(screen.getByPlaceholderText('Enter your mobile number')).toBeInTheDocument();
       expect(screen.getByRole('button', {name: 'Send OTP'})).toBeInTheDocument();
     });
@@ -439,7 +439,7 @@ describe('Preview', () => {
         },
       });
 
-      expect(screen.queryByText('Mobile Number')).not.toBeInTheDocument();
+      expect(screen.queryByText('Mobile number')).not.toBeInTheDocument();
       expect(screen.queryByPlaceholderText('Enter your mobile number')).not.toBeInTheDocument();
       expect(screen.queryByRole('button', {name: 'Send OTP'})).not.toBeInTheDocument();
     });
@@ -524,11 +524,11 @@ describe('Preview', () => {
       expect(screen.getByText('Password')).toBeInTheDocument();
 
       // SMS OTP fields
-      expect(screen.getByText('Mobile Number')).toBeInTheDocument();
+      expect(screen.getByText('Mobile number')).toBeInTheDocument();
       expect(screen.getByPlaceholderText('Enter your mobile number')).toBeInTheDocument();
 
       // Both buttons
-      expect(screen.getByRole('button', {name: 'Sign In'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Sign in'})).toBeInTheDocument();
       expect(screen.getByRole('button', {name: 'Send OTP'})).toBeInTheDocument();
 
       // Divider should be present
@@ -545,7 +545,7 @@ describe('Preview', () => {
       });
 
       // SMS OTP fields
-      expect(screen.getByText('Mobile Number')).toBeInTheDocument();
+      expect(screen.getByText('Mobile number')).toBeInTheDocument();
       expect(screen.getByRole('button', {name: 'Send OTP'})).toBeInTheDocument();
 
       // Social login buttons
@@ -565,7 +565,7 @@ describe('Preview', () => {
         },
       });
 
-      expect(screen.getByRole('button', {name: /Sign in with Passkey/i})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: /Sign in with passkey/i})).toBeInTheDocument();
     });
 
     it('should not render passkey button when disabled', () => {
@@ -575,7 +575,7 @@ describe('Preview', () => {
         },
       });
 
-      expect(screen.queryByRole('button', {name: /Sign in with Passkey/i})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: /Sign in with passkey/i})).not.toBeInTheDocument();
     });
 
     it('should render passkey button with outlined variant when username/password is enabled', () => {
@@ -587,7 +587,7 @@ describe('Preview', () => {
         selectedTheme: mockTheme,
       });
 
-      const passkeyButton = screen.getByRole('button', {name: /Sign in with Passkey/i});
+      const passkeyButton = screen.getByRole('button', {name: /Sign in with passkey/i});
       expect(passkeyButton).toHaveClass('MuiButton-outlined');
       expect(passkeyButton).toHaveClass('MuiButton-colorPrimary');
     });
@@ -601,7 +601,7 @@ describe('Preview', () => {
         selectedTheme: mockTheme,
       });
 
-      const passkeyButton = screen.getByRole('button', {name: /Sign in with Passkey/i});
+      const passkeyButton = screen.getByRole('button', {name: /Sign in with passkey/i});
       // Without username/password, the passkey button acts as the primary action and omits
       // variant="contained" — styles come entirely from the sx prop.
       expect(passkeyButton).not.toHaveClass('MuiButton-contained');
@@ -617,7 +617,7 @@ describe('Preview', () => {
         selectedTheme: mockTheme,
       });
 
-      const passkeyButton = screen.getByRole('button', {name: /Sign in with Passkey/i});
+      const passkeyButton = screen.getByRole('button', {name: /Sign in with passkey/i});
       expect(passkeyButton).toHaveStyle({color: '#FFFFFF'});
     });
 
@@ -629,7 +629,7 @@ describe('Preview', () => {
         },
       });
 
-      const passkeyButton = screen.getByRole('button', {name: /Sign in with Passkey/i});
+      const passkeyButton = screen.getByRole('button', {name: /Sign in with passkey/i});
       const containerBox = passkeyButton.closest('form');
       expect(containerBox).toBeInTheDocument();
     });
@@ -642,7 +642,7 @@ describe('Preview', () => {
         },
       });
 
-      const passkeyButton = screen.getByRole('button', {name: /Sign in with Passkey/i});
+      const passkeyButton = screen.getByRole('button', {name: /Sign in with passkey/i});
       const containerBox = passkeyButton.closest('form');
       expect(containerBox).toBeInTheDocument();
     });
@@ -737,7 +737,7 @@ describe('Preview', () => {
       });
 
       // Should not render SMS OTP when value is undefined
-      expect(screen.queryByText('Mobile Number')).not.toBeInTheDocument();
+      expect(screen.queryByText('Mobile number')).not.toBeInTheDocument();
     });
 
     it('should render only username/password form with no margin when no social logins', () => {
@@ -749,7 +749,7 @@ describe('Preview', () => {
 
       // Username/password should be present
       expect(screen.getByText('Username')).toBeInTheDocument();
-      expect(screen.getByRole('button', {name: 'Sign In'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Sign in'})).toBeInTheDocument();
       // No divider because no social logins
       expect(screen.queryByText('or')).not.toBeInTheDocument();
     });
@@ -762,7 +762,7 @@ describe('Preview', () => {
       });
 
       // SMS OTP should be present
-      expect(screen.getByText('Mobile Number')).toBeInTheDocument();
+      expect(screen.getByText('Mobile number')).toBeInTheDocument();
       expect(screen.getByRole('button', {name: 'Send OTP'})).toBeInTheDocument();
       // No divider because no social logins
       expect(screen.queryByText('or')).not.toBeInTheDocument();
@@ -792,7 +792,7 @@ describe('Preview', () => {
       });
 
       // Both SMS OTP and social login should be present
-      expect(screen.getByText('Mobile Number')).toBeInTheDocument();
+      expect(screen.getByText('Mobile number')).toBeInTheDocument();
       expect(screen.getByRole('button', {name: /Continue with Google/i})).toBeInTheDocument();
       // Divider should be present
       expect(screen.getByText('or')).toBeInTheDocument();
@@ -809,7 +809,7 @@ describe('Preview', () => {
 
       // All three should be present
       expect(screen.getByText('Username')).toBeInTheDocument();
-      expect(screen.getByText('Mobile Number')).toBeInTheDocument();
+      expect(screen.getByText('Mobile number')).toBeInTheDocument();
       expect(screen.getByRole('button', {name: /Continue with Google/i})).toBeInTheDocument();
       // Divider should be present
       expect(screen.getByText('or')).toBeInTheDocument();
@@ -825,7 +825,7 @@ describe('Preview', () => {
 
       // Both should be present
       expect(screen.getByText('Username')).toBeInTheDocument();
-      expect(screen.getByText('Mobile Number')).toBeInTheDocument();
+      expect(screen.getByText('Mobile number')).toBeInTheDocument();
       // Divider should be present when both methods exist
       expect(screen.getByText('or')).toBeInTheDocument();
     });
@@ -905,7 +905,7 @@ describe('Preview', () => {
         selectedTheme: highContrastTheme,
       });
 
-      const signInButton = screen.getByRole('button', {name: 'Sign In'});
+      const signInButton = screen.getByRole('button', {name: 'Sign in'});
       expect(signInButton).toHaveStyle({backgroundColor: '#0000FF'});
     });
 
@@ -915,7 +915,7 @@ describe('Preview', () => {
         selectedTheme: highContrastTheme,
       });
 
-      const signInButton = screen.getByRole('button', {name: 'Sign In'});
+      const signInButton = screen.getByRole('button', {name: 'Sign in'});
       expect(signInButton).toHaveStyle({color: '#FFFFFF'});
     });
 
@@ -938,7 +938,7 @@ describe('Preview', () => {
         selectedTheme: highContrastTheme,
       });
 
-      const passkeyButton = screen.getByRole('button', {name: /Sign in with Passkey/i});
+      const passkeyButton = screen.getByRole('button', {name: /Sign in with passkey/i});
       expect(passkeyButton).toHaveStyle({backgroundColor: '#FFD700'});
       // Dark mode gold primary has black contrastText
       expect(passkeyButton).toHaveStyle({color: '#000000'});

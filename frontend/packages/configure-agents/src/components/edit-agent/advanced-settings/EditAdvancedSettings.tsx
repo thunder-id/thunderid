@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
-import {OAuth2GrantTypes, type OAuth2Config, applyGrantTypesChange} from '@thunderid/configure-applications';
+import {type OAuth2Config, applyGrantTypesChange} from '@thunderid/configure-applications';
 import {Box, FormControlLabel, Stack, Switch, Typography} from '@wso2/oxygen-ui';
 import {useState} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -11,8 +11,9 @@ import AllowedUserTypesSection from './AllowedUserTypesSection';
 import DangerZoneSection from './DangerZoneSection';
 import OperationModesSection from './OperationModesSection';
 import OwnerSection from './OwnerSection';
-import {DELEGATED_ONLY_GRANTS} from '../../../constants/delegationGrants';
+import {DEFAULT_DELEGATED_GRANTS, DELEGATED_ONLY_GRANTS} from '../../../constants/delegationGrants';
 import type {Agent, AgentInboundAuthConfig, OAuthAgentConfig} from '../../../models/agent';
+import {hasDelegationGrant} from '../../../utils/isDelegatedAgent';
 import AgentDeleteDialog from '../../AgentDeleteDialog';
 
 interface EditAdvancedSettingsProps {
@@ -34,7 +35,7 @@ export default function EditAdvancedSettings({
 }: EditAdvancedSettingsProps) {
   const {t} = useTranslation();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const isUnlocked = oauth2Config?.grantTypes?.includes(OAuth2GrantTypes.AUTHORIZATION_CODE) ?? false;
+  const isUnlocked = hasDelegationGrant(oauth2Config?.grantTypes);
 
   const handleOAuth2ConfigChange = (updates: Partial<OAuth2Config>) => {
     const currentInboundAuth: AgentInboundAuthConfig[] = editedAgent.inboundAuthConfig ?? agent.inboundAuthConfig ?? [];
@@ -44,13 +45,14 @@ export default function EditAdvancedSettings({
     onFieldChange('inboundAuthConfig', updatedInboundAuth);
   };
 
-  // Delegated mode unlocks the delegated-only grants below and the Flows/Tokens tabs. Toggling it
-  // just flips authorization_code on/off; applyGrantTypesChange handles the dependent grants.
+  // Delegated mode unlocks the delegated-only grants below and the Flows/Tokens tabs. Turning it on
+  // gives the agent the default delegated grants and turning it off removes every delegated-only
+  // grant; applyGrantTypesChange handles the dependent settings.
   const handleDelegationToggle = (checked: boolean): void => {
     if (!oauth2Config || checked === isUnlocked) return;
     const grantTypes = oauth2Config.grantTypes ?? [];
     const nextGrantTypes = checked
-      ? [...new Set([...grantTypes, OAuth2GrantTypes.AUTHORIZATION_CODE])]
+      ? [...new Set([...grantTypes, ...DEFAULT_DELEGATED_GRANTS])]
       : grantTypes.filter((grant) => !DELEGATED_ONLY_GRANTS.includes(grant));
     const updates = applyGrantTypesChange(oauth2Config, nextGrantTypes);
     // PKCE is fully derived from authorization_code for agents.
@@ -62,7 +64,7 @@ export default function EditAdvancedSettings({
 
   return (
     <Stack spacing={3}>
-      <SettingsCard title={t('agents:edit.advanced.mode.title', 'Operating Mode')}>
+      <SettingsCard title={t('agents:edit.advanced.mode.title', 'Operating mode')}>
         <Box>
           <FormControlLabel
             control={
@@ -82,11 +84,11 @@ export default function EditAdvancedSettings({
             {isUnlocked
               ? t(
                   'agents:edit.advanced.mode.onBehalfOfUser.description',
-                  'This agent acts on behalf of a signed-in user, using Authorization Code with PKCE.',
+                  'This agent acts on behalf of a signed-in user, using authorization code with PKCE.',
                 )
               : t(
                   'agents:edit.advanced.mode.onOwnBehalf.description',
-                  'This agent authenticates with its own credentials without user interaction, using Client Credentials.',
+                  'This agent authenticates with its own credentials without user interaction, using client credentials.',
                 )}
           </Typography>
         </Box>

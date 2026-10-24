@@ -19,10 +19,10 @@ vi.mock('react-i18next', async (importOriginal) => ({
         'flows:core.executions.passkey.mode.verify': 'Verify Passkey',
         'flows:core.executions.passkey.mode.registerStart': 'Start Passkey Registration',
         'flows:core.executions.passkey.mode.registerFinish': 'Finish Passkey Registration',
-        'flows:core.executions.passkey.relyingPartyId.label': 'Relying Party ID',
+        'flows:core.executions.passkey.relyingPartyId.label': 'Relying party ID',
         'flows:core.executions.passkey.relyingPartyId.placeholder': 'example.com',
         'flows:core.executions.passkey.relyingPartyId.hint': 'The relying party identifier.',
-        'flows:core.executions.passkey.relyingPartyName.label': 'Relying Party Name',
+        'flows:core.executions.passkey.relyingPartyName.label': 'Relying party name',
         'flows:core.executions.passkey.relyingPartyName.placeholder': 'My App',
         'flows:core.executions.passkey.relyingPartyName.hint': 'The relying party display name.',
       };
@@ -52,7 +52,7 @@ describe('PasskeyProperties', () => {
 
     render(<PasskeyProperties resource={resource} onChange={mockOnChange} />);
 
-    expect(screen.queryByText('Relying Party ID')).not.toBeInTheDocument();
+    expect(screen.queryByText('Relying party ID')).not.toBeInTheDocument();
   });
 
   it('should show relying party fields for a mode that needs them', () => {
@@ -65,7 +65,7 @@ describe('PasskeyProperties', () => {
 
     render(<PasskeyProperties resource={resource} onChange={mockOnChange} />);
 
-    expect(screen.getByText('Relying Party ID')).toBeInTheDocument();
+    expect(screen.getByText('Relying party ID')).toBeInTheDocument();
     expect(screen.getByDisplayValue('example.com')).toBeInTheDocument();
     expect(screen.getByDisplayValue('My App')).toBeInTheDocument();
   });

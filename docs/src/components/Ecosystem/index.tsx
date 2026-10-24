@@ -1,8 +1,10 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useHistory, useLocation} from '@docusaurus/router';
+import useIsBrowser from '@docusaurus/useIsBrowser';
 import {Box} from '@wso2/oxygen-ui';
-import {JSX, useMemo, useState} from 'react';
+import {JSX, useMemo} from 'react';
 import EcosystemCTA from './EcosystemCTA';
 import EcosystemFilters from './EcosystemFilters';
 import EcosystemGrid from './EcosystemGrid';
@@ -13,6 +15,8 @@ import {
   EcosystemFacetGroup,
   EcosystemFilters as Filters,
   EMPTY_FILTERS,
+  filtersFromSearch,
+  filtersToSearch,
   selectEntries,
   toggleFacet,
 } from './presentation';
@@ -25,10 +29,34 @@ import {useEcosystem} from '@site/src/hooks/useEcosystem';
  * availability, while search and the result count sit directly above the grids.
  * Filtering lives here so the panel's counts and the results always derive from
  * one piece of state.
+ *
+ * That state is the query string, so a filtered listing can be shared as a
+ * link. The static HTML is rendered unfiltered, so the URL is only read once
+ * the browser takes over, which keeps a shared link from causing a hydration
+ * mismatch. Changes use history.replace, so each keystroke or toggle does not
+ * add a history entry.
  */
 export default function EcosystemPage(): JSX.Element {
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const entries = useEcosystem();
+  const location = useLocation();
+  const history = useHistory();
+  const isBrowser = useIsBrowser();
+
+  const filters = useMemo(
+    () => (isBrowser ? filtersFromSearch(location.search, entries) : EMPTY_FILTERS),
+    [isBrowser, location.search, entries],
+  );
+
+  // Read from history.location rather than the render-time location, so back-to-back
+  // updates in one handler each build on the latest query string.
+  const setFilters = (update: (current: Filters) => Filters): void => {
+    const current = history.location;
+    history.replace({
+      pathname: current.pathname,
+      search: filtersToSearch(update(filtersFromSearch(current.search, entries)), current.search),
+      hash: current.hash,
+    });
+  };
 
   const results = useMemo(() => selectEntries(entries, filters), [entries, filters]);
   const hasActive = activeChips(filters).length > 0;

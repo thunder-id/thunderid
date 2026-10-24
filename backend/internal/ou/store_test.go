@@ -2355,7 +2355,7 @@ func TestBuildRootOUListQuery(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "OUQ-OU_MGT-02", q.ID)
 		require.Contains(t, q.Query, "PARENT_ID IS NULL AND DEPLOYMENT_ID = $3")
-		require.Contains(t, q.Query, "ORDER BY NAME LIMIT $1 OFFSET $2")
+		require.Contains(t, q.Query, "ORDER BY NAME, OU_ID LIMIT $1 OFFSET $2")
 		require.Empty(t, args)
 	})
 
@@ -2420,7 +2420,7 @@ func TestBuildChildrenOUListQuery(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "OUQ-OU_MGT-11", q.ID)
 		require.Contains(t, q.Query, "PARENT_ID = $1 AND DEPLOYMENT_ID = $4")
-		require.Contains(t, q.Query, "ORDER BY NAME LIMIT $2 OFFSET $3")
+		require.Contains(t, q.Query, "ORDER BY NAME, OU_ID LIMIT $2 OFFSET $3")
 		require.Empty(t, args)
 	})
 

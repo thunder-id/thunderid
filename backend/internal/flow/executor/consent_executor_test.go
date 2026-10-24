@@ -1650,12 +1650,14 @@ func (suite *ConsentExecutorTestSuite) TestBuildAugmentedAvailableAttributes_Emp
 	assert.NotNil(suite.T(), result)
 	assert.NotEqual(suite.T(), availableAttrs, result)
 	assert.Contains(suite.T(), result.Attributes, "userType")
+	assert.Contains(suite.T(), result.Attributes, "userTypeHandle")
+	assert.Contains(suite.T(), result.Attributes, "userTypeName")
 	assert.Contains(suite.T(), result.Attributes, "ouId")
 	assert.Contains(suite.T(), result.Attributes, "ouName")
 	assert.Contains(suite.T(), result.Attributes, "ouHandle")
 	assert.Contains(suite.T(), result.Attributes, "groups")
 	assert.Contains(suite.T(), result.Attributes, "roles")
-	assert.Len(suite.T(), result.Attributes, 6)
+	assert.Len(suite.T(), result.Attributes, 8)
 }
 
 func (suite *ConsentExecutorTestSuite) TestBuildAugmentedAvailableAttributes_NoSpecialContext() {
@@ -1695,20 +1697,20 @@ func (suite *ConsentExecutorTestSuite) TestBuildAugmentedAvailableAttributes_Wit
 		{
 			name:             "EntityType only",
 			entityType:       testUserTypeInternal,
-			expectedContains: []string{"userType", "email"},
+			expectedContains: []string{"userType", "userTypeHandle", "userTypeName", "email"},
 			expectedAbsent:   []string{"ouId", "ouName", "ouHandle", "groups", "roles"},
 		},
 		{
 			name:             "OUID only",
 			ouID:             "ou-456",
 			expectedContains: []string{"ouId", "ouName", "ouHandle", "email"},
-			expectedAbsent:   []string{"userType", "groups", "roles"},
+			expectedAbsent:   []string{"userType", "userTypeHandle", "userTypeName", "groups", "roles"},
 		},
 		{
 			name:             "EntityID only",
 			entityID:         testUserID,
 			expectedContains: []string{"groups", "roles", "email"},
-			expectedAbsent:   []string{"userType", "ouId", "ouName", "ouHandle"},
+			expectedAbsent:   []string{"userType", "userTypeHandle", "userTypeName", "ouId", "ouName", "ouHandle"},
 		},
 	}
 
@@ -1775,13 +1777,15 @@ func (suite *ConsentExecutorTestSuite) TestBuildAugmentedAvailableAttributes_All
 	assert.NotNil(suite.T(), result)
 	assert.Contains(suite.T(), result.Attributes, "email")
 	assert.Contains(suite.T(), result.Attributes, "userType")
+	assert.Contains(suite.T(), result.Attributes, "userTypeHandle")
+	assert.Contains(suite.T(), result.Attributes, "userTypeName")
 	assert.Contains(suite.T(), result.Attributes, "ouId")
 	assert.Contains(suite.T(), result.Attributes, "ouName")
 	assert.Contains(suite.T(), result.Attributes, "ouHandle")
 	assert.Contains(suite.T(), result.Attributes, "groups")
 	assert.Contains(suite.T(), result.Attributes, "roles")
-	// Total: 1 original + 6 special
-	assert.Len(suite.T(), result.Attributes, 7)
+	// Total: 1 original + 8 special
+	assert.Len(suite.T(), result.Attributes, 9)
 }
 
 func (suite *ConsentExecutorTestSuite) TestBuildAugmentedAvailableAttributes_DoesNotMutateOriginal() {

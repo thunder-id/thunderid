@@ -99,7 +99,7 @@ export default function RolesList(): JSX.Element {
         renderCell: (params: DataGrid.GridRenderCellParams<RoleSummary>): JSX.Element => (
           <ListingTable.RowActions>
             {params.row.isReadOnly ? (
-              <Tooltip title={t('common:status.readOnly', 'Read Only')}>
+              <Tooltip title={t('common:status.readOnly', 'Read only')}>
                 <IconButton size="small" disableRipple sx={{cursor: 'default'}}>
                   <Eye size={16} />
                 </IconButton>

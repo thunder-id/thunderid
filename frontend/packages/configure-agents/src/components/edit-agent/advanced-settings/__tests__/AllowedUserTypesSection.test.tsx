@@ -83,7 +83,7 @@ describe('AllowedUserTypesSection', () => {
       />,
     );
 
-    expect(screen.getByText('Allowed User Types')).toBeInTheDocument();
+    expect(screen.getByText('Allowed user types')).toBeInTheDocument();
     expect(screen.getByText('Restrict which user types can sign up through this agent.')).toBeInTheDocument();
   });
 

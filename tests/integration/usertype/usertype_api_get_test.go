@@ -308,3 +308,30 @@ func (ts *GetUserTypeTestSuite) deleteTestSchema(schemaID string) {
 	}
 	defer resp.Body.Close()
 }
+
+// TestGetDefaultPersonUserTypeContacts tests that the default Person type uses contact types
+// with primary contact mappings.
+func (ts *GetUserTypeTestSuite) TestGetDefaultPersonUserTypeContacts() {
+	const personTypeID = "01900000-0000-7000-8000-000000000010"
+
+	resp, err := ts.client.Get(testServerURL + "/user-types/" + personTypeID)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	bodyBytes, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, string(bodyBytes))
+
+	var person UserType
+	ts.Require().NoError(json.Unmarshal(bodyBytes, &person))
+	ts.Equal(&SystemAttributes{Display: "username", PrimaryEmail: "email", PrimaryMobile: "mobile_number"},
+		person.SystemAttributes)
+
+	var schema map[string]struct {
+		Type  string `json:"type"`
+		Regex string `json:"regex"`
+	}
+	ts.Require().NoError(json.Unmarshal(person.Schema, &schema))
+	ts.Equal("email", schema["email"].Type)
+	ts.Equal("mobile", schema["mobile_number"].Type)
+	ts.Equal(`^\+[1-9]\d{1,14}$`, schema["mobile_number"].Regex)
+}

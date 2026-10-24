@@ -18,10 +18,19 @@ func NewCertificateServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *CertificateServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &CertificateServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type CertificateServiceInterfaceMock_CreateCertificate_Call struct {
 // CreateCertificate is a helper method to define mock.On call
 //   - ctx context.Context
 //   - cert1 *cert.Certificate
-func (_e *CertificateServiceInterfaceMock_Expecter) CreateCertificate(ctx interface{}, cert1 interface{}) *CertificateServiceInterfaceMock_CreateCertificate_Call {
+func (_e *CertificateServiceInterfaceMock_Expecter) CreateCertificate(ctx any, cert1 any) *CertificateServiceInterfaceMock_CreateCertificate_Call {
 	return &CertificateServiceInterfaceMock_CreateCertificate_Call{Call: _e.mock.On("CreateCertificate", ctx, cert1)}
 }
 
@@ -136,7 +145,7 @@ type CertificateServiceInterfaceMock_DeleteCertificateByID_Call struct {
 // DeleteCertificateByID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *CertificateServiceInterfaceMock_Expecter) DeleteCertificateByID(ctx interface{}, id interface{}) *CertificateServiceInterfaceMock_DeleteCertificateByID_Call {
+func (_e *CertificateServiceInterfaceMock_Expecter) DeleteCertificateByID(ctx any, id any) *CertificateServiceInterfaceMock_DeleteCertificateByID_Call {
 	return &CertificateServiceInterfaceMock_DeleteCertificateByID_Call{Call: _e.mock.On("DeleteCertificateByID", ctx, id)}
 }
 
@@ -196,7 +205,7 @@ type CertificateServiceInterfaceMock_DeleteCertificateByReference_Call struct {
 //   - ctx context.Context
 //   - refType cert.CertificateReferenceType
 //   - refID string
-func (_e *CertificateServiceInterfaceMock_Expecter) DeleteCertificateByReference(ctx interface{}, refType interface{}, refID interface{}) *CertificateServiceInterfaceMock_DeleteCertificateByReference_Call {
+func (_e *CertificateServiceInterfaceMock_Expecter) DeleteCertificateByReference(ctx any, refType any, refID any) *CertificateServiceInterfaceMock_DeleteCertificateByReference_Call {
 	return &CertificateServiceInterfaceMock_DeleteCertificateByReference_Call{Call: _e.mock.On("DeleteCertificateByReference", ctx, refType, refID)}
 }
 
@@ -271,7 +280,7 @@ type CertificateServiceInterfaceMock_GetCertificateByID_Call struct {
 // GetCertificateByID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *CertificateServiceInterfaceMock_Expecter) GetCertificateByID(ctx interface{}, id interface{}) *CertificateServiceInterfaceMock_GetCertificateByID_Call {
+func (_e *CertificateServiceInterfaceMock_Expecter) GetCertificateByID(ctx any, id any) *CertificateServiceInterfaceMock_GetCertificateByID_Call {
 	return &CertificateServiceInterfaceMock_GetCertificateByID_Call{Call: _e.mock.On("GetCertificateByID", ctx, id)}
 }
 
@@ -342,7 +351,7 @@ type CertificateServiceInterfaceMock_GetCertificateByReference_Call struct {
 //   - ctx context.Context
 //   - refType cert.CertificateReferenceType
 //   - refID string
-func (_e *CertificateServiceInterfaceMock_Expecter) GetCertificateByReference(ctx interface{}, refType interface{}, refID interface{}) *CertificateServiceInterfaceMock_GetCertificateByReference_Call {
+func (_e *CertificateServiceInterfaceMock_Expecter) GetCertificateByReference(ctx any, refType any, refID any) *CertificateServiceInterfaceMock_GetCertificateByReference_Call {
 	return &CertificateServiceInterfaceMock_GetCertificateByReference_Call{Call: _e.mock.On("GetCertificateByReference", ctx, refType, refID)}
 }
 
@@ -418,7 +427,7 @@ type CertificateServiceInterfaceMock_UpdateCertificateByID_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - cert1 *cert.Certificate
-func (_e *CertificateServiceInterfaceMock_Expecter) UpdateCertificateByID(ctx interface{}, id interface{}, cert1 interface{}) *CertificateServiceInterfaceMock_UpdateCertificateByID_Call {
+func (_e *CertificateServiceInterfaceMock_Expecter) UpdateCertificateByID(ctx any, id any, cert1 any) *CertificateServiceInterfaceMock_UpdateCertificateByID_Call {
 	return &CertificateServiceInterfaceMock_UpdateCertificateByID_Call{Call: _e.mock.On("UpdateCertificateByID", ctx, id, cert1)}
 }
 
@@ -495,7 +504,7 @@ type CertificateServiceInterfaceMock_UpdateCertificateByReference_Call struct {
 //   - refType cert.CertificateReferenceType
 //   - refID string
 //   - cert1 *cert.Certificate
-func (_e *CertificateServiceInterfaceMock_Expecter) UpdateCertificateByReference(ctx interface{}, refType interface{}, refID interface{}, cert1 interface{}) *CertificateServiceInterfaceMock_UpdateCertificateByReference_Call {
+func (_e *CertificateServiceInterfaceMock_Expecter) UpdateCertificateByReference(ctx any, refType any, refID any, cert1 any) *CertificateServiceInterfaceMock_UpdateCertificateByReference_Call {
 	return &CertificateServiceInterfaceMock_UpdateCertificateByReference_Call{Call: _e.mock.On("UpdateCertificateByReference", ctx, refType, refID, cert1)}
 }
 

@@ -62,8 +62,8 @@ async function generateDocs() {
   // Generate contributors
   executeScript('Contributors Generator', join(__dirname, 'generate-contributors.mjs'));
 
-  // Generate SDK release data
-  executeScript('SDK Releases Generator', join(__dirname, 'generate-sdk-releases.mjs'));
+  // Generate ecosystem (SDK, sample) release data
+  executeScript('Ecosystem Releases Generator', join(__dirname, 'generate-ecosystem-releases.mjs'));
 
   // Copy LLM prompt files into static/docs/
   executeScript('Prompts Generator', join(__dirname, 'generate-prompts.mjs'));

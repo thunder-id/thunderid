@@ -18,6 +18,11 @@ export interface McpClientTypePreviewProps {
    * The currently selected MCP client type, whose OAuth profile the panel previews
    */
   clientType: McpClientType;
+
+  /**
+   * Whether the user-delegated client is created as a confidential client instead of a public one
+   */
+  confidentialClient?: boolean;
 }
 
 /**
@@ -27,6 +32,7 @@ export interface McpClientTypePreviewProps {
  *
  * @param props - The component props
  * @param props.clientType - The currently selected MCP client type
+ * @param props.confidentialClient - Whether the user-delegated client is created as a confidential client
  *
  * @returns JSX element displaying the client type preview
  *
@@ -41,7 +47,10 @@ export interface McpClientTypePreviewProps {
  *
  * @public
  */
-export default function McpClientTypePreview({clientType}: McpClientTypePreviewProps): JSX.Element {
+export default function McpClientTypePreview({
+  clientType,
+  confidentialClient = false,
+}: McpClientTypePreviewProps): JSX.Element {
   const {t} = useTranslation();
   const isM2m = clientType === McpClientTypes.M2M;
 
@@ -61,7 +70,7 @@ export default function McpClientTypePreview({clientType}: McpClientTypePreviewP
               size="small"
               variant="outlined"
               icon={<KeyRound size={14} />}
-              label={t('applications:onboarding.mcp.oauthProfile.clientCredentials', 'Client Credentials')}
+              label={t('applications:onboarding.mcp.oauthProfile.clientCredentials', 'Client credentials')}
             />
             <Chip
               size="small"
@@ -83,7 +92,27 @@ export default function McpClientTypePreview({clientType}: McpClientTypePreviewP
               icon={<ShieldCheck size={14} />}
               label={t('applications:onboarding.mcp.oauthProfile.authCodePkce')}
             />
-            <Chip size="small" variant="outlined" label={t('applications:onboarding.mcp.oauthProfile.publicClient')} />
+            {confidentialClient ? (
+              <>
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={t('applications:onboarding.mcp.oauthProfile.confidentialClient', 'Confidential client')}
+                />
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  icon={<Lock size={14} />}
+                  label={t('applications:onboarding.mcp.oauthProfile.clientSecretIssued', 'Client secret issued')}
+                />
+              </>
+            ) : (
+              <Chip
+                size="small"
+                variant="outlined"
+                label={t('applications:onboarding.mcp.oauthProfile.publicClient')}
+              />
+            )}
             <Chip
               size="small"
               variant="outlined"

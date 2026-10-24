@@ -83,7 +83,7 @@ export default function NotificationTemplateDeleteDialog({
 
   return (
     <Dialog open={open} onClose={handleCancel} maxWidth="sm" fullWidth>
-      <DialogTitle>{t('delete.title', 'Delete Template')}</DialogTitle>
+      <DialogTitle>{t('delete.title', 'Delete template')}</DialogTitle>
       <DialogContent>
         <DialogContentText sx={{mb: 2}}>
           {templateName

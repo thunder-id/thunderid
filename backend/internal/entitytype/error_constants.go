@@ -128,7 +128,7 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.entitytypeservice.non_displayable_attribute_type_description",
-			DefaultValue: "Display attribute must reference a string or number type",
+			DefaultValue: "Display attribute must reference a string, email, mobile, or number type",
 		},
 	}
 	// ErrorCredentialDisplayAttribute is the error returned when the display attribute
@@ -204,6 +204,51 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.entitytypeservice.entity_type_handle_update_not_allowed_description",
 			DefaultValue: "The handle of an entity type cannot be changed once it is created",
+		},
+	}
+
+	// ErrorInvalidPrimaryContactAttribute is returned when a primary contact mapping
+	// does not reference a top-level attribute in the schema.
+	ErrorInvalidPrimaryContactAttribute = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USRS-1018",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.entitytypeservice.invalid_primary_contact_attribute",
+			DefaultValue: "Invalid primary contact attribute",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.entitytypeservice.invalid_primary_contact_attribute_description",
+			DefaultValue: "Primary email and mobile must reference a top-level attribute defined in the schema",
+		},
+	}
+
+	// ErrorPrimaryContactTypeMismatch is returned when a primary contact mapping
+	// references an attribute of a different type.
+	ErrorPrimaryContactTypeMismatch = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USRS-1019",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.entitytypeservice.primary_contact_type_mismatch",
+			DefaultValue: "Primary contact type mismatch",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.entitytypeservice.primary_contact_type_mismatch_description",
+			DefaultValue: "Primary email must reference an email attribute and " +
+				"primary mobile must reference a mobile attribute",
+		},
+	}
+
+	// ErrorPrimaryContactNotSupported is returned when primary contact mappings are set on an agent type.
+	ErrorPrimaryContactNotSupported = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USRS-1020",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.entitytypeservice.primary_contact_not_supported",
+			DefaultValue: "Primary contact not supported",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.entitytypeservice.primary_contact_not_supported_description",
+			DefaultValue: "Primary email and mobile mappings are supported only for user types",
 		},
 	}
 )

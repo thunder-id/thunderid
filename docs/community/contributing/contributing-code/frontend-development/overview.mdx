@@ -8,12 +8,13 @@ hide_table_of_contents: false
 
 # Frontend Contribution Guidelines
 
-The frontend is an Nx-managed monorepo under `frontend/` with two React apps:
+The frontend is an Nx-managed monorepo under `frontend/` with three React apps:
 
 | App | Location | Purpose | Development Port |
 |-----|----------|---------|----------|
 | <ProductName /> Gate | `frontend/apps/gate/` | Login, registration, recovery UI | 5190 |
 | <ProductName /> Console | `frontend/apps/console/` | Admin console | 5191 |
+| <ProductName /> Control Plane Console | `frontend/apps/console-cp/` | Admin console served by the control plane: the console plus gateway management, with no flow execution | 5192 |
 
 ## Feature Package Structure
 

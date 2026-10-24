@@ -43,6 +43,8 @@ type revocationStoreInterface interface {
 	// insertCriterion records a criteria-based revocation. The write is idempotent per
 	// (deployment, type, value).
 	insertCriterion(ctx context.Context, criterion revocationCriterion) error
+	// insertCriteria records a set of criteria-based revocations, idempotent like insertCriterion.
+	insertCriteria(ctx context.Context, criteria []revocationCriterion) error
 	// areCriteriaRevoked reports whether a non-expired criteria entry exists for any of the supplied
 	// (type, value) pairs, in a single round trip. An empty slice is not revoked.
 	areCriteriaRevoked(ctx context.Context, criteria []Criterion, establishedAt time.Time) (bool, error)
@@ -132,6 +134,50 @@ func (s *revocationStore) insertCriterion(ctx context.Context, criterion revocat
 	}
 
 	return nil
+}
+
+// insertCriteria records a set of criteria-based revocations in one runtime persistent transaction.
+func (s *revocationStore) insertCriteria(ctx context.Context, criteria []revocationCriterion) error {
+	if len(criteria) == 0 {
+		return nil
+	}
+	dbClient, err := s.dbProvider.GetRuntimePersistentDBClient()
+	if err != nil {
+		return fmt.Errorf("failed to get runtime persistent database client: %w", err)
+	}
+	transactioner, err := s.dbProvider.GetRuntimePersistentDBTransactioner()
+	if err != nil {
+		return fmt.Errorf("failed to get runtime persistent database transactioner: %w", err)
+	}
+
+	rows := make([]revocationCriterion, 0, len(criteria))
+	seen := make(map[string]struct{}, len(criteria))
+	for _, criterion := range criteria {
+		key := string(criterion.Type) + "\x00" + criterion.Value
+		if _, ok := seen[key]; ok {
+			return fmt.Errorf("revocation criteria batch repeats criterion %s", criterion.Type)
+		}
+		seen[key] = struct{}{}
+		if criterion.ID == "" {
+			id, err := utils.GenerateUUIDv7()
+			if err != nil {
+				return fmt.Errorf("failed to generate revocation criterion id: %w", err)
+			}
+			criterion.ID = id
+		}
+		rows = append(rows, criterion)
+	}
+
+	return transactioner.Transact(ctx, func(txCtx context.Context) error {
+		for start := 0; start < len(rows); start += maxCriteriaRowsPerStatement {
+			end := min(start+maxCriteriaRowsPerStatement, len(rows))
+			query, args := buildInsertRevocationCriteriaQuery(rows[start:end], s.scope(txCtx))
+			if _, err := dbClient.ExecuteContext(txCtx, query, args...); err != nil {
+				return fmt.Errorf("error inserting revocation criteria: %w", err)
+			}
+		}
+		return nil
+	})
 }
 
 // areCriteriaRevoked reports whether a non-expired criteria entry exists for any supplied

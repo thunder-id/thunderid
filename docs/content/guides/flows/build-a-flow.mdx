@@ -44,7 +44,7 @@ The canvas opens with a **START** node, a blank **View** node, a **Auth Assertio
 1. Delete **Blank View**.
 2. From **Steps**, click **+** next to **Username + Password**. This replaces the default blank View with the login form View node.
 3. From **Executors**, click **+** next to **Identifier + Password**.
-4. On the **Username + Password** View node, click the **Sign In** button component and set its **Action** property to **Submit Form**.
+4. On the **Username + Password** View node, click the **Sign In** button component and set its **Action** property to **Submit form**.
 5. Connect **START** → **Username + Password View** → **Identifier + Password Executor**.
 
 ## Add the Google Social Login Option
@@ -83,13 +83,13 @@ After a successful username + password check, the flow sends a one-time password
 2. Connect the **Identifier + Password** Executor's **success** output to the **Generate OTP** Executor's input.
 3. From the left panel under **Executors**, click **+** next to **Send SMS**.
 4. Click the <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:"inline",verticalAlign:"middle"}}><path d="M11 10.27 7 3.34"></path><path d="m11 13.73-4 6.93"></path><path d="M12 22v-2"></path><path d="M12 2v2"></path><path d="M14 12h8"></path><path d="m17 20.66-1-1.73"></path><path d="m17 3.34-1 1.73"></path><path d="M2 12h2"></path><path d="m20.66 17-1.73-1"></path><path d="m20.66 7-1.73 1"></path><path d="m3.34 17 1.73-1"></path><path d="m3.34 7 1.73 1"></path><circle cx="12" cy="12" r="2"></circle><circle cx="12" cy="12" r="8"></circle></svg> configure icon on the **Send SMS** Executor node.
-5. Set the **Notification Sender** property to the sender name of your configured SMS sender.
-6. Set the **SMS Template** property to the scenario name of the SMS template to use (e.g., `OTP` for the built-in OTP template).
+5. Set the **Notification sender** property to the sender name of your configured SMS sender.
+6. Set the **SMS template** property to the scenario name of the SMS template to use (e.g., `OTP` for the built-in OTP template).
 7. Connect the **Generate OTP** Executor's **success** output to the **Send SMS** Executor's input.
 
 ## Add the OTP View and Verify OTP Executor
 
-1. From **Steps**, click **+** next to **SMS OTP View**. Click the **Verify** button component and set its **Action** property to **Submit Form**.
+1. From **Steps**, click **+** next to **SMS OTP View**. Click the **Verify** button component and set its **Action** property to **Submit form**.
 2. From **Executors**, click **+** next to **Verify OTP**.
 3. Connect **Send SMS** success → **SMS OTP View**.
 4. Connect **SMS OTP View** action output → **Verify OTP** Executor.
@@ -148,7 +148,7 @@ A flow has no effect until it is assigned to an application.
   A registration flow controls how new users sign up for your application. To create one:
 
   1. In the Console, go to **Flows** → **+ Create New Flow**.
-  2. Select **Self Sign-up** as the flow type and click **Continue**.
+  2. Select **Self sign-up** as the flow type and click **Continue**.
   3. Choose a template, for example, **Basic** ("Username, password, and profile info registration"), or **Blank** to start from scratch.
   4. Give the flow a name and click **Create**.
   5. The canvas opens with the selected template pre-wired. Customize the steps as needed, then click **Save**.
@@ -171,7 +171,7 @@ A flow has no effect until it is assigned to an application.
   A recovery flow lets users regain access to their account, for example, via email-based password reset. To create one:
 
   1. In the Console, go to **Flows** → **+ Create New Flow**.
-  2. Select **Password Recovery** as the flow type and click **Continue**.
+  2. Select **Password recovery** as the flow type and click **Continue**.
   3. Choose a template, for example, **Email Link** ("Email-based password recovery with email link") or **SMS OTP**, or **Blank** to start from scratch.
   4. Give the flow a name and click **Create**.
   5. Review and customize the canvas, then click **Save**.
@@ -179,7 +179,7 @@ A flow has no effect until it is assigned to an application.
   To assign the recovery flow to your application:
 
   1. Go to **Applications** and open the application.
-  2. Open the **Flows** tab and find the **Recovery Flow** section.
+  2. Open the **Flows** tab and find the **Recovery flow** section.
   3. Enable the toggle to activate recovery for the application.
   4. Select the flow you created from the dropdown.
   5. Click **Save**.
@@ -229,11 +229,11 @@ A flow has no effect until it is assigned to an application.
   To use your flow instead of the default on an application:
 
   1. Go to **Applications** and open the application.
-  2. Open the **Flows** tab and find the **Sign Out Flow** section.
+  2. Open the **Flows** tab and find the **Sign out flow** section.
   3. Select the flow you created from the dropdown.
   4. Click **Save**.
 
-  To make it the default for every application in an organization unit instead, go to **Organization Units** and open the organization unit. Open the **Flows** tab, select the flow under **Sign Out Flow**, then click **Save**. An application that pins its own flow keeps using that flow.
+  To make it the default for every application in an organization unit instead, go to **Organization units** and open the organization unit. Open the **Flows** tab, select the flow under **Sign out flow**, then click **Save**. An application that pins its own flow keeps using that flow.
 
   The sign-out flow runs when a user signs out of the application. Browser-based applications trigger it over OIDC through the [RP-Initiated Logout](../../protocols/oauth-oidc/rp-initiated-logout) endpoint; app-native applications run it directly through the Flow Execution API by initiating a `SIGNOUT` flow. See [API Reference](../../../apis).
 

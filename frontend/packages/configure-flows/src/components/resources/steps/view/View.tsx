@@ -408,7 +408,7 @@ function View({
                     onClick={handleMenuOpen}
                     sx={dashedAddButtonSx}
                   >
-                    {t('flows:core.steps.view.addComponent', 'Add Component')}
+                    {t('flows:core.steps.view.addComponent', 'Add component')}
                   </Button>
                 </Box>
               )}

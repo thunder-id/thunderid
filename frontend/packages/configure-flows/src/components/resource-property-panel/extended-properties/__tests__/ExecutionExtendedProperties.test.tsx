@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen, fireEvent} from '@testing-library/react';
@@ -32,14 +32,14 @@ vi.mock('react-i18next', async (importOriginal) => ({
         'flows:core.executions.passkey.mode.verify': 'Passkey Verify',
         'flows:core.executions.passkey.mode.registerStart': 'Passkey Register Start',
         'flows:core.executions.passkey.mode.registerFinish': 'Passkey Register Finish',
-        'flows:core.executions.passkey.relyingPartyId.label': 'Relying Party ID',
+        'flows:core.executions.passkey.relyingPartyId.label': 'Relying party ID',
         'flows:core.executions.passkey.relyingPartyId.placeholder': 'Enter relying party ID',
         'flows:core.executions.passkey.relyingPartyId.hint': 'Relying party identifier hint',
-        'flows:core.executions.passkey.relyingPartyName.label': 'Relying Party Name',
+        'flows:core.executions.passkey.relyingPartyName.label': 'Relying party name',
         'flows:core.executions.passkey.relyingPartyName.placeholder': 'Enter relying party name',
         'flows:core.executions.passkey.relyingPartyName.hint': 'Relying party name hint',
         'flows:core.executions.consent.description': 'Configure the consent executor settings.',
-        'flows:core.executions.consent.timeout.label': 'Consent Timeout (seconds)',
+        'flows:core.executions.consent.timeout.label': 'Consent timeout (seconds)',
         'flows:core.executions.consent.timeout.placeholder': '0',
         'flows:core.executions.consent.timeout.hint':
           'Time in seconds before the consent request expires. Use 0 for no timeout.',
@@ -57,7 +57,7 @@ vi.mock('react-i18next', async (importOriginal) => ({
         'flows:core.executions.identifying.mode.label': 'Mode',
         'flows:core.executions.identifying.mode.placeholder': 'Select a mode',
         'flows:core.executions.identifying.mode.identify': 'Identify',
-        'flows:core.executions.identifying.mode.resolve': 'Resolve (Disambiguation)',
+        'flows:core.executions.identifying.mode.resolve': 'Resolve (disambiguation)',
       };
       return translations[key] || key;
     },
@@ -108,8 +108,8 @@ const failed = (): TemplatesState => ({data: undefined, isLoading: false, isSucc
 const emailTemplates = [
   {id: 'id-1', handle: 'otp', displayName: 'OTP Verification', self: ''},
   {id: 'id-2', handle: 'user-invite', displayName: 'User Invite', self: ''},
-  {id: 'id-3', handle: 'password-recovery', displayName: 'Password Recovery', self: ''},
-  {id: 'id-4', handle: 'magic-link', displayName: 'Magic Link', self: ''},
+  {id: 'id-3', handle: 'password-recovery', displayName: 'Password recovery', self: ''},
+  {id: 'id-4', handle: 'magic-link', displayName: 'Magic link', self: ''},
 ];
 const smsTemplates = [{id: 'sms-1', handle: 'otp', displayName: 'OTP Verification', self: ''}];
 
@@ -511,8 +511,8 @@ describe('ExecutionExtendedProperties', () => {
 
       render(<ExecutionExtendedProperties resource={resourceWithChallengeMode} onChange={mockOnChange} />);
 
-      expect(screen.getByLabelText('Relying Party ID')).toBeInTheDocument();
-      expect(screen.getByLabelText('Relying Party Name')).toBeInTheDocument();
+      expect(screen.getByLabelText('Relying party ID')).toBeInTheDocument();
+      expect(screen.getByLabelText('Relying party name')).toBeInTheDocument();
     });
 
     it('should show relying party fields for register_start mode', () => {
@@ -531,8 +531,8 @@ describe('ExecutionExtendedProperties', () => {
 
       render(<ExecutionExtendedProperties resource={resourceWithRegisterStartMode} onChange={mockOnChange} />);
 
-      expect(screen.getByLabelText('Relying Party ID')).toBeInTheDocument();
-      expect(screen.getByLabelText('Relying Party Name')).toBeInTheDocument();
+      expect(screen.getByLabelText('Relying party ID')).toBeInTheDocument();
+      expect(screen.getByLabelText('Relying party name')).toBeInTheDocument();
     });
 
     it('should not show relying party fields for verify mode', () => {
@@ -551,8 +551,8 @@ describe('ExecutionExtendedProperties', () => {
 
       render(<ExecutionExtendedProperties resource={resourceWithVerifyMode} onChange={mockOnChange} />);
 
-      expect(screen.queryByLabelText('Relying Party ID')).not.toBeInTheDocument();
-      expect(screen.queryByLabelText('Relying Party Name')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Relying party ID')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Relying party name')).not.toBeInTheDocument();
     });
 
     it('should call onChange for relying party fields', () => {
@@ -571,8 +571,8 @@ describe('ExecutionExtendedProperties', () => {
 
       render(<ExecutionExtendedProperties resource={resourceWithChallengeMode} onChange={mockOnChange} />);
 
-      const relyingPartyIdInput = screen.getByLabelText('Relying Party ID');
-      const relyingPartyNameInput = screen.getByLabelText('Relying Party Name');
+      const relyingPartyIdInput = screen.getByLabelText('Relying party ID');
+      const relyingPartyNameInput = screen.getByLabelText('Relying party name');
 
       fireEvent.change(relyingPartyIdInput, {target: {value: 'localhost'}});
       fireEvent.blur(relyingPartyIdInput);
@@ -659,7 +659,7 @@ describe('ExecutionExtendedProperties', () => {
       render(<ExecutionExtendedProperties resource={consentResource} onChange={mockOnChange} />);
 
       expect(screen.getByText('Configure the consent executor settings.')).toBeInTheDocument();
-      expect(screen.getByLabelText('Consent Timeout (seconds)')).toBeInTheDocument();
+      expect(screen.getByLabelText('Consent timeout (seconds)')).toBeInTheDocument();
       expect(
         screen.getByText('Time in seconds before the consent request expires. Use 0 for no timeout.'),
       ).toBeInTheDocument();
@@ -668,7 +668,7 @@ describe('ExecutionExtendedProperties', () => {
     it('should default timeout to 0 when value is not set', () => {
       render(<ExecutionExtendedProperties resource={consentResource} onChange={mockOnChange} />);
 
-      expect(screen.getByLabelText('Consent Timeout (seconds)')).toHaveValue(0);
+      expect(screen.getByLabelText('Consent timeout (seconds)')).toHaveValue(0);
     });
 
     it('should commit the timeout on blur', () => {
@@ -684,7 +684,7 @@ describe('ExecutionExtendedProperties', () => {
 
       render(<ExecutionExtendedProperties resource={consentResourceWithTimeout} onChange={mockOnChange} />);
 
-      const timeoutInput = screen.getByLabelText('Consent Timeout (seconds)');
+      const timeoutInput = screen.getByLabelText('Consent timeout (seconds)');
       fireEvent.change(timeoutInput, {
         target: {value: '45'},
       });
@@ -696,7 +696,7 @@ describe('ExecutionExtendedProperties', () => {
     it('should not commit the timeout while typing', () => {
       render(<ExecutionExtendedProperties resource={consentResource} onChange={mockOnChange} />);
 
-      const timeoutInput = screen.getByLabelText('Consent Timeout (seconds)');
+      const timeoutInput = screen.getByLabelText('Consent timeout (seconds)');
       fireEvent.change(timeoutInput, {target: {value: '45'}});
 
       expect(mockOnChange).not.toHaveBeenCalled();
@@ -714,7 +714,7 @@ describe('ExecutionExtendedProperties', () => {
 
       render(<ExecutionExtendedProperties resource={consentResourceWithTimeout} onChange={mockOnChange} />);
 
-      const timeoutInput = screen.getByLabelText('Consent Timeout (seconds)');
+      const timeoutInput = screen.getByLabelText('Consent timeout (seconds)');
       fireEvent.change(timeoutInput, {target: {value: ''}});
       fireEvent.blur(timeoutInput);
 
@@ -732,7 +732,7 @@ describe('ExecutionExtendedProperties', () => {
 
       render(<ExecutionExtendedProperties resource={consentResourceWithTimeout} onChange={mockOnChange} />);
 
-      const timeoutInput = screen.getByLabelText('Consent Timeout (seconds)');
+      const timeoutInput = screen.getByLabelText('Consent timeout (seconds)');
       fireEvent.change(timeoutInput, {target: {value: '-5'}});
       fireEvent.blur(timeoutInput);
 
@@ -742,7 +742,7 @@ describe('ExecutionExtendedProperties', () => {
     it('should floor decimal timeout to integer on blur', () => {
       render(<ExecutionExtendedProperties resource={consentResource} onChange={mockOnChange} />);
 
-      const timeoutInput = screen.getByLabelText('Consent Timeout (seconds)');
+      const timeoutInput = screen.getByLabelText('Consent timeout (seconds)');
       fireEvent.change(timeoutInput, {target: {value: '3.7'}});
       fireEvent.blur(timeoutInput);
 
@@ -752,7 +752,7 @@ describe('ExecutionExtendedProperties', () => {
     it('should commit the timeout on Enter', () => {
       render(<ExecutionExtendedProperties resource={consentResource} onChange={mockOnChange} />);
 
-      const timeoutInput = screen.getByLabelText('Consent Timeout (seconds)');
+      const timeoutInput = screen.getByLabelText('Consent timeout (seconds)');
       fireEvent.change(timeoutInput, {target: {value: '15'}});
       fireEvent.keyDown(timeoutInput, {key: 'Enter'});
 
@@ -923,14 +923,14 @@ describe('ExecutionExtendedProperties', () => {
 
       expect(screen.getByRole('option', {name: 'OTP Verification'})).toBeInTheDocument();
       expect(screen.getByRole('option', {name: 'User Invite'})).toBeInTheDocument();
-      expect(screen.getByRole('option', {name: 'Password Recovery'})).toBeInTheDocument();
+      expect(screen.getByRole('option', {name: 'Password recovery'})).toBeInTheDocument();
     });
 
     it('should commit the template handle for the selected label', async () => {
       render(<ExecutionExtendedProperties resource={emailResource} onChange={mockOnChange} />);
 
       await userEvent.click(screen.getByLabelText('flows:core.executions.email.emailTemplate.label'));
-      await userEvent.click(screen.getByRole('option', {name: 'Magic Link'}));
+      await userEvent.click(screen.getByRole('option', {name: 'Magic link'}));
 
       expect(mockOnChange).toHaveBeenCalledWith('data.properties.emailTemplate', 'magic-link', emailResource);
     });
@@ -940,7 +940,7 @@ describe('ExecutionExtendedProperties', () => {
 
       await userEvent.type(screen.getByLabelText('flows:core.executions.email.emailTemplate.label'), 'Recovery');
 
-      expect(screen.getByRole('option', {name: 'Password Recovery'})).toBeInTheDocument();
+      expect(screen.getByRole('option', {name: 'Password recovery'})).toBeInTheDocument();
       expect(screen.queryByRole('option', {name: 'User Invite'})).not.toBeInTheDocument();
     });
 
@@ -955,7 +955,7 @@ describe('ExecutionExtendedProperties', () => {
 
       render(<ExecutionExtendedProperties resource={resourceWithTemplate} onChange={mockOnChange} />);
 
-      expect(screen.getByLabelText('flows:core.executions.email.emailTemplate.label')).toHaveValue('Password Recovery');
+      expect(screen.getByLabelText('flows:core.executions.email.emailTemplate.label')).toHaveValue('Password recovery');
     });
 
     // A failed read must not tell the user to create providers that may already exist.
@@ -1797,6 +1797,26 @@ describe('ExecutionExtendedProperties', () => {
     });
   });
 
+  describe('Account Linking Executor', () => {
+    const linkingResource = {
+      id: 'linking-1',
+      data: {
+        action: {
+          executor: {
+            name: ExecutionTypes.AccountLinking,
+          },
+        },
+        properties: {},
+      },
+    } as unknown as Resource;
+
+    it('should render NoConfigProperties message', () => {
+      render(<ExecutionExtendedProperties resource={linkingResource} onChange={mockOnChange} />);
+
+      expect(screen.getByText('flows:core.executions.noConfig.description')).toBeInTheDocument();
+    });
+  });
+
   describe('Identifying Executor', () => {
     const identifyingResource = {
       id: 'identifying-executor-1',
@@ -1829,7 +1849,7 @@ describe('ExecutionExtendedProperties', () => {
       await user.click(select);
 
       expect(screen.getByText('Identify')).toBeInTheDocument();
-      expect(screen.getByText('Resolve (Disambiguation)')).toBeInTheDocument();
+      expect(screen.getByText('Resolve (disambiguation)')).toBeInTheDocument();
     });
 
     it('should call onChange with updated data when identify mode is selected', async () => {
@@ -1864,7 +1884,7 @@ describe('ExecutionExtendedProperties', () => {
 
       const select = screen.getByRole('combobox');
       await user.click(select);
-      await user.click(screen.getByText('Resolve (Disambiguation)'));
+      await user.click(screen.getByText('Resolve (disambiguation)'));
 
       expect(mockOnChange).toHaveBeenCalledWith(
         'data',
@@ -1880,6 +1900,43 @@ describe('ExecutionExtendedProperties', () => {
         }),
         identifyingResource,
       );
+    });
+  });
+
+  describe('Access change executors', () => {
+    const makeResource = (name: string, mode: string): Resource =>
+      ({
+        id: `${name}-1`,
+        data: {
+          action: {
+            executor: {name, mode},
+          },
+        },
+      }) as unknown as Resource;
+
+    it.each([
+      [ExecutionTypes.AccessChangeValidator, 'role_deletion', 'accessChangeValidator'],
+      [ExecutionTypes.RoleExecutor, 'role_deletion', 'roleExecutor'],
+      [ExecutionTypes.GroupExecutor, 'group_membership_removal', 'groupExecutor'],
+      [ExecutionTypes.CriteriaRevocation, 'advance_cutoff', 'criteriaRevocation'],
+    ])('should route %s to its mode selector and hide the inputs editor', (name, mode, namespace) => {
+      render(<ExecutionExtendedProperties resource={makeResource(name, mode)} onChange={mockOnChange} />);
+
+      expect(screen.getByText(`flows:core.executions.${namespace}.description`)).toBeInTheDocument();
+      expect(screen.getByText(`flows:core.executions.${namespace}.mode.label`)).toBeInTheDocument();
+      expect(screen.queryByText('flows:core.executions.inputs.title')).not.toBeInTheDocument();
+    });
+
+    it('should hide the inputs editor and show no configuration for the identity governance executor', () => {
+      render(
+        <ExecutionExtendedProperties
+          resource={makeResource(ExecutionTypes.IdentityGovernance, 'unlock')}
+          onChange={mockOnChange}
+        />,
+      );
+
+      expect(screen.getByText('flows:core.executions.noConfig.description')).toBeInTheDocument();
+      expect(screen.queryByText('flows:core.executions.inputs.title')).not.toBeInTheDocument();
     });
   });
 

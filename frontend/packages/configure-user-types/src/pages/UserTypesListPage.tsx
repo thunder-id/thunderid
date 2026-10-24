@@ -1,7 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {ExternalLink} from '@thunderid/components';
+import {DocumentTitle, ExternalLink} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {Button, PageContent, PageTitle} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -18,6 +18,7 @@ export default function UserTypesListPage() {
 
   return (
     <PageContent>
+      <DocumentTitle title={t('userTypes:title', 'User types')} />
       {/* Header */}
       <PageTitle>
         <PageTitle.Header>{t('userTypes:title')}</PageTitle.Header>

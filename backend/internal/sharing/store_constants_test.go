@@ -34,27 +34,35 @@ func (s *StoreConstantsTestSuite) TestBuildRelevantPoliciesQueryHandlesAnEmptyCh
 	} {
 		s.Run(name, func() {
 			s.NotContains(sql, "IN ()", "an empty list is not valid SQL")
-			s.Contains(sql, "t.TARGET_SCOPE IN ('allOus', 'allRoots')",
-				"blanket policies still have to match, by the values their targets are stored with")
+			s.Contains(sql, "p.SECTIONS->'allUnits' IS NOT NULL",
+				"a policy reaching every organization unit still has to match")
+			s.Contains(sql, "p.SECTIONS->'otherTreeRoots'->>'mode' = 'all'",
+				"and so does one reaching every other tree, by the mode it is stored with")
+			s.NotContains(sql, "RESOURCE_SHARING_POLICY_UNIT",
+				"with no chain member to name, no named unit can match")
 		})
 	}
 	s.Equal([]interface{}{string(testType), "dep-1"}, args)
 }
 
-// Every chain member needs its own placeholder and argument, in matching order.
+// Every chain member needs its own placeholder and argument, in matching order. The chain is
+// matched twice: against the units issuing a policy that reaches every child unit, and against the
+// units policies name.
 func (s *StoreConstantsTestSuite) TestBuildRelevantPoliciesQueryBindsEveryChainMember() {
 	query, args := buildRelevantPoliciesQuery(testType, "", []string{"ou-1", "ou-2"}, "dep-1")
 
-	s.Contains(query.PostgresQuery, "TARGET_OU_ID IN ($2,$3)")
-	s.Contains(query.SQLiteQuery, "TARGET_OU_ID IN (?,?)")
-	s.Require().Len(args, 4)
-	s.Equal([]interface{}{string(testType), "ou-1", "ou-2", "dep-1"}, args)
+	s.Contains(query.PostgresQuery,
+		"p.SECTIONS->'childUnits'->>'mode' = 'all' AND p.INITIATING_OU_ID IN ($2,$3)")
+	s.Contains(query.PostgresQuery, "u.OU_ID IN ($4,$5)")
+	s.Contains(query.SQLiteQuery, "p.INITIATING_OU_ID IN (?,?)")
+	s.Contains(query.SQLiteQuery, "u.OU_ID IN (?,?)")
+	s.Equal([]interface{}{string(testType), "ou-1", "ou-2", "ou-1", "ou-2", "dep-1"}, args)
 }
 
-// The foreign key on RESOURCE_SHARING_POLICY_TARGET.POLICY_ID checks only the policy id, so a
-// target row carrying another deployment's id still satisfies it. Without this join condition such
-// a row's target scope would decide visibility across the deployment boundary.
-func (s *StoreConstantsTestSuite) TestBuildRelevantPoliciesQueryScopesTheTargetJoinByDeployment() {
+// The foreign key on RESOURCE_SHARING_POLICY_UNIT.POLICY_ID checks only the policy id, so a unit
+// row carrying another deployment's id still satisfies it. Without this condition such a row would
+// decide visibility across the deployment boundary.
+func (s *StoreConstantsTestSuite) TestBuildRelevantPoliciesQueryScopesTheNamedUnitsByDeployment() {
 	query, _ := buildRelevantPoliciesQuery(testType, "", []string{"ou-1"}, "dep-1")
 
 	for name, sql := range map[string]string{
@@ -62,7 +70,7 @@ func (s *StoreConstantsTestSuite) TestBuildRelevantPoliciesQueryScopesTheTargetJ
 		"sqlite":   query.SQLiteQuery,
 	} {
 		s.Run(name, func() {
-			s.Contains(sql, "t.DEPLOYMENT_ID = p.DEPLOYMENT_ID")
+			s.Contains(sql, "u.POLICY_ID = p.ID AND u.DEPLOYMENT_ID = p.DEPLOYMENT_ID")
 		})
 	}
 }
@@ -74,9 +82,10 @@ func (s *StoreConstantsTestSuite) TestBuildRelevantPoliciesQueryNarrowsToOneReso
 	query, args := buildRelevantPoliciesQuery(testType, "res-1", []string{"ou-1", "ou-2"}, "dep-1")
 
 	s.Contains(query.PostgresQuery, "p.RESOURCE_ID = $2")
-	s.Contains(query.PostgresQuery, "TARGET_OU_ID IN ($3,$4)")
+	s.Contains(query.PostgresQuery, "p.INITIATING_OU_ID IN ($3,$4)")
+	s.Contains(query.PostgresQuery, "u.OU_ID IN ($5,$6)")
 	s.Contains(query.SQLiteQuery, "p.RESOURCE_ID = ?")
-	s.Equal([]interface{}{string(testType), "res-1", "ou-1", "ou-2", "dep-1"}, args)
+	s.Equal([]interface{}{string(testType), "res-1", "ou-1", "ou-2", "ou-1", "ou-2", "dep-1"}, args)
 }
 
 // The reverse lookup asks across every resource of the type, so naming none must not emit a
@@ -86,8 +95,9 @@ func (s *StoreConstantsTestSuite) TestBuildRelevantPoliciesQueryWithoutAResource
 
 	s.NotContains(query.PostgresQuery, "p.RESOURCE_ID = ",
 		"the column is selected, but must not be filtered on")
-	s.Contains(query.PostgresQuery, "TARGET_OU_ID IN ($2)")
-	s.Equal([]interface{}{string(testType), "ou-1", "dep-1"}, args)
+	s.Contains(query.PostgresQuery, "p.INITIATING_OU_ID IN ($2)")
+	s.Contains(query.PostgresQuery, "u.OU_ID IN ($3)")
+	s.Equal([]interface{}{string(testType), "ou-1", "ou-1", "dep-1"}, args)
 }
 
 // The placeholder styles must not leak into one another's dialect.

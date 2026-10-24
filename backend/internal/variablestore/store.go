@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
@@ -363,6 +364,10 @@ func rowString(row map[string]interface{}, column string) string {
 		return string(typed)
 	case nil:
 		return ""
+	case time.Time:
+		// A timestamp column arrives as a time on postgres and as text on sqlite. Both are given out
+		// in one form, so a caller comparing them does not have to know which store answered.
+		return typed.UTC().Format(time.RFC3339)
 	default:
 		return fmt.Sprintf("%v", typed)
 	}

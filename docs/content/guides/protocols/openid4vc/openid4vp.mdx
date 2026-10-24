@@ -55,10 +55,10 @@ Manage definitions in **Verifiable Credentials → Presentations** in the <Produ
 | Field | Description |
 |---|---|
 | **Handle** | Unique identifier for this definition. Used as the `definition_id` in the initiate request and in flow step configuration. Required. |
-| **Credential Type (VCT)** | The `vct` URI the wallet must present to satisfy this request. Required. |
+| **Credential type (VCT)** | The `vct` URI the wallet must present to satisfy this request. Required. |
 | **Claims** | Each entry has a dotted claim path, a requirement (**Mandatory** or **Optional**), and an optional allowed-values list. Mandatory claims must be disclosed; optional claims may be withheld. When allowed values are set, the disclosed value must match one, enforced at verification. Undisclosed optional claims pass silently regardless of allowed values. |
-| **Enforce Trusted Issuer** | When enabled, the SD-JWT VC issuer certificate chain is validated against the engine-level trust anchors. |
-| **Trusted Issuers** | Restricts which named trust anchors are acceptable for this definition. Leave empty to accept any trust anchor configured at the engine level. |
+| **Enforce trusted issuer** | When enabled, the SD-JWT VC issuer certificate chain is validated against the engine-level trust anchors. |
+| **Trusted issuers** | Restricts which named trust anchors are acceptable for this definition. Leave empty to accept any trust anchor configured at the engine level. |
 
 ## Server Configurations
 

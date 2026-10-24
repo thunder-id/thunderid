@@ -18,10 +18,19 @@ func NewFlowProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *FlowProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &FlowProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type FlowProviderMock_GetFlow_Call struct {
 // GetFlow is a helper method to define mock.On call
 //   - ctx context.Context
 //   - flowID string
-func (_e *FlowProviderMock_Expecter) GetFlow(ctx interface{}, flowID interface{}) *FlowProviderMock_GetFlow_Call {
+func (_e *FlowProviderMock_Expecter) GetFlow(ctx any, flowID any) *FlowProviderMock_GetFlow_Call {
 	return &FlowProviderMock_GetFlow_Call{Call: _e.mock.On("GetFlow", ctx, flowID)}
 }
 
@@ -148,7 +157,7 @@ type FlowProviderMock_GetFlowByHandle_Call struct {
 //   - ctx context.Context
 //   - handle string
 //   - flowType providers.FlowType
-func (_e *FlowProviderMock_Expecter) GetFlowByHandle(ctx interface{}, handle interface{}, flowType interface{}) *FlowProviderMock_GetFlowByHandle_Call {
+func (_e *FlowProviderMock_Expecter) GetFlowByHandle(ctx any, handle any, flowType any) *FlowProviderMock_GetFlowByHandle_Call {
 	return &FlowProviderMock_GetFlowByHandle_Call{Call: _e.mock.On("GetFlowByHandle", ctx, handle, flowType)}
 }
 

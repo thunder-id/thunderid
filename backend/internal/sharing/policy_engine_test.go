@@ -4,6 +4,7 @@
 package sharing
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -642,25 +643,54 @@ const (
 	grandA = "grand-a"
 )
 
-// policy builds a share-stage policy owned by owner with one target.
-func policy(id string, scope TargetScope, targetOU string, excluded ...string) Policy {
-	return Policy{
-		ID: id, OwningOUID: owner, InitiatingOUID: owner, Stage: stageShare,
-		Targets: []Target{{ID: id + "-t", Scope: scope, OUID: targetOU, ExcludedOUIDs: excluded}},
-	}
+// policy builds a share-stage policy owned by owner with one grant.
+func policy(id string, scope grantScope, ouID string, excluded ...string) Policy {
+	p := Policy{ID: id, OwningOUID: owner, InitiatingOUID: owner, Stage: stageShare}
+	return withGrant(p, scope, ouID, excluded...)
 }
 
-// reshare builds a reshare-stage policy issued by initiator with one target.
-func reshare(id, initiator string, scope TargetScope, targetOU string, excluded ...string) Policy {
-	p := policy(id, scope, targetOU, excluded...)
+// reshare builds a reshare-stage policy issued by initiator with one grant.
+func reshare(id, initiator string, scope grantScope, ouID string, excluded ...string) Policy {
+	p := policy(id, scope, ouID, excluded...)
 	p.Stage = stageReshare
 	p.InitiatingOUID = initiator
 	return p
 }
 
+// withGrant states the section a grant of the given scope belongs to, so a test can say what the
+// chain walk should read without spelling the section out. The blanket scopes take no organization
+// unit: reaching every child unit anchors on whichever unit issues the policy.
+func withGrant(p Policy, scope grantScope, ouID string, excluded ...string) Policy {
+	switch scope {
+	case scopeAllOUs:
+		p.AllUnits = &AllUnits{ExcludedOUIDs: excluded}
+	case scopeAllChildren:
+		p.ChildUnits = &ChildUnits{Mode: ChildUnitsAll, ExcludedOUIDs: excluded}
+	case scopeChild, scopeChildSubtree:
+		reach := ReachUnit
+		if scope == scopeChildSubtree {
+			reach = ReachSubtree
+		}
+		units := []ChildUnit{{OUID: ouID, Reach: reach}}
+		if p.ChildUnits != nil {
+			units = append(slices.Clone(p.ChildUnits.Units), units...)
+		}
+		p.ChildUnits = &ChildUnits{Mode: ChildUnitsSelected, Units: units}
+	case scopeAllRoots:
+		p.OtherTreeRoots = &OtherTreeRoots{Mode: OtherTreeRootsAll, ExcludedOUIDs: excluded}
+	case scopeRoot:
+		roots := []string{ouID}
+		if p.OtherTreeRoots != nil {
+			roots = append(slices.Clone(p.OtherTreeRoots.Units), roots...)
+		}
+		p.OtherTreeRoots = &OtherTreeRoots{Mode: OtherTreeRootsSelected, Units: roots}
+	}
+	return p
+}
+
 // The owner holds its own resource, so it is visible whatever the policies say.
 func (s *VisibilityTestSuite) TestEvaluateChainOwnerIsAlwaysVisible() {
-	visible, covering := evaluateChain([]string{owner}, []Policy{policy("p1", ScopeRoot, rootA)})
+	visible, covering := evaluateChain([]string{owner}, []Policy{policy("p1", scopeRoot, rootA)})
 
 	s.True(visible)
 	// The owner needs no policy of its own, so nothing is recorded as covering it.
@@ -674,12 +704,12 @@ func (s *VisibilityTestSuite) TestEvaluateChainRootTargeting() {
 		policies []Policy
 		want     bool
 	}{
-		{"named root", []Policy{policy("p1", ScopeRoot, rootA)}, true},
-		{"a different root", []Policy{policy("p1", ScopeRoot, "root-b")}, false},
-		{"all roots", []Policy{policy("p1", ScopeAllRoots, "")}, true},
-		{"all roots minus this one", []Policy{policy("p1", ScopeAllRoots, "", rootA)}, false},
+		{"named root", []Policy{policy("p1", scopeRoot, rootA)}, true},
+		{"a different root", []Policy{policy("p1", scopeRoot, "root-b")}, false},
+		{"all roots", []Policy{policy("p1", scopeAllRoots, "")}, true},
+		{"all roots minus this one", []Policy{policy("p1", scopeAllRoots, "", rootA)}, false},
 		// Root targeting is owner-only, so a reshare must never reach a root.
-		{"a reshare cannot reach a root", []Policy{reshare("p1", childA, ScopeRoot, rootA)}, false},
+		{"a reshare cannot reach a root", []Policy{reshare("p1", childA, scopeRoot, rootA)}, false},
 	}
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
@@ -694,7 +724,7 @@ func (s *VisibilityTestSuite) TestEvaluateChainRequiresEveryHop() {
 	// The root is reached, but nothing carries the resource further down.
 	visible, _ := evaluateChain(
 		[]string{rootA, childA},
-		[]Policy{policy("p1", ScopeRoot, rootA)},
+		[]Policy{policy("p1", scopeRoot, rootA)},
 	)
 	s.False(visible, "a child is not visible merely because its root is")
 }
@@ -702,8 +732,8 @@ func (s *VisibilityTestSuite) TestEvaluateChainRequiresEveryHop() {
 // An all-children scope reaches every depth beneath its anchor, not only the first level.
 func (s *VisibilityTestSuite) TestEvaluateChainSubtreeReachesAnyDepth() {
 	policies := []Policy{
-		policy("p1", ScopeRoot, rootA),
-		reshare("p2", rootA, ScopeAllChildren, rootA),
+		policy("p1", scopeRoot, rootA),
+		reshare("p2", rootA, scopeAllChildren, rootA),
 	}
 
 	visible, covering := evaluateChain([]string{rootA, childA, grandA}, policies)
@@ -716,8 +746,8 @@ func (s *VisibilityTestSuite) TestEvaluateChainSubtreeReachesAnyDepth() {
 // An excluded organization unit takes its whole subtree with it.
 func (s *VisibilityTestSuite) TestEvaluateChainExclusionCutsOffEverythingBelow() {
 	policies := []Policy{
-		policy("p1", ScopeRoot, rootA),
-		reshare("p2", rootA, ScopeAllChildren, rootA, childA),
+		policy("p1", scopeRoot, rootA),
+		reshare("p2", rootA, scopeAllChildren, rootA, childA),
 	}
 
 	childVisible, _ := evaluateChain([]string{rootA, childA}, policies)
@@ -732,8 +762,8 @@ func (s *VisibilityTestSuite) TestEvaluateChainExclusionCutsOffEverythingBelow()
 func (s *VisibilityTestSuite) TestEvaluateChainExplicitTargetNeverSkipsAHop() {
 	// The root names a grandchild directly, which must not reach it.
 	policies := []Policy{
-		policy("p1", ScopeRoot, rootA),
-		reshare("p2", rootA, ScopeChild, grandA),
+		policy("p1", scopeRoot, rootA),
+		reshare("p2", rootA, scopeChild, grandA),
 	}
 
 	visible, _ := evaluateChain([]string{rootA, childA, grandA}, policies)
@@ -744,8 +774,8 @@ func (s *VisibilityTestSuite) TestEvaluateChainExplicitTargetNeverSkipsAHop() {
 // A subtree target reaches the organization unit it names as well as everything beneath it.
 func (s *VisibilityTestSuite) TestEvaluateChainSubtreeTargetCoversItsAnchorAndBelow() {
 	policies := []Policy{
-		policy("p1", ScopeRoot, rootA),
-		reshare("p2", rootA, ScopeChildSubtree, childA),
+		policy("p1", scopeRoot, rootA),
+		reshare("p2", rootA, scopeChildSubtree, childA),
 	}
 
 	anchorVisible, _ := evaluateChain([]string{rootA, childA}, policies)
@@ -762,9 +792,9 @@ func (s *VisibilityTestSuite) TestEvaluateChainReturnsEveryCoveringPolicy() {
 	// A diamond: a subtree reshare and a narrower one below it both reach the same organization
 	// unit, and rule resolution needs both to intersect them.
 	policies := []Policy{
-		policy("p1", ScopeRoot, rootA),
-		reshare("p2", rootA, ScopeAllChildren, rootA),
-		reshare("p3", childA, ScopeChild, grandA),
+		policy("p1", scopeRoot, rootA),
+		reshare("p2", rootA, scopeAllChildren, rootA),
+		reshare("p3", childA, scopeChild, grandA),
 	}
 
 	visible, covering := evaluateChain([]string{rootA, childA, grandA}, policies)
@@ -779,8 +809,8 @@ func (s *VisibilityTestSuite) TestEvaluateChainReturnsEveryCoveringPolicy() {
 
 // A blanket policy stands behind the specific ones rather than replacing them.
 func (s *VisibilityTestSuite) TestEvaluateChainAllOUsIsAFallbackNotAShadow() {
-	allOUs := policy("p-blanket", ScopeAllOUs, "")
-	specific := reshare("p-specific", rootA, ScopeAllChildren, rootA)
+	allOUs := policy("p-blanket", scopeAllOUs, "")
+	specific := reshare("p-specific", rootA, scopeAllChildren, rootA)
 
 	s.Run("it covers where nothing specific reached", func() {
 		visible, covering := evaluateChain([]string{"other-root"}, []Policy{allOUs})
@@ -794,7 +824,7 @@ func (s *VisibilityTestSuite) TestEvaluateChainAllOUsIsAFallbackNotAShadow() {
 	s.Run("it stands aside where a specific target reached", func() {
 		_, covering := evaluateChain(
 			[]string{rootA, childA},
-			[]Policy{policy("p1", ScopeRoot, rootA), specific, allOUs},
+			[]Policy{policy("p1", scopeRoot, rootA), specific, allOUs},
 		)
 		s.Require().Len(covering, 1)
 		s.Equal("p-specific", covering[0].Policy.ID)
@@ -803,36 +833,29 @@ func (s *VisibilityTestSuite) TestEvaluateChainAllOUsIsAFallbackNotAShadow() {
 
 	s.Run("an exclusion still applies to it", func() {
 		visible, _ := evaluateChain([]string{"other-root"},
-			[]Policy{policy("p-blanket", ScopeAllOUs, "", "other-root")})
+			[]Policy{policy("p-blanket", scopeAllOUs, "", "other-root")})
 		s.False(visible)
 	})
 
-	// A carve-out takes the unit's subtree with it, and a second target naming the carved-out unit
-	// does not hand that subtree back. Without checking the whole chain the walk would reach the
-	// grandchild: its parent is covered, by the other target, and the grandchild is not itself
-	// named in the exclusion list.
-	s.Run("an exclusion takes its subtree even when another target covers the unit", func() {
+	// A carve-out takes the unit's subtree with it: the unit beneath an excluded one is not itself
+	// named in the exclusion list, and is cut off all the same.
+	s.Run("an exclusion takes its subtree with it", func() {
 		carvedOut := Policy{
-			ID: "p-mixed", OwningOUID: rootA, InitiatingOUID: rootA, Stage: stageShare,
-			Targets: []Target{
-				{ID: "t-blanket", Scope: ScopeAllOUs, ExcludedOUIDs: []string{childA}},
-				{ID: "t-child", Scope: ScopeChild, OUID: childA},
-			},
+			ID: "p-carved", OwningOUID: rootA, InitiatingOUID: rootA, Stage: stageShare,
+			AllUnits: &AllUnits{ExcludedOUIDs: []string{childA}},
 		}
 
-		visible, covering := evaluateChain([]string{rootA, childA}, []Policy{carvedOut})
-		s.True(visible, "the named target reaches the carved-out unit itself")
-		s.Require().Len(covering, 1)
-		s.Equal("t-child", covering[0].TargetID)
+		visible, _ := evaluateChain([]string{rootA, childA}, []Policy{carvedOut})
+		s.False(visible, "the excluded unit is withheld")
 
 		visible, _ = evaluateChain([]string{rootA, childA, grandA}, []Policy{carvedOut})
-		s.False(visible, "the blanket target was carved out above it and the named one stops short")
+		s.False(visible, "and so is everything beneath it")
 	})
 }
 
 // An empty chain names no organization unit, so nothing is visible and nothing covers it.
 func (s *VisibilityTestSuite) TestEvaluateChainEmptyInputs() {
-	visible, covering := evaluateChain(nil, []Policy{policy("p1", ScopeAllOUs, "")})
+	visible, covering := evaluateChain(nil, []Policy{policy("p1", scopeAllOUs, "")})
 	s.False(visible)
 	s.Nil(covering)
 
@@ -851,103 +874,216 @@ func TestEditTestSuite(t *testing.T) {
 	suite.Run(t, new(EditTestSuite))
 }
 
-// withTargets returns a policy carrying the given targets.
-func withTargets(targets ...Target) Policy {
-	return Policy{ID: "p1", OwningOUID: owner, InitiatingOUID: owner, Stage: stageShare, Targets: targets}
-}
-
-// Every target scope belongs to exactly one family, which is what the edit rules key off.
-func (s *EditTestSuite) TestFamilyOf() {
-	blanket := []TargetScope{ScopeAllOUs, ScopeAllRoots, ScopeAllChildren}
-	selective := []TargetScope{ScopeRoot, ScopeChild, ScopeChildSubtree}
-
-	for _, scope := range blanket {
-		s.Equal(familyBlanket, familyOf(scope), string(scope))
-	}
-	for _, scope := range selective {
-		s.Equal(familySelective, familyOf(scope), string(scope))
+// stating returns an owner-issued policy stating the given sections.
+func stating(allUnits *AllUnits, childUnits *ChildUnits, otherTreeRoots *OtherTreeRoots) Policy {
+	return Policy{
+		ID: "p1", OwningOUID: owner, InitiatingOUID: owner, Stage: stageShare,
+		AllUnits: allUnits, ChildUnits: childUnits, OtherTreeRoots: otherTreeRoots,
 	}
 }
 
-// A blanket policy already reaches everything in its family, so an edit may only carve out of it.
+// allChildUnits is the blanket child-units section, less what it excludes.
+func allChildUnits(excluded ...string) *ChildUnits {
+	return &ChildUnits{Mode: ChildUnitsAll, ExcludedOUIDs: excluded}
+}
+
+// selectedChildUnits is a child-units section naming the given units.
+func selectedChildUnits(units ...ChildUnit) *ChildUnits {
+	return &ChildUnits{Mode: ChildUnitsSelected, Units: units}
+}
+
+// selectedRoots is an other-trees section naming the given top units.
+func selectedRoots(roots ...string) *OtherTreeRoots {
+	return &OtherTreeRoots{Mode: OtherTreeRootsSelected, Units: roots}
+}
+
+// Every section is one of three kinds, which is what the edit rules key off.
+func (s *EditTestSuite) TestKindOf() {
+	unstated := Policy{}
+	for _, section := range policySections {
+		s.Equal(kindNone, unstated.kindOf(section), string(section))
+	}
+
+	blanket := []Policy{
+		stating(&AllUnits{}, nil, nil),
+		stating(nil, allChildUnits(), nil),
+		stating(nil, nil, &OtherTreeRoots{Mode: OtherTreeRootsAll}),
+	}
+	for i, section := range policySections {
+		s.Equal(kindBlanket, blanket[i].kindOf(section), string(section))
+	}
+
+	selected := stating(nil, selectedChildUnits(ChildUnit{OUID: childA, Reach: ReachUnit}), selectedRoots(rootA))
+	s.Equal(kindNone, selected.kindOf(SectionAllUnits))
+	s.Equal(kindSelected, selected.kindOf(SectionChildUnits))
+	s.Equal(kindSelected, selected.kindOf(SectionOtherTreeRoots))
+}
+
+// A section holds one blanket grant or a list of named units, and the chain walk reads whichever
+// it holds: one grant for the blanket, one per unit for the list.
+func (s *EditTestSuite) TestGrantsFlattenTheSections() {
+	p := stating(nil,
+		selectedChildUnits(
+			ChildUnit{OUID: childA, Reach: ReachUnit},
+			ChildUnit{OUID: "child-b", Reach: ReachSubtree}),
+		selectedRoots(rootA))
+
+	s.Equal([]grant{
+		{ref: GrantRef{Section: SectionChildUnits, OUID: childA}, scope: scopeChild, ouID: childA},
+		{ref: GrantRef{Section: SectionChildUnits, OUID: "child-b"}, scope: scopeChildSubtree, ouID: "child-b"},
+		{ref: GrantRef{Section: SectionOtherTreeRoots, OUID: rootA}, scope: scopeRoot, ouID: rootA},
+	}, p.grants())
+
+	blanket := stating(nil, allChildUnits(childA),
+		&OtherTreeRoots{Mode: OtherTreeRootsAll, ExcludedOUIDs: []string{rootA}})
+	s.Equal([]grant{
+		// Reaching every child unit anchors on the unit issuing the policy.
+		{
+			ref: GrantRef{Section: SectionChildUnits}, scope: scopeAllChildren, ouID: owner,
+			excludedOUIDs: []string{childA},
+		},
+		{ref: GrantRef{Section: SectionOtherTreeRoots}, scope: scopeAllRoots, excludedOUIDs: []string{rootA}},
+	}, blanket.grants())
+
+	allUnits := stating(&AllUnits{ExcludedOUIDs: []string{childA}}, nil, nil)
+	s.Equal([]grant{
+		{ref: GrantRef{Section: SectionAllUnits}, scope: scopeAllOUs, excludedOUIDs: []string{childA}},
+	}, allUnits.grants())
+
+	s.Empty(Policy{}.grants())
+}
+
+// A blanket section already reaches everything in its family, so an edit may only carve out of it.
 func (s *EditTestSuite) TestValidateEditBlanketMayOnlyBeNarrowed() {
-	current := withTargets(Target{ID: "t1", Scope: ScopeAllChildren, OUID: owner})
+	current := stating(nil, allChildUnits(), nil)
 
-	s.Run("keeping the same scope is allowed, so exclusions may change around it", func() {
-		proposed := withTargets(Target{
-			ID: "t1", Scope: ScopeAllChildren, OUID: owner, ExcludedOUIDs: []string{childA},
-		})
+	s.Run("keeping the section is allowed, so exclusions may change around it", func() {
+		proposed := stating(nil, allChildUnits(childA), nil)
 
 		s.NoError(validateEdit(current, proposed, 1, 1))
 	})
 
-	// Converting a blanket policy would change the meaning of every reshare derived from it.
-	s.Run("changing the blanket scope itself is rejected", func() {
-		proposed := withTargets(Target{ID: "t1", Scope: ScopeAllOUs})
+	// Dropping a blanket section would strand every reshare derived from it.
+	s.Run("dropping the blanket section is rejected", func() {
+		proposed := stating(nil, nil, selectedRoots(rootA))
 
 		s.ErrorIs(validateEdit(current, proposed, 1, 1), errBlanketScopeNarrowOnly)
 	})
 
-	s.Run("adding a target to a blanket policy is rejected", func() {
-		proposed := withTargets(
-			Target{ID: "t1", Scope: ScopeAllChildren, OUID: owner},
-			Target{ID: "t2", Scope: ScopeAllChildren, OUID: childA},
-		)
+	s.Run("trading it for every organization unit is rejected", func() {
+		proposed := stating(&AllUnits{}, nil, nil)
 
-		s.ErrorIs(validateEdit(current, proposed, 1, 1), errBlanketScopeNarrowOnly)
+		s.Error(validateEdit(current, proposed, 1, 1))
+	})
+
+	s.Run("adding a blanket section beside it is rejected", func() {
+		proposed := stating(nil, allChildUnits(), &OtherTreeRoots{Mode: OtherTreeRootsAll})
+
+		s.ErrorIs(validateEdit(current, proposed, 1, 1), errScopeFamilyChange)
 	})
 }
 
-// A selective policy may grow within the one-hop rule, which creates no authority its initiator
-// did not already hold when the policy was first checked.
+// A section naming units may grow within the one-hop rule, which creates no authority its
+// initiator did not already hold when the policy was first checked.
 func (s *EditTestSuite) TestValidateEditSelectiveMayGrow() {
-	current := withTargets(Target{ID: "t1", Scope: ScopeChild, OUID: childA})
+	current := stating(nil, selectedChildUnits(ChildUnit{OUID: childA, Reach: ReachUnit}), nil)
 
 	// Expansion within the one-hop rule creates no authority the initiator did not already have:
 	// it could have named the same children in the original call.
-	s.Run("adding a target is allowed", func() {
-		proposed := withTargets(
-			Target{ID: "t1", Scope: ScopeChild, OUID: childA},
-			Target{ID: "t2", Scope: ScopeChild, OUID: "child-b"},
-		)
+	s.Run("naming another unit is allowed", func() {
+		proposed := stating(nil, selectedChildUnits(
+			ChildUnit{OUID: childA, Reach: ReachUnit},
+			ChildUnit{OUID: "child-b", Reach: ReachUnit},
+		), nil)
 
 		s.NoError(validateEdit(current, proposed, 1, 1))
 	})
 
-	s.Run("flipping a target to carry its subtree is allowed", func() {
-		proposed := withTargets(Target{ID: "t1", Scope: ScopeChildSubtree, OUID: childA})
+	s.Run("flipping a unit to carry its subtree is allowed", func() {
+		proposed := stating(nil, selectedChildUnits(ChildUnit{OUID: childA, Reach: ReachSubtree}), nil)
 
 		s.NoError(validateEdit(current, proposed, 1, 1))
 	})
 
-	s.Run("removing a target is allowed", func() {
-		start := withTargets(
-			Target{ID: "t1", Scope: ScopeChild, OUID: childA},
-			Target{ID: "t2", Scope: ScopeChild, OUID: "child-b"},
-		)
-		proposed := withTargets(Target{ID: "t1", Scope: ScopeChild, OUID: childA})
+	s.Run("dropping a unit is allowed", func() {
+		start := stating(nil, selectedChildUnits(
+			ChildUnit{OUID: childA, Reach: ReachUnit},
+			ChildUnit{OUID: "child-b", Reach: ReachUnit},
+		), nil)
 
-		s.NoError(validateEdit(start, proposed, 1, 1))
+		s.NoError(validateEdit(start, current, 1, 1))
+	})
+
+	s.Run("stating the other selected section is allowed, and so is dropping it", func() {
+		both := stating(nil, current.ChildUnits, selectedRoots(rootA))
+
+		s.NoError(validateEdit(current, both, 1, 1))
+		s.NoError(validateEdit(both, current, 1, 1))
 	})
 }
 
-// Converting between the families would change the meaning of every reshare derived from the
-// policy, so it is refused in both directions.
+// Converting a section between naming units and reaching a whole family would change the meaning
+// of every reshare derived from it, so it is refused in both directions.
 func (s *EditTestSuite) TestValidateEditCannotChangeFamily() {
-	selective := withTargets(Target{ID: "t1", Scope: ScopeChild, OUID: childA})
-	blanket := withTargets(Target{ID: "t1", Scope: ScopeAllChildren, OUID: owner})
+	selective := stating(nil, selectedChildUnits(ChildUnit{OUID: childA, Reach: ReachUnit}), nil)
+	blanket := stating(nil, allChildUnits(), nil)
 
 	s.ErrorIs(validateEdit(selective, blanket, 1, 1), errScopeFamilyChange)
 	s.ErrorIs(validateEdit(blanket, selective, 1, 1), errScopeFamilyChange)
+
+	// A section the policy never stated is held to the same rule as one naming units: it cannot
+	// become a blanket one by an edit.
+	rootsOnly := stating(nil, nil, selectedRoots(rootA))
+	s.ErrorIs(validateEdit(rootsOnly, stating(nil, allChildUnits(), selectedRoots(rootA)), 1, 1),
+		errScopeFamilyChange)
 }
 
-// Exclusions are the only thing that narrows a blanket policy, so an edit may add them but never
-// drop one: doing so restores visibility to an organization unit deliberately carved out.
+// Each section is checked on its own, so a blanket decision about child units leaves the other
+// trees the policy names free to change, and the reverse.
+func (s *EditTestSuite) TestValidateEditChecksEachSectionOnItsOwn() {
+	current := stating(nil, allChildUnits(), selectedRoots(rootA))
+
+	s.Run("the named top units may grow beside a blanket child-units section", func() {
+		proposed := stating(nil, allChildUnits(), selectedRoots(rootA, "root-b"))
+
+		s.NoError(validateEdit(current, proposed, 1, 1))
+	})
+
+	s.Run("the named top units may all be dropped", func() {
+		proposed := stating(nil, allChildUnits(), nil)
+
+		s.NoError(validateEdit(current, proposed, 1, 1))
+	})
+
+	s.Run("the blanket section beside them still may not be converted", func() {
+		proposed := stating(nil,
+			selectedChildUnits(ChildUnit{OUID: childA, Reach: ReachUnit}), selectedRoots(rootA))
+
+		s.ErrorIs(validateEdit(current, proposed, 1, 1), errScopeFamilyChange)
+	})
+
+	s.Run("named child units may change beside a blanket other-trees section", func() {
+		everyTree := &OtherTreeRoots{Mode: OtherTreeRootsAll}
+		start := stating(nil, selectedChildUnits(ChildUnit{OUID: childA, Reach: ReachUnit}), everyTree)
+		proposed := stating(nil, selectedChildUnits(ChildUnit{OUID: "child-b", Reach: ReachSubtree}), everyTree)
+
+		s.NoError(validateEdit(start, proposed, 1, 1))
+		s.NoError(validateEdit(start, stating(nil, nil, everyTree), 1, 1))
+	})
+}
+
+// An edit built on a stale read is refused before anything else is looked at.
+func (s *EditTestSuite) TestValidateEditRefusesAStaleVersion() {
+	current := stating(nil, allChildUnits(), nil)
+
+	s.ErrorIs(validateEdit(current, current, 1, 2), errVersionMismatchEngine)
+}
+
+// A blanket section's exclusions are the issuer's own opinion of its own reach, so an edit may add
+// them and may drop them again.
 func (s *EditTestSuite) TestValidateEditBlanketExclusionsMayBeEditedBothWays() {
 	blanket := func(excluded ...string) Policy {
-		return Policy{
-			Targets: []Target{{ID: "t1", Scope: ScopeAllOUs, ExcludedOUIDs: excluded}},
-		}
+		return Policy{AllUnits: &AllUnits{ExcludedOUIDs: excluded}}
 	}
 
 	s.Run("adding one is allowed", func() {
@@ -972,23 +1108,12 @@ func (s *EditTestSuite) TestValidateEditBlanketExclusionsMayBeEditedBothWays() {
 		s.NoError(err)
 	})
 
-	// What stays fixed is the family the policy reaches.
-	s.Run("changing the blanket target is still refused", func() {
-		current := Policy{Targets: []Target{{ID: "t1", Scope: ScopeAllOUs}}}
-		proposed := Policy{Targets: []Target{{ID: "t1", Scope: ScopeAllRoots}}}
+	// What stays fixed is the family the section reaches.
+	s.Run("trading the blanket section for another is still refused", func() {
+		current := Policy{AllUnits: &AllUnits{}}
+		proposed := Policy{OtherTreeRoots: &OtherTreeRoots{Mode: OtherTreeRootsAll}}
 		err := validateEdit(current, proposed, 1, 1)
 		s.ErrorIs(err, errBlanketScopeNarrowOnly)
-	})
-
-	// A selective policy may grow within the one-hop rule, so it is not held to the same rule.
-	s.Run("a selective policy may drop one", func() {
-		selective := func(excluded ...string) Policy {
-			return Policy{
-				Targets: []Target{{ID: "t1", Scope: ScopeChild, OUID: "ou-9", ExcludedOUIDs: excluded}},
-			}
-		}
-		err := validateEdit(selective("ou-1", "ou-2"), selective("ou-1"), 1, 1)
-		s.NoError(err)
 	})
 }
 
@@ -1071,4 +1196,119 @@ func (s *LineageTestSuite) TestOrderByDependencyStillOrdersAroundACollidingID() 
 	s.Require().Len(ordered, 3)
 	s.Less(s.indexOf(ordered, "dup"), s.indexOf(ordered, "child"),
 		"the parent still precedes what derives from it")
+}
+
+// An export has to recreate the policy it came from, so every section comes back in the shape a
+// request states it in: a blanket section with its exclusions and one set of terms, a selected one
+// with the terms beside each unit it names.
+func (s *LineageTestSuite) TestRequestFromPolicyRebuildsEverySection() {
+	pinned := OverlayRule{Editable: false, Value: set("a")}
+	open := OverlayRule{Editable: true}
+
+	s.Run("child units and other trees, each naming units", func() {
+		p := Policy{
+			ID: "p1", InitiatingOUID: owner, Version: 4,
+			ChildUnits: selectedChildUnits(
+				ChildUnit{OUID: childA, Reach: ReachSubtree},
+				ChildUnit{OUID: "child-b", Reach: ReachUnit}),
+			OtherTreeRoots: selectedRoots(rootA),
+			Rules: []StoredRule{
+				{FieldKey: "f", Grant: GrantRef{Section: SectionChildUnits, OUID: childA}, Resolved: pinned},
+				{FieldKey: "f", Grant: GrantRef{Section: SectionOtherTreeRoots, OUID: rootA}, Resolved: open},
+			},
+		}
+
+		s.Equal(PolicyRequest{
+			ID: "p1", InitiatingOUID: owner, Version: 4,
+			ChildUnits: &ChildUnitsRequest{
+				Mode: ChildUnitsSelected,
+				Units: []ChildUnitRequest{
+					{OUID: childA, Reach: ReachSubtree, OverlayRules: map[string]OverlayRule{"f": pinned}},
+					// Absent rather than empty, which is what a unit carrying no terms was created from.
+					{OUID: "child-b", Reach: ReachUnit},
+				},
+			},
+			OtherTreeRoots: &OtherTreeRootsRequest{
+				Mode:  OtherTreeRootsSelected,
+				Units: []RootUnitRequest{{OUID: rootA, OverlayRules: map[string]OverlayRule{"f": open}}},
+			},
+		}, requestFromPolicy(p))
+	})
+
+	s.Run("both blanket sections", func() {
+		p := Policy{
+			ID: "p1", InitiatingOUID: owner,
+			ChildUnits:     allChildUnits(childA),
+			OtherTreeRoots: &OtherTreeRoots{Mode: OtherTreeRootsAll, ExcludedOUIDs: []string{rootA}},
+			Rules: []StoredRule{
+				{FieldKey: "f", Grant: GrantRef{Section: SectionChildUnits}, Resolved: pinned},
+				{FieldKey: "f", Grant: GrantRef{Section: SectionOtherTreeRoots}, Resolved: open},
+			},
+		}
+
+		s.Equal(PolicyRequest{
+			ID: "p1", InitiatingOUID: owner,
+			ChildUnits: &ChildUnitsRequest{
+				Mode: ChildUnitsAll, ExcludedOUIDs: []string{childA},
+				OverlayRules: map[string]OverlayRule{"f": pinned},
+			},
+			OtherTreeRoots: &OtherTreeRootsRequest{
+				Mode: OtherTreeRootsAll, ExcludedOUIDs: []string{rootA},
+				OverlayRules: map[string]OverlayRule{"f": open},
+			},
+		}, requestFromPolicy(p))
+	})
+
+	s.Run("every organization unit", func() {
+		p := Policy{
+			ID: "p1", InitiatingOUID: owner,
+			AllUnits: &AllUnits{ExcludedOUIDs: []string{childA}},
+			Rules: []StoredRule{
+				{FieldKey: "f", Grant: GrantRef{Section: SectionAllUnits}, Resolved: pinned},
+			},
+		}
+
+		req := requestFromPolicy(p)
+
+		s.Equal(&AllUnitsRequest{
+			ExcludedOUIDs: []string{childA}, OverlayRules: map[string]OverlayRule{"f": pinned},
+		}, req.AllUnits)
+		s.Nil(req.ChildUnits, "a section the policy does not state is not exported")
+		s.Nil(req.OtherTreeRoots)
+	})
+}
+
+// What a request attaches its terms to is what the stored rules are keyed by, so the two have to
+// name every grant the same way.
+func (s *LineageTestSuite) TestRequestedGrantsNameEveryGrantTheRequestCarriesTermsFor() {
+	rules := map[string]OverlayRule{"f": {Editable: true}}
+
+	selected := PolicyRequest{
+		ChildUnits: &ChildUnitsRequest{
+			Mode:  ChildUnitsSelected,
+			Units: []ChildUnitRequest{{OUID: childA, Reach: ReachUnit, OverlayRules: rules}},
+		},
+		OtherTreeRoots: &OtherTreeRootsRequest{
+			Mode:  OtherTreeRootsSelected,
+			Units: []RootUnitRequest{{OUID: rootA, OverlayRules: rules}},
+		},
+	}
+	s.Equal([]requestedGrant{
+		{GrantRef{Section: SectionChildUnits, OUID: childA}, rules},
+		{GrantRef{Section: SectionOtherTreeRoots, OUID: rootA}, rules},
+	}, selected.requestedGrants())
+
+	blanket := PolicyRequest{
+		ChildUnits:     &ChildUnitsRequest{Mode: ChildUnitsAll, OverlayRules: rules},
+		OtherTreeRoots: &OtherTreeRootsRequest{Mode: OtherTreeRootsAll, OverlayRules: rules},
+	}
+	s.Equal([]requestedGrant{
+		{GrantRef{Section: SectionChildUnits}, rules},
+		{GrantRef{Section: SectionOtherTreeRoots}, rules},
+	}, blanket.requestedGrants())
+
+	allUnits := PolicyRequest{AllUnits: &AllUnitsRequest{OverlayRules: rules}}
+	s.Equal([]requestedGrant{{GrantRef{Section: SectionAllUnits}, rules}}, allUnits.requestedGrants())
+
+	s.Empty(PolicyRequest{}.requestedGrants())
 }

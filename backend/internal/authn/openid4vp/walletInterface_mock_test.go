@@ -17,10 +17,19 @@ func newWalletInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *walletInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &walletInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -74,7 +83,7 @@ type walletInterfaceMock_GetRequestObject_Call struct {
 // GetRequestObject is a helper method to define mock.On call
 //   - ctx context.Context
 //   - state string
-func (_e *walletInterfaceMock_Expecter) GetRequestObject(ctx interface{}, state interface{}) *walletInterfaceMock_GetRequestObject_Call {
+func (_e *walletInterfaceMock_Expecter) GetRequestObject(ctx any, state any) *walletInterfaceMock_GetRequestObject_Call {
 	return &walletInterfaceMock_GetRequestObject_Call{Call: _e.mock.On("GetRequestObject", ctx, state)}
 }
 
@@ -181,7 +190,7 @@ type walletInterfaceMock_SubmitError_Call struct {
 //   - state string
 //   - code string
 //   - description string
-func (_e *walletInterfaceMock_Expecter) SubmitError(ctx interface{}, state interface{}, code interface{}, description interface{}) *walletInterfaceMock_SubmitError_Call {
+func (_e *walletInterfaceMock_Expecter) SubmitError(ctx any, state any, code any, description any) *walletInterfaceMock_SubmitError_Call {
 	return &walletInterfaceMock_SubmitError_Call{Call: _e.mock.On("SubmitError", ctx, state, code, description)}
 }
 
@@ -268,7 +277,7 @@ type walletInterfaceMock_SubmitResponse_Call struct {
 //   - ctx context.Context
 //   - state string
 //   - body []byte
-func (_e *walletInterfaceMock_Expecter) SubmitResponse(ctx interface{}, state interface{}, body interface{}) *walletInterfaceMock_SubmitResponse_Call {
+func (_e *walletInterfaceMock_Expecter) SubmitResponse(ctx any, state any, body any) *walletInterfaceMock_SubmitResponse_Call {
 	return &walletInterfaceMock_SubmitResponse_Call{Call: _e.mock.On("SubmitResponse", ctx, state, body)}
 }
 

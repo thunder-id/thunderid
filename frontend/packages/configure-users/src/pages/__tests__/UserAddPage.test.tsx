@@ -332,13 +332,13 @@ describe('UserAddPage', () => {
   /* ----- Default header ----- */
 
   describe('header', () => {
-    it('should display default "Add User" breadcrumb when no steps have been visited', () => {
+    it('should display default "Add user" breadcrumb when no steps have been visited', () => {
       mockInviteUserRenderProps.isLoading = true;
       mockInviteUserRenderProps.components = [];
 
       render(<UserAddPage />);
 
-      expect(screen.getByText('Add User')).toBeInTheDocument();
+      expect(screen.getByText('Add user')).toBeInTheDocument();
     });
 
     it('should render a close button that navigates to /users', async () => {
@@ -356,7 +356,7 @@ describe('UserAddPage', () => {
     it('should reset flow when Add User breadcrumb is clicked', async () => {
       // Use realistic mock data with a step that creates a second breadcrumb item
       mockInviteUserRenderProps.components = [
-        heading('User Type'),
+        heading('User type'),
         block([textInput('type', 'Type'), submitAction('Next')]),
       ];
 
@@ -383,7 +383,7 @@ describe('UserAddPage', () => {
     it('should render a TEXT_INPUT field', () => {
       mockInviteUserRenderProps.components = [
         heading('Step 1'),
-        block([textInput('firstName', 'First Name', {required: true}), submitAction('Next')]),
+        block([textInput('firstName', 'First name', {required: true}), submitAction('Next')]),
       ];
 
       render(<UserAddPage />);
@@ -394,7 +394,7 @@ describe('UserAddPage', () => {
     it('should render an EMAIL_INPUT field', () => {
       mockInviteUserRenderProps.components = [
         heading('Email Step'),
-        block([emailInput('email', 'Email Address', {required: true}), submitAction('Next')]),
+        block([emailInput('email', 'Email address', {required: true}), submitAction('Next')]),
       ];
 
       render(<UserAddPage />);
@@ -472,7 +472,7 @@ describe('UserAddPage', () => {
     it('should render an OU_SELECT field with OrganizationUnitTreePicker', () => {
       mockInviteUserRenderProps.components = [
         heading('OU Step'),
-        block([ouSelect('ou', 'Organization Unit', {required: true}), submitAction('Next')]),
+        block([ouSelect('ou', 'Organization unit', {required: true}), submitAction('Next')]),
       ];
       mockInviteUserRenderProps.additionalData = {rootOuId: 'root-123'};
 
@@ -485,14 +485,14 @@ describe('UserAddPage', () => {
 
     it('should render a heading component as an h1', () => {
       mockInviteUserRenderProps.components = [
-        heading('User Details'),
+        heading('User details'),
         block([textInput('name', 'Name'), submitAction('Submit')]),
       ];
 
       render(<UserAddPage />);
 
       // Heading appears in the form (h1) and in the breadcrumb (h5)
-      const headings = screen.getAllByText('User Details');
+      const headings = screen.getAllByText('User details');
       expect(headings.length).toBeGreaterThanOrEqual(1);
       // The h1 is the form heading
       const h1 = headings.find((el) => el.tagName === 'H1');
@@ -598,7 +598,7 @@ describe('UserAddPage', () => {
       expect(screen.getByText('Check your email.')).toBeInTheDocument();
     });
 
-    it('should show "Close" and "Add Another User" buttons when no BLOCK components present', () => {
+    it('should show "Close" and "Add another user" buttons when no BLOCK components present', () => {
       mockInviteUserRenderProps.components = [heading('Done')];
 
       render(<UserAddPage />);
@@ -608,7 +608,7 @@ describe('UserAddPage', () => {
       expect(screen.getByRole('button', {name: /add another user/i})).toBeInTheDocument();
     });
 
-    it('should call resetFlow when "Add Another User" is clicked in display-only state', async () => {
+    it('should call resetFlow when "Add another user" is clicked in display-only state', async () => {
       mockInviteUserRenderProps.components = [heading('Done')];
 
       render(<UserAddPage />);
@@ -632,8 +632,8 @@ describe('UserAddPage', () => {
 
     it('should render COPYABLE_TEXT component with value from additionalData', () => {
       mockInviteUserRenderProps.components = [
-        heading('Invite Link Generated'),
-        copyableText('inviteLink', 'Invite Link'),
+        heading('Invite link Generated'),
+        copyableText('inviteLink', 'Invite link'),
       ];
       mockInviteUserRenderProps.additionalData = {inviteLink: 'https://example.com/invite/abc123'};
 
@@ -643,15 +643,15 @@ describe('UserAddPage', () => {
     });
 
     it('should render COPYABLE_TEXT label from component when present', () => {
-      mockInviteUserRenderProps.components = [heading('Link Ready'), copyableText('inviteLink', 'Invite Link')];
+      mockInviteUserRenderProps.components = [heading('Link Ready'), copyableText('inviteLink', 'Invite link')];
       mockInviteUserRenderProps.additionalData = {inviteLink: 'https://example.com/invite/xyz'};
 
       render(<UserAddPage />);
 
-      expect(screen.getByText('Invite Link')).toBeInTheDocument();
+      expect(screen.getByText('Invite link')).toBeInTheDocument();
     });
 
-    it('should not show "Add Another User" button when BLOCK components are present', () => {
+    it('should not show "Add another user" button when BLOCK components are present', () => {
       mockInviteUserRenderProps.components = [
         heading('Step 1'),
         block([textInput('name', 'Name'), submitAction('Next')]),
@@ -946,7 +946,7 @@ describe('UserAddPage', () => {
 
     // The wizard itself must be gone, not merely overlaid, so no step can be interacted with.
     it('should replace the wizard rather than render it alongside the message', async () => {
-      mockInviteUserRenderProps.components = [heading('Select User Type'), block([textInput('type', 'Type')])];
+      mockInviteUserRenderProps.components = [heading('Select user type'), block([textInput('type', 'Type')])];
       render(<UserAddPage />);
 
       if (capturedOnFlowChange) {
@@ -956,7 +956,7 @@ describe('UserAddPage', () => {
       await waitFor(() => {
         expect(screen.getByText('User onboarding is unavailable')).toBeInTheDocument();
       });
-      expect(screen.queryByText('Select User Type')).not.toBeInTheDocument();
+      expect(screen.queryByText('Select user type')).not.toBeInTheDocument();
     });
 
     // A failure that is not a missing flow keeps the wizard, so a recoverable error stays recoverable.
@@ -979,7 +979,7 @@ describe('UserAddPage', () => {
   describe('breadcrumb and progress tracking', () => {
     it('should update breadcrumb when step label changes', async () => {
       mockInviteUserRenderProps.components = [
-        heading('Select User Type'),
+        heading('Select user type'),
         block([textInput('type', 'Type'), submitAction('Next')]),
       ];
 
@@ -987,7 +987,7 @@ describe('UserAddPage', () => {
 
       await waitFor(() => {
         // Heading appears in form (h1) and breadcrumb (h5)
-        const matches = screen.getAllByText('Select User Type');
+        const matches = screen.getAllByText('Select user type');
         expect(matches.length).toBeGreaterThanOrEqual(2);
         // One should be in a breadcrumb (h5)
         const breadcrumbHeading = matches.find((el) => el.tagName === 'H5');
@@ -1015,7 +1015,7 @@ describe('UserAddPage', () => {
     it('should call handleInputChange when typing in a TEXT_INPUT', async () => {
       mockInviteUserRenderProps.components = [
         heading('Details'),
-        block([textInput('firstName', 'First Name'), submitAction('Next')]),
+        block([textInput('firstName', 'First name'), submitAction('Next')]),
       ];
 
       render(<UserAddPage />);
@@ -1071,7 +1071,7 @@ describe('UserAddPage', () => {
     it('should call handleInputChange when selecting an OU', async () => {
       mockInviteUserRenderProps.components = [
         heading('OU Step'),
-        block([ouSelect('ou', 'Organization Unit'), submitAction('Next')]),
+        block([ouSelect('ou', 'Organization unit'), submitAction('Next')]),
       ];
 
       render(<UserAddPage />);
@@ -1132,7 +1132,7 @@ describe('UserAddPage', () => {
   describe('form submission', () => {
     it('should call handleSubmit when form is submitted and valid', async () => {
       mockInviteUserRenderProps.isValid = true;
-      mockInviteUserRenderProps.values = {name: 'Test User'};
+      mockInviteUserRenderProps.values = {name: 'Test user'};
       mockInviteUserRenderProps.components = [
         heading('Step'),
         block([textInput('name', 'Name'), submitAction('Submit', {variant: 'PRIMARY'})]),
@@ -1153,13 +1153,13 @@ describe('UserAddPage', () => {
     it('should detect OU step and adjust total steps to 5', async () => {
       mockInviteUserRenderProps.components = [
         heading('OU Assignment'),
-        block([ouSelect('ou', 'Organization Unit'), submitAction('Next')]),
+        block([ouSelect('ou', 'Organization unit'), submitAction('Next')]),
       ];
 
       render(<UserAddPage />);
 
       // The OU step detection triggers hasOuStep=true, changing totalSteps to 5
-      // With 2 breadcrumbs ("Add User" + step label) and 5 total steps, progress = 40%
+      // With 2 breadcrumbs ("Add user" + step label) and 5 total steps, progress = 40%
       await waitFor(() => {
         const progressBar = screen.getAllByRole('progressbar')[0];
         expect(progressBar).toHaveAttribute('aria-valuenow', '40');
@@ -1168,13 +1168,13 @@ describe('UserAddPage', () => {
 
     it('should calculate progress without OU step as 4 total steps', async () => {
       mockInviteUserRenderProps.components = [
-        heading('User Type'),
+        heading('User type'),
         block([textInput('type', 'Type'), submitAction('Next')]),
       ];
 
       render(<UserAddPage />);
 
-      // With 2 breadcrumbs ("Add User" + step label) and 4 total steps, progress = 50%
+      // With 2 breadcrumbs ("Add user" + step label) and 4 total steps, progress = 50%
       await waitFor(() => {
         const progressBar = screen.getAllByRole('progressbar')[0];
         const value = Number(progressBar.getAttribute('aria-valuenow'));
@@ -1196,7 +1196,7 @@ describe('UserAddPage', () => {
 
       await waitFor(() => {
         const progressBar = screen.getAllByRole('progressbar')[0];
-        // With OU detected, totalSteps=5, 2 breadcrumbs ("Add User" + step label) -> 40%
+        // With OU detected, totalSteps=5, 2 breadcrumbs ("Add user" + step label) -> 40%
         expect(progressBar).toHaveAttribute('aria-valuenow', '40');
       });
     });
@@ -1209,7 +1209,7 @@ describe('UserAddPage', () => {
       mockInviteUserRenderProps.isValid = true;
       mockInviteUserRenderProps.components = [
         heading('Choose Delivery'),
-        block([stack([submitAction('Send Email', {id: 'act-email'}), submitAction('Get Link', {id: 'act-link'})])]),
+        block([stack([submitAction('Send email', {id: 'act-email'}), submitAction('Get Link', {id: 'act-link'})])]),
       ];
 
       render(<UserAddPage />);
@@ -1222,7 +1222,7 @@ describe('UserAddPage', () => {
       mockInviteUserRenderProps.isValid = true;
       mockInviteUserRenderProps.components = [
         heading('Choose Delivery'),
-        block([stack([submitAction('Send Email', {id: 'act-email'}), submitAction('Get Link', {id: 'act-link'})])]),
+        block([stack([submitAction('Send email', {id: 'act-email'}), submitAction('Get Link', {id: 'act-link'})])]),
       ];
 
       render(<UserAddPage />);
@@ -1236,7 +1236,7 @@ describe('UserAddPage', () => {
       mockInviteUserRenderProps.isValid = true;
       mockInviteUserRenderProps.components = [
         heading('Choose Delivery'),
-        block([stack([submitAction('Send Email', {id: 'act-email'}), submitAction('Get Link', {id: 'act-link'})])]),
+        block([stack([submitAction('Send email', {id: 'act-email'}), submitAction('Get Link', {id: 'act-link'})])]),
       ];
 
       render(<UserAddPage />);
@@ -1251,7 +1251,7 @@ describe('UserAddPage', () => {
       mockInviteUserRenderProps.isValid = true;
       mockInviteUserRenderProps.components = [
         heading('Choose Delivery'),
-        block([stack([submitAction('Send Email', {id: 'act-email'}), submitAction('Get Link', {id: 'act-link'})])]),
+        block([stack([submitAction('Send email', {id: 'act-email'}), submitAction('Get Link', {id: 'act-link'})])]),
       ];
 
       render(<UserAddPage />);
@@ -1275,7 +1275,7 @@ describe('UserAddPage', () => {
 
       mockInviteUserRenderProps.components = [
         heading('Choose Delivery'),
-        block([stack([submitAction('Send Email', {id: 'act-email'}), submitAction('Get Link', {id: 'act-link'})])]),
+        block([stack([submitAction('Send email', {id: 'act-email'}), submitAction('Get Link', {id: 'act-link'})])]),
       ];
 
       // Render with loading=false first so buttons are enabled
@@ -1291,7 +1291,7 @@ describe('UserAddPage', () => {
       expect(screen.getByRole('button', {name: /get link/i})).toBeDisabled();
       // "Get Link" (not clicked) still shows its label
       expect(screen.getByRole('button', {name: /get link/i})).toHaveTextContent('Get Link');
-      // "Send Email" (clicked) is disabled and shows no visible label (spinner replaces it)
+      // "Send email" (clicked) is disabled and shows no visible label (spinner replaces it)
       const sendEmailButtons = screen.getAllByRole('button');
       const sendEmailButton = sendEmailButtons.find(
         (btn) => btn.getAttribute('disabled') !== null && !btn.textContent?.includes('Get Link'),

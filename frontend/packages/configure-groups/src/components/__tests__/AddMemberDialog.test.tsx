@@ -151,13 +151,13 @@ describe('AddMemberDialog', () => {
   it('should render dialog when open', () => {
     renderWithProviders(<AddMemberDialog {...defaultProps} />);
 
-    expect(screen.getByText('Add Member')).toBeInTheDocument();
+    expect(screen.getByText('Add member')).toBeInTheDocument();
   });
 
   it('should not render when closed', () => {
     renderWithProviders(<AddMemberDialog {...defaultProps} open={false} />);
 
-    expect(screen.queryByText('Add Member')).not.toBeInTheDocument();
+    expect(screen.queryByText('Add member')).not.toBeInTheDocument();
   });
 
   it('should render users in the grid', () => {
@@ -216,7 +216,7 @@ describe('AddMemberDialog', () => {
     renderWithProviders(<AddMemberDialog {...defaultProps} groupId="g1" />);
 
     expect(screen.getByText('Failed to load current group members. Please try again.')).toBeInTheDocument();
-    expect(screen.getByText('Add Selected').closest('button')).toBeDisabled();
+    expect(screen.getByText('Add selected').closest('button')).toBeDisabled();
 
     await user.click(screen.getByText('Refresh'));
     expect(refetchMembers).toHaveBeenCalledTimes(1);
@@ -267,7 +267,7 @@ describe('AddMemberDialog', () => {
   it('should disable add button when no selection', () => {
     renderWithProviders(<AddMemberDialog {...defaultProps} />);
 
-    const addButton = screen.getByText('Add Selected').closest('button');
+    const addButton = screen.getByText('Add selected').closest('button');
     expect(addButton).toBeDisabled();
   });
 
@@ -277,7 +277,7 @@ describe('AddMemberDialog', () => {
 
     await user.click(screen.getByTestId('checkbox-u1'));
 
-    const addButton = screen.getByText('Add Selected').closest('button');
+    const addButton = screen.getByText('Add selected').closest('button');
     expect(addButton).not.toBeDisabled();
   });
 
@@ -286,7 +286,7 @@ describe('AddMemberDialog', () => {
     renderWithProviders(<AddMemberDialog {...defaultProps} />);
 
     await user.click(screen.getByTestId('checkbox-u1'));
-    await user.click(screen.getByText('Add Selected'));
+    await user.click(screen.getByText('Add selected'));
 
     expect(defaultProps.onAdd).toHaveBeenCalledWith([{id: 'u1', type: 'user'}]);
   });
@@ -297,7 +297,7 @@ describe('AddMemberDialog', () => {
 
     await user.click(screen.getByText('Apps'));
     await user.click(screen.getByTestId('checkbox-a1'));
-    await user.click(screen.getByText('Add Selected'));
+    await user.click(screen.getByText('Add selected'));
 
     expect(defaultProps.onAdd).toHaveBeenCalledWith([{id: 'a1', type: 'app'}]);
   });
@@ -330,7 +330,7 @@ describe('AddMemberDialog', () => {
 
     await user.click(screen.getByText('Groups'));
     await user.click(screen.getByTestId('checkbox-g1'));
-    await user.click(screen.getByText('Add Selected'));
+    await user.click(screen.getByText('Add selected'));
 
     expect(defaultProps.onAdd).toHaveBeenCalledWith([{id: 'g1', type: 'group'}]);
   });

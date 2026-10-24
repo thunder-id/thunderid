@@ -19,7 +19,7 @@ import {
 import {ComponentType, JSX, useState} from 'react';
 import {CodeCard, Cta, Note, Pill, SectionHeading, TabStrip} from './primitives';
 import StepShell from './StepShell';
-import {toneColour, useInk} from './theme';
+import {useCyan, useInk, useToneColour} from './theme';
 import {PACKAGE_MANAGER_ICONS} from '../../packageManagerIcons';
 import type {
   EcosystemApiEntry,
@@ -56,6 +56,7 @@ const GUIDE_ICONS: Record<NonNullable<EcosystemGuide['icon']>, ComponentType<{si
  * format familiar without pulling a Markdown renderer into the page.
  */
 function Prose({text, sx = undefined}: {text: string; sx?: object}): JSX.Element {
+  const cyan = useCyan();
   // Odd indices are the spans between backticks. The index is part of each key
   // because the same word can legitimately appear as both prose and code.
   const parts = text.split('`').map((value, index) => ({key: `${index}:${value}`, value, code: index % 2 === 1}));
@@ -70,8 +71,8 @@ function Prose({text, sx = undefined}: {text: string; sx?: object}): JSX.Element
             sx={{
               fontFamily: 'monospace',
               fontSize: '0.92em',
-              color: '#8bf9fa',
-              bgcolor: 'color-mix(in srgb, #8bf9fa 8%, transparent)',
+              color: cyan,
+              bgcolor: `color-mix(in srgb, ${cyan} 8%, transparent)`,
               borderRadius: '4px',
               px: '5px',
               py: '1px',
@@ -200,6 +201,7 @@ function StepsSection({section, accent}: SectionProps<EcosystemStepsSection>): J
 /** Row table: compatibility matrices, requirements, claim mappings. */
 function TableSection({section, accent}: SectionProps<EcosystemTableSection>): JSX.Element {
   const ink = useInk();
+  const toneColour = useToneColour();
   const columns = section.columns;
   const template = columns.map((_, i) => (i === columns.length - 1 ? 'minmax(0,1.2fr)' : 'minmax(0,1fr)')).join(' ');
 
@@ -285,6 +287,7 @@ function TableSection({section, accent}: SectionProps<EcosystemTableSection>): J
 /** Slash-command or CLI reference, grouped by a coloured tag. */
 function CommandsSection({section, accent}: SectionProps<EcosystemCommandsSection>): JSX.Element {
   const ink = useInk();
+  const toneColour = useToneColour();
 
   return (
     <Box component="section">
@@ -479,6 +482,7 @@ function GuidesSection({
 /** Prominent card linking to the canonical quickstart. */
 function QuickstartSection({section, accent, href}: LinkedSectionProps<EcosystemQuickstartSection>): JSX.Element {
   const ink = useInk();
+  const cyan = useCyan();
 
   return (
     <Box component="section">
@@ -517,7 +521,7 @@ function QuickstartSection({section, accent, href}: LinkedSectionProps<Ecosystem
             bgcolor: `color-mix(in srgb, ${accent} 12%, transparent)`,
             border: '1px solid',
             borderColor: `color-mix(in srgb, ${accent} 30%, transparent)`,
-            color: '#8bf9fa',
+            color: cyan,
           }}
         >
           <Zap size={20} strokeWidth={1.8} />
@@ -580,6 +584,8 @@ function QuickstartSection({section, accent, href}: LinkedSectionProps<Ecosystem
  */
 function ApiSection({section, accent, href}: LinkedSectionProps<EcosystemApiSection>): JSX.Element {
   const ink = useInk();
+  const cyan = useCyan();
+  const toneColour = useToneColour();
   const [selected, setSelected] = useState(0);
   const entry = section.exports[Math.min(selected, section.exports.length - 1)];
 
@@ -764,7 +770,7 @@ function ApiSection({section, accent, href}: LinkedSectionProps<EcosystemApiSect
                       </Box>
                       <Typography
                         component="code"
-                        sx={{fontFamily: 'monospace', fontSize: '11.5px', color: '#8bf9fa', overflowWrap: 'break-word'}}
+                        sx={{fontFamily: 'monospace', fontSize: '11.5px', color: cyan, overflowWrap: 'break-word'}}
                       >
                         {row.type}
                       </Typography>

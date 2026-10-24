@@ -1,7 +1,13 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {PageLoadingAnimation, QueryErrorNotice, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
+import {
+  DocumentTitle,
+  PageLoadingAnimation,
+  QueryErrorNotice,
+  SettingsCard,
+  UnsavedChangesBar,
+} from '@thunderid/components';
 import {useToast} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
@@ -174,13 +180,21 @@ export default function ResourceServerEditPage(): JSX.Element {
 
   const listUrl = routes.list();
 
+  const resourceTypeTitle = t('resourceServers:listing.title', 'Resource servers');
+
   if (isLoading) {
-    return <PageLoadingAnimation />;
+    return (
+      <>
+        <DocumentTitle title={resourceTypeTitle} />
+        <PageLoadingAnimation />
+      </>
+    );
   }
 
   if (error) {
     return (
       <PageContent>
+        <DocumentTitle title={resourceTypeTitle} />
         <QueryErrorNotice
           error={error}
           t={tForErrors}
@@ -209,6 +223,7 @@ export default function ResourceServerEditPage(): JSX.Element {
   if (!resourceServer) {
     return (
       <PageContent>
+        <DocumentTitle title={resourceTypeTitle} />
         <Alert severity="warning" sx={{mb: 2}}>
           {t('resourceServers:edit.notFound', 'Resource server not found.')}
         </Alert>
@@ -241,6 +256,7 @@ export default function ResourceServerEditPage(): JSX.Element {
 
   return (
     <PageContent>
+      <DocumentTitle title={resourceServer.name} />
       {resourceServer.isReadOnly && (
         <Alert severity="info" sx={{mb: 2}}>
           {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
@@ -429,7 +445,7 @@ export default function ResourceServerEditPage(): JSX.Element {
 
         {!resourceServer.isReadOnly && (
           <SettingsCard
-            title={t('resourceServers:edit.dangerZone.title', 'Danger Zone')}
+            title={t('resourceServers:edit.dangerZone.title', 'Danger zone')}
             description={
               resourceServer.type === 'MCP'
                 ? t('resourceServers:edit.dangerZone.descriptionMcp', 'Irreversible actions for this MCP server.')

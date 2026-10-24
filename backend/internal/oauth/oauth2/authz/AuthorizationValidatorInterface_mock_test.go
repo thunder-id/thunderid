@@ -17,10 +17,19 @@ func NewAuthorizationValidatorInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *AuthorizationValidatorInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &AuthorizationValidatorInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -79,7 +88,7 @@ type AuthorizationValidatorInterfaceMock_validateInitialAuthorizationRequest_Cal
 //   - ctx context.Context
 //   - msg *OAuthMessage
 //   - oauthApp *providers.OAuthClient
-func (_e *AuthorizationValidatorInterfaceMock_Expecter) validateInitialAuthorizationRequest(ctx interface{}, msg interface{}, oauthApp interface{}) *AuthorizationValidatorInterfaceMock_validateInitialAuthorizationRequest_Call {
+func (_e *AuthorizationValidatorInterfaceMock_Expecter) validateInitialAuthorizationRequest(ctx any, msg any, oauthApp any) *AuthorizationValidatorInterfaceMock_validateInitialAuthorizationRequest_Call {
 	return &AuthorizationValidatorInterfaceMock_validateInitialAuthorizationRequest_Call{Call: _e.mock.On("validateInitialAuthorizationRequest", ctx, msg, oauthApp)}
 }
 

@@ -109,7 +109,7 @@ async function fetchRepoContributors(fullName) {
     return contributors;
   } catch (error) {
     // Keep the other repos aggregating even if one is unreachable (rate-limited, private,
-    // renamed, or not created yet) — matches generate-sdk-releases.mjs's per-repo handling.
+    // renamed, or not created yet) — matches generate-ecosystem-releases.mjs's per-repo handling.
     logger.warn(`Failed to fetch contributors for ${fullName}: ${error.message}`);
 
     return [];

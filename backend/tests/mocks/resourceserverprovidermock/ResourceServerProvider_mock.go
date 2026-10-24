@@ -18,10 +18,19 @@ func NewResourceServerProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ResourceServerProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ResourceServerProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type ResourceServerProviderMock_GetResourceServer_Call struct {
 // GetResourceServer is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *ResourceServerProviderMock_Expecter) GetResourceServer(ctx interface{}, id interface{}) *ResourceServerProviderMock_GetResourceServer_Call {
+func (_e *ResourceServerProviderMock_Expecter) GetResourceServer(ctx any, id any) *ResourceServerProviderMock_GetResourceServer_Call {
 	return &ResourceServerProviderMock_GetResourceServer_Call{Call: _e.mock.On("GetResourceServer", ctx, id)}
 }
 
@@ -147,7 +156,7 @@ type ResourceServerProviderMock_GetResourceServerByIdentifier_Call struct {
 // GetResourceServerByIdentifier is a helper method to define mock.On call
 //   - ctx context.Context
 //   - identifier string
-func (_e *ResourceServerProviderMock_Expecter) GetResourceServerByIdentifier(ctx interface{}, identifier interface{}) *ResourceServerProviderMock_GetResourceServerByIdentifier_Call {
+func (_e *ResourceServerProviderMock_Expecter) GetResourceServerByIdentifier(ctx any, identifier any) *ResourceServerProviderMock_GetResourceServerByIdentifier_Call {
 	return &ResourceServerProviderMock_GetResourceServerByIdentifier_Call{Call: _e.mock.On("GetResourceServerByIdentifier", ctx, identifier)}
 }
 
@@ -218,7 +227,7 @@ type ResourceServerProviderMock_ValidatePermissions_Call struct {
 //   - ctx context.Context
 //   - resourceServerID string
 //   - permissions []string
-func (_e *ResourceServerProviderMock_Expecter) ValidatePermissions(ctx interface{}, resourceServerID interface{}, permissions interface{}) *ResourceServerProviderMock_ValidatePermissions_Call {
+func (_e *ResourceServerProviderMock_Expecter) ValidatePermissions(ctx any, resourceServerID any, permissions any) *ResourceServerProviderMock_ValidatePermissions_Call {
 	return &ResourceServerProviderMock_ValidatePermissions_Call{Call: _e.mock.On("ValidatePermissions", ctx, resourceServerID, permissions)}
 }
 

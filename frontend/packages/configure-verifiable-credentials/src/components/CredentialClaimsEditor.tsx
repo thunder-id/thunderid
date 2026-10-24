@@ -89,7 +89,7 @@ export default function ClaimsEditor({claims, onChange, nameErrors = {}}: Claims
               <TextField
                 size="small"
                 value={claim.displayName}
-                placeholder="Given Name"
+                placeholder="Given name"
                 onChange={(e): void => update(claim.id, {displayName: e.target.value})}
               />
             </FormControl>

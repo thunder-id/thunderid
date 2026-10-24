@@ -124,13 +124,13 @@ func (ts *AttributeCacheTestSuite) TearDownSuite() {
 	if ts.userID != "" {
 		testutils.DeleteUser(ts.userID)
 	}
-	if ts.ouID != "" {
-		testutils.DeleteOrganizationUnit(ts.ouID)
-	}
 	if ts.entityTypeID != "" {
 		if err := testutils.DeleteUserType(ts.entityTypeID); err != nil {
 			ts.T().Logf("Failed to delete user type during teardown: %v", err)
 		}
+	}
+	if ts.ouID != "" {
+		testutils.DeleteOrganizationUnit(ts.ouID)
 	}
 }
 

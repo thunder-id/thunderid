@@ -9,6 +9,7 @@ import (
 	"errors"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -1980,65 +1981,157 @@ func TestEntityTypeExportFormat(t *testing.T) {
 // Resource Server Export Scenario Tests
 // =============================================================================
 
-// TestResourceServerExport_IdentifierAndOUIDNotParameterized verifies that when
-// GetResourceRules() returns nil, the identifier and ou_id fields are emitted as
-// literal values and NOT replaced with Go template placeholders ({{.…}}).
-func TestResourceServerExport_IdentifierAndOUIDNotParameterized(t *testing.T) {
-	rs := &providers.ResourceServer{
-		ID:         "019ddcf3-c67c-7521-a3a1-6744abb241a7",
-		Name:       "System",
-		Identifier: "system",
-		OUID:       "019ddcf3-c5d8-7375-80e3-c5bf524257c8",
-		Delimiter:  ":",
+// resourceServerRules mirrors the resource server exporter's rules.
+var resourceServerRules = &declarativeresource.ResourceRules{Variables: []string{"Identifier"}}
+
+// exportableResourceServer returns a resource server whose delimiter and descriptions hold characters
+// plain YAML cannot read.
+func exportableResourceServer(delimiter string) *providers.ResourceServer {
+	return &providers.ResourceServer{
+		ID:          "019ddcf3-c67c-7521-a3a1-6744abb241a7",
+		Name:        "Orders API",
+		Description: "Orders: read and write",
+		Identifier:  "https://orders.example.com",
+		OUID:        "019ddcf3-c5d8-7375-80e3-c5bf524257c8",
+		Delimiter:   delimiter,
+		Resources: []providers.Resource{
+			{
+				Name: "Orders", Handle: "orders", Description: "all: every order",
+				Actions: []providers.Action{{Name: "Read", Handle: "read", Description: "read: one order"}},
+			},
+			{Name: "Lines", Handle: "lines", ParentHandle: "orders"},
+		},
 	}
+}
+
+// The identifier is parameterized, in each style, and nothing else a resource server holds is.
+func TestResourceServerExport_IdentifierIsParameterized(t *testing.T) {
+	rs := exportableResourceServer(":")
 
 	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	// nil rules mirrors what GetResourceRules() returns for resource servers
-	result, vars, _, err := p.ToParameterizedYAML(context.Background(), rs, "ResourceServer", "System", nil)
+	result, vars, secrets, err := p.ToParameterizedYAML(context.Background(), rs, "ResourceServer",
+		rs.Name, resourceServerRules)
 	require.NoError(t, err)
+	assert.Contains(t, result, "identifier: {{.RESOURCE_SERVER_ORDERS_API_IDENTIFIER}}\n")
+	assert.Contains(t, result, "ouId: 019ddcf3-c5d8-7375-80e3-c5bf524257c8\n")
+	assert.Equal(t, map[string]string{"RESOURCE_SERVER_ORDERS_API_IDENTIFIER": "https://orders.example.com"}, vars)
+	assert.Empty(t, secrets)
 
-	// identifier must be the literal value, not a template variable
-	assert.Contains(t, result, "identifier: system",
-		"identifier should be emitted as a literal value")
-	assert.NotContains(t, result, "{{.RESOURCE_SERVER_SYSTEM_IDENTIFIER}}",
-		"identifier must not be parameterized")
+	p = newParameterizer(templatingRules{}, ValueReferences)
+	result, _, _, err = p.ToParameterizedYAML(context.Background(), rs, "ResourceServer", rs.Name,
+		resourceServerRules)
+	require.NoError(t, err)
+	assert.Contains(t, result, "identifier: var:RESOURCE_SERVER_ORDERS_API_IDENTIFIER\n")
+}
 
-	// ou_id must be the literal value, not a template variable
-	assert.Contains(t, result, "ouId: 019ddcf3-c5d8-7375-80e3-c5bf524257c8",
-		"ouId should be emitted as a literal value")
-	assert.NotContains(t, result, "{{.RESOURCE_SERVER_SYSTEM_OU_ID}}",
-		"ouId must not be parameterized")
+// A stored reference is written out as it stands rather than named again, so a resource server
+// imported into a control plane exports the name it was imported with.
+func TestResourceServerExport_KeepsAStoredIdentifierReference(t *testing.T) {
+	rs := exportableResourceServer(":")
+	rs.Name = "Renamed API"
+	rs.Identifier = valueref.VariableReference("RESOURCE_SERVER_ORDERS_API_IDENTIFIER")
 
-	// no variables should be extracted since rules are nil
+	p := newParameterizer(templatingRules{}, ValueReferences)
+	result, _, secrets, err := p.ToParameterizedYAML(context.Background(), rs, "ResourceServer", rs.Name,
+		resourceServerRules)
+	require.NoError(t, err)
+	assert.Contains(t, result, "identifier: var:RESOURCE_SERVER_ORDERS_API_IDENTIFIER\n")
+	assert.NotContains(t, result, "RENAMED_API")
+	assert.Empty(t, secrets)
+}
+
+// Every delimiter a resource server accepts stays quoted with the identifier parameterized
+// (yamlfmt:"quoted"), and the export reads back as the resource server it was made from, its
+// resources and actions untouched.
+func TestResourceServerExport_DelimiterIsQuoted(t *testing.T) {
+	for _, delimiter := range strings.Split("._:-/", "") {
+		t.Run(delimiter, func(t *testing.T) {
+			rs := exportableResourceServer(delimiter)
+			for _, style := range []PlaceholderStyle{TemplatePlaceholders, ValueReferences} {
+				p := newParameterizer(templatingRules{}, style)
+				result, _, _, err := p.ToParameterizedYAML(context.Background(), rs, "ResourceServer",
+					rs.Name, resourceServerRules)
+				require.NoError(t, err)
+				assert.Contains(t, result, "delimiter: "+strconv.Quote(delimiter)+"\n")
+
+				// A template placeholder is filled before the document is read.
+				result = strings.ReplaceAll(result, "{{.RESOURCE_SERVER_ORDERS_API_IDENTIFIER}}",
+					"https://orders.example.com")
+				var parsed providers.ResourceServer
+				require.NoError(t, yaml.Unmarshal([]byte(result), &parsed), result)
+				assert.Equal(t, delimiter, parsed.Delimiter)
+				assert.Equal(t, rs.Description, parsed.Description)
+				assert.Equal(t, rs.Resources, parsed.Resources)
+			}
+		})
+	}
+}
+
+// Without rules, the delimiter is quoted by the encoder as it always was.
+func TestResourceServerExport_DelimiterIsQuotedWithoutRules(t *testing.T) {
+	rs := exportableResourceServer(":")
+
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, vars, _, err := p.ToParameterizedYAML(context.Background(), rs, "ResourceServer", rs.Name, nil)
+	require.NoError(t, err)
+	assert.Contains(t, result, `delimiter: ":"`)
+	assert.Contains(t, result, "identifier: https://orders.example.com")
 	assert.Empty(t, vars)
 }
 
-// TestResourceServerExport_DelimiterIsQuoted verifies that the delimiter field is
-// wrapped in double quotes in the exported YAML (yamlfmt:"quoted" tag).
-func TestResourceServerExport_DelimiterIsQuoted(t *testing.T) {
-	rs := &providers.ResourceServer{
-		ID:         "019ddcf3-c67c-7521-a3a1-6744abb241a7",
-		Name:       "System",
-		Identifier: "system",
-		OUID:       "019ddcf3-c5d8-7375-80e3-c5bf524257c8",
-		Delimiter:  ":",
+// A scalar is written as it is unless its field asks to be quoted or plain YAML cannot read it back
+// as the same value.
+func TestScalarText(t *testing.T) {
+	str := func(value string) *yaml.Node { return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value} }
+	cases := []struct {
+		node *yaml.Node
+		want string
+	}{
+		{str("plain"), "plain"},
+		{str("https://example.com/a"), "https://example.com/a"},
+		{str(""), ""},
+		{str("var:NAME"), "var:NAME"},
+		{str("{{.NAME}}"), "{{.NAME}}"},
+		{str(":"), `":"`},
+		{str("a: b"), `"a: b"`},
+		// A JSON string literal, as a user's attributes hold, reads back as the same string.
+		{str(`"json-string"`), `"json-string"`},
+		{str(`"a # b"`), `"a # b"`},
+		{str("true"), "true"},
+		{str("x\ny: z"), `"x\ny: z"`},
+		{str("line\nbreak"), `"line\nbreak"`},
+		// Read back as different text, part of it would be lost.
+		{str("Orders # archived"), `"Orders # archived"`},
+		{str("#tag"), `"#tag"`},
+		// Read back as something other than text, with the rest dropped as a comment.
+		{str("true # archived"), `"true # archived"`},
+		{str("42 # count"), `"42 # count"`},
+		{str("42"), "42"},
+		{str("null"), "null"},
+		// Read back as something other than text, which is written as YAML on purpose.
+		{str(`{"a": 1}`), `{"a": 1}`},
+		{str("[a, b]"), "[a, b]"},
+		// Read back as a list or a mapping, with the rest dropped as a comment.
+		{str("[draft] # pending"), `"[draft] # pending"`},
+		{str(`{"a": 1} # note`), `"{\"a\": 1} # note"`},
+		{&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "x", Style: yaml.DoubleQuotedStyle}, `"x"`},
+		{&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"}, "true"},
 	}
+	for _, c := range cases {
+		assert.Equal(t, c.want, scalarText(c.node), c.node.Value)
+	}
+}
 
-	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, _, _, err := p.ToParameterizedYAML(context.Background(), rs, "ResourceServer", "System", nil)
-	require.NoError(t, err)
+// A value whose tail YAML would drop as a comment reads back whole once written, whatever the rest
+// of it reads as.
+func TestScalarTextKeepsACommentTailOnRoundTrip(t *testing.T) {
+	for _, value := range []string{"Orders # archived", "true # archived", "[draft] # pending", `{"a": 1} # note`} {
+		written := scalarText(&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value})
 
-	// delimiter must be quoted so bare ":" is not parsed as a YAML mapping indicator
-	assert.Contains(t, result, `delimiter: ":"`,
-		"delimiter should be wrapped in double quotes")
-	assert.NotContains(t, result, "delimiter: :",
-		"bare unquoted colon must not appear as the delimiter value")
-
-	// Verify the output round-trips: the parsed delimiter value must equal ":"
-	var parsed providers.ResourceServer
-	require.NoError(t, yaml.Unmarshal([]byte(result), &parsed))
-	assert.Equal(t, ":", parsed.Delimiter,
-		"round-tripped delimiter should equal \":\"")
+		var read map[string]string
+		require.NoError(t, yaml.Unmarshal([]byte("value: "+written), &read), value)
+		assert.Equal(t, value, read["value"], "written as %s", written)
+	}
 }
 
 // --- Tests for `yaml:",inline"` handling in the parameterizer ---
@@ -2855,4 +2948,94 @@ func TestToParameterizedYAML_SortsMapKeys(t *testing.T) {
 	for range 5 {
 		assert.Equal(t, first, export(), "a re-export of unchanged data must be identical")
 	}
+}
+
+type listOAuth struct {
+	RedirectURIs []string `yaml:"redirectUris"`
+}
+
+type listConfig struct {
+	OAuthConfig *listOAuth `yaml:"config"`
+}
+
+// listApp carries an address list, the shape array variables parameterize.
+type listApp struct {
+	Name              string       `yaml:"name"`
+	InboundAuthConfig []listConfig `yaml:"inboundAuthConfig"`
+}
+
+var listRules = &declarativeresource.ResourceRules{
+	ArrayVariables: []string{"InboundAuthConfig[].OAuthConfig.RedirectURIs"},
+}
+
+// A control plane writes a list as a list of one reference, so each gateway supplies its own
+// addresses, however many it has. A data plane still writes a template that ranges over them.
+func TestAListBecomesAReferenceToTheVariableHoldingIt(t *testing.T) {
+	resource := func() *listApp {
+		return &listApp{Name: "My App", InboundAuthConfig: []listConfig{{OAuthConfig: &listOAuth{
+			RedirectURIs: []string{"https://one.test/cb", "https://two.test/cb"},
+		}}}}
+	}
+
+	controlPlane, _, secrets, err := newParameterizer(templatingRules{}, ValueReferences).
+		ToParameterizedYAML(context.Background(), resource(), "Application", "My App", listRules)
+	require.NoError(t, err)
+	dataPlane, _, _, err := newParameterizer(templatingRules{}, TemplatePlaceholders).
+		ToParameterizedYAML(context.Background(), resource(), "Application", "My App", listRules)
+	require.NoError(t, err)
+
+	var exported listApp
+	require.NoError(t, yaml.Unmarshal([]byte(controlPlane), &exported))
+	assert.Equal(t, []string{"var:APPLICATION_MY_APP_REDIRECT_URIS"},
+		exported.InboundAuthConfig[0].OAuthConfig.RedirectURIs)
+	assert.NotContains(t, controlPlane, "one.test", "an address was exported rather than referenced")
+	assert.Empty(t, secrets, "an address list was reported as a credential")
+
+	assert.Contains(t, dataPlane, "{{- range .APPLICATION_MY_APP_REDIRECT_URIS}}")
+}
+
+// A list that already holds a reference keeps it, so a resource written from an import exports the
+// reference it was written with rather than one derived from its current name.
+func TestAListHoldingAReferenceKeepsIt(t *testing.T) {
+	app := &listApp{Name: "Renamed", InboundAuthConfig: []listConfig{{OAuthConfig: &listOAuth{
+		RedirectURIs: []string{valueref.VariableReference("APPLICATION_ORIGINAL_REDIRECT_URIS")},
+	}}}}
+
+	doc, _, _, err := newParameterizer(templatingRules{}, ValueReferences).
+		ToParameterizedYAML(context.Background(), app, "Application", "Renamed", listRules)
+	require.NoError(t, err)
+
+	assert.Contains(t, doc, "var:APPLICATION_ORIGINAL_REDIRECT_URIS")
+	assert.NotContains(t, doc, "APPLICATION_RENAMED_REDIRECT_URIS")
+}
+
+// A list holding a secret reference keeps it as a list holding a variable reference does: rewriting it
+// would lose the secret, and refer to a variable the capture never fills, since it leaves the list out.
+func TestAListHoldingASecretReferenceKeepsIt(t *testing.T) {
+	app := &listApp{Name: "Sealed", InboundAuthConfig: []listConfig{{OAuthConfig: &listOAuth{
+		RedirectURIs: []string{valueref.SecretReference("APPLICATION_SEALED_REDIRECT_URI"), "https://kept.test/cb"},
+	}}}}
+
+	doc, _, _, err := newParameterizer(templatingRules{}, ValueReferences).
+		ToParameterizedYAML(context.Background(), app, "Application", "Sealed", listRules)
+	require.NoError(t, err)
+
+	assert.Contains(t, doc, "sec:APPLICATION_SEALED_REDIRECT_URI")
+	assert.Contains(t, doc, "https://kept.test/cb")
+	assert.NotContains(t, doc, "var:APPLICATION_SEALED_REDIRECT_URIS")
+}
+
+// A list mixing a reference with literal items keeps both, so an import expands the reference beside
+// the literal items rather than losing them.
+func TestAListMixingAReferenceWithLiteralsKeepsThem(t *testing.T) {
+	app := &listApp{Name: "Mixed", InboundAuthConfig: []listConfig{{OAuthConfig: &listOAuth{
+		RedirectURIs: []string{valueref.VariableReference("APPLICATION_MIXED_REDIRECT_URIS"), "https://kept.test/cb"},
+	}}}}
+
+	doc, _, _, err := newParameterizer(templatingRules{}, ValueReferences).
+		ToParameterizedYAML(context.Background(), app, "Application", "Mixed", listRules)
+	require.NoError(t, err)
+
+	assert.Contains(t, doc, "var:APPLICATION_MIXED_REDIRECT_URIS")
+	assert.Contains(t, doc, "https://kept.test/cb")
 }

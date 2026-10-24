@@ -47,6 +47,32 @@ var (
 			DefaultValue: "The single and batch evaluation endpoints must be absolute URLs.",
 		},
 	}
+	// ErrorInvalidAuthentication is returned when PDP outbound authentication is invalid.
+	ErrorInvalidAuthentication = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1013",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_authzen_pdp_authentication",
+			DefaultValue: "Invalid AuthZEN PDP authentication",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_authzen_pdp_authentication_description",
+			DefaultValue: "Configure valid credentials for the selected authentication method.",
+		},
+	}
+	// ErrorAuthenticationRequiredForEndpointChange is returned when an endpoint change needs fresh credentials.
+	ErrorAuthenticationRequiredForEndpointChange = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1014",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.authzen_pdp_authentication_required_for_endpoint_change",
+			DefaultValue: "Authentication must be updated",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.authzen_pdp_authentication_required_for_endpoint_change_description",
+			DefaultValue: "Enter fresh credentials when changing an AuthZEN PDP endpoint.",
+		},
+	}
 	// ErrorInvalidName is returned when an AuthZEN PDP connection name is missing.
 	ErrorInvalidName = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

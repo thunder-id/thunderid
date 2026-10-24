@@ -59,7 +59,7 @@ export default function PasswordlessLoginGroup({
 
   return (
     <AuthMethodGroup
-      title={t('applications:onboarding.configure.security.passwordlessLogin.title', 'Passwordless Login')}
+      title={t('applications:onboarding.configure.security.passwordlessLogin.title', 'Passwordless login')}
       checked={checked}
       indeterminate={indeterminate}
       onCheckedChange={handleCheckedChange}

@@ -395,7 +395,7 @@ function ReorderableElement({
               )}
               {extraActions}
               {isContainer && formCompatibleElements.length > 0 && (
-                <Handle label={isStack ? 'Add Component' : 'Add Field'} onClick={handleMenuOpen}>
+                <Handle label={isStack ? 'Add component' : 'Add field'} onClick={handleMenuOpen}>
                   <PlusIcon size={16} />
                 </Handle>
               )}

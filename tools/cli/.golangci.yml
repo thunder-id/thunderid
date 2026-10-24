@@ -1,73 +1,82 @@
 # Copyright 2026 The ThunderID Authors
 # SPDX-License-Identifier: Apache-2.0
 
+version: "2"
 run:
-  timeout: 5m
   allow-parallel-runners: true
-
 linters:
-  disable-all: true
+  default: none
   enable:
     - errcheck
     - gocritic
-    - gofmt
-    - goimports
-    - gosimple
     - govet
     - ineffassign
     - lll
     - misspell
     - revive
     - staticcheck
-    - typecheck
     - unused
     - whitespace
-
-linters-settings:
-  errcheck:
-    check-blank: false
-    check-type-assertions: false
-  gci:
-    sections:
-      - standard
-      - default
-      - prefix(github.com/thunder-id/thunderid/tools/cli)
-  govet:
-    enable-all: true
-    disable:
-      - fieldalignment
-      - shadow
-  gocritic:
-    disabled-checks:
-      - exitAfterDefer
-      - ifElseChain
-      - elseif
-    enabled-tags:
-      - diagnostic
-  goimports:
-    local-prefixes: github.com/thunder-id/thunderid/tools/cli
-  misspell:
-    locale: US
-    ignore-words:
-      - cancelled
-      - cancelling
-  lll:
-    line-length: 140
-    tab-width: 4
-  revive:
-    rules:
-      - name: var-naming
-      - name: redundant-import-alias
-      - name: comment-spacings
-      - name: exported
-        arguments:
-          - disableStutteringCheck
-      - name: package-comments
-
+  settings:
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+    gocritic:
+      disabled-checks:
+        - exitAfterDefer
+        - ifElseChain
+        - elseif
+      enabled-tags:
+        - diagnostic
+    govet:
+      disable:
+        - fieldalignment
+        - shadow
+      enable-all: true
+    lll:
+      line-length: 140
+      tab-width: 4
+    misspell:
+      locale: US
+      ignore-rules:
+        - cancelled
+        - cancelling
+    revive:
+      rules:
+        - name: var-naming
+        - name: redundant-import-alias
+        - name: comment-spacings
+        - name: exported
+          arguments:
+            - disableStutteringCheck
+        - name: package-comments
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  max-same-issues: 0
   max-issues-per-linter: 0
-  exclude-use-default: false
-
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/thunder-id/thunderid/tools/cli)
+    goimports:
+      local-prefixes:
+        - github.com/thunder-id/thunderid/tools/cli
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 output:
   show-stats: true

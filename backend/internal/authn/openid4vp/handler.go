@@ -59,7 +59,7 @@ func (h *openID4VPHandler) HandleRequestObject(w http.ResponseWriter, r *http.Re
 	w.Header().Set("Content-Type", requestObjectContentType)
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
-	if _, werr := w.Write([]byte(jar)); werr != nil {
+	if _, werr := w.Write([]byte(jar)); werr != nil { //nolint:gosec // G705: server-signed JWT, not HTML
 		h.logger.Error(r.Context(), "Failed to write request object response", log.Error(werr))
 	}
 }

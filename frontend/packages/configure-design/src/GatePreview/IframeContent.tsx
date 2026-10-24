@@ -224,8 +224,8 @@ export default function IframeContent({
                   showThemelessBranding
                     ? {
                         src: {
-                          light: `${import.meta.env.BASE_URL}/assets/images/logo.svg`,
-                          dark: `${import.meta.env.BASE_URL}/assets/images/logo-inverted.svg`,
+                          light: `${import.meta.env.BASE_URL.replace(/\/$/, '')}/assets/images/logo.svg`,
+                          dark: `${import.meta.env.BASE_URL.replace(/\/$/, '')}/assets/images/logo-inverted.svg`,
                         },
                         alt: {light: '', dark: ''},
                       }

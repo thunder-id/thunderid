@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth/smtpauth"
 )
 
@@ -92,8 +93,7 @@ func (s *MetaTestSuite) TestBasicMethodDescribesItsFieldsInRenderOrder() {
 // A vendor whose credentials are a fixed contract has no choice to offer, so it advertises no
 // methods and the console renders no authentication section for it.
 func (s *MetaTestSuite) TestVendorsWithoutConfigurableAuthenticationAdvertiseNone() {
-	for _, vendor := range []string{"twilio", "vonage", "google", "oidc", smsGatewayVendorName,
-		authZENPDPVendorName} {
+	for _, vendor := range []string{"twilio", "vonage", "google", "oidc"} {
 		s.Run(vendor, func() {
 			resp := s.describe(vendor)
 			s.Empty(resp.Authentication.Methods)
@@ -116,14 +116,19 @@ func (s *MetaTestSuite) TestNoVendorDescribesEveryVendor() {
 		s.Equal(s.describe(vendor.Vendor), vendor, vendor.Vendor)
 	}
 	s.Equal([]string{"google", "github", "oidc", "oauth", "twilio", "vonage", smsGatewayVendorName,
-		emailSMTPVendorName, authZENPDPVendorName}, names)
+		emailSMTPVendorName, authZENPDPVendorName, httpVendorName}, names)
 }
 
 // The endpoint must not be able to advertise a method the sender service would reject, so it
 // reads the same set the validator does.
 func (s *MetaTestSuite) TestAdvertisedMethodsMatchTheValidatedSet() {
 	cases := map[string][]outboundauth.Type{
-		emailSMTPVendorName: smtpauth.SupportedTypes(),
+		emailSMTPVendorName:  smtpauth.SupportedTypes(),
+		smsGatewayVendorName: httpauth.SupportedTypes(),
+		authZENPDPVendorName: {outboundauth.TypeNone, outboundauth.TypeBearer, outboundauth.TypeBasic,
+			outboundauth.TypeAPIKey},
+		httpVendorName: {outboundauth.TypeNone, outboundauth.TypeBearer, outboundauth.TypeBasic,
+			outboundauth.TypeAPIKey},
 	}
 
 	for vendor, supported := range cases {

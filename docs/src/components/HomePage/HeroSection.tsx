@@ -3,8 +3,12 @@
 
 import Link from '@docusaurus/Link';
 import {useBaseUrlUtils} from '@docusaurus/useBaseUrl';
-import {Box, Button, Container, Stack, Typography, useTheme} from '@wso2/oxygen-ui';
-import React, {JSX, useEffect, useState} from 'react';
+import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
+import {Box, Button, ButtonBase, Container, Stack, Typography, useTheme} from '@wso2/oxygen-ui';
+import {ArrowRight, Check, Star} from '@wso2/oxygen-ui-icons-react';
+import {JSX, useEffect, useState} from 'react';
+import {DISPLAY_FONT, gradientTextSx, HOME_MAX_WIDTH} from './homeTheme';
+import StandardsMarquee from './StandardsMarquee';
 import useIsDarkMode from '../../hooks/useIsDarkMode';
 import usePlatform from '../../hooks/usePlatform';
 import {type ArchKey, type OsKey} from '../../utils/platform';
@@ -12,21 +16,20 @@ import ClaudeLogo from '../icons/ClaudeLogo';
 import CliLogo from '../icons/CliLogo';
 import CodexLogo from '../icons/CodexLogo';
 import DockerLogo from '../icons/DockerLogo';
-import GoLogo from '../icons/GoLogo';
 import IOSLogo from '../icons/IOSLogo';
 import LinuxLogo from '../icons/LinuxLogo';
 import SkillsLogo from '../icons/SkillsLogo';
 import WindowsLogo from '../icons/WindowsLogo';
+import type {DocusaurusProductConfig} from '@site/docusaurus.product.config';
 import {useDocsUrl} from '@site/src/hooks/useDocsUrl';
 
 const INSTALL_TABS = [
-  {id: 'cli', label: 'npx', icon: CliLogo, command: 'npx thunderid', brandColor: null, enabled: true},
+  {id: 'cli', label: 'npx', icon: CliLogo, command: 'npx thunderid', enabled: true},
   {
     id: 'docker',
     label: 'Docker',
     icon: DockerLogo,
     command: 'docker compose -f oci://ghcr.io/thunder-id/thunderid-quick-start:latest up',
-    brandColor: '#2560FF',
     enabled: true,
   },
   {
@@ -34,7 +37,6 @@ const INSTALL_TABS = [
     label: 'Claude',
     icon: ClaudeLogo,
     command: '/plugin marketplace add thunder-id/skills',
-    brandColor: '#D97757',
     enabled: true,
   },
   {
@@ -42,7 +44,6 @@ const INSTALL_TABS = [
     label: 'Codex',
     icon: CodexLogo,
     command: 'codex plugin marketplace add thunder-id/skills',
-    brandColor: '#3941FF',
     enabled: true,
   },
   {
@@ -50,7 +51,6 @@ const INSTALL_TABS = [
     label: 'Skills',
     icon: SkillsLogo,
     command: 'npx skills add thunder-id/skills',
-    brandColor: null,
     enabled: true,
   },
 ];
@@ -99,6 +99,10 @@ export default function HeroSection(): JSX.Element {
   const isLight = !useIsDarkMode();
   const {withBaseUrl} = useBaseUrlUtils();
   const docsUrl = useDocsUrl();
+  const {siteConfig} = useDocusaurusContext();
+  const product = siteConfig.customFields?.product as DocusaurusProductConfig;
+  const productName = product.project.name;
+  const githubUrl = product.project.source.github.url;
 
   const [activeTab, setActiveTabRaw] = useState('cli');
   const setActiveTab = setActiveTabRaw as (v: string) => void;
@@ -107,6 +111,7 @@ export default function HeroSection(): JSX.Element {
   const setCopied = setCopiedRaw as (v: boolean) => void;
   const platform = usePlatform();
 
+  const [releaseVersion, setReleaseVersion] = useState<string | null>(null);
   const [downloadAssetsRaw, setDownloadAssetsRaw] = useState([] as DownloadAsset[]);
   const downloadAssets = downloadAssetsRaw;
   const setDownloadAssets = setDownloadAssetsRaw as (v: DownloadAsset[]) => void;
@@ -120,6 +125,9 @@ export default function HeroSection(): JSX.Element {
       )
       .then((data) => {
         setDownloadAssets(parseDownloadAssets(data.latestRelease?.assets ?? []));
+        // Announce the major.minor line (e.g. "v1.0.1" → "1.0").
+        const m = /^v?(\d+)\.(\d+)/.exec(data.latestRelease?.tagName ?? '');
+        setReleaseVersion(m ? `${m[1]}.${m[2]}` : null);
       })
       // eslint-disable-next-line @typescript-eslint/no-empty-function
       .catch(() => {});
@@ -157,7 +165,8 @@ export default function HeroSection(): JSX.Element {
     return downloadAssets.find((a: DownloadAsset) => a.os === platform.os && a.arch === alt) ?? null;
   })();
 
-  const dimColor = isLight ? 'rgba(0,0,0,0.38)' : 'rgba(255,255,255,0.35)';
+  const lineStrong = isLight ? 'rgba(15,40,80,0.16)' : 'rgba(160,200,255,0.18)';
+  const muted2 = isLight ? 'rgba(15,30,60,0.48)' : '#5b6b85';
 
   return (
     <Box
@@ -166,83 +175,134 @@ export default function HeroSection(): JSX.Element {
           from: {opacity: 0, transform: 'translateY(24px)'},
           to: {opacity: 1, transform: 'translateY(0)'},
         },
-        minHeight: 'calc(100vh - var(--ifm-navbar-height))',
+        minHeight: 'calc(100svh - var(--ifm-navbar-height))',
         display: 'flex',
-        alignItems: 'center',
+        flexDirection: 'column',
         position: 'relative',
         overflow: 'hidden',
       }}
     >
-      <Container maxWidth="lg" sx={{px: {xs: 2, sm: 4}, position: 'relative', zIndex: 1, width: '100%'}}>
+      <Container
+        maxWidth={false}
+        sx={{maxWidth: HOME_MAX_WIDTH, px: {xs: 2, sm: 4}, position: 'relative', zIndex: 1, width: '100%', flex: 1, display: 'flex', alignItems: 'center'}}
+      >
         <Box
           sx={{
-            '@keyframes streak': {
-              '0%': {transform: 'translateX(-120%) skewX(-20deg)', opacity: 0},
-              '20%': {opacity: 0.18},
-              '80%': {opacity: 0.18},
-              '100%': {transform: 'translateX(260%) skewX(-20deg)', opacity: 0},
-            },
             display: 'flex',
             flexDirection: {xs: 'column', lg: 'row'},
             alignItems: {xs: 'center', lg: 'center'},
-            gap: {xs: 6, lg: 8},
-            py: {xs: 8, lg: 10},
+            width: '100%',
+            gap: {xs: 6, lg: 6},
+            pt: {xs: 5, lg: 8},
+            pb: {xs: 5, lg: 6},
           }}
         >
           {/* ── Left column ── */}
           <Box
             sx={{
-              flex: '1 1 0',
+              flex: '1.05 1 0',
+              minWidth: 0,
               display: 'flex',
               flexDirection: 'column',
               alignItems: {xs: 'center', lg: 'flex-start'},
               textAlign: {xs: 'center', lg: 'left'},
             }}
           >
-            <Typography
-              variant="h1"
+            {/* Release announcement */}
+            <Box
+              component={Link}
+              to="/releases"
               sx={{
-                mb: 2.5,
-                fontSize: {xs: '3rem', sm: '4rem', md: '5rem'},
-                fontWeight: 700,
-                lineHeight: 1.05,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 1.25,
+                mb: {xs: 2.5, md: 4},
+                p: '6px 6px 6px 14px',
+                maxWidth: '100%',
+                borderRadius: '999px',
+                fontSize: {xs: '0.8125rem', sm: '0.875rem'},
                 color: 'text.primary',
-                animation: 'fadeInUp 0.7s cubic-bezier(0.16,1,0.3,1) 0.1s both',
+                textDecoration: 'none',
+                bgcolor: isLight ? 'rgba(255,255,255,0.7)' : 'rgba(13,17,23,0.6)',
+                border: '1px solid',
+                borderColor: isLight ? 'rgba(15,40,80,0.14)' : '#1f3350',
+                backdropFilter: 'blur(10px)',
+                transition: 'border-color 0.2s',
+                animation: 'fadeInUp 0.7s cubic-bezier(0.16,1,0.3,1) 0s both',
+                '&:hover': {borderColor: theme.vars?.palette.primary.main, color: 'text.primary', textDecoration: 'none'},
               }}
             >
+              <Box component="span" sx={{whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>
+                {releaseVersion ? `${productName} ${releaseVersion} is here` : `What's new in ${productName}`}
+              </Box>
               <Box
                 component="span"
                 sx={{
-                  background: `linear-gradient(90deg, ${theme.vars?.palette.primary.dark} 0%, ${theme.vars?.palette.primary.main} 100%)`,
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 0.75,
+                  flex: 'none',
+                  px: 1.25,
+                  py: 0.5,
+                  borderRadius: '999px',
+                  bgcolor: 'rgba(54,136,255,0.15)',
+                  color: 'primary.main',
+                  fontWeight: 600,
+                  fontSize: '0.8125rem',
                 }}
               >
-                Auth
+                <Box component="span" sx={{display: {xs: 'none', sm: 'inline'}}}>
+                  Read the release notes
+                </Box>
+                <Box component="span" sx={{display: {xs: 'inline', sm: 'none'}}}>
+                  Release notes
+                </Box>
+                <ArrowRight size={14} strokeWidth={2} />
+              </Box>
+            </Box>
+
+            <Typography
+              variant="h1"
+              sx={{
+                mb: 0,
+                fontFamily: DISPLAY_FONT,
+                fontSize: {xs: '2.25rem', sm: '3rem', lg: '3.75rem'},
+                fontWeight: 700,
+                lineHeight: 1.05,
+                letterSpacing: '-0.035em',
+                textWrap: 'balance',
+                color: 'text.primary',
+                animation: 'fadeInUp 0.7s cubic-bezier(0.16,1,0.3,1) 0.1s both',
+                '& .hl': {color: 'primary.main'},
+              }}
+            >
+              <Box component="span" sx={gradientTextSx}>
+                Open source
               </Box>{' '}
-              for Modern Apps and Agents
+              identity for <span className="hl">humans</span>, <span className="hl">AI&nbsp;agents</span>, and&nbsp;
+              <span className="hl">machines</span>
             </Typography>
 
             <Typography
               variant="body1"
               sx={{
-                maxWidth: '480px',
-                mb: 5,
-                fontSize: {xs: '1.05rem', sm: '1.15rem'},
-                lineHeight: 1.75,
+                mt: 2.75,
+                maxWidth: 600,
+                fontSize: {xs: '1.0625rem', sm: '1.3125rem'},
+                lineHeight: 1.55,
                 color: 'text.secondary',
                 animation: 'fadeInUp 0.7s cubic-bezier(0.16,1,0.3,1) 0.2s both',
               }}
             >
-              Authentication, authorization, and identity for humans, AI agents, and machines.
+              Authentication, authorization, and identity management, built for the agentic era. Native agent identity,
+              post-quantum safety, and ready for digital wallets. A lightweight, high-performance Go runtime.
             </Typography>
 
             <Stack
               direction={{xs: 'column', sm: 'row'}}
-              spacing={2}
+              spacing={1.5}
               alignItems="center"
-              sx={{animation: 'fadeInUp 0.7s cubic-bezier(0.16,1,0.3,1) 0.3s both', mb: 4}}
+              sx={{mt: 4.5, width: {xs: '100%', sm: 'auto'}, animation: 'fadeInUp 0.7s cubic-bezier(0.16,1,0.3,1) 0.3s both'}}
             >
               <Button
                 component={Link}
@@ -250,129 +310,86 @@ export default function HeroSection(): JSX.Element {
                 variant="contained"
                 color="primary"
                 size="large"
+                endIcon={<ArrowRight size={17} strokeWidth={2} />}
                 sx={{
-                  px: 4,
-                  py: 1.5,
+                  height: 52,
+                  px: 3,
+                  width: {xs: '100%', sm: 'auto'},
                   fontWeight: 600,
                   textTransform: 'none',
                   fontSize: '1rem',
-                  borderRadius: '28px',
-                  background: `linear-gradient(135deg, ${theme.vars?.palette.primary.dark} 0%, ${theme.vars?.palette.primary.main} 100%)`,
-                  transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-                  '&:hover': {
-                    background: `linear-gradient(135deg, ${theme.vars?.palette.primary.dark} 0%, ${theme.vars?.palette.primary.main} 100%)`,
-                    transform: 'translateY(-2px)',
-                    boxShadow: `0 6px 24px rgba(${theme.vars?.palette.primary.main} / 0.35)`,
-                  },
-                  '&:active': {transform: 'translateY(0)'},
+                  borderRadius: '8px',
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12)',
+                  transition: 'transform 0.18s ease, background-color 0.2s ease',
+                  '&:hover': {transform: 'translateY(-2px)', color: 'common.white'},
                 }}
               >
-                Get Started
+                Get started
               </Button>
               <Button
-                component={Link}
-                href={docsUrl('/docs/next/getting-started/get-thunderid')}
-                variant="text"
+                component="a"
+                href={githubUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                variant="outlined"
                 size="large"
+                startIcon={<Star size={17} />}
                 sx={{
+                  height: 52,
                   px: 3,
-                  py: 1.5,
+                  width: {xs: '100%', sm: 'auto'},
+                  fontWeight: 600,
                   textTransform: 'none',
                   fontSize: '1rem',
-                  color: 'text.secondary',
-                  borderRadius: '28px',
-                  '&:hover': {bgcolor: 'transparent', color: 'text.primary'},
+                  borderRadius: '8px',
+                  color: 'text.primary',
+                  borderColor: isLight ? 'rgba(15,40,80,0.16)' : 'rgba(160,200,255,0.18)',
+                  bgcolor: isLight ? 'rgba(255,255,255,0.6)' : 'rgba(4,10,22,0.55)',
+                  backdropFilter: 'blur(10px)',
+                  transition: 'transform 0.18s ease, border-color 0.2s ease',
+                  '&:hover': {
+                    transform: 'translateY(-2px)',
+                    color: 'text.primary',
+                    borderColor: isLight ? 'rgba(15,40,80,0.3)' : '#5b6b85',
+                    bgcolor: isLight ? 'rgba(255,255,255,0.9)' : 'rgba(22,27,34,0.8)',
+                  },
                 }}
               >
-                Learn More →
+                Star on GitHub
               </Button>
             </Stack>
 
             <Box
               sx={{
-                display: 'flex',
+                display: 'inline-flex',
                 flexWrap: 'wrap',
-                gap: {xs: 1.5, sm: 0},
-                alignItems: 'center',
-                justifyContent: {xs: 'center', lg: 'flex-start'},
+                justifyContent: 'center',
+                gap: {xs: 1, sm: 2.25},
+                mt: 2.75,
+                px: 2,
+                py: 1,
+                borderRadius: {xs: '16px', sm: '999px'},
+                fontSize: '0.84375rem',
+                color: 'text.secondary',
+                bgcolor: isLight ? 'rgba(255,255,255,0.6)' : 'rgba(4,10,22,0.55)',
+                border: '1px solid',
+                borderColor: isLight ? 'rgba(15,40,80,0.09)' : 'rgba(160,200,255,0.10)',
+                backdropFilter: 'blur(10px)',
                 animation: 'fadeInUp 0.7s cubic-bezier(0.16,1,0.3,1) 0.4s both',
               }}
             >
-              {(
-                [
-                  {
-                    key: 'apache',
-                    icon: null,
-                    parts: [
-                      {text: 'Apache 2.0', bold: true},
-                      {text: 'license', bold: false},
-                    ],
-                  },
-                  {
-                    key: 'go',
-                    icon: <GoLogo size={18} />,
-                    parts: [
-                      {text: 'built with', bold: false},
-                      {text: 'Go', bold: true},
-                    ],
-                  },
-                  {
-                    key: 'speed',
-                    icon: null,
-                    parts: [
-                      {text: '<50ms', bold: true},
-                      {text: 'startup', bold: false},
-                    ],
-                  },
-                ] as {key: string; icon: JSX.Element | null; parts: {text: string; bold: boolean}[]}[]
-              ).map(({key, icon, parts}, i) => (
-                <React.Fragment key={key}>
-                  {i > 0 && (
-                    <Box
-                      component="span"
-                      sx={{
-                        mx: 2,
-                        display: {xs: 'none', sm: 'inline'},
-                        color: isLight ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.12)',
-                      }}
-                    >
-                      ·
-                    </Box>
-                  )}
-                  <Box sx={{display: 'inline-flex', alignItems: 'center', gap: 0.5}}>
-                    {icon && (
-                      <Box sx={{display: 'flex', alignItems: 'center', filter: 'grayscale(0.4)', opacity: 0.65}}>
-                        {icon}
-                      </Box>
-                    )}
-                    {parts.map(({text, bold}) => (
-                      <Typography
-                        key={text}
-                        component="span"
-                        sx={{
-                          fontSize: '0.8rem',
-                          ...(bold
-                            ? {
-                                fontWeight: 600,
-                                fontFamily: 'monospace',
-                                color: isLight ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.6)',
-                              }
-                            : {color: isLight ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.3)'}),
-                        }}
-                      >
-                        {text}
-                      </Typography>
-                    ))}
-                  </Box>
-                </React.Fragment>
+              {['Apache 2.0 license', 'Built with Go', '<50ms startup'].map((label) => (
+                <Box key={label} component="span" sx={{display: 'inline-flex', alignItems: 'center', gap: 0.75}}>
+                  <Check size={14} strokeWidth={2.4} color={isLight ? '#0092c2' : '#00D5FF'} />
+                  {label}
+                </Box>
               ))}
             </Box>
           </Box>
-
           {/* ── Right column ── */}
           <Box
             sx={{
-              flex: '1 1 0',
+              flex: '0.95 1 0',
               minWidth: 0,
               display: 'flex',
               flexDirection: 'column',
@@ -382,121 +399,80 @@ export default function HeroSection(): JSX.Element {
             }}
           >
             {/* Section label */}
-            <Box sx={{mb: 2.25}}>
+            <Box sx={{mb: 2.25, textAlign: 'left'}}>
               <Typography
+                component="h2"
                 sx={{
-                  fontFamily: '"JetBrains Mono", "Fira Code", monospace',
-                  fontSize: '0.8rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.14em',
-                  color: isLight ? 'rgba(0,0,0,0.28)' : 'rgba(255,255,255,0.28)',
-                  mb: 0.875,
+                  m: 0,
+                  fontFamily: DISPLAY_FONT,
+                  fontSize: '1rem',
+                  fontWeight: 600,
+                  lineHeight: 1.3,
+                  letterSpacing: '-0.01em',
+                  color: 'text.primary',
                 }}
               >
-                Get ThunderID where you work
+                Get {productName} where you work
               </Typography>
-              <Box
-                sx={{
-                  width: 32,
-                  height: 2,
-                  borderRadius: '1px',
-                  background: `linear-gradient(90deg, ${theme.vars?.palette.primary.main}, rgba(54,136,255,0.2))`,
-                }}
-              />
             </Box>
 
             {/* Tab row */}
-            <Box sx={{display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap'}}>
+            <Box role="tablist" aria-label={`Ways to get ${productName}`} sx={{display: 'flex', gap: 1.25, flexWrap: 'wrap'}}>
               {INSTALL_TABS.filter((tab) => tab.enabled).map((tab) => {
                 const isActive = activeTab === tab.id;
-                const ac = isActive && tab.brandColor ? tab.brandColor : null;
-                const activeColor = ac ?? theme.vars?.palette.primary.main;
                 return (
-                  <Box
+                  <ButtonBase
                     key={tab.id}
+                    role="tab"
+                    aria-selected={isActive}
                     onClick={() => {
                       setActiveTab(tab.id);
                     }}
                     sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 0.75,
+                      gap: 1,
                       px: {xs: 1.5, sm: 2},
-                      py: {xs: 0.75, sm: 1},
-                      borderRadius: '8px',
+                      py: {xs: 1, sm: 1.375},
+                      borderRadius: '10px',
                       border: '1px solid',
-                      borderColor: isActive
-                        ? ac
-                          ? `${ac}80`
-                          : `rgba(${theme.vars?.palette.primary.main} / 0.5)`
-                        : isLight
-                          ? 'rgba(0,0,0,0.12)'
-                          : 'rgba(255,255,255,0.1)',
-                      bgcolor: isActive
-                        ? ac
-                          ? `${ac}1A`
-                          : `rgba(${theme.vars?.palette.primary.main} / 0.1)`
-                        : 'transparent',
-                      color: isActive ? activeColor : isLight ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.5)',
-                      fontFamily: 'monospace',
-                      fontSize: {xs: '0.78rem', sm: '0.85rem'},
-                      fontWeight: isActive ? 600 : 400,
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                      userSelect: 'none',
+                      borderColor: isActive ? 'primary.main' : lineStrong,
+                      bgcolor: isActive ? 'rgba(54,136,255,0.1)' : 'transparent',
+                      color: isActive ? 'text.primary' : 'text.secondary',
+                      fontFamily: 'var(--ifm-font-family-monospace)',
+                      fontSize: {xs: '0.875rem', sm: '0.9375rem'},
+                      fontWeight: 400,
+                      transition: 'color 0.2s, border-color 0.2s, background-color 0.2s',
                       '&:hover': {
-                        borderColor: isActive
-                          ? ac
-                            ? `${ac}99`
-                            : `rgba(${theme.vars?.palette.primary.main} / 0.6)`
-                          : isLight
-                            ? 'rgba(0,0,0,0.25)'
-                            : 'rgba(255,255,255,0.22)',
-                        color: isActive ? activeColor : isLight ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.8)',
+                        borderColor: isActive ? 'primary.main' : muted2,
+                        color: 'text.primary',
                       },
+                      '& svg': {width: 15, height: 15},
                     }}
                   >
-                    <Box
-                      component="span"
-                      sx={{
-                        display: 'flex',
-                        filter: isActive ? 'none' : 'grayscale(1)',
-                        opacity: isActive ? 1 : 0.5,
-                        transition: 'filter 0.15s ease, opacity 0.15s ease',
-                      }}
-                    >
+                    <Box component="span" sx={{display: 'flex'}}>
                       <tab.icon />
                     </Box>
                     {tab.label}
-                  </Box>
+                  </ButtonBase>
                 );
               })}
             </Box>
 
             {/* Command display */}
             <Box
+              role="tabpanel"
               sx={{
-                '@keyframes glowPulse': {
-                  '0%, 100%': {
-                    borderColor: isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)',
-                    boxShadow: 'none',
-                  },
-                  '50%': {
-                    borderColor: theme.vars?.palette.primary.main,
-                    boxShadow: `0 0 22px 2px ${theme.vars?.palette.primary.main}`,
-                  },
-                },
                 display: 'flex',
                 alignItems: 'center',
-                gap: 2,
-                px: {xs: 2.5, sm: 3.5},
-                py: {xs: 2, sm: 2.5},
+                gap: 1.5,
+                mt: 2,
+                minHeight: {xs: 72, sm: 88},
+                py: 1.5,
+                pl: {xs: 2, sm: 2.75},
+                pr: 1.75,
                 borderRadius: '14px',
                 border: '1px solid',
-                borderColor: isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)',
-                bgcolor: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)',
-                backdropFilter: 'blur(8px)',
-                animation: 'glowPulse 3s ease-in-out 0.8s infinite',
+                borderColor: isLight ? 'rgba(15,40,80,0.14)' : '#1f3350',
+                bgcolor: isLight ? '#f5f8fc' : '#0a1120',
               }}
             >
               <Typography
@@ -504,15 +480,17 @@ export default function HeroSection(): JSX.Element {
                 sx={{
                   flex: 1,
                   minWidth: 0,
-                  fontFamily: '"JetBrains Mono", "Fira Code", monospace',
-                  fontSize: {xs: '0.95rem', sm: '1.1rem'},
-                  fontWeight: 500,
-                  color: isLight ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.85)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1.5,
+                  fontFamily: 'var(--ifm-font-family-monospace)',
+                  fontSize: {xs: '0.9375rem', sm: '1.1875rem'},
+                  color: 'text.primary',
                   textAlign: 'left',
                   whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  letterSpacing: '-0.01em',
+                  overflowX: 'auto',
+                  scrollbarWidth: 'none',
+                  '&::-webkit-scrollbar': {display: 'none'},
                   background: 'none',
                   backgroundColor: 'transparent',
                   border: 'none',
@@ -520,119 +498,77 @@ export default function HeroSection(): JSX.Element {
                   borderRadius: 0,
                 }}
               >
-                <Box
-                  component="span"
-                  sx={{color: isLight ? 'rgba(0,0,0,0.28)' : 'rgba(255,255,255,0.22)', mr: 1.5, fontWeight: 400}}
-                >
-                  $
+                <Box component="span" sx={{color: muted2}}>
+                  {activeTab === 'claude' ? '>' : '$'}
                 </Box>
-                <Box component="span" sx={{color: theme.vars?.palette.success.main, fontWeight: 600}}>
-                  {cmdFirst}
-                </Box>
-                {cmdRest}
+                <span>
+                  <Box component="b" sx={{fontWeight: 600, color: isLight ? '#1a7f37' : '#8ff0a4'}}>
+                    {cmdFirst}
+                  </Box>
+                  {cmdRest}
+                </span>
               </Typography>
 
-              <Box
+              <ButtonBase
                 onClick={handleCopy}
-                title={copied ? 'Copied!' : 'Copy'}
+                aria-label={copied ? 'Copied' : 'Copy command'}
                 sx={{
                   flexShrink: 0,
-                  position: 'relative',
-                  overflow: 'hidden',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 0.75,
-                  px: 1.75,
-                  py: 0.875,
+                  height: 40,
+                  px: 2,
                   borderRadius: '8px',
                   border: '1px solid',
-                  borderColor: copied
-                    ? 'rgba(74,222,128,0.4)'
-                    : isLight
-                      ? 'rgba(0,0,0,0.12)'
-                      : 'rgba(255,255,255,0.12)',
-                  bgcolor: copied ? 'rgba(74,222,128,0.08)' : isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)',
-                  color: copied ? '#4ade80' : isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.45)',
-                  cursor: 'pointer',
-                  transition: 'all 0.18s ease',
-                  '&:hover': {
-                    borderColor: copied
-                      ? 'rgba(74,222,128,0.5)'
-                      : isLight
-                        ? 'rgba(0,0,0,0.25)'
-                        : 'rgba(255,255,255,0.28)',
-                    color: copied ? '#4ade80' : isLight ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.85)',
-                  },
-                  '&::after': {
-                    content: '""',
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '40%',
-                    height: '100%',
-                    background: `linear-gradient(90deg, transparent 0%, ${isLight ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.12)'} 50%, transparent 100%)`,
-                    animation: 'streak 3.5s ease-in-out 1.2s infinite',
-                    pointerEvents: 'none',
-                  },
+                  borderColor: lineStrong,
+                  bgcolor: isLight ? 'rgba(15,40,80,0.03)' : 'rgba(200,225,255,0.04)',
+                  fontFamily: 'var(--ifm-font-family-monospace)',
+                  fontSize: '0.875rem',
+                  color: copied ? '#3fb950' : 'text.secondary',
+                  transition: 'color 0.2s, border-color 0.2s',
+                  '&:hover': {color: copied ? '#3fb950' : 'text.primary', borderColor: muted2},
                 }}
               >
-                {copied ? (
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                ) : (
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                  </svg>
-                )}
-                <Typography component="span" sx={{fontSize: '0.78rem', fontWeight: 500, lineHeight: 1}}>
-                  {copied ? 'Copied' : 'Copy'}
-                </Typography>
-              </Box>
+                {copied ? 'Copied' : 'Copy'}
+              </ButtonBase>
             </Box>
 
             {/* ── or divider ── */}
-            <Box sx={{display: 'flex', alignItems: 'center', gap: 1.5, mt: 2}}>
-              <Box
-                sx={{flex: 1, height: '1px', bgcolor: isLight ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.07)'}}
-              />
-              <Box
-                component="span"
-                sx={{
-                  fontFamily: '"JetBrains Mono", "Fira Code", monospace',
-                  fontSize: '0.8rem',
-                  color: isLight ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.25)',
-                  letterSpacing: '0.08em',
-                }}
-              >
-                or
-              </Box>
-              <Box
-                sx={{flex: 1, height: '1px', bgcolor: isLight ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.07)'}}
-              />
+            <Box
+              aria-hidden
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1.5,
+                mt: 3,
+                mb: 2.25,
+                fontFamily: 'var(--ifm-font-family-monospace)',
+                fontSize: '0.8125rem',
+                letterSpacing: '0.08em',
+                color: muted2,
+              }}
+            >
+              <Box sx={{flex: 1, height: '1px', bgcolor: lineStrong}} />
+              or
+              <Box sx={{flex: 1, height: '1px', bgcolor: lineStrong}} />
             </Box>
 
             {/* ── Download row ── */}
-            <Box sx={{display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', mt: 1.75}}>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px 14px',
+                flexWrap: 'wrap',
+                fontSize: {xs: '0.9375rem', sm: '1.03rem'},
+                '& .dl-sep': {color: muted2},
+                '& .dl-other': {
+                  color: 'text.secondary',
+                  fontWeight: 500,
+                  textDecoration: 'none',
+                  transition: 'color 0.2s',
+                  '&:hover': {color: 'text.primary', textDecoration: 'none'},
+                },
+              }}
+            >
               {primaryAsset ? (
                 <>
                   <Box
@@ -641,12 +577,12 @@ export default function HeroSection(): JSX.Element {
                     sx={{
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: 0.75,
+                      gap: 1.25,
+                      fontWeight: 500,
+                      color: 'text.primary',
                       textDecoration: 'none',
-                      color: isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.45)',
-                      fontSize: '0.82rem',
-                      transition: 'color 0.15s ease',
-                      '&:hover': {color: isLight ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.85)'},
+                      transition: 'color 0.2s',
+                      '&:hover': {color: isLight ? '#2a74e0' : '#7cb4ff', textDecoration: 'none'},
                     }}
                   >
                     <Box sx={{display: 'flex', alignItems: 'center'}}>{OS_ICONS[primaryAsset.os]}</Box>
@@ -659,46 +595,27 @@ export default function HeroSection(): JSX.Element {
                   </Box>
                   {alternateAsset && (
                     <>
-                      <Box component="span" sx={{color: isLight ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}}>
+                      <span className="dl-sep" aria-hidden>
                         ·
-                      </Box>
-                      <Typography
-                        component="a"
-                        href={alternateAsset.downloadUrl}
-                        sx={{
-                          fontSize: '0.82rem',
-                          color: dimColor,
-                          textDecoration: 'none',
-                          '&:hover': {color: theme.vars?.palette.primary.main, textDecoration: 'underline'},
-                          transition: 'color 0.15s ease',
-                        }}
-                      >
+                      </span>
+                      <a className="dl-other" href={alternateAsset.downloadUrl}>
                         {ARCH_LABELS[alternateAsset.os]?.[alternateAsset.arch] ?? alternateAsset.arch}
-                      </Typography>
+                      </a>
                     </>
                   )}
-                  <Box component="span" sx={{color: isLight ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}}>
+                  <span className="dl-sep" aria-hidden>
                     ·
-                  </Box>
+                  </span>
                 </>
               ) : null}
-              <Typography
-                component={Link}
-                href={docsUrl('/docs/next/getting-started/get-thunderid')}
-                sx={{
-                  fontSize: '0.82rem',
-                  color: dimColor,
-                  textDecoration: 'none',
-                  '&:hover': {color: theme.vars?.palette.primary.main, textDecoration: 'underline'},
-                  transition: 'color 0.15s ease',
-                }}
-              >
+              <Link className="dl-other" to={docsUrl('/docs/next/getting-started/get-thunderid')}>
                 Other platforms →
-              </Typography>
+              </Link>
             </Box>
           </Box>
         </Box>
       </Container>
+      <StandardsMarquee />
     </Box>
   );
 }

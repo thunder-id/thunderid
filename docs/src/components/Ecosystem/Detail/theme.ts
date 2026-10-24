@@ -23,6 +23,11 @@ export function useInk(): (light: number, dark: number) => string {
   );
 }
 
+/** Brand cyan only reads on dark surfaces, so light mode swaps in a deep blue. */
+export function useCyan(): string {
+  return useIsDarkMode() ? '#8bf9fa' : '#1856b3';
+}
+
 const TONE_COLOURS: Record<EcosystemTone, string> = {
   success: '#4ade80',
   danger: '#f87171',
@@ -33,6 +38,11 @@ const TONE_COLOURS: Record<EcosystemTone, string> = {
   neutral: '#94a3b8',
 };
 
-export function toneColour(tone: EcosystemTone | undefined, fallback: string): string {
-  return tone ? TONE_COLOURS[tone] : fallback;
+export function useToneColour(): (tone: EcosystemTone | undefined, fallback: string) => string {
+  const cyan = useCyan();
+  return useCallback(
+    (tone: EcosystemTone | undefined, fallback: string) =>
+      tone === 'accent' ? cyan : tone ? TONE_COLOURS[tone] : fallback,
+    [cyan],
+  );
 }

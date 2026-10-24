@@ -93,4 +93,4 @@ The `ThunderIDProvider` component accepts the following props:
 | `organizationHandle` | `string` | ❌ | The organization handle. |
 | `organizationChain` | `object` | ❌ | Organization chain configuration. |
 | `platform` | `string` | ❌ | Platform type. Use `'ThunderIDV2'` to enable V2 embedded flow features. |
-| `syncSession` | `boolean` | ❌ | Whether to sync sessions across tabs. |
+| `session` | `SessionConfig` | ❌ | Behaviour around the <ProductName /> session. Set `session.silentSignIn.beforeRedirect` to `true` to try a silent sign-in before `signIn()` redirects. The silent attempt is skipped when the sign-in options set their own `prompt`. `session.silentSignIn.timeout` (milliseconds, default `10000`) bounds how long a silent sign-in waits. See [Browser configuration](../../../../browser/apis/configuration#session-parameters). |

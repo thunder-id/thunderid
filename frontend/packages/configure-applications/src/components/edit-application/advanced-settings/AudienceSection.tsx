@@ -46,7 +46,7 @@ export default function AudienceSection({
 
   return (
     <SettingsCard
-      title={t('applications:edit.advanced.audience.title', 'Default Audience')}
+      title={t('applications:edit.advanced.audience.title', 'Default audience')}
       description={t(
         'applications:edit.advanced.audience.description',
         "The default aud for access tokens that don't target a resource server (OIDC only or scopeless).",

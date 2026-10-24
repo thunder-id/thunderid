@@ -93,13 +93,13 @@ Handles must be unique within the same parent. Two sibling OUs cannot share the 
 
 ## Create an Organization Unit
 
-1. Navigate to **Organization Units** in the <ProductName /> Console.
-   - To create a root OU, click **Add Root Organization Unit**.
-   - To create a child OU, expand the parent OU and click **Add Child Organization Unit**.
+1. Navigate to **Organization units** in the <ProductName /> Console.
+   - To create a root OU, click **Add root organization unit**.
+   - To create a child OU, expand the parent OU and click **Add child organization unit**.
 2. Enter a **Name** - the human-readable display name for the OU.
 3. Enter a **Handle** - a short, URL-safe identifier. Use lowercase letters, numbers, and hyphens (for example, `engineering` or `frontend-team`).
 4. Optionally enter a **Description**.
-5. The **Parent Organization Unit** field shows where the OU will be created. For root OUs this displays **Root Organization Unit**; for child OUs it shows the selected parent.
+5. The **Parent organization unit** field shows where the OU will be created. For root OUs this displays **Root organization unit**; for child OUs it shows the selected parent.
 6. Click **Create**.
 
 When creating an OU through the API, you can also provide the following optional branding and policy fields:
@@ -130,10 +130,10 @@ curl -kL -X POST "https://localhost:8090/organization-units" \
 
 ## View an Organization Unit
 
-Navigate to **Organization Units** in the <ProductName /> Console to see all OUs. Click the three-dot menu on any OU and select **Edit** to view its details:
+Navigate to **Organization units** in the <ProductName /> Console to see all OUs. Click the three-dot menu on any OU and select **Edit** to view its details:
 
 - **Details** - name, handle, description, and parent OU.
-- **Child Organization Units** - nested OUs directly under this OU.
+- **Child organization units** - nested OUs directly under this OU.
 - **Users** - all users belonging to this OU.
 - **Groups** - all groups belonging to this OU.
 
@@ -159,7 +159,7 @@ curl -kL "https://localhost:8090/organization-units/tree/{path}" \
 
 ## Update an Organization Unit
 
-1. Navigate to **Organization Units** in the <ProductName /> Console.
+1. Navigate to **Organization units** in the <ProductName /> Console.
 2. Click the three-dot menu on the OU you want to update and select **Edit**.
 3. Update the **Name**, **Handle**, or **Description** as needed.
 4. Click **Save**.
@@ -318,11 +318,11 @@ The response includes pagination fields and a `groups` array. Each group entry c
 
 ## Delete an Organization Unit
 
-1. Open the OU from the **Organization Units** list.
+1. Open the OU from the **Organization units** list.
 2. Click **Delete** and confirm.
 
 :::warning
-Deletion fails if the OU still contains users, groups, or child OUs. Delete or reassign all contained resources before deleting the OU.
+Deletion fails if the OU still contains users, groups, user types, agent types, or child OUs. Delete or reassign all contained resources before deleting the OU.
 :::
 
 To delete an OU using the API by its ID:

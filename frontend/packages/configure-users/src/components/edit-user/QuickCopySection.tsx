@@ -18,7 +18,7 @@ export default function QuickCopySection({user, copiedField, onCopyToClipboard}:
 
   return (
     <SettingsCard
-      title={t('users:manageUser.sections.quickCopy.title', 'Quick Copy')}
+      title={t('users:manageUser.sections.quickCopy.title', 'Quick copy')}
       description={t(
         'users:manageUser.sections.quickCopy.description',
         'Copy user identifiers for use in your application.',
@@ -39,14 +39,14 @@ export default function QuickCopySection({user, copiedField, onCopyToClipboard}:
                     title={
                       copiedField === 'userId'
                         ? t('common:actions.copied', 'Copied')
-                        : t('users:manageUser.sections.quickCopy.copyUserId', 'Copy User ID')
+                        : t('users:manageUser.sections.quickCopy.copyUserId', 'Copy user ID')
                     }
                   >
                     <IconButton
                       aria-label={
                         copiedField === 'userId'
                           ? t('common:actions.copied', 'Copied')
-                          : t('users:manageUser.sections.quickCopy.copyUserId', 'Copy User ID')
+                          : t('users:manageUser.sections.quickCopy.copyUserId', 'Copy user ID')
                       }
                       onClick={() => {
                         onCopyToClipboard(user.id, 'userId').catch(() => null);

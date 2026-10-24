@@ -25,7 +25,7 @@ describe('PasskeysSection', () => {
 
       expect(screen.getByText('Passkeys')).toBeInTheDocument();
       expect(screen.getByText('Passkey settings for this application.')).toBeInTheDocument();
-      expect(screen.getByText('Allowed Origins')).toBeInTheDocument();
+      expect(screen.getByText('Allowed origins')).toBeInTheDocument();
     });
 
     it('renders an existing origin', () => {
@@ -56,20 +56,20 @@ describe('PasskeysSection', () => {
     it('shows the Add Origin button when editable', () => {
       render(<PasskeysSection onPasskeysChange={mockOnChange} />);
 
-      expect(screen.getByRole('button', {name: /Add Origin/i})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: /Add origin/i})).toBeInTheDocument();
     });
 
     it('hides the Add Origin and Delete buttons when read-only (no onChange)', () => {
       render(<PasskeysSection allowedOrigins={['https://app.example.com']} />);
 
-      expect(screen.queryByRole('button', {name: /Add Origin/i})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: /Add origin/i})).not.toBeInTheDocument();
       expect(screen.queryByRole('button', {name: /Delete/i})).not.toBeInTheDocument();
     });
 
     it('hides the Add Origin and Delete buttons when disabled', () => {
       render(<PasskeysSection allowedOrigins={['https://app.example.com']} onPasskeysChange={mockOnChange} disabled />);
 
-      expect(screen.queryByRole('button', {name: /Add Origin/i})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: /Add origin/i})).not.toBeInTheDocument();
       expect(screen.queryByRole('button', {name: /Delete/i})).not.toBeInTheDocument();
     });
 
@@ -81,11 +81,11 @@ describe('PasskeysSection', () => {
   });
 
   describe('Adding origins', () => {
-    it('appends an empty string when "Add Origin" is clicked', async () => {
+    it('appends an empty string when "Add origin" is clicked', async () => {
       const user = userEvent.setup();
       render(<PasskeysSection allowedOrigins={['https://app.example.com']} onPasskeysChange={mockOnChange} />);
 
-      await user.click(screen.getByRole('button', {name: /Add Origin/i}));
+      await user.click(screen.getByRole('button', {name: /Add origin/i}));
 
       expect(mockOnChange).toHaveBeenCalledWith(['https://app.example.com', '']);
     });
@@ -94,7 +94,7 @@ describe('PasskeysSection', () => {
       const user = userEvent.setup();
       render(<PasskeysSection allowedOrigins={[]} onPasskeysChange={mockOnChange} />);
 
-      await user.click(screen.getByRole('button', {name: /Add Origin/i}));
+      await user.click(screen.getByRole('button', {name: /Add origin/i}));
 
       expect(mockOnChange).toHaveBeenCalledWith(['', '']);
     });

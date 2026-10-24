@@ -4,6 +4,8 @@
 package notification
 
 import (
+	"errors"
+
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -209,4 +211,11 @@ var (
 				"and select it on the flow node.",
 		},
 	}
+)
+
+// Sentinel errors for validating the "notification" server-config section.
+var (
+	// errDeclarativeSenderLocked is returned when a declarative default sender is overridden.
+	errDeclarativeSenderLocked = errors.New(
+		"default email sender is set declaratively and cannot be overridden")
 )

@@ -42,8 +42,8 @@ that asks for none receives a token carrying none. See
 Declare a sharing policy in one of three places:
 
 - **The application's resource file**, shown below.
-- **Management API** (coming soon)
-- **Console** (coming soon)
+- **Management API**, through the [Application Sharing API](../../apis.mdx#tag/application-sharing).
+- **Console**, on the application's **Organization Access** tab. The Console cannot create a policy that reaches every organization unit in the deployment or the root of every other tree, because only a resource file or an import can set those. A policy that the application's resource file declares is read-only in the Console.
 
 Add a `sharingPolicies` list to the application document:
 
@@ -55,51 +55,13 @@ ouId: acme-root
 type: m2m
 sharingPolicies:
   - id: billing-service-all-customers
-    targets:
-      - scope: allChildren
+    childUnits:
+      mode: all
 ```
 
-### Choose What the Policy Reaches
+This policy lets the application act for every organization unit beneath `acme-root`, at any depth, including organization units created later.
 
-A policy carries a list of targets. Each target names one scope, and the policy reaches everything its targets reach.
-
-| Scope | `ouId` | Reaches |
-|---|---|---|
-| `allOus` | omit | Every organization unit in the deployment, including organization units created later. |
-| `allChildren` | omit | Everything beneath the owning organization unit, at any depth, including organization units created later. |
-| `allRoots` | omit | The root organization unit of every tree. |
-| `root` | required | The named root organization unit. |
-| `child` | required | The named organization unit directly beneath the owner, and nothing below it. |
-| `childSubtree` | required | The named organization unit directly beneath the owner, and everything below it at any depth. |
-
-List several targets to name customers one at a time:
-
-```yaml
-sharingPolicies:
-  - id: billing-service-named-customers
-    targets:
-      - scope: child
-        ouId: acme-customer-a
-      - scope: child
-        ouId: acme-customer-b
-```
-
-Two targets of one policy must not reach the same organization unit. A policy that names a customer already covered by a broader target beside it is refused.
-
-### Withhold an Organization Unit
-
-Add `excludedOuIds` to a target to carve organization units, and everything beneath them, out of that target:
-
-```yaml
-sharingPolicies:
-  - id: billing-service-except-one
-    targets:
-      - scope: allChildren
-        excludedOuIds:
-          - acme-trial-customers
-```
-
-Exclusions belong to the target that states them, not to the policy. A target reaching into the owner's own tree, which means `allChildren`, `child` or `childSubtree`, may only exclude organization units directly beneath the owner.
+A policy can also reach every organization unit in the deployment, named organization units only, or the root organization units of other trees, and it can withhold organization units from a broad grant. See [Resource Sharing Across Organization Units](../../key-concepts/resource-sharing.mdx) for every section, mode, and exclusion rule.
 
 The owning organization unit needs no sharing policy. A policy only extends access to the others.
 
@@ -159,4 +121,5 @@ The organization claims resolve to the organization unit named in the path:
 
 - [Manage Organization Units](manage-organization-units.mdx)
 - [Client Credentials](../protocols/oauth-oidc/client-credentials.mdx)
+- [Resource Sharing Across Organization Units](../../key-concepts/resource-sharing.mdx)
 - [Import Resources](../declarative-configurations/import-resources.mdx)

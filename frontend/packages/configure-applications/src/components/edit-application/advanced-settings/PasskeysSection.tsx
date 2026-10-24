@@ -120,7 +120,7 @@ export default function PasskeysSection({
       description={t('applications:edit.advanced.passkeys.intro', 'Passkey settings for this application.')}
     >
       <FormControl fullWidth>
-        <FormLabel>{t('applications:edit.advanced.passkeys.allowedOrigins.label', 'Allowed Origins')}</FormLabel>
+        <FormLabel>{t('applications:edit.advanced.passkeys.allowedOrigins.label', 'Allowed origins')}</FormLabel>
         <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 1}}>
           {t(
             'applications:edit.advanced.passkeys.allowedOrigins.hint',
@@ -159,7 +159,7 @@ export default function PasskeysSection({
           {isEditable && (
             <Box>
               <Button variant="text" color="primary" startIcon={<Plus />} onClick={handleAdd} size="small">
-                {t('applications:edit.advanced.passkeys.allowedOrigins.addOrigin', 'Add Origin')}
+                {t('applications:edit.advanced.passkeys.allowedOrigins.addOrigin', 'Add origin')}
               </Button>
             </Box>
           )}

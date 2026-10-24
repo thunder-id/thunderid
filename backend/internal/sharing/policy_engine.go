@@ -5,6 +5,7 @@ package sharing
 
 import (
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -415,13 +416,19 @@ func (c containment) intersectPair(a, b OverlayRule) OverlayRule {
 //
 // Only a unit a policy named and stopped at may issue one of its own, which the service enforces on
 // write, so today exactly one policy covers a position and the slice holds one entry. The slice is
-// the return type all the same: peer targets reach a unit sideways, without needing the position
+// the return type all the same: peer grants reach a unit sideways, without needing the position
 // above it covered, and will put a second policy on units a parent-chain policy already reaches.
 func evaluateChain(chain []string, policies []Policy) (visible bool, covering []Coverage) {
 	if len(chain) == 0 || len(policies) == 0 {
 		return false, nil
 	}
 	owningOUID := policies[0].OwningOUID
+
+	// Flattened once, since every position below reads every policy's grants.
+	flat := make([][]grant, len(policies))
+	for i, p := range policies {
+		flat[i] = p.grants()
+	}
 
 	covered := make([]bool, len(chain))
 	coveredBy := make([][]Coverage, len(chain))
@@ -434,17 +441,17 @@ func evaluateChain(chain []string, policies []Policy) (visible bool, covering []
 		}
 
 		if i == 0 {
-			coveredBy[0] = rootCoverage(ouID, policies)
+			coveredBy[0] = rootCoverage(ouID, policies, flat)
 			covered[0] = len(coveredBy[0]) > 0
 		} else {
-			coveredBy[i] = descendantCoverage(chain, i, covered, policies)
+			coveredBy[i] = descendantCoverage(chain, i, covered, policies, flat)
 			covered[i] = len(coveredBy[i]) > 0
 		}
 
-		// all_ous is a fallback, never a shadow: it applies only where no specific target reached,
+		// Every unit is a fallback, never a shadow: it applies only where no specific grant reached,
 		// so a narrower policy stays authoritative for the positions it does cover.
 		if !covered[i] && (i == 0 || covered[i-1]) {
-			if c, ok := allOUsCoverage(chain, i, policies); ok {
+			if c, ok := allOUsCoverage(chain, i, policies, flat); ok {
 				coveredBy[i], covered[i] = []Coverage{c}, true
 			}
 		}
@@ -456,21 +463,21 @@ func evaluateChain(chain []string, policies []Policy) (visible bool, covering []
 
 // rootCoverage returns the share-stage policies reaching a tree's root directly. Root targeting is
 // owner-only, so only share-stage policies are considered.
-func rootCoverage(ouID string, policies []Policy) []Coverage {
+func rootCoverage(ouID string, policies []Policy, flat [][]grant) []Coverage {
 	var out []Coverage
-	for _, p := range policies {
+	for i, p := range policies {
 		if p.Stage != stageShare {
 			continue
 		}
-		for _, t := range p.Targets {
-			if slices.Contains(t.ExcludedOUIDs, ouID) {
+		for _, g := range flat[i] {
+			if slices.Contains(g.excludedOUIDs, ouID) {
 				continue
 			}
 			switch {
-			case t.Scope == ScopeAllRoots:
-				out = append(out, Coverage{Policy: p, TargetID: t.ID})
-			case t.Scope == ScopeRoot && t.OUID == ouID:
-				out = append(out, Coverage{Policy: p, TargetID: t.ID})
+			case g.scope == scopeAllRoots:
+				out = append(out, Coverage{Policy: p, Grant: g.ref})
+			case g.scope == scopeRoot && g.ouID == ouID:
+				out = append(out, Coverage{Policy: p, Grant: g.ref})
 			}
 		}
 	}
@@ -478,7 +485,9 @@ func rootCoverage(ouID string, policies []Policy) []Coverage {
 }
 
 // descendantCoverage returns every policy reaching chain[i] from a covered position above it.
-func descendantCoverage(chain []string, i int, covered []bool, policies []Policy) []Coverage {
+func descendantCoverage(
+	chain []string, i int, covered []bool, policies []Policy, flat [][]grant,
+) []Coverage {
 	var out []Coverage
 	ouID := chain[i]
 
@@ -486,21 +495,21 @@ func descendantCoverage(chain []string, i int, covered []bool, policies []Policy
 		if !covered[j] {
 			continue
 		}
-		for _, p := range policies {
-			for _, t := range p.Targets {
-				// A subtree target behaves from its anchor downwards exactly as an all_children
-				// target issued by that organization unit would.
-				anchored := (t.Scope == ScopeAllChildren || t.Scope == ScopeChildSubtree) &&
-					t.OUID == chain[j]
-				if anchored && !excludedBetween(chain, j, i, t.ExcludedOUIDs) {
-					out = append(out, Coverage{Policy: p, TargetID: t.ID})
+		for k, p := range policies {
+			for _, g := range flat[k] {
+				// A subtree grant behaves from its anchor downwards exactly as an all-children
+				// grant issued by that organization unit would.
+				anchored := (g.scope == scopeAllChildren || g.scope == scopeChildSubtree) &&
+					g.ouID == chain[j]
+				if anchored && !excludedBetween(chain, j, i, g.excludedOUIDs) {
+					out = append(out, Coverage{Policy: p, Grant: g.ref})
 					continue
 				}
-				// An explicit target never authorizes skipping a hop, so it only covers the
-				// position immediately below the organization unit that named it.
-				if j == i-1 && (t.Scope == ScopeChild || t.Scope == ScopeChildSubtree) &&
-					t.OUID == ouID && !slices.Contains(t.ExcludedOUIDs, ouID) {
-					out = append(out, Coverage{Policy: p, TargetID: t.ID})
+				// A named unit never authorizes skipping a hop, so it only covers the position
+				// immediately below the organization unit that named it.
+				if j == i-1 && (g.scope == scopeChild || g.scope == scopeChildSubtree) &&
+					g.ouID == ouID {
+					out = append(out, Coverage{Policy: p, Grant: g.ref})
 				}
 			}
 		}
@@ -509,11 +518,11 @@ func descendantCoverage(chain []string, i int, covered []bool, policies []Policy
 }
 
 // allOUsCoverage returns a deployment-wide policy reaching chain[i], if one exists.
-func allOUsCoverage(chain []string, i int, policies []Policy) (Coverage, bool) {
-	for _, p := range policies {
-		for _, t := range p.Targets {
-			if t.Scope == ScopeAllOUs && !excludedAnywhere(chain[:i+1], t.ExcludedOUIDs) {
-				return Coverage{Policy: p, TargetID: t.ID, ByAllOUs: true}, true
+func allOUsCoverage(chain []string, i int, policies []Policy, flat [][]grant) (Coverage, bool) {
+	for k, p := range policies {
+		for _, g := range flat[k] {
+			if g.scope == scopeAllOUs && !excludedAnywhere(chain[:i+1], g.excludedOUIDs) {
+				return Coverage{Policy: p, Grant: g.ref, ByAllOUs: true}, true
 			}
 		}
 	}
@@ -536,17 +545,21 @@ func excludedAnywhere(ouIDs, excluded []string) bool {
 	return false
 }
 
-// dedupe drops repeated (policy, target) pairs. No single target can be appended twice today, since
-// an anchored target matches one ancestor and an explicit one matches one position; it guards the
+// dedupe drops repeated (policy, grant) pairs. No single grant can be appended twice today, since
+// an anchored grant matches one ancestor and a named unit matches one position; it guards the
 // walk against the case rather than a case the callers currently reach.
 func dedupe(in []Coverage) []Coverage {
 	if len(in) < 2 {
 		return in
 	}
-	seen := make(map[string]struct{}, len(in))
+	type coverageKey struct {
+		policyID string
+		grant    GrantRef
+	}
+	seen := make(map[coverageKey]struct{}, len(in))
 	out := make([]Coverage, 0, len(in))
 	for _, c := range in {
-		key := c.Policy.ID + "\x00" + c.TargetID
+		key := coverageKey{c.Policy.ID, c.Grant}
 		if _, dup := seen[key]; dup {
 			continue
 		}
@@ -556,97 +569,40 @@ func dedupe(in []Coverage) []Coverage {
 	return out
 }
 
-// familyOf returns the family a scope belongs to.
-func familyOf(s TargetScope) scopeFamily {
-	switch s {
-	case ScopeAllOUs, ScopeAllRoots, ScopeAllChildren:
-		return familyBlanket
-	default:
-		return familySelective
-	}
-}
-
-// policyFamily returns the family a policy belongs to. A policy may now hold targets of both
-// families at once, which is how one organization unit is given terms of its own while a broad
-// target covers everyone else. One blanket target is enough to make the policy blanket: the edit
-// rules exist to stop a broad reach changing shape, and a policy that holds one has a broad reach
-// whatever else it carries.
-func policyFamily(p Policy) scopeFamily {
-	for _, t := range p.Targets {
-		if familyOf(t.Scope) == familyBlanket {
-			return familyBlanket
-		}
-	}
-	return familySelective
-}
+// policySections lists the sections an edit is checked against, one at a time.
+var policySections = []Section{SectionAllUnits, SectionChildUnits, SectionOtherTreeRoots}
 
 // validateEdit reports whether a proposed policy is a legal edit of the current one.
 //
-// A declared policy is editable: the file states where sharing starts, and an operator narrowing it
-// afterwards is the expected flow. What the file does own is the policy's existence, so deletion is
-// refused elsewhere. The scope-family rules below still apply, which is what keeps a declared
-// blanket policy narrowable by exclusion and nothing more.
+// Each section is held to the rule on its own, so what one of them does never decides what the
+// other may: a policy reaching every child unit may still add, drop or rename the roots of
+// other trees it names.
 //
-// The asymmetry between the families is deliberate. A blanket policy already reaches everything in
-// its family, so there is nothing to expand toward and converting it would change the meaning of
-// every reshare derived from it. A selective policy may grow within the one-hop rule, which creates
-// no authority its initiator did not already have when the policy was first checked.
+// The asymmetry between the two kinds of section is deliberate. A blanket section already reaches
+// everything in its family, so there is nothing to expand toward and converting it would change
+// the meaning of every reshare derived from it. A section naming units may grow within the one-hop
+// rule, which creates no authority its initiator did not already have when the policy was first
+// checked.
 func validateEdit(current, proposed Policy, expectedVersion, actualVersion int) error {
 	if expectedVersion != actualVersion {
 		return errVersionMismatchEngine
 	}
 
-	currentFamily := policyFamily(current)
-	if currentFamily != policyFamily(proposed) {
-		return errScopeFamilyChange
-	}
-
-	// A blanket policy cannot change what family of organization units it reaches, because there is
-	// nothing wider to grow into and a different family is a different policy.
-	//
-	// Its exclusions may be edited in both directions. Adding one carves a unit out; dropping one
-	// hands the resource back to a unit the issuer had carved out itself, and that is the issuer's
-	// own decision to reverse. What the scope family protects is other people's reach, not the
-	// issuer's earlier opinion of its own.
-	if currentFamily == familyBlanket && !sameBlanketTargets(current.Targets, proposed.Targets) {
-		return errBlanketScopeNarrowOnly
+	for _, section := range policySections {
+		was, becomes := current.kindOf(section), proposed.kindOf(section)
+		switch {
+		case was == becomes:
+			// A blanket section's exclusions may be edited in both directions. Adding one carves
+			// a unit out; dropping one hands the resource back to a unit the issuer had carved out
+			// itself, and that is the issuer's own decision to reverse. What the rule protects is
+			// other people's reach, not the issuer's earlier opinion of its own.
+		case was == kindBlanket && becomes == kindNone:
+			return errBlanketScopeNarrowOnly
+		case was == kindBlanket || becomes == kindBlanket:
+			return errScopeFamilyChange
+		}
 	}
 	return nil
-}
-
-// sameBlanketTargets reports whether two policies select the same thing with their blanket
-// targets, ignoring order. Only the exclusions around them may change.
-//
-// Selective targets are left out of the comparison on purpose. They are bounded by the one-hop
-// rule wherever they appear, so adding or dropping one creates no reach its initiator did not
-// already hold, and a carve-out is edited by doing exactly that.
-func sameBlanketTargets(current, proposed []Target) bool {
-	blanket := func(targets []Target) []Target {
-		out := make([]Target, 0, len(targets))
-		for _, t := range targets {
-			if familyOf(t.Scope) == familyBlanket {
-				out = append(out, t)
-			}
-		}
-		return out
-	}
-	c, p := blanket(current), blanket(proposed)
-	if len(c) != len(p) {
-		return false
-	}
-	for _, want := range c {
-		found := false
-		for _, got := range p {
-			if want.Scope == got.Scope && want.OUID == got.OUID {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return false
-		}
-	}
-	return true
 }
 
 // orderByDependency sorts policies so a parent always precedes any policy derived from it.
@@ -701,35 +657,125 @@ func orderByDependency(lineages []Lineage) []Lineage {
 // result and the export is a fixed point. The id travels with it, because a declared policy owns
 // its own and a replay without it is refused; an API create mints a fresh one and ignores it.
 func requestFromPolicy(p Policy) PolicyRequest {
-	targets := make([]TargetRequest, 0, len(p.Targets))
-	for _, t := range p.Targets {
-		// The scopes that name no organization unit carry one in storage anyway: allChildren
-		// anchors on the initiator, which the request already states. Replaying it as a named
-		// unit would be refused, so it is dropped here.
-		ouID := t.OUID
-		if t.Scope == ScopeAllOUs || t.Scope == ScopeAllRoots || t.Scope == ScopeAllChildren {
-			ouID = ""
-		}
-		rules := p.TargetRules(t.ID)
+	// Absent rather than empty: a replay of the export has to produce the same policy, and an
+	// empty map is not what a grant carrying no terms was created from.
+	rulesOf := func(ref GrantRef) map[string]OverlayRule {
+		rules := p.GrantRules(ref)
 		if len(rules) == 0 {
-			// Absent rather than empty: a replay of the export has to produce the same policy, and
-			// an empty map is not what a target carrying no terms was created from.
-			rules = nil
+			return nil
 		}
-		targets = append(targets, TargetRequest{
-			Scope:         t.Scope,
-			OUID:          ouID,
-			ExcludedOUIDs: slices.Clone(t.ExcludedOUIDs),
-			OverlayRules:  rules,
-		})
+		return rules
 	}
 
-	return PolicyRequest{
+	req := PolicyRequest{
 		ID:             p.ID,
 		InitiatingOUID: p.InitiatingOUID,
-		Targets:        targets,
 		Version:        p.Version,
 	}
+
+	if p.AllUnits != nil {
+		req.AllUnits = &AllUnitsRequest{
+			ExcludedOUIDs: slices.Clone(p.AllUnits.ExcludedOUIDs),
+			OverlayRules:  rulesOf(GrantRef{Section: SectionAllUnits}),
+		}
+	}
+
+	if c := p.ChildUnits; c != nil {
+		req.ChildUnits = &ChildUnitsRequest{Mode: c.Mode}
+		if c.Mode == ChildUnitsAll {
+			req.ChildUnits.ExcludedOUIDs = slices.Clone(c.ExcludedOUIDs)
+			req.ChildUnits.OverlayRules = rulesOf(GrantRef{Section: SectionChildUnits})
+		}
+		for _, u := range c.Units {
+			req.ChildUnits.Units = append(req.ChildUnits.Units, ChildUnitRequest{
+				OUID:         u.OUID,
+				Reach:        u.Reach,
+				OverlayRules: rulesOf(GrantRef{Section: SectionChildUnits, OUID: u.OUID}),
+			})
+		}
+	}
+
+	if t := p.OtherTreeRoots; t != nil {
+		roots := &OtherTreeRootsRequest{Mode: t.Mode}
+		if t.Mode == OtherTreeRootsAll {
+			roots.ExcludedOUIDs = slices.Clone(t.ExcludedOUIDs)
+			roots.OverlayRules = rulesOf(GrantRef{Section: SectionOtherTreeRoots})
+		}
+		for _, ouID := range t.Units {
+			roots.Units = append(roots.Units, RootUnitRequest{
+				OUID:         ouID,
+				OverlayRules: rulesOf(GrantRef{Section: SectionOtherTreeRoots, OUID: ouID}),
+			})
+		}
+		req.OtherTreeRoots = roots
+	}
+
+	return req
+}
+
+// sameSections reports whether two requests state the same sections, in the same modes, reaching
+// the same organization units on the same terms.
+//
+// Order is not part of what a section says, and neither is the difference between a list left out
+// and a list left empty, so both are evened out before the two are compared.
+func sameSections(a, b PolicyRequest) bool {
+	return reflect.DeepEqual(normalizeSections(a), normalizeSections(b))
+}
+
+// normalizeSections returns the sections of a request with their lists sorted and their empty
+// lists and rule sets dropped, leaving everything else about the request behind.
+func normalizeSections(r PolicyRequest) PolicyRequest {
+	sorted := func(ouIDs []string) []string {
+		if len(ouIDs) == 0 {
+			return nil
+		}
+		out := slices.Clone(ouIDs)
+		slices.Sort(out)
+		return out
+	}
+	rules := func(in map[string]OverlayRule) map[string]OverlayRule {
+		if len(in) == 0 {
+			return nil
+		}
+		return in
+	}
+
+	var out PolicyRequest
+	if r.AllUnits != nil {
+		out.AllUnits = &AllUnitsRequest{
+			ExcludedOUIDs: sorted(r.AllUnits.ExcludedOUIDs),
+			OverlayRules:  rules(r.AllUnits.OverlayRules),
+		}
+	}
+	if c := r.ChildUnits; c != nil {
+		out.ChildUnits = &ChildUnitsRequest{
+			Mode:          c.Mode,
+			ExcludedOUIDs: sorted(c.ExcludedOUIDs),
+			OverlayRules:  rules(c.OverlayRules),
+		}
+		for _, u := range c.Units {
+			u.OverlayRules = rules(u.OverlayRules)
+			out.ChildUnits.Units = append(out.ChildUnits.Units, u)
+		}
+		slices.SortFunc(out.ChildUnits.Units, func(x, y ChildUnitRequest) int {
+			return strings.Compare(x.OUID, y.OUID)
+		})
+	}
+	if t := r.OtherTreeRoots; t != nil {
+		out.OtherTreeRoots = &OtherTreeRootsRequest{
+			Mode:          t.Mode,
+			ExcludedOUIDs: sorted(t.ExcludedOUIDs),
+			OverlayRules:  rules(t.OverlayRules),
+		}
+		for _, u := range t.Units {
+			u.OverlayRules = rules(u.OverlayRules)
+			out.OtherTreeRoots.Units = append(out.OtherTreeRoots.Units, u)
+		}
+		slices.SortFunc(out.OtherTreeRoots.Units, func(x, y RootUnitRequest) int {
+			return strings.Compare(x.OUID, y.OUID)
+		})
+	}
+	return out
 }
 
 // mapEngineError turns a narrowing failure into the service error naming the offending field.

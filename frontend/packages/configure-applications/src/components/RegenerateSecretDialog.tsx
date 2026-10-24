@@ -102,7 +102,7 @@ export default function RegenerateSecretDialog({
 
   return (
     <Dialog open={open} onClose={handleCancel} maxWidth="sm" fullWidth>
-      <DialogTitle>{t('regenerateSecret.dialog.title', 'Regenerate Client Secret')}</DialogTitle>
+      <DialogTitle>{t('regenerateSecret.dialog.title', 'Regenerate client secret')}</DialogTitle>
       <DialogContent>
         <DialogContentText sx={{mb: 2}}>
           {t(

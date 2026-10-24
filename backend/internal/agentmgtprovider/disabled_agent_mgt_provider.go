@@ -23,7 +23,7 @@ func NewDisabledAgentMgtProvider() AgentMgtProviderService {
 func (p *disabledAgentMgtProvider) SetAgentService(_ agent.AgentServiceInterface) {}
 
 func (p *disabledAgentMgtProvider) CreateAgent(
-	_ context.Context, _ *providers.Agent, _ bool,
+	_ context.Context, _ *providers.Agent,
 ) (*providers.Agent, *tidcommon.ServiceError) {
 	return nil, &ErrorAgentProvisioningDisabled
 }

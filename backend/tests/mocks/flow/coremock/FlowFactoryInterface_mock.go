@@ -16,10 +16,19 @@ func NewFlowFactoryInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *FlowFactoryInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &FlowFactoryInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -72,7 +81,7 @@ type FlowFactoryInterfaceMock_CloneNode_Call struct {
 
 // CloneNode is a helper method to define mock.On call
 //   - source core.NodeInterface
-func (_e *FlowFactoryInterfaceMock_Expecter) CloneNode(source interface{}) *FlowFactoryInterfaceMock_CloneNode_Call {
+func (_e *FlowFactoryInterfaceMock_Expecter) CloneNode(source any) *FlowFactoryInterfaceMock_CloneNode_Call {
 	return &FlowFactoryInterfaceMock_CloneNode_Call{Call: _e.mock.On("CloneNode", source)}
 }
 
@@ -134,7 +143,7 @@ type FlowFactoryInterfaceMock_CloneNodes_Call struct {
 
 // CloneNodes is a helper method to define mock.On call
 //   - nodes map[string]core.NodeInterface
-func (_e *FlowFactoryInterfaceMock_Expecter) CloneNodes(nodes interface{}) *FlowFactoryInterfaceMock_CloneNodes_Call {
+func (_e *FlowFactoryInterfaceMock_Expecter) CloneNodes(nodes any) *FlowFactoryInterfaceMock_CloneNodes_Call {
 	return &FlowFactoryInterfaceMock_CloneNodes_Call{Call: _e.mock.On("CloneNodes", nodes)}
 }
 
@@ -191,7 +200,7 @@ type FlowFactoryInterfaceMock_CreateExecutor_Call struct {
 //   - defaultInputs []providers.Input
 //   - prerequisites []providers.Input
 //   - meta *providers.ExecutorMeta
-func (_e *FlowFactoryInterfaceMock_Expecter) CreateExecutor(name interface{}, executorType interface{}, defaultInputs interface{}, prerequisites interface{}, meta interface{}) *FlowFactoryInterfaceMock_CreateExecutor_Call {
+func (_e *FlowFactoryInterfaceMock_Expecter) CreateExecutor(name any, executorType any, defaultInputs any, prerequisites any, meta any) *FlowFactoryInterfaceMock_CreateExecutor_Call {
 	return &FlowFactoryInterfaceMock_CreateExecutor_Call{Call: _e.mock.On("CreateExecutor", name, executorType, defaultInputs, prerequisites, meta)}
 }
 
@@ -266,7 +275,7 @@ type FlowFactoryInterfaceMock_CreateGraph_Call struct {
 //   - id string
 //   - _type providers.FlowType
 //   - version int
-func (_e *FlowFactoryInterfaceMock_Expecter) CreateGraph(id interface{}, _type interface{}, version interface{}) *FlowFactoryInterfaceMock_CreateGraph_Call {
+func (_e *FlowFactoryInterfaceMock_Expecter) CreateGraph(id any, _type any, version any) *FlowFactoryInterfaceMock_CreateGraph_Call {
 	return &FlowFactoryInterfaceMock_CreateGraph_Call{Call: _e.mock.On("CreateGraph", id, _type, version)}
 }
 
@@ -331,7 +340,7 @@ type FlowFactoryInterfaceMock_CreateInterceptor_Call struct {
 //   - name string
 //   - isDefault bool
 //   - priority int
-func (_e *FlowFactoryInterfaceMock_Expecter) CreateInterceptor(name interface{}, isDefault interface{}, priority interface{}) *FlowFactoryInterfaceMock_CreateInterceptor_Call {
+func (_e *FlowFactoryInterfaceMock_Expecter) CreateInterceptor(name any, isDefault any, priority any) *FlowFactoryInterfaceMock_CreateInterceptor_Call {
 	return &FlowFactoryInterfaceMock_CreateInterceptor_Call{Call: _e.mock.On("CreateInterceptor", name, isDefault, priority)}
 }
 
@@ -398,7 +407,7 @@ type FlowFactoryInterfaceMock_CreateInterceptorUnit_Call struct {
 //   - scope providers.InterceptorScope
 //   - applyTo []string
 //   - properties map[string]interface{}
-func (_e *FlowFactoryInterfaceMock_Expecter) CreateInterceptorUnit(name interface{}, mode interface{}, scope interface{}, applyTo interface{}, properties interface{}) *FlowFactoryInterfaceMock_CreateInterceptorUnit_Call {
+func (_e *FlowFactoryInterfaceMock_Expecter) CreateInterceptorUnit(name any, mode any, scope any, applyTo any, properties any) *FlowFactoryInterfaceMock_CreateInterceptorUnit_Call {
 	return &FlowFactoryInterfaceMock_CreateInterceptorUnit_Call{Call: _e.mock.On("CreateInterceptorUnit", name, mode, scope, applyTo, properties)}
 }
 
@@ -484,7 +493,7 @@ type FlowFactoryInterfaceMock_CreateNode_Call struct {
 //   - properties map[string]interface{}
 //   - isStartNode bool
 //   - isFinalNode bool
-func (_e *FlowFactoryInterfaceMock_Expecter) CreateNode(id interface{}, _type interface{}, properties interface{}, isStartNode interface{}, isFinalNode interface{}) *FlowFactoryInterfaceMock_CreateNode_Call {
+func (_e *FlowFactoryInterfaceMock_Expecter) CreateNode(id any, _type any, properties any, isStartNode any, isFinalNode any) *FlowFactoryInterfaceMock_CreateNode_Call {
 	return &FlowFactoryInterfaceMock_CreateNode_Call{Call: _e.mock.On("CreateNode", id, _type, properties, isStartNode, isFinalNode)}
 }
 

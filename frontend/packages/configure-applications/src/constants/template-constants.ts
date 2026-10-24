@@ -27,7 +27,13 @@ const TemplateConstants = {
    * Grant types offered to MCP Client applications on the Advanced tab, regardless of
    * what the OIDC discovery document additionally advertises.
    */
-  MCP_CLIENT_ALLOWED_GRANT_TYPES: ['authorization_code', 'refresh_token', 'client_credentials'],
+  MCP_CLIENT_ALLOWED_GRANT_TYPES: [
+    'authorization_code',
+    'refresh_token',
+    'client_credentials',
+    'urn:ietf:params:oauth:grant-type:token-exchange',
+    'urn:ietf:params:oauth:grant-type:jwt-bearer',
+  ],
 } as const;
 
 export default TemplateConstants;

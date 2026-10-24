@@ -7,13 +7,16 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/google/uuid"
 
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -90,14 +93,17 @@ func (s *service) Register(ctx context.Context,
 	if name == "" {
 		return nil, &ErrorGatewayNameRequired
 	}
+	if !validGatewayName(name) {
+		return nil, &ErrorInvalidGatewayName
+	}
 	// Without an address there is no way to reach the gateway, and a registration that cannot be
 	// applied to is worse than none: it looks configured.
 	if strings.TrimSpace(req.BaseURL) == "" {
 		return nil, &ErrorGatewayConnectionRequired
 	}
-	baseURL, ok := normalizeBaseURL(req.BaseURL)
-	if !ok {
-		return nil, &ErrorInvalidBaseURL
+	baseURL, svcErr := s.baseURLOf(req.BaseURL)
+	if svcErr != nil {
+		return nil, svcErr
 	}
 
 	count, err := s.store.Count(ctx)
@@ -218,6 +224,9 @@ func (s *service) Update(ctx context.Context, id string,
 		if name == "" {
 			return nil, &ErrorGatewayNameRequired
 		}
+		if !validGatewayName(name) {
+			return nil, &ErrorInvalidGatewayName
+		}
 		// A name is how a declared gateway is matched, so two registrations may not share one. Its
 		// own row is not a clash: renaming a gateway to what it is already called is a no-op, not a
 		// conflict.
@@ -231,9 +240,9 @@ func (s *service) Update(ctx context.Context, id string,
 	}
 
 	if req.BaseURL != nil {
-		baseURL, ok := normalizeBaseURL(*req.BaseURL)
-		if !ok {
-			return nil, &ErrorInvalidBaseURL
+		baseURL, svcErr := s.baseURLOf(*req.BaseURL)
+		if svcErr != nil {
+			return nil, svcErr
 		}
 		// The address identifies the gateway, so moving one onto an address another already
 		// answers at would leave two registrations for the same deployment. Its own address is not a
@@ -305,26 +314,87 @@ func (s *service) Delete(ctx context.Context, id string) *tidcommon.ServiceError
 	return nil
 }
 
-// normalizeBaseURL trims a base URL to how it is stored, and reports whether it is one at all.
+// baseURLOf trims a base URL to how it is stored, refusing one this plane may not call.
+func (s *service) baseURLOf(raw string) (string, *tidcommon.ServiceError) {
+	baseURL, problem := normalizeBaseURL(raw, allowPrivateAddresses())
+	switch problem {
+	case baseURLUsable:
+		return baseURL, nil
+	case baseURLPrivate:
+		return "", &ErrorPrivateBaseURL
+	default:
+		return "", &ErrorInvalidBaseURL
+	}
+}
+
+// baseURLProblem says what keeps a base URL from being one this plane may call.
+type baseURLProblem int
+
+const (
+	baseURLUsable baseURLProblem = iota
+	baseURLNotAbsolute
+	baseURLNotHTTPS
+	baseURLHasCredentials
+	baseURLPrivate
+)
+
+// baseURLProblemText is each problem as it reads at the end of "the base URL ...".
+var baseURLProblemText = map[baseURLProblem]string{
+	baseURLUsable:         "is usable",
+	baseURLNotAbsolute:    "is not an absolute URL",
+	baseURLNotHTTPS:       "is not https",
+	baseURLHasCredentials: "carries credentials",
+	baseURLPrivate: "names a loopback, link-local or private address, which " +
+		"gateway.allow_private_addresses is off for",
+}
+
+func (p baseURLProblem) String() string {
+	return baseURLProblemText[p]
+}
+
+// normalizeBaseURL trims a base URL to how it is stored, and says what keeps it from being an address
+// this plane may call.
 //
 // Emptiness is not enough of a check. "/" trims to nothing and "https://" trims to "https:", and both
 // would be stored as an address no call can ever reach. The failure would surface much later, as a
 // gateway that looks registered and never answers, so it is refused here where the caller can still
-// see which field was wrong.
-func normalizeBaseURL(raw string) (string, bool) {
+// see which field was wrong. Every call to a gateway carries its key, so the address must be https,
+// and must carry no credentials of its own, which would be sent along with it. Unless the deployment
+// allows them, a loopback, link-local or private address is refused too: this plane sits inside a
+// network, and what it is pointed at there is reached with the gateway's key.
+func normalizeBaseURL(raw string, allowPrivate bool) (string, baseURLProblem) {
 	trimmed := strings.TrimRight(strings.TrimSpace(raw), "/")
-	if trimmed == "" {
-		return "", false
-	}
-
 	parsed, err := url.Parse(trimmed)
-	if err != nil || parsed.Host == "" {
-		return "", false
+	switch {
+	case trimmed == "" || err != nil || parsed.Host == "":
+		return "", baseURLNotAbsolute
+	case parsed.Scheme != "https":
+		return "", baseURLNotHTTPS
+	case parsed.User != nil:
+		return "", baseURLHasCredentials
+	case !allowPrivate && syshttp.IsPrivateHost(parsed.Hostname()):
+		return "", baseURLPrivate
 	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return "", false
+	return trimmed, baseURLUsable
+}
+
+// gatewayNamePattern is what a gateway may be called: up to 64 letters, digits, spaces, hyphens,
+// underscores and dots, so a name reads the same wherever it is shown or written to a file.
+var gatewayNamePattern = regexp.MustCompile(`^[\p{L}\p{N} ._-]{1,64}$`)
+
+// validGatewayName reports whether a trimmed name is one a gateway may have: one of the pattern, with
+// at least one letter or digit, so a name is never punctuation alone.
+func validGatewayName(name string) bool {
+	return gatewayNamePattern.MatchString(name) &&
+		strings.IndexFunc(name, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsNumber(r) }) >= 0
+}
+
+// allowPrivateAddresses reports whether gateways may sit on loopback, link-local or private addresses.
+func allowPrivateAddresses() bool {
+	if !config.IsServerRuntimeInitialized() {
+		return false
 	}
-	return trimmed, true
+	return config.GetServerRuntime().Config.Gateway.AllowPrivateAddresses
 }
 
 // protect encrypts a management token for storage.

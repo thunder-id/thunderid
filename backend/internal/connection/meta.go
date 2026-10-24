@@ -5,6 +5,7 @@ package connection
 
 import (
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -44,6 +45,9 @@ func authTypesForVendor(vendor string) ([]outboundauth.Type, bool) {
 	}
 	for _, candidate := range smsBackedVendors {
 		if candidate.name == vendor {
+			if vendor == smsGatewayVendorName {
+				return httpauth.SupportedTypes(), true
+			}
 			return nil, true
 		}
 	}
@@ -51,7 +55,10 @@ func authTypesForVendor(vendor string) ([]outboundauth.Type, bool) {
 		return nil, true
 	}
 	if vendor == authZENPDPVendorName {
-		return nil, true
+		return httpauth.SupportedTypes(), true
+	}
+	if vendor == httpVendorName {
+		return httpauth.SupportedTypes(), true
 	}
 	return nil, false
 }
@@ -59,7 +66,7 @@ func authTypesForVendor(vendor string) ([]outboundauth.Type, bool) {
 // registeredVendorNames returns every registered connection vendor, in the order the vendor
 // tables declare them.
 func registeredVendorNames() []string {
-	names := make([]string, 0, len(idpBackedVendors)+len(smsBackedVendors)+len(emailBackedVendors)+1)
+	names := make([]string, 0, len(idpBackedVendors)+len(smsBackedVendors)+len(emailBackedVendors)+2)
 	for _, vendor := range idpBackedVendors {
 		names = append(names, vendor.name)
 	}
@@ -69,7 +76,7 @@ func registeredVendorNames() []string {
 	for _, vendor := range emailBackedVendors {
 		names = append(names, vendor.name)
 	}
-	return append(names, authZENPDPVendorName)
+	return append(names, authZENPDPVendorName, httpVendorName)
 }
 
 // getConnectionMeta returns the metadata describing the configurable options of every registered

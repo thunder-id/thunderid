@@ -95,6 +95,13 @@ func (e *configurationExporter) GetResourceRules() *declarativeresource.Resource
 	return &declarativeresource.ResourceRules{}
 }
 
+// ViewResource shows an exported credential configuration as a read of it returns it.
+func (e *configurationExporter) ViewResource(_ context.Context, document *yaml.Node) (interface{}, error) {
+	return declarativeresource.DecodeView(document, func(dto *CredentialConfigurationDTO) (interface{}, error) {
+		return toResponse(*dto), nil
+	})
+}
+
 // configurationRequestWithID is the YAML shape of a declarative credential
 // configuration: the management request body plus the stable resource ID.
 type configurationRequestWithID struct {

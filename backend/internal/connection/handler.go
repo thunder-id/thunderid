@@ -4,12 +4,14 @@
 package connection
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
@@ -346,6 +348,99 @@ func (h *handler) usagesAuthZENPDPConnection(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, usages)
+}
+
+// createHTTPConnection creates an HTTP connection.
+func (h *handler) createHTTPConnection(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	req, err := sysutils.DecodeJSONBody[httpConnectionRequest](r)
+	if err != nil {
+		writeServiceError(ctx, w, &ErrorInvalidRequestFormat)
+		return
+	}
+	dto, err := httpToDTO(*req)
+	if err != nil {
+		writeSenderMappingError(ctx, w, err)
+		return
+	}
+	created, svcErr := h.svc.createHTTP(ctx, *dto)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	writeHTTPConnection(ctx, w, http.StatusCreated, created)
+}
+
+// listHTTPConnections lists configured HTTP connections.
+func (h *handler) listHTTPConnections(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	connections, svcErr := h.svc.listHTTP(ctx)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	summaries := make([]connectionInstanceSummary, 0, len(connections))
+	for _, connection := range connections {
+		summaries = append(summaries, connectionInstanceSummary{
+			ID:          connection.ID,
+			Name:        connection.Name,
+			Description: connection.Description,
+		})
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, summaries)
+}
+
+// getHTTPConnection returns an HTTP connection by ID, with its secret masked.
+func (h *handler) getHTTPConnection(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	connection, svcErr := h.svc.getHTTP(ctx, r.PathValue("id"))
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	writeHTTPConnection(ctx, w, http.StatusOK, connection)
+}
+
+// updateHTTPConnection updates an HTTP connection by ID.
+func (h *handler) updateHTTPConnection(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	req, err := sysutils.DecodeJSONBody[httpConnectionRequest](r)
+	if err != nil {
+		writeServiceError(ctx, w, &ErrorInvalidRequestFormat)
+		return
+	}
+	dto, err := httpUpdateToDTO(*req)
+	if err != nil {
+		writeSenderMappingError(ctx, w, err)
+		return
+	}
+	updated, svcErr := h.svc.updateHTTP(ctx, r.PathValue("id"), *dto)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	writeHTTPConnection(ctx, w, http.StatusOK, updated)
+}
+
+// deleteHTTPConnection deletes an HTTP connection by ID.
+func (h *handler) deleteHTTPConnection(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if svcErr := h.svc.deleteHTTP(ctx, r.PathValue("id")); svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+}
+
+// writeHTTPConnection writes an HTTP connection with its secret masked.
+func writeHTTPConnection(ctx context.Context, w http.ResponseWriter, status int,
+	connection *httpconnection.HTTPConnection) {
+	resp, err := httpFromDTO(*connection)
+	if err != nil {
+		writeServiceError(ctx, w, &tidcommon.InternalServerError)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, status, resp)
 }
 
 // handleGetConnectionMeta handles GET /connections/meta, describing the configurable options of

@@ -245,7 +245,7 @@ func (ts *UserDisambiguationTestSuite) SetupSuite() {
 		// Emit the identity claims so a test can verify WHICH account was authenticated, not merely
 		// that some authentication succeeded.
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+			"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 		},
 	})
 	ts.Require().NoError(err, "Failed to create the resolve app")

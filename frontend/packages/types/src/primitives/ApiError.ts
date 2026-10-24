@@ -30,14 +30,31 @@ export interface ApiError {
   code: string;
 
   /**
-   * Short error message
-   * @example 'Application already exists'
+   * Short error message. The backend serializes this as a translatable {@link I18nMessage} object,
+   * but plain strings are tolerated for safety.
    */
-  message: string;
+  message: I18nMessage | string;
 
   /**
-   * Detailed error description
-   * @example 'An application with the same name already exists'
+   * Detailed error description. The backend serializes this as a translatable {@link I18nMessage}
+   * object, but plain strings are tolerated for safety.
    */
-  description: string;
+  description: I18nMessage | string;
+}
+
+/**
+ * Translatable message the backend returns, carrying a translation key, a human-readable default
+ * value, and optional substitution params.
+ *
+ * @public
+ */
+export interface I18nMessage {
+  /** Translation key. */
+  key: string;
+
+  /** Human-readable fallback used when no translation is available. */
+  defaultValue: string;
+
+  /** Optional parameters substituted into the default value. */
+  params?: Record<string, string>;
 }

@@ -18,10 +18,19 @@ func NewTokenServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *TokenServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &TokenServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +87,7 @@ type TokenServiceInterfaceMock_ProcessTokenRequest_Call struct {
 //   - ctx context.Context
 //   - tokenRequest *model.TokenRequest
 //   - oauthApp *providers.OAuthClient
-func (_e *TokenServiceInterfaceMock_Expecter) ProcessTokenRequest(ctx interface{}, tokenRequest interface{}, oauthApp interface{}) *TokenServiceInterfaceMock_ProcessTokenRequest_Call {
+func (_e *TokenServiceInterfaceMock_Expecter) ProcessTokenRequest(ctx any, tokenRequest any, oauthApp any) *TokenServiceInterfaceMock_ProcessTokenRequest_Call {
 	return &TokenServiceInterfaceMock_ProcessTokenRequest_Call{Call: _e.mock.On("ProcessTokenRequest", ctx, tokenRequest, oauthApp)}
 }
 

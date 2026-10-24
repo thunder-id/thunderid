@@ -16,10 +16,19 @@ func NewHandleTransportInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *HandleTransportInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &HandleTransportInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -51,7 +60,7 @@ type HandleTransportInterfaceMock_Clear_Call struct {
 // Clear is a helper method to define mock.On call
 //   - x *Exchange
 //   - flowID string
-func (_e *HandleTransportInterfaceMock_Expecter) Clear(x interface{}, flowID interface{}) *HandleTransportInterfaceMock_Clear_Call {
+func (_e *HandleTransportInterfaceMock_Expecter) Clear(x any, flowID any) *HandleTransportInterfaceMock_Clear_Call {
 	return &HandleTransportInterfaceMock_Clear_Call{Call: _e.mock.On("Clear", x, flowID)}
 }
 
@@ -109,7 +118,7 @@ type HandleTransportInterfaceMock_Read_Call struct {
 
 // Read is a helper method to define mock.On call
 //   - x *Exchange
-func (_e *HandleTransportInterfaceMock_Expecter) Read(x interface{}) *HandleTransportInterfaceMock_Read_Call {
+func (_e *HandleTransportInterfaceMock_Expecter) Read(x any) *HandleTransportInterfaceMock_Read_Call {
 	return &HandleTransportInterfaceMock_Read_Call{Call: _e.mock.On("Read", x)}
 }
 
@@ -152,7 +161,7 @@ type HandleTransportInterfaceMock_Write_Call struct {
 //   - flowID string
 //   - handle string
 //   - ttl time.Duration
-func (_e *HandleTransportInterfaceMock_Expecter) Write(x interface{}, flowID interface{}, handle interface{}, ttl interface{}) *HandleTransportInterfaceMock_Write_Call {
+func (_e *HandleTransportInterfaceMock_Expecter) Write(x any, flowID any, handle any, ttl any) *HandleTransportInterfaceMock_Write_Call {
 	return &HandleTransportInterfaceMock_Write_Call{Call: _e.mock.On("Write", x, flowID, handle, ttl)}
 }
 

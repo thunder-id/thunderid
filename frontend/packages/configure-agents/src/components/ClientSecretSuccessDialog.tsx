@@ -23,12 +23,18 @@ export interface ClientSecretSuccessDialogProps {
   open: boolean;
   clientSecret: string;
   onClose: () => void;
+  /** What happened, "Client secret regenerated" unless the caller says otherwise. */
+  title?: string;
+  /** What to do with the secret, the copy-and-store note unless the caller says otherwise. */
+  subtitle?: string;
 }
 
 export default function ClientSecretSuccessDialog({
   open,
   clientSecret,
   onClose,
+  title = undefined,
+  subtitle = undefined,
 }: ClientSecretSuccessDialogProps): JSX.Element {
   const {t} = useTranslation();
   const theme = useTheme();
@@ -76,13 +82,14 @@ export default function ClientSecretSuccessDialog({
 
           <Stack direction="column" spacing={1} sx={{textAlign: 'center'}}>
             <Typography variant="h5" component="h2">
-              {t('agents:regenerateSecret.success.title', 'Client secret regenerated')}
+              {title ?? t('agents:regenerateSecret.success.title', 'Client secret regenerated')}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              {t(
-                'agents:regenerateSecret.success.subtitle',
-                "Copy your new client secret and store it somewhere safe. It won't be shown again.",
-              )}
+              {subtitle ??
+                t(
+                  'agents:regenerateSecret.success.subtitle',
+                  "Copy your new client secret and store it somewhere safe. It won't be shown again.",
+                )}
             </Typography>
           </Stack>
 
@@ -97,7 +104,7 @@ export default function ClientSecretSuccessDialog({
           >
             <Box>
               <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 1}}>
-                {t('agents:regenerateSecret.success.secretLabel', 'New Client Secret')}
+                {t('agents:regenerateSecret.success.secretLabel', 'New client secret')}
               </Typography>
               <TextField
                 fullWidth

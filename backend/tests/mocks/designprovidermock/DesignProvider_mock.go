@@ -18,10 +18,19 @@ func NewDesignProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *DesignProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &DesignProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +87,7 @@ type DesignProviderMock_ResolveDesign_Call struct {
 //   - ctx context.Context
 //   - resolveType providers.DesignResolveType
 //   - id string
-func (_e *DesignProviderMock_Expecter) ResolveDesign(ctx interface{}, resolveType interface{}, id interface{}) *DesignProviderMock_ResolveDesign_Call {
+func (_e *DesignProviderMock_Expecter) ResolveDesign(ctx any, resolveType any, id any) *DesignProviderMock_ResolveDesign_Call {
 	return &DesignProviderMock_ResolveDesign_Call{Call: _e.mock.On("ResolveDesign", ctx, resolveType, id)}
 }
 

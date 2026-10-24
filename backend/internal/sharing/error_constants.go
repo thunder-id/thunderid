@@ -14,7 +14,7 @@ import (
 // organization unit, because a validation error saying only "invalid policy" costs an afternoon.
 var (
 	// ErrorInvalidRequestFormat is returned when a policy request is malformed, including when it
-	// names no target at all or a target whose scope and organization unit disagree.
+	// reaches no organization unit at all or states a section with fields its mode does not take.
 	ErrorInvalidRequestFormat = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "SHR-1001",
@@ -24,8 +24,8 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.sharingservice.invalid_request_format_description",
-			DefaultValue: "The request body is malformed, names no target, or names a target " +
-				"whose scope and organization unit do not go together",
+			DefaultValue: "The request body is malformed, reaches no organization unit, or states " +
+				"a section with fields its mode does not take",
 		},
 	}
 	// ErrorResourceTypeNotRegistered is returned when a resource type has no declaration.
@@ -185,8 +185,8 @@ var (
 			DefaultValue: "Each organization unit holds one policy per resource; update the existing one instead",
 		},
 	}
-	// ErrorBlanketNarrowOnly is returned when an edit changes which family a blanket policy reaches,
-	// or drops or widens one of its overlay rules. Its exclusions are not what this refuses: those
+	// ErrorBlanketNarrowOnly is returned when an edit drops a section reaching a whole family, or
+	// drops or widens one of its overlay rules. Its exclusions are not what this refuses: those
 	// may be edited in both directions, because carving a unit out and handing it back are both the
 	// issuer's own decision about its own reach.
 	ErrorBlanketNarrowOnly = tidcommon.ServiceError{
@@ -194,11 +194,11 @@ var (
 		Code: "SHR-1014",
 		Error: tidcommon.I18nMessage{
 			Key:          "error.sharingservice.blanket_narrow_only",
-			DefaultValue: "A blanket policy may only be narrowed",
+			DefaultValue: "A blanket grant may only be narrowed",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.sharingservice.blanket_narrow_only_description",
-			DefaultValue: "A policy reaching a whole family keeps the family it reaches, and its overlay " +
+			DefaultValue: "A section reaching a whole family keeps the family it reaches, and its overlay " +
 				"rules may only narrow; its exclusions may be added or removed freely",
 		},
 	}
@@ -215,19 +215,19 @@ var (
 			DefaultValue: "The policy changed since it was read; reread it and reapply the change",
 		},
 	}
-	// ErrorDeploymentWideScopeDeclarativeOnly is returned when an API request asks for a scope whose
-	// reach is not bounded by the initiator's own position in the tree.
-	ErrorDeploymentWideScopeDeclarativeOnly = tidcommon.ServiceError{
+	// ErrorExclusionNotADirectChild is returned when a policy reaching every child unit carves out
+	// something deeper than one of the initiating organization unit's direct children.
+	ErrorExclusionNotADirectChild = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "SHR-1016",
 		Error: tidcommon.I18nMessage{
-			Key:          "error.sharingservice.deployment_wide_scope_declarative_only",
-			DefaultValue: "Deployment-wide sharing is not allowed",
+			Key:          "error.sharingservice.exclusion_not_a_direct_child",
+			DefaultValue: "Exclusion does not name a direct child",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key: "error.sharingservice.deployment_wide_scope_declarative_only_description",
-			DefaultValue: "allOus and allRoots can only be set in a declarative resource file, " +
-				"not through the API",
+			Key: "error.sharingservice.exclusion_not_a_direct_child_description",
+			DefaultValue: "A policy reaching every child unit of the initiating organization unit may " +
+				"only carve out one of that unit's direct children",
 		},
 	}
 	// ErrorReshareNotPermitted is returned when the policy covering the initiating organization
@@ -245,8 +245,8 @@ var (
 				"organization unit, so its terms are set where that policy was defined",
 		},
 	}
-	// ErrorExclusionOutOfReach is returned when an exclusion names an organization unit none of
-	// the policy's own targets reach, where it would have no effect.
+	// ErrorExclusionOutOfReach is returned when an exclusion names an organization unit the section
+	// carrying it does not reach, where it would have no effect.
 	ErrorExclusionOutOfReach = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "SHR-1018",
@@ -256,7 +256,7 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.sharingservice.exclusion_out_of_reach_description",
-			DefaultValue: "The excluded organization unit is not reached by the target that carves it out",
+			DefaultValue: "The excluded organization unit is not reached by the section that excludes it",
 		},
 	}
 	// ErrorDeclaredPolicyIDRequired is returned when a resource file declares a policy without an id.
@@ -273,7 +273,8 @@ var (
 				"reshare beneath it keeps pointing at the same policy across restarts",
 		},
 	}
-	// ErrorDeclaredPolicyIDConflict is returned when two declarations claim the same policy id.
+	// ErrorDeclaredPolicyIDConflict is returned when a declaration claims a policy id another
+	// policy already holds, whether that one is declared or stored.
 	ErrorDeclaredPolicyIDConflict = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "SHR-1020",
@@ -283,7 +284,7 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.sharingservice.declared_policy_id_conflict_description",
-			DefaultValue: "Another declared policy already carries this id, and sharing one id " +
+			DefaultValue: "Another policy already carries this id, and sharing one id " +
 				"between two policies would re-parent the reshares beneath them",
 		},
 	}
@@ -330,7 +331,8 @@ var (
 				"unit the API has already recorded one for; remove one of the two",
 		},
 	}
-	// ErrorScopeFamilyChange is returned when an edit converts a policy between scope families.
+	// ErrorScopeFamilyChange is returned when an edit converts a section between naming organization
+	// units one by one and reaching a whole family.
 	ErrorScopeFamilyChange = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "SHR-1024",
@@ -340,8 +342,8 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.sharingservice.scope_family_change_description",
-			DefaultValue: "A policy naming organization units individually cannot become one reaching " +
-				"a whole family, or the reverse; delete it and issue the policy you want instead",
+			DefaultValue: "A section naming organization units individually cannot become one reaching " +
+				"a whole family, or the reverse; delete the policy and issue the one you want instead",
 		},
 	}
 	// ErrorInvalidLimit is returned when a listing asks for a page size outside what is allowed.
@@ -387,51 +389,6 @@ var (
 				"declarative resources are loaded",
 		},
 	}
-	// ErrorOverlappingTargets is returned when two targets of one policy reach the same
-	// organization unit, which leaves no basis for deciding whose terms it holds the resource on.
-	ErrorOverlappingTargets = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "SHR-1028",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.sharingservice.overlapping_targets",
-			DefaultValue: "Overlapping targets",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key: "error.sharingservice.overlapping_targets_description",
-			DefaultValue: "Two targets of this policy reach the same organization unit; " +
-				"exclude it from the broader target to give it terms of its own",
-		},
-	}
-	// ErrorExclusionEmptiesTarget is returned when an exclusion names the organization unit its
-	// own target anchors on, which leaves that target reaching nothing at all.
-	ErrorExclusionEmptiesTarget = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "SHR-1029",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.sharingservice.exclusion_empties_target",
-			DefaultValue: "Exclusion empties its target",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key: "error.sharingservice.exclusion_empties_target_description",
-			DefaultValue: "The excluded organization unit is the one its target names, so the " +
-				"target would reach nothing; drop the target instead",
-		},
-	}
-	// ErrorExclusionNotADirectChild is returned when a target reaching into the initiating
-	// organization unit's own tree carves out something deeper than one of its direct children.
-	ErrorExclusionNotADirectChild = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "SHR-1030",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.sharingservice.exclusion_not_a_direct_child",
-			DefaultValue: "Exclusion does not name a direct child",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key: "error.sharingservice.exclusion_not_a_direct_child_description",
-			DefaultValue: "A target reaching into the initiating organization unit's own tree may " +
-				"only carve out one of that unit's direct children",
-		},
-	}
 )
 
 // errPolicyNotFound is the store's own signal that no row carries an id, kept unexported because
@@ -445,6 +402,50 @@ var errPolicyNotFound = errors.New("sharing policy not found")
 // together hold more policies than it can merge. The service turns it into
 // ErrorResultLimitExceededInCompositeMode; nothing outside this package sees it.
 var errResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
+
+// ErrorTranslation names the errors a resource type answers the framework's client errors with, so
+// every type that mounts sharing endpoints maps them the same way in its own codes.
+type ErrorTranslation struct {
+	PolicyNotFound  tidcommon.ServiceError
+	PolicyExists    tidcommon.ServiceError
+	VersionMismatch tidcommon.ServiceError
+	PolicyDeclared  tidcommon.ServiceError
+	InvalidLimit    tidcommon.ServiceError
+	InvalidOffset   tidcommon.ServiceError
+	// InvalidPolicy answers every other client error, keeping the framework's description.
+	InvalidPolicy tidcommon.ServiceError
+}
+
+// Translate maps a framework error into the resource type's own codes. It logs nothing: the
+// framework already logged its own failures, and a client error is the caller's doing rather than
+// an operational event.
+func (t ErrorTranslation) Translate(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
+	if svcErr == nil {
+		return nil
+	}
+	if svcErr.Type != tidcommon.ClientErrorType {
+		return &tidcommon.InternalServerError
+	}
+
+	var mapped tidcommon.ServiceError
+	switch svcErr.Code {
+	case ErrorPolicyNotFound.Code:
+		mapped = t.PolicyNotFound
+	case ErrorPolicyExists.Code:
+		mapped = t.PolicyExists
+	case ErrorVersionMismatch.Code:
+		mapped = t.VersionMismatch
+	case ErrorPolicyDeclared.Code:
+		mapped = t.PolicyDeclared
+	case ErrorInvalidLimit.Code:
+		mapped = t.InvalidLimit
+	case ErrorInvalidOffset.Code:
+		mapped = t.InvalidOffset
+	default:
+		mapped = t.InvalidPolicy
+	}
+	return tidcommon.CustomServiceError(mapped, svcErr.ErrorDescription)
+}
 
 // withDetail returns a copy of err whose description names the offending value.
 func withDetail(err tidcommon.ServiceError, detail string) *tidcommon.ServiceError {
@@ -465,11 +466,19 @@ var (
 
 // Errors returned by edit validation.
 var (
-	// errBlanketScopeNarrowOnly is returned when an edit tries to do more to a blanket policy than
-	// add exclusions.
-	errBlanketScopeNarrowOnly = errors.New("a blanket policy may only be narrowed by exclusions")
-	// errScopeFamilyChange is returned when an edit tries to convert between scope families.
-	errScopeFamilyChange = errors.New("a policy cannot change scope family")
+	// errBlanketScopeNarrowOnly is returned when an edit drops a section reaching a whole family.
+	errBlanketScopeNarrowOnly = errors.New("a blanket section may only be narrowed by exclusions")
+	// errScopeFamilyChange is returned when an edit converts a section between naming organization
+	// units and reaching a whole family.
+	errScopeFamilyChange = errors.New("a section cannot change scope family")
 	// errVersionMismatchEngine is returned when an edit is based on a stale version of the policy.
 	errVersionMismatchEngine = errors.New("policy version mismatch")
 )
+
+// errReplayRefused rolls a replay's transaction back. The refusal itself travels out separately,
+// because it names which of the document's policies was refused and why.
+var errReplayRefused = errors.New("sharing policy replay refused")
+
+// errPolicyPurgeRefused rolls back a resource's policy purge. The refusal itself travels out
+// separately, so the caller sees which policy could not be removed.
+var errPolicyPurgeRefused = errors.New("sharing policy purge refused")

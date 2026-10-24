@@ -267,7 +267,7 @@ describe('GroupsList', () => {
     await user.click(deleteButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getByText('Delete Group')).toBeInTheDocument();
+      expect(screen.getByText('Delete group')).toBeInTheDocument();
     });
   });
 
@@ -279,13 +279,13 @@ describe('GroupsList', () => {
     await user.click(deleteButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getByText('Delete Group')).toBeInTheDocument();
+      expect(screen.getByText('Delete group')).toBeInTheDocument();
     });
 
     await user.click(screen.getByText('Cancel'));
 
     await waitFor(() => {
-      expect(screen.queryByText('Delete Group')).not.toBeInTheDocument();
+      expect(screen.queryByText('Delete group')).not.toBeInTheDocument();
     });
   });
 });

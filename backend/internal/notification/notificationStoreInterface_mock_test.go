@@ -17,10 +17,19 @@ func newNotificationStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *notificationStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &notificationStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -63,7 +72,7 @@ type notificationStoreInterfaceMock_createSender_Call struct {
 // createSender is a helper method to define mock.On call
 //   - ctx context.Context
 //   - sender common.NotificationSenderDTO
-func (_e *notificationStoreInterfaceMock_Expecter) createSender(ctx interface{}, sender interface{}) *notificationStoreInterfaceMock_createSender_Call {
+func (_e *notificationStoreInterfaceMock_Expecter) createSender(ctx any, sender any) *notificationStoreInterfaceMock_createSender_Call {
 	return &notificationStoreInterfaceMock_createSender_Call{Call: _e.mock.On("createSender", ctx, sender)}
 }
 
@@ -120,7 +129,7 @@ type notificationStoreInterfaceMock_deleteSender_Call struct {
 // deleteSender is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *notificationStoreInterfaceMock_Expecter) deleteSender(ctx interface{}, id interface{}) *notificationStoreInterfaceMock_deleteSender_Call {
+func (_e *notificationStoreInterfaceMock_Expecter) deleteSender(ctx any, id any) *notificationStoreInterfaceMock_deleteSender_Call {
 	return &notificationStoreInterfaceMock_deleteSender_Call{Call: _e.mock.On("deleteSender", ctx, id)}
 }
 
@@ -188,7 +197,7 @@ type notificationStoreInterfaceMock_getSenderByID_Call struct {
 // getSenderByID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *notificationStoreInterfaceMock_Expecter) getSenderByID(ctx interface{}, id interface{}) *notificationStoreInterfaceMock_getSenderByID_Call {
+func (_e *notificationStoreInterfaceMock_Expecter) getSenderByID(ctx any, id any) *notificationStoreInterfaceMock_getSenderByID_Call {
 	return &notificationStoreInterfaceMock_getSenderByID_Call{Call: _e.mock.On("getSenderByID", ctx, id)}
 }
 
@@ -256,7 +265,7 @@ type notificationStoreInterfaceMock_getSenderByName_Call struct {
 // getSenderByName is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *notificationStoreInterfaceMock_Expecter) getSenderByName(ctx interface{}, name interface{}) *notificationStoreInterfaceMock_getSenderByName_Call {
+func (_e *notificationStoreInterfaceMock_Expecter) getSenderByName(ctx any, name any) *notificationStoreInterfaceMock_getSenderByName_Call {
 	return &notificationStoreInterfaceMock_getSenderByName_Call{Call: _e.mock.On("getSenderByName", ctx, name)}
 }
 
@@ -323,7 +332,7 @@ type notificationStoreInterfaceMock_listSenders_Call struct {
 
 // listSenders is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *notificationStoreInterfaceMock_Expecter) listSenders(ctx interface{}) *notificationStoreInterfaceMock_listSenders_Call {
+func (_e *notificationStoreInterfaceMock_Expecter) listSenders(ctx any) *notificationStoreInterfaceMock_listSenders_Call {
 	return &notificationStoreInterfaceMock_listSenders_Call{Call: _e.mock.On("listSenders", ctx)}
 }
 
@@ -386,7 +395,7 @@ type notificationStoreInterfaceMock_listSendersByType_Call struct {
 // listSendersByType is a helper method to define mock.On call
 //   - ctx context.Context
 //   - senderType common.NotificationSenderType
-func (_e *notificationStoreInterfaceMock_Expecter) listSendersByType(ctx interface{}, senderType interface{}) *notificationStoreInterfaceMock_listSendersByType_Call {
+func (_e *notificationStoreInterfaceMock_Expecter) listSendersByType(ctx any, senderType any) *notificationStoreInterfaceMock_listSendersByType_Call {
 	return &notificationStoreInterfaceMock_listSendersByType_Call{Call: _e.mock.On("listSendersByType", ctx, senderType)}
 }
 
@@ -444,7 +453,7 @@ type notificationStoreInterfaceMock_updateSender_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - sender common.NotificationSenderDTO
-func (_e *notificationStoreInterfaceMock_Expecter) updateSender(ctx interface{}, id interface{}, sender interface{}) *notificationStoreInterfaceMock_updateSender_Call {
+func (_e *notificationStoreInterfaceMock_Expecter) updateSender(ctx any, id any, sender any) *notificationStoreInterfaceMock_updateSender_Call {
 	return &notificationStoreInterfaceMock_updateSender_Call{Call: _e.mock.On("updateSender", ctx, id, sender)}
 }
 

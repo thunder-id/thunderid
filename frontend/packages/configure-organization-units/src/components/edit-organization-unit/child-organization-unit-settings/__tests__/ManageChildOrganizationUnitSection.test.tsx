@@ -53,7 +53,7 @@ describe('ManageChildOrganizationUnitSection', () => {
       <ManageChildOrganizationUnitSection organizationUnitId="parent-ou" organizationUnitName="Engineering" />,
     );
 
-    expect(screen.getByText('Child Organization Units')).toBeInTheDocument();
+    expect(screen.getByText('Child organization units')).toBeInTheDocument();
     expect(screen.getByTestId('organization-unit-subtree').parentElement).toHaveAttribute(
       'data-root-ou-id',
       'parent-ou',

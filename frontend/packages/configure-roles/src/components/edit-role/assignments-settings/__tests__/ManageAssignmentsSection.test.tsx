@@ -134,7 +134,7 @@ describe('ManageAssignmentsSection', () => {
     it('should render SettingsCard with title and description', () => {
       renderComponent();
 
-      expect(screen.getByRole('heading', {name: 'Assigned Users, Groups, Apps & Agents'})).toBeInTheDocument();
+      expect(screen.getByRole('heading', {name: 'Assigned users, groups, apps & agents'})).toBeInTheDocument();
       expect(screen.getByText('Manage users, groups, apps, and agents assigned to this role')).toBeInTheDocument();
     });
 

@@ -1,7 +1,14 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {PageLoadingAnimation, QueryErrorNotice, ResourceAvatar, UnsavedChangesBar} from '@thunderid/components';
+import {
+  DocumentTitle,
+  PageLoadingAnimation,
+  QueryErrorNotice,
+  ResourceAvatar,
+  UnsavedChangesBar,
+} from '@thunderid/components';
+import {useOrganizationAccess} from '@thunderid/configure-resource-sharing';
 import {useLogger} from '@thunderid/logger/react';
 import {isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -21,7 +28,7 @@ import {
   DialogContent,
 } from '@wso2/oxygen-ui';
 import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
-import {useState, useCallback, useMemo, type SyntheticEvent} from 'react';
+import {useState, useCallback, useEffect, useMemo, type SyntheticEvent} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, useLocation, useNavigate, useParams} from 'react-router';
 import useGetApplication from '../api/useGetApplication';
@@ -36,22 +43,21 @@ import EditCustomizationSettings from '../components/edit-application/customizat
 import EditFlowsSettings from '../components/edit-application/flows-settings/EditFlowsSettings';
 import IntegrationGuides from '../components/edit-application/integration-guides/IntegrationGuides';
 import McpConnectTab from '../components/edit-application/mcp/McpConnectTab';
+import EditOrganizationAccessSettings from '../components/edit-application/organization-access/EditOrganizationAccessSettings';
 import EditTokenSettings from '../components/edit-application/token-settings/EditTokenSettings';
 import EditTokenSettingsTabs from '../components/edit-application/token-settings/EditTokenSettingsTabs';
 import ApplicationConstants from '../constants/application-constants';
 import TemplateConstants from '../constants/template-constants';
 import useApplicationRoutes from '../hooks/useApplicationRoutes';
 import type {Application} from '../models/application';
-import {McpClientTypes} from '../models/mcp-client';
 import type {OAuth2Config} from '../models/oauth';
 import {OAuth2GrantTypes, TokenEndpointAuthMethods} from '../models/oauth';
-import deriveMcpClientType from '../utils/deriveMcpClientType';
 import getApplicationErrorMessage from '../utils/getApplicationErrorMessage';
 import getTemplateCapabilities from '../utils/getTemplateCapabilities';
 import getTemplateFieldConstraints from '../utils/getTemplateFieldConstraints';
 import getTemplateMetadata from '../utils/getTemplateMetadata';
 import isValidRedirectUriFormat from '../utils/isValidRedirectUriFormat';
-import {hasUserAccess} from '../utils/oauth2Rules';
+import {hasClientAccess, hasUserAccess} from '../utils/oauth2Rules';
 import validateBackchannelLogoutUri from '../utils/validateBackchannelLogoutUri';
 
 interface TabConfig {
@@ -98,6 +104,21 @@ export default function ApplicationEditPage() {
 
   const {data: application, isLoading, error, refetch} = useGetApplication(applicationId ?? '');
   const updateApplication = useUpdateApplication();
+  // TODO: Offer Organization Access to every application once sharing an application that signs
+  // users in is supported, by removing this check. Until then a granted unit can only request tokens
+  // through the application, so only applications with the client credentials grant get the tab,
+  // whatever other grants they also have. Read from the saved application, so the tab does not
+  // appear or vanish while grant types are being edited.
+  const offersOrganizationAccess = useMemo(
+    () =>
+      hasClientAccess(application?.inboundAuthConfig?.find((config) => config.type === 'oauth2')?.config.grantTypes),
+    [application],
+  );
+  // Held here rather than in its tab, because inactive tabs unmount and the draft must survive them.
+  const organizationAccess = useOrganizationAccess({
+    resourcePath: `applications/${applicationId}`,
+    enabled: Boolean(applicationId) && offersOrganizationAccess,
+  });
 
   // Resolves an error through the `applications` catalog. `t` defaults to the `common` namespace,
   // so this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with `applications:`,
@@ -108,8 +129,17 @@ export default function ApplicationEditPage() {
     [t],
   );
 
-  const justCreatedSecret = (location.state as {justCreatedSecret?: JustCreatedSecret} | null)?.justCreatedSecret;
+  // The create wizard hands over the new secret in the navigation state. Keep it for this mount only
+  // and drop it from the history entry, so reloading the page never shows the secret again.
+  const navigationSecret = (location.state as {justCreatedSecret?: JustCreatedSecret} | null)?.justCreatedSecret;
+  const [justCreatedSecret] = useState(navigationSecret);
   const [secretDialogOpen, setSecretDialogOpen] = useState(Boolean(justCreatedSecret));
+
+  useEffect(() => {
+    if (navigationSecret) {
+      void navigate(location.pathname, {replace: true, state: null});
+    }
+  }, [navigationSecret, navigate, location.pathname]);
 
   const [activeTabKey, setActiveTabKey] = useState('overview');
   const [editedApp, setEditedApp] = useState<Partial<Application>>({});
@@ -174,6 +204,15 @@ export default function ApplicationEditPage() {
     [handleFieldChange],
   );
 
+  const hasApplicationChanges = useMemo(
+    () =>
+      Object.entries(editedApp).some(
+        ([key, value]) => !isEqualIgnoringEmpty(value, application?.[key as keyof Application]),
+      ),
+    [editedApp, application],
+  );
+  const hasChanges = hasApplicationChanges || organizationAccess.hasChanges;
+
   const handleSave = useCallback(async () => {
     if (!application || !applicationId) return;
 
@@ -183,35 +222,51 @@ export default function ApplicationEditPage() {
     };
     void certificate;
 
+    // The application is saved first, so a refused organization access change leaves the
+    // application's own settings saved and only the access draft waiting to be retried.
     try {
-      await updateApplication.mutateAsync({
-        applicationId,
-        data: updatedData,
-      });
-      setEditedApp({});
-      await refetch();
-      // Bumped only after refetch resolves to prevent stale data being passed to the remounted sections.
-      setSectionResetKey((key) => key + 1);
+      if (hasApplicationChanges) {
+        await updateApplication.mutateAsync({
+          applicationId,
+          data: updatedData,
+        });
+        setEditedApp({});
+        await refetch();
+        // Bumped only after refetch resolves to prevent stale data being passed to the remounted sections.
+        setSectionResetKey((key) => key + 1);
+      }
+      if (organizationAccess.hasChanges) {
+        await organizationAccess.save();
+      }
     } catch {
       logger.error('Failed to update application');
     }
-  }, [application, applicationId, editedApp, updateApplication, refetch, logger]);
+  }, [
+    application,
+    applicationId,
+    editedApp,
+    hasApplicationChanges,
+    updateApplication,
+    organizationAccess,
+    refetch,
+    logger,
+  ]);
 
-  const hasChanges = useMemo(
-    () =>
-      Object.entries(editedApp).some(
-        ([key, value]) => !isEqualIgnoringEmpty(value, application?.[key as keyof Application]),
-      ),
-    [editedApp, application],
-  );
+  const resourceTypeTitle = t('navigation:pages.applications', 'Applications');
 
   if (isLoading) {
-    return <PageLoadingAnimation />;
+    return (
+      <>
+        <DocumentTitle title={resourceTypeTitle} />
+        <PageLoadingAnimation />
+      </>
+    );
   }
 
   if (error) {
     return (
       <PageContent>
+        <DocumentTitle title={resourceTypeTitle} />
         <QueryErrorNotice
           error={error}
           t={tForErrors}
@@ -226,7 +281,7 @@ export default function ApplicationEditPage() {
               }}
               startIcon={<ArrowLeft size={16} />}
             >
-              {t('applications:edit.page.back', 'Back to Applications')}
+              {t('applications:edit.page.back', 'Back to applications')}
             </Button>
           }
         />
@@ -237,6 +292,7 @@ export default function ApplicationEditPage() {
   if (!application) {
     return (
       <PageContent>
+        <DocumentTitle title={resourceTypeTitle} />
         <Alert severity="warning" sx={{mb: 2}}>
           {t('applications:edit.page.notFound')}
         </Alert>
@@ -259,7 +315,6 @@ export default function ApplicationEditPage() {
   const isMcpClient = application.template === TemplateConstants.MCP_CLIENT_TEMPLATE_ID;
   // A metadata-document client's redirect URIs, authentication method, and keys come from its document.
   const isCimdClient = oauth2Config?.clientIdMetadataDocument === true;
-  const isMcpM2mOnly = deriveMcpClientType(oauth2Config?.grantTypes) === McpClientTypes.M2M;
 
   // User-facing tabs (Flows, Customization) and the general Access section only apply when the
   // client can act on behalf of a user. When it can't, they are frozen/hidden rather than removed.
@@ -272,13 +327,14 @@ export default function ApplicationEditPage() {
 
   // Page-level required checks, gated on the grant types they apply to, surfaced by name in the
   // save bar. Computed from state (not reported by the tabs) since inactive tabs are unmounted.
-  // MCP clients run their own validation via McpConnectTab, so these are skipped there.
+  // MCP clients validate their redirect URIs via McpConnectTab, so that check is skipped there. The
+  // certificate check applies to every client with a Credentials tab, which a CIMD MCP client lacks.
   const grantTypes = oauth2Config?.grantTypes ?? [];
   const hasAuthorizationCodeGrant = grantTypes.includes(OAuth2GrantTypes.AUTHORIZATION_CODE);
   const hasValidRedirectUri = (oauth2Config?.redirectUris ?? []).some((uri) => isValidRedirectUriFormat(uri));
   const isMissingRedirectUri = !isMcpClient && hasAuthorizationCodeGrant && !hasValidRedirectUri;
   const isMissingCertificate =
-    !isMcpClient &&
+    !(isMcpClient && isCimdClient) &&
     oauth2Config?.tokenEndpointAuthMethod === TokenEndpointAuthMethods.PRIVATE_KEY_JWT &&
     !oauth2Config?.certificate?.value;
   // The field shows only with a user-facing grant, so a hidden value never blocks saving. The field
@@ -319,8 +375,25 @@ export default function ApplicationEditPage() {
                 isReadOnly={application.isReadOnly === true}
                 onValidationChange={setMcpAccessInvalid}
                 sectionResetKey={sectionResetKey}
+                onGoToCredentials={isCimdClient ? undefined : () => setActiveTabKey('credentials')}
               />
             ),
+          },
+          {
+            key: 'credentials',
+            label: t('applications:edit.page.tabs.credentials', 'Credentials'),
+            panel: (
+              <EditCredentialsSettings
+                application={application}
+                editedApp={editedApp}
+                oauth2Config={oauth2Config}
+                onFieldChange={handleFieldChange}
+                showAttestation={false}
+                onValidationChange={setCredentialsSettingsInvalid}
+              />
+            ),
+            // A metadata-document client's keys come from its document.
+            hidden: isCimdClient,
           },
           {
             key: 'flows',
@@ -328,7 +401,7 @@ export default function ApplicationEditPage() {
             panel: (
               <EditFlowsSettings application={application} editedApp={editedApp} onFieldChange={handleFieldChange} />
             ),
-            hidden: isMcpM2mOnly,
+            hidden: !userAccessUnlocked,
           },
           {
             key: 'customization',
@@ -342,7 +415,7 @@ export default function ApplicationEditPage() {
                 sectionResetKey={sectionResetKey}
               />
             ),
-            hidden: isMcpM2mOnly,
+            hidden: !userAccessUnlocked,
           },
           {
             key: 'token',
@@ -359,6 +432,12 @@ export default function ApplicationEditPage() {
             ),
           },
           {
+            key: 'organizationAccess',
+            label: t('applications:edit.page.tabs.organizationAccess', 'Organization Access'),
+            panel: <EditOrganizationAccessSettings application={application} access={organizationAccess} />,
+            hidden: !offersOrganizationAccess,
+          },
+          {
             key: 'advanced',
             label: t('applications:edit.page.tabs.advanced'),
             panel: (
@@ -367,9 +446,9 @@ export default function ApplicationEditPage() {
                 editedApp={editedApp}
                 oauth2Config={oauth2Config}
                 // The backend rejects pkceRequired: true without the authorization_code grant, so
-                // the template's PKCE lock only applies to user-delegated clients — an M2M-only
-                // client is stored with pkceRequired: false and must remain editable.
-                oauth2Constraints={isMcpM2mOnly ? undefined : oauth2Constraints}
+                // the template's PKCE lock only applies while that grant is present. A client without
+                // it (machine-to-machine or JWT bearer only) is stored with pkceRequired: false.
+                oauth2Constraints={hasAuthorizationCodeGrant ? oauth2Constraints : undefined}
                 onFieldChange={handleFieldChange}
                 allowedGrantTypes={[...TemplateConstants.MCP_CLIENT_ALLOWED_GRANT_TYPES]}
                 // MCP clients manage their redirect URIs on their own Connect tab.
@@ -513,6 +592,12 @@ export default function ApplicationEditPage() {
           ),
         },
         {
+          key: 'organizationAccess',
+          label: t('applications:edit.page.tabs.organizationAccess', 'Organization Access'),
+          panel: <EditOrganizationAccessSettings application={application} access={organizationAccess} />,
+          hidden: !offersOrganizationAccess,
+        },
+        {
           key: 'advanced',
           label: t('applications:edit.page.tabs.advanced'),
           panel: (
@@ -531,7 +616,7 @@ export default function ApplicationEditPage() {
             />
           ),
         },
-      ]
+      ].filter((tab) => !tab.hidden)
     : [];
 
   const activeTabs = isMcpClient ? mcpTabs : standardTabs;
@@ -542,6 +627,7 @@ export default function ApplicationEditPage() {
 
   return (
     <PageContent>
+      <DocumentTitle title={application.name} />
       {application.isReadOnly && (
         <Alert severity="info" sx={{mb: 2}}>
           {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
@@ -560,7 +646,7 @@ export default function ApplicationEditPage() {
             editable={!application.isReadOnly}
             value={editedApp.logoUrl ?? application.logoUrl}
             fallback={ApplicationConstants.DEFAULT_AVATAR}
-            editAriaLabel={t('applications:edit.page.logoUpdate.label', 'Update Logo')}
+            editAriaLabel={t('applications:edit.page.logoUpdate.label', 'Update logo')}
             onSelect={(newLogoUrl: string) => {
               // Can't go through handleFieldChange: reverting to the original logo drops the key
               // rather than setting it, so the stale save error has to be cleared here too.
@@ -728,7 +814,7 @@ export default function ApplicationEditPage() {
           resetLabel={t('applications:edit.page.reset')}
           saveLabel={t('applications:edit.page.save')}
           savingLabel={t('applications:edit.page.saving')}
-          isSaving={updateApplication.isPending}
+          isSaving={updateApplication.isPending || organizationAccess.isSaving}
           saveDisabled={
             hasValidationErrors ||
             mcpAccessInvalid ||
@@ -742,17 +828,26 @@ export default function ApplicationEditPage() {
             application.isReadOnly === true
           }
           error={
-            updateApplication.error
+            (updateApplication.error
               ? getApplicationErrorMessage(
                   updateApplication.error,
-                  (key, options) => t(key.includes(':') ? key : `applications:${key}`, options),
+                  tForErrors,
                   'update.error',
                   'Failed to update application. Please try again.',
                 )
-              : undefined
+              : undefined) ??
+            (organizationAccess.saveError
+              ? getApplicationErrorMessage(
+                  organizationAccess.saveError,
+                  tForErrors,
+                  'edit.organizationAccess.save.error',
+                  'Failed to update organization access. Please try again.',
+                )
+              : undefined)
           }
           onReset={() => {
             updateApplication.reset();
+            organizationAccess.reset();
             setEditedApp({});
             setHasValidationErrors(false);
             setMcpAccessInvalid(false);

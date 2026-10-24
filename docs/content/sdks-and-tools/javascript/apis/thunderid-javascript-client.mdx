@@ -216,7 +216,7 @@ Subclasses must implement these methods. Calling them on `ThunderIDJavaScriptCli
 |--------|-----------|-------------|
 | `signIn` | `(options?) => Promise<User \| TokenResponse \| undefined>` | Initiate the authentication flow |
 | `signOut` | `(options?) => Promise<string \| boolean>` | End the session and sign out |
-| `signInSilently` | `(options?) => Promise<User \| boolean \| undefined>` | Silent token refresh without user interaction |
+| `signInSilently` | `(options?) => Promise<User \| boolean \| undefined>` | Sign the user in from an existing session without user interaction |
 | `signUp` | `(options?) => Promise<void \| EmbeddedFlowExecuteResponse>` | Start a sign-up flow |
 | `recover` | `(payload) => Promise<EmbeddedFlowExecuteResponse>` | Run a recovery flow |
 | `getUserProfile` | `(options?) => Promise<UserProfile>` | Fetch the full user profile |
@@ -256,7 +256,6 @@ Exchange an authorization code plus an agent token for an OBO access token.
 ```ts
 const token = await client.getOBOToken(agentConfig, {
   code: params.get('code')!,
-  session_state: params.get('session_state') ?? '',
   state: params.get('state')!,
 })
 ```

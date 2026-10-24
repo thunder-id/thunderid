@@ -60,7 +60,7 @@ describe('AuthenticationFlowSection', () => {
         </MemoryRouter>,
       );
 
-      expect(screen.getByTestId('card-title')).toHaveTextContent('Sign-in Flow');
+      expect(screen.getByTestId('card-title')).toHaveTextContent('Sign-in flow');
       expect(screen.getByTestId('card-description')).toHaveTextContent(
         'Choose the flow that handles user login and authentication.',
       );

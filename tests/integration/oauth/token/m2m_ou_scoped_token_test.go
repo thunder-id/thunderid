@@ -96,7 +96,7 @@ func (suite *M2MOUScopedTokenTestSuite) TestBareEndpointStillWorks() {
 	suite.NotEmpty(body["access_token"])
 }
 
-// TestAllOUsPolicyReachesEveryOU proves an allOus policy lets the application be used for any
+// TestAllOUsPolicyReachesEveryOU proves an allUnits policy lets the application be used for any
 // organization unit, including ones in an unrelated tree.
 func (suite *M2MOUScopedTokenTestSuite) TestAllOUsPolicyReachesEveryOU() {
 	for _, ouID := range []string{m2mRootOUID, m2mChildAOUID, m2mChildBOUID, unrelatedDeclOUHandle} {
@@ -117,7 +117,7 @@ func (suite *M2MOUScopedTokenTestSuite) TestOwnerMayAlwaysNameItself() {
 	suite.NotEmpty(body["access_token"])
 }
 
-// TestSubtreePolicyCoversChildren proves an allChildren policy reaches the owning root's descendants.
+// TestSubtreePolicyCoversChildren proves an all child units policy reaches the owning root's descendants.
 func (suite *M2MOUScopedTokenTestSuite) TestSubtreePolicyCoversChildren() {
 	for _, ouID := range []string{m2mChildAOUID, m2mChildBOUID} {
 		suite.Run(ouID, func() {
@@ -129,7 +129,7 @@ func (suite *M2MOUScopedTokenTestSuite) TestSubtreePolicyCoversChildren() {
 	}
 }
 
-// TestSubtreePolicyDoesNotReachAnotherTree proves allChildren stays inside the owning subtree.
+// TestSubtreePolicyDoesNotReachAnotherTree proves all child units stays inside the owning subtree.
 func (suite *M2MOUScopedTokenTestSuite) TestSubtreePolicyDoesNotReachAnotherTree() {
 	status, body := suite.requestToken(unrelatedDeclOUHandle, m2mSubtreeClientID, m2mSubtreeSecret)
 
@@ -172,7 +172,7 @@ func (suite *M2MOUScopedTokenTestSuite) TestSelectivePolicyReachesOnlyTheNamedCh
 	})
 }
 
-// TestSelectivePolicyStopsAtTheNamedChild is what separates a child target from a childSubtree one:
+// TestSelectivePolicyStopsAtTheNamedChild is what separates a unit reach from a subtree one:
 // naming an organization unit grants that unit alone, never the units beneath it. The subtree
 // application, which does cascade, is checked against the same unit so the difference is the policy
 // shape rather than anything about the organization unit itself.
@@ -189,13 +189,13 @@ func (suite *M2MOUScopedTokenTestSuite) TestSelectivePolicyStopsAtTheNamedChild(
 }
 
 // TestUnknownOUIsRefused proves an organization unit id that resolves to nothing is refused, under a
-// blanket allOus policy just as much as a narrower one. allOus means "every organization unit in the
+// blanket allUnits policy just as much as a narrower one. allUnits means "every organization unit in the
 // deployment", and a policy check alone cannot reject an id that names none of them, so the accessing
 // organization unit is resolved before any policy is consulted.
 func (suite *M2MOUScopedTokenTestSuite) TestUnknownOUIsRefused() {
 	for _, tc := range []struct{ name, clientID, secret string }{
 		{"carved-out policy", m2mCarvedOutClientID, m2mCarvedOutSecret},
-		{"allOus policy", m2mAllOUsClientID, m2mAllOUsSecret},
+		{"allUnits policy", m2mAllOUsClientID, m2mAllOUsSecret},
 	} {
 		suite.Run(tc.name, func() {
 			status, body := suite.requestToken("no-such-ou", tc.clientID, tc.secret)

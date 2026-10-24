@@ -121,6 +121,13 @@ var (
 	// ErrOAuthClientIDJAGCannotUseNoneAuth is returned when an ID-JAG configuration uses none auth method.
 	// Requesting ID-JAGs requires a confidential client.
 	ErrOAuthClientIDJAGCannotUseNoneAuth = errors.New("ID-JAG configuration cannot use none auth method")
+	// ErrOAuthClientIDJAGRequiresTokenExchange is returned when an ID-JAG configuration is enabled without
+	// the token-exchange grant, the only grant that issues ID-JAGs.
+	ErrOAuthClientIDJAGRequiresTokenExchange = errors.New("ID-JAG configuration requires the token-exchange grant")
+	// ErrOAuthClientIDJAGRequiresAllowedAudience is returned when an ID-JAG configuration is enabled
+	// without an allowed audience, so no ID-JAG request can be granted, or with a blank one.
+	ErrOAuthClientIDJAGRequiresAllowedAudience = errors.New(
+		"ID-JAG configuration requires at least one allowed audience and no blank ones")
 	// ErrOAuthPublicClientMustUseNoneAuth is returned when a public client uses an auth method other than none.
 	ErrOAuthPublicClientMustUseNoneAuth = errors.New("public client must use none auth method")
 	// ErrOAuthPublicClientMustHavePKCE is returned when a public client does not have PKCE required.

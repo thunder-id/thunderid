@@ -19,7 +19,7 @@ const documentationLinks: Record<string, string> = {
   'applications.templates.react.docs':
     'https://thunderid.dev/docs/next/guides/getting-started/connect-your-application/react/',
   'applications.templates.react.playground':
-    'https://stackblitz.com/fork/github/thunder-id/javascript-sdks/tree/main/samples/react/quickstart?file=README.md',
+    'https://stackblitz.com/fork/github/thunder-id/samples/tree/main/quickstarts/react?file=README.md',
   'applications.templates.react.llmPrompt.redirectBased': 'https://thunderid.dev/prompts/react/redirect-based.txt',
   'applications.templates.nextjs.llmPrompt.redirectBased': 'https://thunderid.dev/prompts/nextjs/redirect-based.txt',
   'applications.templates.ios.docs':
@@ -143,24 +143,24 @@ describe('IntegrationGuides', () => {
 
     renderWithProviders(<IntegrationGuides application={{...reactApplication, ouId: 'ou-1'}} />);
 
-    expect(screen.getByText('Organization Unit ID')).toBeInTheDocument();
+    expect(screen.getByText('Organization unit ID')).toBeInTheDocument();
     expect(screen.getByText('ou-1')).toBeInTheDocument();
-    expect(screen.getByText('Organization Unit Handle')).toBeInTheDocument();
+    expect(screen.getByText('Organization unit handle')).toBeInTheDocument();
     expect(screen.getByText('engineering')).toBeInTheDocument();
   });
 
   it('hides the organization unit rows when the application has no ouId', () => {
     renderWithProviders(<IntegrationGuides application={reactApplication} />);
 
-    expect(screen.queryByText('Organization Unit ID')).not.toBeInTheDocument();
-    expect(screen.queryByText('Organization Unit Handle')).not.toBeInTheDocument();
+    expect(screen.queryByText('Organization unit ID')).not.toBeInTheDocument();
+    expect(screen.queryByText('Organization unit handle')).not.toBeInTheDocument();
   });
 
   it('shows the organization unit ID alone when the handle has not resolved yet', () => {
     renderWithProviders(<IntegrationGuides application={{...reactApplication, ouId: 'ou-1'}} />);
 
-    expect(screen.getByText('Organization Unit ID')).toBeInTheDocument();
-    expect(screen.queryByText('Organization Unit Handle')).not.toBeInTheDocument();
+    expect(screen.getByText('Organization unit ID')).toBeInTheDocument();
+    expect(screen.queryByText('Organization unit handle')).not.toBeInTheDocument();
   });
 
   it('shows the OIDC endpoints and sign-in preview from the canonical type before the OAuth2 config resolves', () => {
@@ -169,7 +169,7 @@ describe('IntegrationGuides', () => {
     renderWithProviders(<IntegrationGuides application={reactApplication} />);
 
     expect(screen.getByText('app-123')).toBeInTheDocument();
-    expect(screen.getByText('Useful Endpoints')).toBeInTheDocument();
+    expect(screen.getByText('Useful endpoints')).toBeInTheDocument();
     expect(screen.getByText('Preview')).toBeInTheDocument();
     expect(screen.getByRole('link', {name: /Open on StackBlitz/i})).toBeInTheDocument();
   });
@@ -184,7 +184,7 @@ describe('IntegrationGuides', () => {
   it('hides only the sign-in preview for a machine-to-machine application with no OAuth2 config yet', () => {
     renderWithProviders(<IntegrationGuides application={{...reactApplication, type: 'm2m'}} />);
 
-    expect(screen.getByText('Useful Endpoints')).toBeInTheDocument();
+    expect(screen.getByText('Useful endpoints')).toBeInTheDocument();
     expect(screen.queryByText('Preview')).not.toBeInTheDocument();
   });
 
@@ -193,7 +193,7 @@ describe('IntegrationGuides', () => {
       <IntegrationGuides application={reactApplication} oauth2Config={{...oauth2Config, clientId: undefined}} />,
     );
 
-    expect(screen.getByText('Useful Endpoints')).toBeInTheDocument();
+    expect(screen.getByText('Useful endpoints')).toBeInTheDocument();
     expect(screen.getByText('https://localhost:8090/oauth2/authorize')).toBeInTheDocument();
     expect(screen.queryByText('Client ID')).not.toBeInTheDocument();
   });
@@ -204,7 +204,7 @@ describe('IntegrationGuides', () => {
     const stackblitzLink = screen.getByRole('link', {name: /Open on StackBlitz/i});
     expect(stackblitzLink).toHaveAttribute(
       'href',
-      'https://stackblitz.com/fork/github/thunder-id/javascript-sdks/tree/main/samples/react/quickstart?file=README.md',
+      'https://stackblitz.com/fork/github/thunder-id/samples/tree/main/quickstarts/react?file=README.md',
     );
   });
 
@@ -287,10 +287,10 @@ describe('IntegrationGuides', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', {name: 'Edit in Flows'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Edit in flows'}));
     expect(onGoToFlows).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole('button', {name: 'Edit in Customization'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Edit in customization'}));
     expect(onGoToCustomization).toHaveBeenCalledTimes(1);
   });
 
@@ -303,7 +303,7 @@ describe('IntegrationGuides', () => {
     );
 
     expect(screen.queryByText('Preview')).not.toBeInTheDocument();
-    expect(screen.getByText('Useful Endpoints')).toBeInTheDocument();
+    expect(screen.getByText('Useful endpoints')).toBeInTheDocument();
   });
 
   it('shows the coding agent prompt for a template whose default EMBEDDED variant has no guide content', () => {
@@ -339,7 +339,7 @@ describe('IntegrationGuides', () => {
     it('shows App Native flow endpoints instead of the OAuth2/OIDC endpoints', () => {
       renderWithProviders(<IntegrationGuides application={mobileApplication} oauth2Config={oauth2Config} />);
 
-      expect(screen.getByText('Useful Endpoints')).toBeInTheDocument();
+      expect(screen.getByText('Useful endpoints')).toBeInTheDocument();
       expect(screen.queryByText('OIDC endpoints')).not.toBeInTheDocument();
       expect(screen.getByText('https://localhost:8090/flow/execute')).toBeInTheDocument();
       expect(screen.getByText('https://localhost:8090/flow/meta')).toBeInTheDocument();
@@ -363,7 +363,7 @@ describe('IntegrationGuides', () => {
     it('shows the standard OAuth2/OIDC endpoints (not App Native ones) for a pure browser SPA', () => {
       renderWithProviders(<IntegrationGuides application={reactApplication} oauth2Config={oauth2Config} />);
 
-      expect(screen.getByText('Useful Endpoints')).toBeInTheDocument();
+      expect(screen.getByText('Useful endpoints')).toBeInTheDocument();
       expect(screen.getByText('https://localhost:8090/oauth2/authorize')).toBeInTheDocument();
       expect(screen.queryByText('https://localhost:8090/flow/execute')).not.toBeInTheDocument();
       expect(screen.queryByText('https://localhost:8090/flow/meta')).not.toBeInTheDocument();
@@ -377,7 +377,7 @@ describe('IntegrationGuides', () => {
         />,
       );
 
-      expect(screen.getByText('Useful Endpoints')).toBeInTheDocument();
+      expect(screen.getByText('Useful endpoints')).toBeInTheDocument();
       expect(screen.getByText('https://localhost:8090/oauth2/authorize')).toBeInTheDocument();
       expect(screen.getByText('https://localhost:8090/flow/execute')).toBeInTheDocument();
       expect(screen.getByText('https://localhost:8090/flow/meta')).toBeInTheDocument();
@@ -391,7 +391,7 @@ describe('IntegrationGuides', () => {
         />,
       );
 
-      expect(screen.getByText('Useful Endpoints')).toBeInTheDocument();
+      expect(screen.getByText('Useful endpoints')).toBeInTheDocument();
       expect(screen.getByText('https://localhost:8090/flow/execute')).toBeInTheDocument();
       expect(screen.getByText('https://localhost:8090/flow/meta')).toBeInTheDocument();
     });

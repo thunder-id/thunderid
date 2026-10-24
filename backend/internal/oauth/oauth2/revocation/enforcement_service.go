@@ -16,7 +16,8 @@ import (
 // refresh grant, token exchange) under a fail-closed policy: when a deny list cannot be consulted,
 // tokens are rejected rather than allowed.
 type EnforcementServiceInterface interface {
-	// EnsureNotRevoked rejects an artifact when its JTI or any supplied criterion is revoked.
+	// EnsureNotRevoked rejects an artifact when its JTI (ErrTokenIDRevoked) or any supplied criterion
+	// (ErrTokenRevoked) is revoked.
 	EnsureNotRevoked(ctx context.Context, identity RevocationIdentity) error
 }
 
@@ -64,7 +65,7 @@ func (c *enforcementService) EnsureNotRevoked(ctx context.Context, identity Revo
 		}
 		if revoked {
 			c.breaker.recordSuccess()
-			return ErrTokenRevoked
+			return ErrTokenIDRevoked
 		}
 	}
 

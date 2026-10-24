@@ -79,6 +79,10 @@ paths:
         from one gateway to the next, so they are no part of what a version is. Capturing
         configuration that matches a version already captured answers `200` with that version, marked
         `unchanged`, rather than keeping it twice, and the version keeps the values it was captured with.
+
+        A configuration that refers to a secret from a field that holds no credential is refused with
+        `400` (`GTW-1026`), naming each place the secret stands: every gateway would refuse the resource
+        on import. Secrets may stand only in the fields listed under value references.
       requestBody:
         required: false
         content:
@@ -201,6 +205,11 @@ components:
     Version:
       type: object
       properties:
+        number:
+          type: integer
+          description: |
+            The version's place in order, from 1. It stays the same as older versions are removed, so
+            the console shows it as the version's number.
         version:
           type: string
           description: |
@@ -215,9 +224,22 @@ components:
         unchanged:
           type: boolean
           description: Only in a capture's answer, when the configuration matched this version already captured.
+        current:
+          type: boolean
+          description: |
+            Set on the newest version when it was captured as the current one: a capture with `current`
+            replaces it in place until it is applied to a gateway. Once an apply sends it, it is kept and
+            stays current until the next capture.
         createdAt:
           type: string
           format: date-time
+        createdBy:
+          description: |
+            The user the version was captured for: who captured it, or whose change a capture after a
+            change followed. A current version replaced in place names the latest change's user. Left
+            out when the user's name cannot be read.
+          allOf:
+            - $ref: '#/components/schemas/Actor'
         resources:
           type: string
           description: The exported configuration, one document per resource. Left out of a listing.
@@ -242,6 +264,23 @@ components:
                 type: string
               code:
                 type: string
+    Actor:
+      type: object
+      description: |
+        A user, by id and name. Given out only when the control plane is configured to look names up at
+        its trusted issuer (`server.security.trusted_issuer.user_lookup`) and the issuer knows the user;
+        otherwise the field holding the user is left out, since the id alone is an identifier of the
+        issuer's that says nothing to a viewer. The id is recorded either way.
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          description: The token's `sub` claim, or the claim `server.security.trusted_issuer.user_id_claim` names.
+        name:
+          type: string
+          description: The user's name as the trusted issuer's user API reports it, read when the record is read and never stored.
     CaptureRequest:
       type: object
       properties:
@@ -251,6 +290,13 @@ components:
         note:
           type: string
           description: A note to remember the version by.
+        current:
+          type: boolean
+          description: |
+            Keeps the configuration as the current version rather than adding one. The newest version is
+            replaced in place when it was captured as current and has not been applied to a gateway;
+            otherwise a new current version is added. A control plane captures this way on its own
+            after each change to the configuration.
     ValueReference:
       type: object
       description: |

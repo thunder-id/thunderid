@@ -234,7 +234,7 @@ func (ts *CallToRegistrationFlowTestSuite) SetupSuite() {
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
 		AllowedUserTypes:          []string{userType.Handle},
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId"},
+			"userAttributes": []string{"userTypeHandle", "ouId"},
 		},
 	}
 	appID, err := testutils.CreateApplication(app)

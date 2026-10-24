@@ -60,6 +60,7 @@ func Initialize(
 	ssoSession session.Service,
 	ssoTransport session.HandleTransportInterface,
 	flowProvider providers.FlowProvider,
+	governance providers.IdentityGovernanceProvider,
 	cfg oauthconfig.Config,
 ) (tokenservice.TokenValidatorInterface, backchannel.DispatcherInterface, error) {
 	jwks.Initialize(mux, runtimeCrypto)
@@ -81,7 +82,7 @@ func Initialize(
 	// RFC 7009 routes against the already-built service.
 	if cfg.OAuth.TokenRevocation.IsEnabled() {
 		revocation.RegisterRoutes(mux, jwtService, actorProvider, authnProvider, discoveryService,
-			revocationSvc, jtiStore, cfg.OAuth.ClientAssertion, cfg.JWT.Leeway)
+			revocationSvc, jtiStore, governance, cfg.OAuth.ClientAssertion, cfg.JWT.Leeway)
 	} else {
 		enforcementService = nil
 		revocationSvc = nil
@@ -90,10 +91,10 @@ func Initialize(
 	tokenBuilder, tokenValidator := tokenservice.Initialize(
 		cfg, jwtService, jweService, resolver, idpService, enforcementService, jtiStore, actorProvider)
 	parService := par.Initialize(mux, actorProvider, authnProvider, jwtService, discoveryService,
-		resourceService, dpopVerifier, cfg, runtimeStore, jtiStore)
+		resourceService, dpopVerifier, cfg, runtimeStore, jtiStore, governance)
 	oauth2AuthzService, err := oauth2authz.Initialize(mux, actorProvider, resourceService,
-		jwtService, flowExecService, parService, revocationSvc, ssoSession, ssoTransport, flowProvider, cfg,
-		runtimeStore, transactioner, jtiStore)
+		jwtService, flowExecService, parService, revocationSvc, ssoSession, ssoTransport, flowProvider,
+		governance, cfg, runtimeStore, transactioner, jtiStore)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -102,21 +103,21 @@ func Initialize(
 	if len(cfg.OAuth.AllowedGrantTypes) == 0 ||
 		slices.Contains(cfg.OAuth.AllowedGrantTypes, string(providers.GrantTypeCIBA)) {
 		cibaService = ciba.Initialize(mux, jwtService, actorProvider, authnProvider, flowExecService,
-			discoveryService, resourceService, runtimeStore, jtiStore, cfg)
+			discoveryService, resourceService, runtimeStore, jtiStore, governance, cfg)
 	}
 
 	grantHandlerProvider := granthandlers.Initialize(
 		jwtService, oauth2AuthzService, tokenBuilder, tokenValidator,
 		attributeCacheSvc, ouService, authzService, actorProvider, resourceService,
-		cibaService, revocationSvc, revocationSvc, cfg)
+		cibaService, revocationSvc, revocationSvc, enforcementService, governance, cfg)
 
 	token.Initialize(mux, jwtService, actorProvider, authnProvider, grantHandlerProvider,
-		scopeValidator, observabilitySvc, discoveryService, dpopVerifier, jtiStore, ouService, cfg)
+		scopeValidator, observabilitySvc, discoveryService, dpopVerifier, jtiStore, ouService, governance, cfg)
 	introspect.Initialize(mux, jwtService, actorProvider, authnProvider, discoveryService, tokenValidator,
-		jtiStore, cfg.OAuth.ClientAssertion, cfg.JWT.Leeway)
+		jtiStore, governance, cfg.OAuth.ClientAssertion, cfg.JWT.Leeway)
 	userinfo.Initialize(mux, jwtService, jweService, resolver,
 		tokenValidator, actorProvider, attributeCacheSvc,
-		discoveryService, dpopVerifier, cfg)
+		discoveryService, dpopVerifier, governance, cfg)
 	callback.Initialize(mux, oauth2AuthzService, cibaService, cfg)
 
 	if cfg.OAuth.Logout.IsEnabled() {

@@ -8,7 +8,7 @@ export {default as useDeleteGroup} from './api/useDeleteGroup';
 export {default as useGetGroup} from './api/useGetGroup';
 export {default as useGetGroupMembers} from './api/useGetGroupMembers';
 export {default as useGetGroups} from './api/useGetGroups';
-export {default as useRemoveGroupMembers} from './api/useRemoveGroupMembers';
+export {default as useRemoveGroupMember} from './api/useRemoveGroupMember';
 export {default as useUpdateGroup} from './api/useUpdateGroup';
 
 // Components

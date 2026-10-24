@@ -6,15 +6,17 @@ ouId: decl-m2m-root
 type: fullstack
 template: web
 url: https://example.com
-# Children named one by one. Each target reaches the unit it names and stops there, so a sibling
-# nobody named is not reached and neither is anything beneath a named one.
+# Children named one by one. Each is reached as a unit and no further, so a sibling nobody named
+# is not reached and neither is anything beneath a named one.
 sharingPolicies:
   - id: decl-m2m-selected-policy-1
-    targets:
-      - scope: child
-        ouId: decl-m2m-child-a
-      - scope: child
-        ouId: decl-m2m-child-b
+    childUnits:
+      mode: selected
+      units:
+        - ouId: decl-m2m-child-a
+          reach: unit
+        - ouId: decl-m2m-child-b
+          reach: unit
 inboundAuthConfig:
   - type: "oauth2"
     config:

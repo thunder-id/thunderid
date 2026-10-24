@@ -8,6 +8,7 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -19,10 +20,19 @@ func NewRoleServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *RoleServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &RoleServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -75,7 +85,7 @@ type RoleServiceInterfaceMock_CascadeDeleteDependencies_Call struct {
 //   - ctx context.Context
 //   - resourceType string
 //   - id string
-func (_e *RoleServiceInterfaceMock_Expecter) CascadeDeleteDependencies(ctx interface{}, resourceType interface{}, id interface{}) *RoleServiceInterfaceMock_CascadeDeleteDependencies_Call {
+func (_e *RoleServiceInterfaceMock_Expecter) CascadeDeleteDependencies(ctx any, resourceType any, id any) *RoleServiceInterfaceMock_CascadeDeleteDependencies_Call {
 	return &RoleServiceInterfaceMock_CascadeDeleteDependencies_Call{Call: _e.mock.On("CascadeDeleteDependencies", ctx, resourceType, id)}
 }
 
@@ -150,7 +160,7 @@ type RoleServiceInterfaceMock_CreateRole_Call struct {
 // CreateRole is a helper method to define mock.On call
 //   - ctx context.Context
 //   - role RoleCreationDetail
-func (_e *RoleServiceInterfaceMock_Expecter) CreateRole(ctx interface{}, role interface{}) *RoleServiceInterfaceMock_CreateRole_Call {
+func (_e *RoleServiceInterfaceMock_Expecter) CreateRole(ctx any, role any) *RoleServiceInterfaceMock_CreateRole_Call {
 	return &RoleServiceInterfaceMock_CreateRole_Call{Call: _e.mock.On("CreateRole", ctx, role)}
 }
 
@@ -209,7 +219,7 @@ type RoleServiceInterfaceMock_DeleteRole_Call struct {
 // DeleteRole is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *RoleServiceInterfaceMock_Expecter) DeleteRole(ctx interface{}, id interface{}) *RoleServiceInterfaceMock_DeleteRole_Call {
+func (_e *RoleServiceInterfaceMock_Expecter) DeleteRole(ctx any, id any) *RoleServiceInterfaceMock_DeleteRole_Call {
 	return &RoleServiceInterfaceMock_DeleteRole_Call{Call: _e.mock.On("DeleteRole", ctx, id)}
 }
 
@@ -280,7 +290,7 @@ type RoleServiceInterfaceMock_GetAllPermissions_Call struct {
 //   - ctx context.Context
 //   - entityID string
 //   - groupIDs []string
-func (_e *RoleServiceInterfaceMock_Expecter) GetAllPermissions(ctx interface{}, entityID interface{}, groupIDs interface{}) *RoleServiceInterfaceMock_GetAllPermissions_Call {
+func (_e *RoleServiceInterfaceMock_Expecter) GetAllPermissions(ctx any, entityID any, groupIDs any) *RoleServiceInterfaceMock_GetAllPermissions_Call {
 	return &RoleServiceInterfaceMock_GetAllPermissions_Call{Call: _e.mock.On("GetAllPermissions", ctx, entityID, groupIDs)}
 }
 
@@ -359,7 +369,7 @@ type RoleServiceInterfaceMock_GetAuthorizedPermissionsByResourceServer_Call stru
 //   - roleIDs []string
 //   - resourceServerID string
 //   - requestedPermissions []string
-func (_e *RoleServiceInterfaceMock_Expecter) GetAuthorizedPermissionsByResourceServer(ctx interface{}, entityID interface{}, groups interface{}, roleIDs interface{}, resourceServerID interface{}, requestedPermissions interface{}) *RoleServiceInterfaceMock_GetAuthorizedPermissionsByResourceServer_Call {
+func (_e *RoleServiceInterfaceMock_Expecter) GetAuthorizedPermissionsByResourceServer(ctx any, entityID any, groups any, roleIDs any, resourceServerID any, requestedPermissions any) *RoleServiceInterfaceMock_GetAuthorizedPermissionsByResourceServer_Call {
 	return &RoleServiceInterfaceMock_GetAuthorizedPermissionsByResourceServer_Call{Call: _e.mock.On("GetAuthorizedPermissionsByResourceServer", ctx, entityID, groups, roleIDs, resourceServerID, requestedPermissions)}
 }
 
@@ -448,7 +458,7 @@ type RoleServiceInterfaceMock_GetResourceDependencies_Call struct {
 //   - ctx context.Context
 //   - resourceType string
 //   - id string
-func (_e *RoleServiceInterfaceMock_Expecter) GetResourceDependencies(ctx interface{}, resourceType interface{}, id interface{}) *RoleServiceInterfaceMock_GetResourceDependencies_Call {
+func (_e *RoleServiceInterfaceMock_Expecter) GetResourceDependencies(ctx any, resourceType any, id any) *RoleServiceInterfaceMock_GetResourceDependencies_Call {
 	return &RoleServiceInterfaceMock_GetResourceDependencies_Call{Call: _e.mock.On("GetResourceDependencies", ctx, resourceType, id)}
 }
 
@@ -524,7 +534,7 @@ type RoleServiceInterfaceMock_GetRoleList_Call struct {
 //   - ctx context.Context
 //   - limit int
 //   - offset int
-func (_e *RoleServiceInterfaceMock_Expecter) GetRoleList(ctx interface{}, limit interface{}, offset interface{}) *RoleServiceInterfaceMock_GetRoleList_Call {
+func (_e *RoleServiceInterfaceMock_Expecter) GetRoleList(ctx any, limit any, offset any) *RoleServiceInterfaceMock_GetRoleList_Call {
 	return &RoleServiceInterfaceMock_GetRoleList_Call{Call: _e.mock.On("GetRoleList", ctx, limit, offset)}
 }
 
@@ -599,7 +609,7 @@ type RoleServiceInterfaceMock_GetRoleWithPermissions_Call struct {
 // GetRoleWithPermissions is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *RoleServiceInterfaceMock_Expecter) GetRoleWithPermissions(ctx interface{}, id interface{}) *RoleServiceInterfaceMock_GetRoleWithPermissions_Call {
+func (_e *RoleServiceInterfaceMock_Expecter) GetRoleWithPermissions(ctx any, id any) *RoleServiceInterfaceMock_GetRoleWithPermissions_Call {
 	return &RoleServiceInterfaceMock_GetRoleWithPermissions_Call{Call: _e.mock.On("GetRoleWithPermissions", ctx, id)}
 }
 
@@ -669,7 +679,7 @@ type RoleServiceInterfaceMock_GetRolesByNames_Call struct {
 // GetRolesByNames is a helper method to define mock.On call
 //   - ctx context.Context
 //   - names []string
-func (_e *RoleServiceInterfaceMock_Expecter) GetRolesByNames(ctx interface{}, names interface{}) *RoleServiceInterfaceMock_GetRolesByNames_Call {
+func (_e *RoleServiceInterfaceMock_Expecter) GetRolesByNames(ctx any, names any) *RoleServiceInterfaceMock_GetRolesByNames_Call {
 	return &RoleServiceInterfaceMock_GetRolesByNames_Call{Call: _e.mock.On("GetRolesByNames", ctx, names)}
 }
 
@@ -740,7 +750,7 @@ type RoleServiceInterfaceMock_GetUserRoles_Call struct {
 //   - ctx context.Context
 //   - entityID string
 //   - groupIDs []string
-func (_e *RoleServiceInterfaceMock_Expecter) GetUserRoles(ctx interface{}, entityID interface{}, groupIDs interface{}) *RoleServiceInterfaceMock_GetUserRoles_Call {
+func (_e *RoleServiceInterfaceMock_Expecter) GetUserRoles(ctx any, entityID any, groupIDs any) *RoleServiceInterfaceMock_GetUserRoles_Call {
 	return &RoleServiceInterfaceMock_GetUserRoles_Call{Call: _e.mock.On("GetUserRoles", ctx, entityID, groupIDs)}
 }
 
@@ -813,7 +823,7 @@ type RoleServiceInterfaceMock_IsRoleDeclarative_Call struct {
 // IsRoleDeclarative is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *RoleServiceInterfaceMock_Expecter) IsRoleDeclarative(ctx interface{}, id interface{}) *RoleServiceInterfaceMock_IsRoleDeclarative_Call {
+func (_e *RoleServiceInterfaceMock_Expecter) IsRoleDeclarative(ctx any, id any) *RoleServiceInterfaceMock_IsRoleDeclarative_Call {
 	return &RoleServiceInterfaceMock_IsRoleDeclarative_Call{Call: _e.mock.On("IsRoleDeclarative", ctx, id)}
 }
 
@@ -872,7 +882,7 @@ type RoleServiceInterfaceMock_ResolveRoleOUHandle_Call struct {
 // ResolveRoleOUHandle is a helper method to define mock.On call
 //   - ctx context.Context
 //   - role *RoleWithPermissionsAndAssignments
-func (_e *RoleServiceInterfaceMock_Expecter) ResolveRoleOUHandle(ctx interface{}, role interface{}) *RoleServiceInterfaceMock_ResolveRoleOUHandle_Call {
+func (_e *RoleServiceInterfaceMock_Expecter) ResolveRoleOUHandle(ctx any, role any) *RoleServiceInterfaceMock_ResolveRoleOUHandle_Call {
 	return &RoleServiceInterfaceMock_ResolveRoleOUHandle_Call{Call: _e.mock.On("ResolveRoleOUHandle", ctx, role)}
 }
 
@@ -943,7 +953,7 @@ type RoleServiceInterfaceMock_UpdateRoleWithPermissions_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - role RoleUpdateDetail
-func (_e *RoleServiceInterfaceMock_Expecter) UpdateRoleWithPermissions(ctx interface{}, id interface{}, role interface{}) *RoleServiceInterfaceMock_UpdateRoleWithPermissions_Call {
+func (_e *RoleServiceInterfaceMock_Expecter) UpdateRoleWithPermissions(ctx any, id any, role any) *RoleServiceInterfaceMock_UpdateRoleWithPermissions_Call {
 	return &RoleServiceInterfaceMock_UpdateRoleWithPermissions_Call{Call: _e.mock.On("UpdateRoleWithPermissions", ctx, id, role)}
 }
 
@@ -976,6 +986,298 @@ func (_c *RoleServiceInterfaceMock_UpdateRoleWithPermissions_Call) Return(roleWi
 }
 
 func (_c *RoleServiceInterfaceMock_UpdateRoleWithPermissions_Call) RunAndReturn(run func(ctx context.Context, id string, role RoleUpdateDetail) (*RoleWithPermissions, *common.ServiceError)) *RoleServiceInterfaceMock_UpdateRoleWithPermissions_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidateDeleteRole provides a mock function for the type RoleServiceInterfaceMock
+func (_mock *RoleServiceInterfaceMock) ValidateDeleteRole(ctx context.Context, id string) (*revocation.AccessRevocationTarget, *common.ServiceError) {
+	ret := _mock.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateDeleteRole")
+	}
+
+	var r0 *revocation.AccessRevocationTarget
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*revocation.AccessRevocationTarget, *common.ServiceError)); ok {
+		return returnFunc(ctx, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *revocation.AccessRevocationTarget); ok {
+		r0 = returnFunc(ctx, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*revocation.AccessRevocationTarget)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, id)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// RoleServiceInterfaceMock_ValidateDeleteRole_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateDeleteRole'
+type RoleServiceInterfaceMock_ValidateDeleteRole_Call struct {
+	*mock.Call
+}
+
+// ValidateDeleteRole is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+func (_e *RoleServiceInterfaceMock_Expecter) ValidateDeleteRole(ctx any, id any) *RoleServiceInterfaceMock_ValidateDeleteRole_Call {
+	return &RoleServiceInterfaceMock_ValidateDeleteRole_Call{Call: _e.mock.On("ValidateDeleteRole", ctx, id)}
+}
+
+func (_c *RoleServiceInterfaceMock_ValidateDeleteRole_Call) Run(run func(ctx context.Context, id string)) *RoleServiceInterfaceMock_ValidateDeleteRole_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleServiceInterfaceMock_ValidateDeleteRole_Call) Return(accessRevocationTarget *revocation.AccessRevocationTarget, serviceError *common.ServiceError) *RoleServiceInterfaceMock_ValidateDeleteRole_Call {
+	_c.Call.Return(accessRevocationTarget, serviceError)
+	return _c
+}
+
+func (_c *RoleServiceInterfaceMock_ValidateDeleteRole_Call) RunAndReturn(run func(ctx context.Context, id string) (*revocation.AccessRevocationTarget, *common.ServiceError)) *RoleServiceInterfaceMock_ValidateDeleteRole_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidateGroupDeletion provides a mock function for the type RoleServiceInterfaceMock
+func (_mock *RoleServiceInterfaceMock) ValidateGroupDeletion(ctx context.Context, groupID string) (*revocation.AccessRevocationTarget, *common.ServiceError) {
+	ret := _mock.Called(ctx, groupID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateGroupDeletion")
+	}
+
+	var r0 *revocation.AccessRevocationTarget
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*revocation.AccessRevocationTarget, *common.ServiceError)); ok {
+		return returnFunc(ctx, groupID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *revocation.AccessRevocationTarget); ok {
+		r0 = returnFunc(ctx, groupID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*revocation.AccessRevocationTarget)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, groupID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// RoleServiceInterfaceMock_ValidateGroupDeletion_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateGroupDeletion'
+type RoleServiceInterfaceMock_ValidateGroupDeletion_Call struct {
+	*mock.Call
+}
+
+// ValidateGroupDeletion is a helper method to define mock.On call
+//   - ctx context.Context
+//   - groupID string
+func (_e *RoleServiceInterfaceMock_Expecter) ValidateGroupDeletion(ctx any, groupID any) *RoleServiceInterfaceMock_ValidateGroupDeletion_Call {
+	return &RoleServiceInterfaceMock_ValidateGroupDeletion_Call{Call: _e.mock.On("ValidateGroupDeletion", ctx, groupID)}
+}
+
+func (_c *RoleServiceInterfaceMock_ValidateGroupDeletion_Call) Run(run func(ctx context.Context, groupID string)) *RoleServiceInterfaceMock_ValidateGroupDeletion_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleServiceInterfaceMock_ValidateGroupDeletion_Call) Return(accessRevocationTarget *revocation.AccessRevocationTarget, serviceError *common.ServiceError) *RoleServiceInterfaceMock_ValidateGroupDeletion_Call {
+	_c.Call.Return(accessRevocationTarget, serviceError)
+	return _c
+}
+
+func (_c *RoleServiceInterfaceMock_ValidateGroupDeletion_Call) RunAndReturn(run func(ctx context.Context, groupID string) (*revocation.AccessRevocationTarget, *common.ServiceError)) *RoleServiceInterfaceMock_ValidateGroupDeletion_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidateGroupMembershipRemoval provides a mock function for the type RoleServiceInterfaceMock
+func (_mock *RoleServiceInterfaceMock) ValidateGroupMembershipRemoval(ctx context.Context, groupID string, memberID string) (*revocation.AccessRevocationTarget, *common.ServiceError) {
+	ret := _mock.Called(ctx, groupID, memberID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateGroupMembershipRemoval")
+	}
+
+	var r0 *revocation.AccessRevocationTarget
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*revocation.AccessRevocationTarget, *common.ServiceError)); ok {
+		return returnFunc(ctx, groupID, memberID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *revocation.AccessRevocationTarget); ok {
+		r0 = returnFunc(ctx, groupID, memberID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*revocation.AccessRevocationTarget)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, groupID, memberID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// RoleServiceInterfaceMock_ValidateGroupMembershipRemoval_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateGroupMembershipRemoval'
+type RoleServiceInterfaceMock_ValidateGroupMembershipRemoval_Call struct {
+	*mock.Call
+}
+
+// ValidateGroupMembershipRemoval is a helper method to define mock.On call
+//   - ctx context.Context
+//   - groupID string
+//   - memberID string
+func (_e *RoleServiceInterfaceMock_Expecter) ValidateGroupMembershipRemoval(ctx any, groupID any, memberID any) *RoleServiceInterfaceMock_ValidateGroupMembershipRemoval_Call {
+	return &RoleServiceInterfaceMock_ValidateGroupMembershipRemoval_Call{Call: _e.mock.On("ValidateGroupMembershipRemoval", ctx, groupID, memberID)}
+}
+
+func (_c *RoleServiceInterfaceMock_ValidateGroupMembershipRemoval_Call) Run(run func(ctx context.Context, groupID string, memberID string)) *RoleServiceInterfaceMock_ValidateGroupMembershipRemoval_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleServiceInterfaceMock_ValidateGroupMembershipRemoval_Call) Return(accessRevocationTarget *revocation.AccessRevocationTarget, serviceError *common.ServiceError) *RoleServiceInterfaceMock_ValidateGroupMembershipRemoval_Call {
+	_c.Call.Return(accessRevocationTarget, serviceError)
+	return _c
+}
+
+func (_c *RoleServiceInterfaceMock_ValidateGroupMembershipRemoval_Call) RunAndReturn(run func(ctx context.Context, groupID string, memberID string) (*revocation.AccessRevocationTarget, *common.ServiceError)) *RoleServiceInterfaceMock_ValidateGroupMembershipRemoval_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidateUpdateRolePermissions provides a mock function for the type RoleServiceInterfaceMock
+func (_mock *RoleServiceInterfaceMock) ValidateUpdateRolePermissions(ctx context.Context, id string, permissions []ResourcePermissions) (*revocation.AccessRevocationTarget, *common.ServiceError) {
+	ret := _mock.Called(ctx, id, permissions)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateUpdateRolePermissions")
+	}
+
+	var r0 *revocation.AccessRevocationTarget
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []ResourcePermissions) (*revocation.AccessRevocationTarget, *common.ServiceError)); ok {
+		return returnFunc(ctx, id, permissions)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []ResourcePermissions) *revocation.AccessRevocationTarget); ok {
+		r0 = returnFunc(ctx, id, permissions)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*revocation.AccessRevocationTarget)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, []ResourcePermissions) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, id, permissions)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// RoleServiceInterfaceMock_ValidateUpdateRolePermissions_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateUpdateRolePermissions'
+type RoleServiceInterfaceMock_ValidateUpdateRolePermissions_Call struct {
+	*mock.Call
+}
+
+// ValidateUpdateRolePermissions is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+//   - permissions []ResourcePermissions
+func (_e *RoleServiceInterfaceMock_Expecter) ValidateUpdateRolePermissions(ctx any, id any, permissions any) *RoleServiceInterfaceMock_ValidateUpdateRolePermissions_Call {
+	return &RoleServiceInterfaceMock_ValidateUpdateRolePermissions_Call{Call: _e.mock.On("ValidateUpdateRolePermissions", ctx, id, permissions)}
+}
+
+func (_c *RoleServiceInterfaceMock_ValidateUpdateRolePermissions_Call) Run(run func(ctx context.Context, id string, permissions []ResourcePermissions)) *RoleServiceInterfaceMock_ValidateUpdateRolePermissions_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 []ResourcePermissions
+		if args[2] != nil {
+			arg2 = args[2].([]ResourcePermissions)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleServiceInterfaceMock_ValidateUpdateRolePermissions_Call) Return(accessRevocationTarget *revocation.AccessRevocationTarget, serviceError *common.ServiceError) *RoleServiceInterfaceMock_ValidateUpdateRolePermissions_Call {
+	_c.Call.Return(accessRevocationTarget, serviceError)
+	return _c
+}
+
+func (_c *RoleServiceInterfaceMock_ValidateUpdateRolePermissions_Call) RunAndReturn(run func(ctx context.Context, id string, permissions []ResourcePermissions) (*revocation.AccessRevocationTarget, *common.ServiceError)) *RoleServiceInterfaceMock_ValidateUpdateRolePermissions_Call {
 	_c.Call.Return(run)
 	return _c
 }

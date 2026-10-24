@@ -18,10 +18,17 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/group"
+	"github.com/thunder-id/thunderid/internal/revocation"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/groupmock"
+	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 // RoleAssignmentServiceTestSuite tests the roleAssignmentService.
@@ -50,6 +57,7 @@ func (suite *RoleAssignmentServiceTestSuite) SetupTest() {
 		suite.mockEntityService,
 		suite.mockGroupService,
 		suite.mockEntityTypeService,
+		nil,
 		suite.transactioner,
 		newAllowAllRoleAuthz(suite.T()),
 	)
@@ -814,4 +822,224 @@ func TestResolveAppDisplay_AppUsesSystemAttributesName(t *testing.T) {
 		SystemAttributes: json.RawMessage(`{"name":"My App"}`),
 	}
 	require.Equal(t, "My App", resolveAppDisplay(app))
+}
+
+// RoleAssignmentRemovalValidationTestSuite tests ValidateRemoveAssignment.
+type RoleAssignmentRemovalValidationTestSuite struct {
+	suite.Suite
+	store     *roleStoreInterfaceMock
+	entities  *entitymock.EntityServiceInterfaceMock
+	groups    *groupmock.GroupServiceInterfaceMock
+	resources *resourcemock.ResourceServiceInterfaceMock
+	authz     *sysauthzmock.SystemAuthorizationServiceInterfaceMock
+	service   RoleAssignmentServiceInterface
+}
+
+func TestRoleAssignmentRemovalValidationTestSuite(t *testing.T) {
+	suite.Run(t, new(RoleAssignmentRemovalValidationTestSuite))
+}
+
+func (s *RoleAssignmentRemovalValidationTestSuite) SetupTest() {
+	s.store = newRoleStoreInterfaceMock(s.T())
+	s.entities = entitymock.NewEntityServiceInterfaceMock(s.T())
+	s.groups = groupmock.NewGroupServiceInterfaceMock(s.T())
+	s.resources = resourcemock.NewResourceServiceInterfaceMock(s.T())
+	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	s.service = newRoleAssignmentService(
+		s.store, s.entities, s.groups, nil, s.resources, &fakeTransactioner{}, s.authz)
+}
+
+func (s *RoleAssignmentRemovalValidationTestSuite) mayChangeAssignments() {
+	s.authz.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeRole, targetRoleID).Return(nil)
+}
+
+func (s *RoleAssignmentRemovalValidationTestSuite) roleGranting(permissions []ResourcePermissions) {
+	s.store.On("GetRole", mock.Anything, targetRoleID).
+		Return(RoleWithPermissions{ID: targetRoleID, Permissions: permissions}, nil)
+}
+
+func (s *RoleAssignmentRemovalValidationTestSuite) assignedOnPage(total, offset int,
+	category providers.EntityCategory, assignments ...RoleAssignment) {
+	s.store.On("GetRoleAssignments", mock.Anything, targetRoleID, serverconst.MaxPageSize, offset).
+		Return(assignments, nil)
+	entities := []providers.Entity{}
+	entityIDs := []string{}
+	for _, assignment := range assignments {
+		if assignment.Type == assigneeTypeEntity {
+			entityIDs = append(entityIDs, assignment.ID)
+			entities = append(entities, providers.Entity{ID: assignment.ID, Category: category})
+		}
+	}
+	if len(entityIDs) > 0 {
+		s.entities.On("GetEntitiesByIDs", mock.Anything, entityIDs).Return(entities, nil)
+	}
+	s.store.On("IsRoleExist", mock.Anything, targetRoleID).Return(true, nil)
+	s.store.On("GetRoleAssignmentsCount", mock.Anything, targetRoleID).Return(total, nil)
+}
+
+func (s *RoleAssignmentRemovalValidationTestSuite) TestPairsEachPermissionWithItsAudience() {
+	s.mayChangeAssignments()
+	s.roleGranting([]ResourcePermissions{
+		{ResourceServerID: californiaRSID, Permissions: []string{"license"}},
+		{ResourceServerID: ohioRSID, Permissions: []string{"license"}},
+	})
+	s.assignedOnPage(1, 0, providers.EntityCategoryUser, RoleAssignment{ID: targetUserID, Type: assigneeTypeEntity})
+	stubResourceServer(s.resources, californiaRSID, californiaAud)
+	stubResourceServer(s.resources, ohioRSID, ohioAud)
+
+	target, svcErr := s.service.ValidateRemoveAssignment(context.Background(), targetRoleID, targetUserID)
+
+	s.Require().Nil(svcErr)
+	s.Equal([]string{targetUserID}, target.EntityIDs)
+	s.ElementsMatch([]revocation.AudienceScope{
+		{Audience: californiaAud, Scope: "license"},
+		{Audience: ohioAud, Scope: "license"},
+	}, target.Scopes)
+	s.Equal(string(AssigneeTypeUser), target.AssigneeType, "the public type, never the storage type")
+}
+
+func (s *RoleAssignmentRemovalValidationTestSuite) TestExpandsAGroupAssignee() {
+	s.mayChangeAssignments()
+	s.roleGranting([]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}})
+	s.assignedOnPage(1, 0, "", RoleAssignment{ID: targetGroupID, Type: AssigneeTypeGroup})
+	s.groups.On("ValidateGroupIDs", mock.Anything, []string{targetGroupID}).Return(nil)
+	stubResourceServer(s.resources, californiaRSID, californiaAud)
+	stubGroupEntities(s.groups, targetGroupID, "member-1", "member-2")
+
+	target, svcErr := s.service.ValidateRemoveAssignment(context.Background(), targetRoleID, targetGroupID)
+
+	s.Require().Nil(svcErr)
+	s.ElementsMatch([]string{"member-1", "member-2"}, target.EntityIDs)
+	s.Equal(string(AssigneeTypeGroup), target.AssigneeType)
+}
+
+func (s *RoleAssignmentRemovalValidationTestSuite) TestRoleWithoutPermissionsYieldsNoScopes() {
+	s.mayChangeAssignments()
+	s.roleGranting(nil)
+	s.assignedOnPage(1, 0, providers.EntityCategoryApp, RoleAssignment{ID: targetUserID, Type: assigneeTypeEntity})
+
+	target, svcErr := s.service.ValidateRemoveAssignment(context.Background(), targetRoleID, targetUserID)
+
+	s.Require().Nil(svcErr)
+	s.Empty(target.Scopes)
+	s.Equal(string(AssigneeTypeApp), target.AssigneeType)
+}
+
+func (s *RoleAssignmentRemovalValidationTestSuite) TestRefusesAnAssigneeThatDoesNotHoldTheRole() {
+	s.mayChangeAssignments()
+	s.assignedOnPage(1, 0, providers.EntityCategoryUser, RoleAssignment{ID: "someone-else", Type: assigneeTypeEntity})
+
+	_, svcErr := s.service.ValidateRemoveAssignment(context.Background(), targetRoleID, targetUserID)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorRoleAssignmentNotFound.Code, svcErr.Code)
+}
+
+func (s *RoleAssignmentRemovalValidationTestSuite) TestFindsAnAssignmentOnALaterPage() {
+	s.mayChangeAssignments()
+	s.roleGranting(nil)
+	s.assignedOnPage(serverconst.MaxPageSize+1, 0, providers.EntityCategoryUser,
+		RoleAssignment{ID: "someone-else", Type: assigneeTypeEntity})
+	s.assignedOnPage(serverconst.MaxPageSize+1, serverconst.MaxPageSize, providers.EntityCategoryUser,
+		RoleAssignment{ID: targetUserID, Type: assigneeTypeEntity})
+
+	target, svcErr := s.service.ValidateRemoveAssignment(context.Background(), targetRoleID, targetUserID)
+
+	s.Require().Nil(svcErr)
+	s.Equal([]string{targetUserID}, target.EntityIDs)
+}
+
+func (s *RoleAssignmentRemovalValidationTestSuite) TestRunsTheRemovalsAssigneeChecks() {
+	s.mayChangeAssignments()
+	s.assignedOnPage(1, 0, "", RoleAssignment{ID: targetGroupID, Type: AssigneeTypeGroup})
+	s.groups.On("ValidateGroupIDs", mock.Anything, []string{targetGroupID}).
+		Return(&group.ErrorInvalidGroupMemberID)
+
+	_, svcErr := s.service.ValidateRemoveAssignment(context.Background(), targetRoleID, targetGroupID)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorInvalidAssignmentID.Code, svcErr.Code)
+	s.store.AssertNotCalled(s.T(), "GetRole", mock.Anything, mock.Anything)
+}
+
+func (s *RoleAssignmentRemovalValidationTestSuite) TestRefusesACallerWhoMayNotChangeAssignments() {
+	s.authz.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeRole, targetRoleID).
+		Return(&tidcommon.ErrorUnauthorized)
+
+	_, svcErr := s.service.ValidateRemoveAssignment(context.Background(), targetRoleID, targetUserID)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	s.store.AssertNotCalled(s.T(), "GetRole", mock.Anything, mock.Anything)
+}
+
+func (s *RoleAssignmentRemovalValidationTestSuite) TestRequiresBothIdentifiers() {
+	s.authz.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeRole, "").Return(nil)
+
+	_, svcErr := s.service.ValidateRemoveAssignment(context.Background(), "", targetUserID)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorMissingRoleID.Code, svcErr.Code)
+
+	_, svcErr = s.service.ValidateRemoveAssignment(context.Background(), targetRoleID, "")
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorMissingAssigneeID.Code, svcErr.Code)
+}
+
+func (s *RoleAssignmentRemovalValidationTestSuite) TestRoleNotFound() {
+	s.mayChangeAssignments()
+	s.store.On("IsRoleExist", mock.Anything, targetRoleID).Return(false, nil)
+
+	_, svcErr := s.service.ValidateRemoveAssignment(context.Background(), targetRoleID, targetUserID)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorRoleNotFound.Code, svcErr.Code)
+}
+
+func (s *RoleAssignmentRemovalValidationTestSuite) TestRoleReadFailureIsAServerError() {
+	s.mayChangeAssignments()
+	s.assignedOnPage(1, 0, providers.EntityCategoryUser, RoleAssignment{ID: targetUserID, Type: assigneeTypeEntity})
+	s.store.On("GetRole", mock.Anything, targetRoleID).Return(RoleWithPermissions{}, errors.New("db down"))
+
+	_, svcErr := s.service.ValidateRemoveAssignment(context.Background(), targetRoleID, targetUserID)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (s *RoleAssignmentRemovalValidationTestSuite) TestDeclarativeRoleListingAPermissionTwiceIsNotRefused() {
+	declared, err := parseToRole([]byte(`
+id: role-1
+name: DMV Clerk
+ouId: ou-1
+permissions:
+  - resourceServerId: rs-ca
+    permissions:
+      - license
+      - license
+  - resourceServerId: rs-ca
+    permissions:
+      - license
+assignments:
+  - id: user-1
+    type: user
+`))
+	s.Require().NoError(err)
+	store := &fileBasedStore{
+		GenericFileBasedStore: declarativeresource.NewGenericFileBasedStoreForTest(entity.KeyTypeRole),
+	}
+	s.Require().NoError(store.Create(declared.ID, declared))
+	service := newRoleAssignmentService(store, s.entities, s.groups, nil, s.resources, &fakeTransactioner{}, s.authz)
+	s.mayChangeAssignments()
+	s.entities.On("GetEntitiesByIDs", mock.Anything, []string{targetUserID}).
+		Return([]providers.Entity{{ID: targetUserID, Category: providers.EntityCategoryUser}}, nil)
+	stubResourceServer(s.resources, californiaRSID, californiaAud)
+
+	target, svcErr := service.ValidateRemoveAssignment(context.Background(), targetRoleID, targetUserID)
+
+	s.Require().Nil(svcErr)
+	s.Require().NotEmpty(target.Scopes)
+	for _, scope := range target.Scopes {
+		s.Equal(revocation.AudienceScope{Audience: californiaAud, Scope: "license"}, scope)
+	}
+	s.Equal([]string{targetUserID}, target.EntityIDs)
 }

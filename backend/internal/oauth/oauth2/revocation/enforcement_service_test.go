@@ -47,6 +47,7 @@ func (s *EnforcementServiceTestSuite) TestEnsureNotRevoked_TokenFamilyRevoked() 
 	err := s.enforcementService.EnsureNotRevoked(context.Background(),
 		RevocationIdentity{JTI: "jti-ok", Criteria: []Criterion{{Type: CriterionTypeTokenFamily, Value: "tfid-x"}}})
 	s.Assert().ErrorIs(err, ErrTokenRevoked)
+	s.Assert().NotErrorIs(err, ErrTokenIDRevoked)
 }
 
 // A token whose family is not revoked (and whose jti is clean) may proceed.
@@ -139,6 +140,7 @@ func (s *EnforcementServiceTestSuite) TestEnsureNotRevoked_Revoked() {
 	err := s.enforcementService.EnsureNotRevoked(context.Background(),
 		RevocationIdentity{JTI: "jti-2", Criteria: []Criterion{{Type: CriterionTypeTokenFamily, Value: ""}}})
 	s.Assert().ErrorIs(err, ErrTokenRevoked)
+	s.Assert().ErrorIs(err, ErrTokenIDRevoked)
 }
 
 // A deny-list read error fails closed with ErrEnforcementUnavailable.

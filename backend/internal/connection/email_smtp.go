@@ -5,11 +5,13 @@ package connection
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth/smtpauth"
 )
 
 // emailSMTPConnectionRequest is the create/update payload for an SMTP email connection. Port and TLS
@@ -44,6 +46,18 @@ type emailSMTPConnectionResponse struct {
 }
 
 func emailSMTPToSenderDTO(req emailSMTPConnectionRequest) (*ncommon.NotificationSenderDTO, error) {
+	return emailSMTPToSenderDTOWithAuthentication(req, true)
+}
+
+// emailSMTPUpdateToSenderDTO omits authentication properties when the update does not specify them.
+func emailSMTPUpdateToSenderDTO(req emailSMTPConnectionRequest) (*ncommon.NotificationSenderDTO, error) {
+	return emailSMTPToSenderDTOWithAuthentication(req, req.Authentication != nil)
+}
+
+// emailSMTPToSenderDTOWithAuthentication converts an SMTP request into sender properties,
+// including authentication only when requested by the create or update path.
+func emailSMTPToSenderDTOWithAuthentication(req emailSMTPConnectionRequest,
+	includeAuthentication bool) (*ncommon.NotificationSenderDTO, error) {
 	// An omitted tls value resolves to the secure default rather than plaintext. An invalid
 	// one is stored as given so the sender service rejects it with a descriptive error.
 	tlsMode := req.TLS
@@ -70,15 +84,18 @@ func emailSMTPToSenderDTO(req emailSMTPConnectionRequest) (*ncommon.Notification
 	if props, err = appendProperty(props, ncommon.SMTPPropKeyTLS, tlsMode, false); err != nil {
 		return nil, err
 	}
-	authConfig := req.Authentication.Config()
-	if _, ok := outboundauth.ParseType(string(authConfig.Type)); !ok {
-		return nil, errUnsupportedAuthenticationType
+	if includeAuthentication {
+		authConfig := req.Authentication.Config()
+		if _, ok := outboundauth.ParseType(string(authConfig.Type)); !ok ||
+			!slices.Contains(smtpauth.SupportedTypes(), authConfig.Type) {
+			return nil, errUnsupportedAuthenticationType
+		}
+		authProps, err := outboundauth.ToProperties(authConfig)
+		if err != nil {
+			return nil, err
+		}
+		props = append(props, authProps...)
 	}
-	authProps, err := outboundauth.ToProperties(authConfig)
-	if err != nil {
-		return nil, err
-	}
-	props = append(props, authProps...)
 
 	return &ncommon.NotificationSenderDTO{
 		Name:        req.Name,
@@ -98,6 +115,10 @@ func emailSMTPFromSenderDTO(dto ncommon.NotificationSenderDTO) (emailSMTPConnect
 	if err != nil {
 		return emailSMTPConnectionResponse{}, fmt.Errorf("invalid stored port: %q", values[ncommon.SMTPPropKeyPort])
 	}
+	authentication, err := outboundauth.AuthenticationFromProperties(dto.Properties)
+	if err != nil {
+		return emailSMTPConnectionResponse{}, err
+	}
 	return emailSMTPConnectionResponse{
 		ID:             dto.ID,
 		Name:           dto.Name,
@@ -108,8 +129,54 @@ func emailSMTPFromSenderDTO(dto ncommon.NotificationSenderDTO) (emailSMTPConnect
 		FromAddress:    values[ncommon.SMTPPropKeyFromAddress],
 		FromName:       values[ncommon.SMTPPropKeyFromName],
 		TLS:            values[ncommon.SMTPPropKeyTLS],
-		Authentication: outboundauth.AuthenticationFromValues(values),
+		Authentication: authentication,
 	}, nil
+}
+
+// mergeSMTPAuthentication applies the shared credential update rules, retaining stored
+// credentials only when the SMTP host and port are unchanged.
+func mergeSMTPAuthentication(incoming, existing []cmodels.Property) ([]cmodels.Property, error) {
+	incomingValues, err := propertyValues(incoming)
+	if err != nil {
+		return nil, err
+	}
+	existingValues, err := propertyValues(existing)
+	if err != nil {
+		return nil, err
+	}
+	var request *outboundauth.Authentication
+	if _, present := incomingValues[outboundauth.PropertyKeyType]; present {
+		config, err := outboundauth.FromProperties(incoming)
+		if err != nil {
+			return nil, err
+		}
+		request = &outboundauth.Authentication{Type: string(config.Type), Properties: config.Properties}
+	}
+	targetKeys := []string{ncommon.SMTPPropKeyHost, ncommon.SMTPPropKeyPort}
+	previousTarget := make([]string, len(targetKeys))
+	nextTarget := make([]string, len(targetKeys))
+	for i, key := range targetKeys {
+		previousTarget[i] = existingValues[key]
+		nextTarget[i] = incomingValues[key]
+	}
+	storedAuth := make([]cmodels.Property, 0)
+	for _, property := range existing {
+		if outboundauth.OwnsPropertyKey(property.GetName()) {
+			storedAuth = append(storedAuth, property)
+		}
+	}
+	properties, err := outboundauth.UpdateProperties(request, storedAuth, previousTarget, nextTarget,
+		smtpauth.SupportedTypes(), nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]cmodels.Property, 0, len(incoming)+len(properties))
+	for _, property := range incoming {
+		if !outboundauth.OwnsPropertyKey(property.GetName()) {
+			result = append(result, property)
+		}
+	}
+	return append(result, properties...), nil
 }
 
 // portValue renders a port for storage. Zero means "not supplied", which appendProperty skips

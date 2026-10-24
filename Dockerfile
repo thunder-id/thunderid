@@ -5,7 +5,7 @@
 # Built from source for `make docker-build*`. The release pipeline uses
 # .github/docker/Dockerfile.release. Keep the runtime stages in sync.
 # Build stage - compile the Go binary and build frontend for the target architecture
-FROM golang:1.26-alpine3.23 AS builder
+FROM golang:1.27-alpine3.23 AS builder
 
 # Install build dependencies including Node.js and npm
 RUN apk add --no-cache git make bash sqlite openssl zip nodejs npm curl python3 g++ build-base sqlite-dev
@@ -37,7 +37,7 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
 RUN ls -l /app/target/dist/
 
 # Runtime stage
-FROM alpine:3.19
+FROM alpine:3.23
 
 # Install required packages
 RUN apk add --no-cache \

@@ -54,7 +54,7 @@ describe('ShowClientSecret', () => {
     it('should render the client secret field', () => {
       renderComponent();
 
-      expect(screen.getByText('Client Secret')).toBeInTheDocument();
+      expect(screen.getByText('Client secret')).toBeInTheDocument();
       const input = screen.getByDisplayValue('test_secret_12345');
       expect(input).toBeInTheDocument();
       expect(input).toHaveAttribute('type', 'password');
@@ -136,7 +136,7 @@ describe('ShowClientSecret', () => {
       const user = userEvent.setup();
       renderComponent();
 
-      const copyButton = screen.getAllByRole('button', {name: 'Copy Client Secret'})[0];
+      const copyButton = screen.getAllByRole('button', {name: 'Copy client secret'})[0];
 
       await user.click(copyButton);
 

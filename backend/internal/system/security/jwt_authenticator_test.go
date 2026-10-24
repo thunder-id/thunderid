@@ -1128,3 +1128,54 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_FederatedTokenTypeNotRe
 	assert.NotNil(suite.T(), authCtx)
 	mockJWT.AssertExpectations(suite.T())
 }
+
+func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_RevocationAudiencesReadBothEncodings() {
+	config.ResetServerRuntime()
+	suite.Require().NoError(config.InitializeServerRuntime("",
+		&config.Config{JWT: engineconfig.JWTConfig{Issuer: testLocalIssuer}}))
+	const california, ohio = "https://api.dmv.ca.gov", "https://api.dmv.oh.gov"
+
+	testCases := []struct {
+		name     string
+		claims   map[string]interface{}
+		expected []string
+	}{
+		{"String", map[string]interface{}{"aud": california}, []string{california}},
+		{"Array", map[string]interface{}{"aud": []interface{}{california, ohio}}, []string{california, ohio}},
+		{"RefreshTokenUsesAccessTokenAudience", map[string]interface{}{
+			"access_token_sub": "user-1", "aud": testLocalIssuer, "access_token_aud": []interface{}{ohio},
+		}, []string{ohio}},
+	}
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			claims := map[string]interface{}{"iss": testLocalIssuer, "sub": "user-1", "scope": "license"}
+			for key, value := range tc.claims {
+				claims[key] = value
+			}
+			token := buildFakeJWT(accessTokenHeader(), claims)
+			mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
+			mockJWT.On("VerifyJWT", mock.Anything, token, "", "").Return(nil)
+
+			authCtx, err := newJWTAuthenticator(mockJWT, "").authenticateToken(context.Background(), token, "")
+
+			suite.Require().NoError(err)
+			suite.Equal(tc.expected, authCtx.revocationIdentity().Audiences)
+		})
+	}
+}
+
+func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_MalformedAudienceOnScopedTokenIsRejected() {
+	config.ResetServerRuntime()
+	suite.Require().NoError(config.InitializeServerRuntime("",
+		&config.Config{JWT: engineconfig.JWTConfig{Issuer: testLocalIssuer}}))
+	token := buildFakeJWT(accessTokenHeader(), map[string]interface{}{
+		"iss": testLocalIssuer, "sub": "user-1", "scope": "license",
+		"aud": []interface{}{"https://api.dmv.ca.gov", ""},
+	})
+	suite.mockJWT.On("VerifyJWT", mock.Anything, token, "", "").Return(nil)
+
+	authCtx, err := suite.authenticator.authenticateToken(context.Background(), token, "")
+
+	suite.ErrorIs(err, errInvalidToken)
+	suite.Nil(authCtx)
+}

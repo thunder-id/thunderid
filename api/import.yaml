@@ -445,7 +445,8 @@ components:
           type: string
           description: >
             Human-readable message describing the result.
-            Contains error details when status is `failed`.
+            Contains error details when status is `failed`. Successful user, agent and application
+            imports include a warning here when a non-empty top-level `state` was ignored.
           example: "Resource created successfully"
 
     DeleteResourceRequest:

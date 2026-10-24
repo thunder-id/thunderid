@@ -79,7 +79,7 @@ describe('ConfigureName', () => {
   it('should render the text field with correct label', () => {
     renderComponent();
 
-    expect(screen.getByText('Name & Logo')).toBeInTheDocument();
+    expect(screen.getByText('Name & logo')).toBeInTheDocument();
     expect(screen.getByRole('textbox')).toBeInTheDocument();
   });
 
@@ -104,7 +104,7 @@ describe('ConfigureName', () => {
   it('should render required field indicator', () => {
     renderComponent();
 
-    const label = screen.getByText('Name & Logo');
+    const label = screen.getByText('Name & logo');
     expect(label).toBeInTheDocument();
     const labelElement = label.closest('label');
     expect(labelElement).toHaveClass('Mui-required');

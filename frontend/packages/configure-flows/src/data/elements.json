@@ -489,6 +489,32 @@
   },
   {
     "resourceType": "ELEMENT",
+    "category": "DISPLAY",
+    "type": "KEY_VALUE_LIST",
+    "display": {
+      "label": "Key Value List",
+      "description": "Show the label and value pairs published under a runtime data key",
+      "image": "List",
+      "showOnResourcePanel": true
+    },
+    "label": "",
+    "source": ""
+  },
+  {
+    "resourceType": "ELEMENT",
+    "category": "DISPLAY",
+    "type": "COPYABLE_TEXT",
+    "display": {
+      "label": "Copyable Text",
+      "description": "Show a value from flow data with a copy button",
+      "image": "Copy",
+      "showOnResourcePanel": true
+    },
+    "label": "",
+    "source": ""
+  },
+  {
+    "resourceType": "ELEMENT",
     "category": "MISCELLANEOUS",
     "type": "CUSTOM",
     "display": {

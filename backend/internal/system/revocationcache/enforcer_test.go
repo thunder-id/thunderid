@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
@@ -112,4 +114,92 @@ func TestNoopEnforcer_AlwaysAllows(t *testing.T) {
 	var e EnforcerInterface = noopEnforcer{}
 	assert.NoError(t, e.EnsureNotRevoked(context.Background(), security.RevocationIdentity{JTI: "anything"}))
 	assert.NoError(t, e.EnsureNotRevoked(context.Background(), security.RevocationIdentity{}))
+}
+
+type EnforcerScopeTestSuite struct {
+	suite.Suite
+}
+
+func TestEnforcerScopeTestSuite(t *testing.T) {
+	suite.Run(t, new(EnforcerScopeTestSuite))
+}
+
+func (s *EnforcerScopeTestSuite) TestScopeRevocationIsScopedToItsAudience() {
+	const (
+		user       = "user-1"
+		california = "https://api.dmv.ca.gov"
+		ohio       = "https://api.dmv.oh.gov"
+	)
+	revokedAt := time.Now().Add(-time.Hour)
+	cache := newRevokedCache()
+	cache.replace(revokedSnapshot{
+		EntityScopes: []revokedEntry{{
+			Value:      revocation.EntityScopeCriterionValue(user, ohio, "license"),
+			ExpiryTime: time.Now().Add(time.Hour),
+			RevokedAt:  revokedAt,
+			Boundary:   true,
+		}},
+	})
+	e := newEnforcer(cache)
+
+	ohioToken := security.RevocationIdentity{
+		Subject: user, Audiences: []string{ohio}, Scopes: []string{"openid", "license"},
+		EstablishedAt: revokedAt.Add(-time.Minute),
+	}
+	s.ErrorIs(e.EnsureNotRevoked(context.Background(), ohioToken), errTokenRevoked,
+		"the token bound to the audience the scope was revoked on is rejected")
+
+	californiaToken := ohioToken
+	californiaToken.Audiences = []string{california}
+	s.NoError(e.EnsureNotRevoked(context.Background(), californiaToken),
+		"the same scope on a different resource server is a different scope and must survive")
+
+	bothAudiences := ohioToken
+	bothAudiences.Audiences = []string{california, ohio}
+	s.ErrorIs(e.EnsureNotRevoked(context.Background(), bothAudiences), errTokenRevoked,
+		"a scope revoked on any audience the token names is rejected")
+
+	otherUser := ohioToken
+	otherUser.Subject = "user-2"
+	s.NoError(e.EnsureNotRevoked(context.Background(), otherUser),
+		"another principal holding the same scope is unaffected")
+
+	later := ohioToken
+	later.EstablishedAt = revokedAt.Add(time.Minute)
+	s.NoError(e.EnsureNotRevoked(context.Background(), later),
+		"a token established after a boundary revocation may proceed")
+}
+
+func (s *EnforcerScopeTestSuite) TestScopeDimensionAppliesToEveryPrincipal() {
+	const california = "https://api.dmv.ca.gov"
+	cache := newRevokedCache()
+	cache.replace(revokedSnapshot{
+		Scopes: []revokedEntry{{
+			Value:      revocation.ScopeCriterionValue(california, "vehicle-registration"),
+			ExpiryTime: time.Now().Add(time.Hour),
+		}},
+	})
+	e := newEnforcer(cache)
+
+	s.ErrorIs(e.EnsureNotRevoked(context.Background(), security.RevocationIdentity{
+		Subject: "anyone", Audiences: []string{california}, Scopes: []string{"vehicle-registration"},
+	}), errTokenRevoked)
+	s.NoError(e.EnsureNotRevoked(context.Background(), security.RevocationIdentity{
+		Subject: "anyone", Audiences: []string{california}, Scopes: []string{"license"},
+	}), "an unrelated scope on the same server is unaffected")
+}
+
+func (s *EnforcerScopeTestSuite) TestTokenWithoutAudienceCarriesNoScopeDimensions() {
+	cache := newRevokedCache()
+	cache.replace(revokedSnapshot{
+		Scopes: []revokedEntry{{
+			Value:      revocation.ScopeCriterionValue("", "openid"),
+			ExpiryTime: time.Now().Add(time.Hour),
+		}},
+	})
+	e := newEnforcer(cache)
+
+	s.NoError(e.EnsureNotRevoked(context.Background(), security.RevocationIdentity{
+		Subject: "user-1", Scopes: []string{"openid"},
+	}))
 }

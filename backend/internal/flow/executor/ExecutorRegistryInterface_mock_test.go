@@ -15,10 +15,19 @@ func NewExecutorRegistryInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ExecutorRegistryInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ExecutorRegistryInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -71,7 +80,7 @@ type ExecutorRegistryInterfaceMock_GetExecutor_Call struct {
 
 // GetExecutor is a helper method to define mock.On call
 //   - name string
-func (_e *ExecutorRegistryInterfaceMock_Expecter) GetExecutor(name interface{}) *ExecutorRegistryInterfaceMock_GetExecutor_Call {
+func (_e *ExecutorRegistryInterfaceMock_Expecter) GetExecutor(name any) *ExecutorRegistryInterfaceMock_GetExecutor_Call {
 	return &ExecutorRegistryInterfaceMock_GetExecutor_Call{Call: _e.mock.On("GetExecutor", name)}
 }
 
@@ -133,7 +142,7 @@ type ExecutorRegistryInterfaceMock_GetExecutorMeta_Call struct {
 
 // GetExecutorMeta is a helper method to define mock.On call
 //   - name string
-func (_e *ExecutorRegistryInterfaceMock_Expecter) GetExecutorMeta(name interface{}) *ExecutorRegistryInterfaceMock_GetExecutorMeta_Call {
+func (_e *ExecutorRegistryInterfaceMock_Expecter) GetExecutorMeta(name any) *ExecutorRegistryInterfaceMock_GetExecutorMeta_Call {
 	return &ExecutorRegistryInterfaceMock_GetExecutorMeta_Call{Call: _e.mock.On("GetExecutorMeta", name)}
 }
 
@@ -184,7 +193,7 @@ type ExecutorRegistryInterfaceMock_IsRegistered_Call struct {
 
 // IsRegistered is a helper method to define mock.On call
 //   - name string
-func (_e *ExecutorRegistryInterfaceMock_Expecter) IsRegistered(name interface{}) *ExecutorRegistryInterfaceMock_IsRegistered_Call {
+func (_e *ExecutorRegistryInterfaceMock_Expecter) IsRegistered(name any) *ExecutorRegistryInterfaceMock_IsRegistered_Call {
 	return &ExecutorRegistryInterfaceMock_IsRegistered_Call{Call: _e.mock.On("IsRegistered", name)}
 }
 
@@ -225,7 +234,7 @@ type ExecutorRegistryInterfaceMock_RegisterExecutor_Call struct {
 // RegisterExecutor is a helper method to define mock.On call
 //   - name string
 //   - ex providers.Executor
-func (_e *ExecutorRegistryInterfaceMock_Expecter) RegisterExecutor(name interface{}, ex interface{}) *ExecutorRegistryInterfaceMock_RegisterExecutor_Call {
+func (_e *ExecutorRegistryInterfaceMock_Expecter) RegisterExecutor(name any, ex any) *ExecutorRegistryInterfaceMock_RegisterExecutor_Call {
 	return &ExecutorRegistryInterfaceMock_RegisterExecutor_Call{Call: _e.mock.On("RegisterExecutor", name, ex)}
 }
 

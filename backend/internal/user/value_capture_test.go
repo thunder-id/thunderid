@@ -131,7 +131,7 @@ func TestCreateUser_WithoutAUsernameCapturesNothing(t *testing.T) {
 func TestUpdateUserCredentials_CapturesTheNewCredential(t *testing.T) {
 	entities := entitymock.NewEntityServiceInterfaceMock(t)
 	entities.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-	entities.On("GetEntity", mock.Anything, svcTestUserID1).Return(&providers.Entity{
+	entities.On("GetEntityProfile", mock.Anything, svcTestUserID1).Return(&providers.Entity{
 		Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: testUserType, OUID: testOrgID,
 		Attributes: json.RawMessage(`{"username":"alice"}`),
 	}, nil)

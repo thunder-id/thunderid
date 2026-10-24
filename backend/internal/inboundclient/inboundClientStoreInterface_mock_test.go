@@ -17,10 +17,19 @@ func newInboundClientStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *inboundClientStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &inboundClientStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -63,7 +72,7 @@ type inboundClientStoreInterfaceMock_CreateInboundClient_Call struct {
 // CreateInboundClient is a helper method to define mock.On call
 //   - ctx context.Context
 //   - client providers.InboundClient
-func (_e *inboundClientStoreInterfaceMock_Expecter) CreateInboundClient(ctx interface{}, client interface{}) *inboundClientStoreInterfaceMock_CreateInboundClient_Call {
+func (_e *inboundClientStoreInterfaceMock_Expecter) CreateInboundClient(ctx any, client any) *inboundClientStoreInterfaceMock_CreateInboundClient_Call {
 	return &inboundClientStoreInterfaceMock_CreateInboundClient_Call{Call: _e.mock.On("CreateInboundClient", ctx, client)}
 }
 
@@ -121,7 +130,7 @@ type inboundClientStoreInterfaceMock_CreateOAuthProfile_Call struct {
 //   - ctx context.Context
 //   - entityID string
 //   - oauthProfile *providers.OAuthProfile
-func (_e *inboundClientStoreInterfaceMock_Expecter) CreateOAuthProfile(ctx interface{}, entityID interface{}, oauthProfile interface{}) *inboundClientStoreInterfaceMock_CreateOAuthProfile_Call {
+func (_e *inboundClientStoreInterfaceMock_Expecter) CreateOAuthProfile(ctx any, entityID any, oauthProfile any) *inboundClientStoreInterfaceMock_CreateOAuthProfile_Call {
 	return &inboundClientStoreInterfaceMock_CreateOAuthProfile_Call{Call: _e.mock.On("CreateOAuthProfile", ctx, entityID, oauthProfile)}
 }
 
@@ -183,7 +192,7 @@ type inboundClientStoreInterfaceMock_DeleteInboundClient_Call struct {
 // DeleteInboundClient is a helper method to define mock.On call
 //   - ctx context.Context
 //   - entityID string
-func (_e *inboundClientStoreInterfaceMock_Expecter) DeleteInboundClient(ctx interface{}, entityID interface{}) *inboundClientStoreInterfaceMock_DeleteInboundClient_Call {
+func (_e *inboundClientStoreInterfaceMock_Expecter) DeleteInboundClient(ctx any, entityID any) *inboundClientStoreInterfaceMock_DeleteInboundClient_Call {
 	return &inboundClientStoreInterfaceMock_DeleteInboundClient_Call{Call: _e.mock.On("DeleteInboundClient", ctx, entityID)}
 }
 
@@ -240,7 +249,7 @@ type inboundClientStoreInterfaceMock_DeleteOAuthProfile_Call struct {
 // DeleteOAuthProfile is a helper method to define mock.On call
 //   - ctx context.Context
 //   - entityID string
-func (_e *inboundClientStoreInterfaceMock_Expecter) DeleteOAuthProfile(ctx interface{}, entityID interface{}) *inboundClientStoreInterfaceMock_DeleteOAuthProfile_Call {
+func (_e *inboundClientStoreInterfaceMock_Expecter) DeleteOAuthProfile(ctx any, entityID any) *inboundClientStoreInterfaceMock_DeleteOAuthProfile_Call {
 	return &inboundClientStoreInterfaceMock_DeleteOAuthProfile_Call{Call: _e.mock.On("DeleteOAuthProfile", ctx, entityID)}
 }
 
@@ -317,7 +326,7 @@ type inboundClientStoreInterfaceMock_GetEntityIDsByReference_Call struct {
 //   - refID string
 //   - limit int
 //   - offset int
-func (_e *inboundClientStoreInterfaceMock_Expecter) GetEntityIDsByReference(ctx interface{}, refType interface{}, refID interface{}, limit interface{}, offset interface{}) *inboundClientStoreInterfaceMock_GetEntityIDsByReference_Call {
+func (_e *inboundClientStoreInterfaceMock_Expecter) GetEntityIDsByReference(ctx any, refType any, refID any, limit any, offset any) *inboundClientStoreInterfaceMock_GetEntityIDsByReference_Call {
 	return &inboundClientStoreInterfaceMock_GetEntityIDsByReference_Call{Call: _e.mock.On("GetEntityIDsByReference", ctx, refType, refID, limit, offset)}
 }
 
@@ -400,7 +409,7 @@ type inboundClientStoreInterfaceMock_GetInboundClientByEntityID_Call struct {
 // GetInboundClientByEntityID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - entityID string
-func (_e *inboundClientStoreInterfaceMock_Expecter) GetInboundClientByEntityID(ctx interface{}, entityID interface{}) *inboundClientStoreInterfaceMock_GetInboundClientByEntityID_Call {
+func (_e *inboundClientStoreInterfaceMock_Expecter) GetInboundClientByEntityID(ctx any, entityID any) *inboundClientStoreInterfaceMock_GetInboundClientByEntityID_Call {
 	return &inboundClientStoreInterfaceMock_GetInboundClientByEntityID_Call{Call: _e.mock.On("GetInboundClientByEntityID", ctx, entityID)}
 }
 
@@ -468,7 +477,7 @@ type inboundClientStoreInterfaceMock_GetInboundClientList_Call struct {
 // GetInboundClientList is a helper method to define mock.On call
 //   - ctx context.Context
 //   - limit int
-func (_e *inboundClientStoreInterfaceMock_Expecter) GetInboundClientList(ctx interface{}, limit interface{}) *inboundClientStoreInterfaceMock_GetInboundClientList_Call {
+func (_e *inboundClientStoreInterfaceMock_Expecter) GetInboundClientList(ctx any, limit any) *inboundClientStoreInterfaceMock_GetInboundClientList_Call {
 	return &inboundClientStoreInterfaceMock_GetInboundClientList_Call{Call: _e.mock.On("GetInboundClientList", ctx, limit)}
 }
 
@@ -536,7 +545,7 @@ type inboundClientStoreInterfaceMock_GetOAuthProfileByEntityID_Call struct {
 // GetOAuthProfileByEntityID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - entityID string
-func (_e *inboundClientStoreInterfaceMock_Expecter) GetOAuthProfileByEntityID(ctx interface{}, entityID interface{}) *inboundClientStoreInterfaceMock_GetOAuthProfileByEntityID_Call {
+func (_e *inboundClientStoreInterfaceMock_Expecter) GetOAuthProfileByEntityID(ctx any, entityID any) *inboundClientStoreInterfaceMock_GetOAuthProfileByEntityID_Call {
 	return &inboundClientStoreInterfaceMock_GetOAuthProfileByEntityID_Call{Call: _e.mock.On("GetOAuthProfileByEntityID", ctx, entityID)}
 }
 
@@ -601,7 +610,7 @@ type inboundClientStoreInterfaceMock_GetTotalInboundClientCount_Call struct {
 
 // GetTotalInboundClientCount is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *inboundClientStoreInterfaceMock_Expecter) GetTotalInboundClientCount(ctx interface{}) *inboundClientStoreInterfaceMock_GetTotalInboundClientCount_Call {
+func (_e *inboundClientStoreInterfaceMock_Expecter) GetTotalInboundClientCount(ctx any) *inboundClientStoreInterfaceMock_GetTotalInboundClientCount_Call {
 	return &inboundClientStoreInterfaceMock_GetTotalInboundClientCount_Call{Call: _e.mock.On("GetTotalInboundClientCount", ctx)}
 }
 
@@ -662,7 +671,7 @@ type inboundClientStoreInterfaceMock_InboundClientExists_Call struct {
 // InboundClientExists is a helper method to define mock.On call
 //   - ctx context.Context
 //   - entityID string
-func (_e *inboundClientStoreInterfaceMock_Expecter) InboundClientExists(ctx interface{}, entityID interface{}) *inboundClientStoreInterfaceMock_InboundClientExists_Call {
+func (_e *inboundClientStoreInterfaceMock_Expecter) InboundClientExists(ctx any, entityID any) *inboundClientStoreInterfaceMock_InboundClientExists_Call {
 	return &inboundClientStoreInterfaceMock_InboundClientExists_Call{Call: _e.mock.On("InboundClientExists", ctx, entityID)}
 }
 
@@ -719,7 +728,7 @@ type inboundClientStoreInterfaceMock_IsDeclarative_Call struct {
 // IsDeclarative is a helper method to define mock.On call
 //   - ctx context.Context
 //   - entityID string
-func (_e *inboundClientStoreInterfaceMock_Expecter) IsDeclarative(ctx interface{}, entityID interface{}) *inboundClientStoreInterfaceMock_IsDeclarative_Call {
+func (_e *inboundClientStoreInterfaceMock_Expecter) IsDeclarative(ctx any, entityID any) *inboundClientStoreInterfaceMock_IsDeclarative_Call {
 	return &inboundClientStoreInterfaceMock_IsDeclarative_Call{Call: _e.mock.On("IsDeclarative", ctx, entityID)}
 }
 
@@ -776,7 +785,7 @@ type inboundClientStoreInterfaceMock_UpdateInboundClient_Call struct {
 // UpdateInboundClient is a helper method to define mock.On call
 //   - ctx context.Context
 //   - client providers.InboundClient
-func (_e *inboundClientStoreInterfaceMock_Expecter) UpdateInboundClient(ctx interface{}, client interface{}) *inboundClientStoreInterfaceMock_UpdateInboundClient_Call {
+func (_e *inboundClientStoreInterfaceMock_Expecter) UpdateInboundClient(ctx any, client any) *inboundClientStoreInterfaceMock_UpdateInboundClient_Call {
 	return &inboundClientStoreInterfaceMock_UpdateInboundClient_Call{Call: _e.mock.On("UpdateInboundClient", ctx, client)}
 }
 
@@ -834,7 +843,7 @@ type inboundClientStoreInterfaceMock_UpdateOAuthProfile_Call struct {
 //   - ctx context.Context
 //   - entityID string
 //   - oauthProfile *providers.OAuthProfile
-func (_e *inboundClientStoreInterfaceMock_Expecter) UpdateOAuthProfile(ctx interface{}, entityID interface{}, oauthProfile interface{}) *inboundClientStoreInterfaceMock_UpdateOAuthProfile_Call {
+func (_e *inboundClientStoreInterfaceMock_Expecter) UpdateOAuthProfile(ctx any, entityID any, oauthProfile any) *inboundClientStoreInterfaceMock_UpdateOAuthProfile_Call {
 	return &inboundClientStoreInterfaceMock_UpdateOAuthProfile_Call{Call: _e.mock.On("UpdateOAuthProfile", ctx, entityID, oauthProfile)}
 }
 

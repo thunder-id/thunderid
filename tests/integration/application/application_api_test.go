@@ -474,6 +474,46 @@ func (ts *ApplicationAPITestSuite) TestApplicationUpdate() {
 	retrieveAndValidateApplicationDetails(ts, appToUpdateWithID)
 }
 
+func (ts *ApplicationAPITestSuite) TestApplicationUpdateReportsTheDerivedStatus() {
+	appToCreate.AuthFlowID = defaultAuthFlowID
+	appToCreate.RegistrationFlowID = defaultRegistrationFlowID
+	appID, err := createApplication(appToCreate)
+	ts.Require().NoError(err, "failed to create the application")
+	defer func() {
+		if err := deleteApplication(appID); err != nil {
+			ts.T().Logf("Failed to delete application after the status test: %v", err)
+		}
+	}()
+
+	update := appToUpdate
+	update.ID = appID
+	update.AuthFlowID = defaultAuthFlowID
+	update.RegistrationFlowID = defaultRegistrationFlowID
+	encoded, err := json.Marshal(update)
+	ts.Require().NoError(err)
+	var body map[string]interface{}
+	ts.Require().NoError(json.Unmarshal(encoded, &body))
+	body["status"] = map[string]interface{}{"value": "SUSPENDED"}
+	payload, err := json.Marshal(body)
+	ts.Require().NoError(err)
+
+	req, err := http.NewRequest(http.MethodPut, testServerURL+"/applications/"+appID, bytes.NewReader(payload))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, string(raw))
+
+	var updated struct {
+		Status json.RawMessage `json:"status"`
+	}
+	ts.Require().NoError(json.Unmarshal(raw, &updated))
+	ts.JSONEq(`{"value":"ACTIVE"}`, string(updated.Status), "the update must report the status value alone")
+}
+
 func retrieveAndValidateApplicationDetails(ts *ApplicationAPITestSuite, expectedApp Application) {
 
 	req, err := http.NewRequest("GET", testServerURL+"/applications/"+expectedApp.ID, nil)
@@ -5115,4 +5155,413 @@ func (ts *ApplicationAPITestSuite) TestIDTokenResponseType_Empty_DefaultsToJWT()
 	retrieved, err := getApplicationByID(appID)
 	ts.Require().NoError(err)
 	ts.Assert().Equal(int64(3600), retrieved.InboundAuthConfig[0].OAuthAppConfig.Token.IDToken.ValidityPeriod)
+}
+
+// The application API answers a sharing refusal in its own vocabulary: the framework's codes stay
+// inside the framework, and the description carries what is wrong with the request.
+const (
+	ErrorInvalidSharingPolicyCode         = "APP-1051"
+	ErrorDeploymentWideSharingCode        = "APP-1060"
+	ErrorSharingPolicyNotFoundCode        = "APP-1052"
+	ErrorSharingPolicyExistsCode          = "APP-1053"
+	ErrorSharingPolicyVersionMismatchCode = "APP-1054"
+	ErrorApplicationNotSharedToOUCode     = "APP-1056"
+)
+
+// sharingPolicyJSON posts, puts or gets against the sharing endpoints of the suite's application
+// and returns the status and decoded body.
+func (ts *ApplicationAPITestSuite) sharingRequest(
+	method, path string, body interface{},
+) (int, map[string]interface{}) {
+	ts.T().Helper()
+
+	var reader io.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		ts.Require().NoError(err)
+		reader = bytes.NewReader(raw)
+	}
+	req, err := http.NewRequest(method, testServerURL+path, reader)
+	ts.Require().NoError(err)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	decoded := map[string]interface{}{}
+	if len(raw) > 0 {
+		_ = json.Unmarshal(raw, &decoded)
+	}
+	return resp.StatusCode, decoded
+}
+
+// The helpers below build the sections of a sharing policy body.
+
+// allChildUnits is the section reaching everything beneath the issuer, less what it excludes.
+func allChildUnits(excluded ...string) map[string]interface{} {
+	section := map[string]interface{}{"mode": "all"}
+	if len(excluded) > 0 {
+		section["excludedOuIds"] = excluded
+	}
+	return section
+}
+
+// selectedChildUnits is the section naming direct children of the issuer.
+func selectedChildUnits(units ...map[string]interface{}) map[string]interface{} {
+	return map[string]interface{}{"mode": "selected", "units": units}
+}
+
+// childUnit names one direct child and how far the application carries from it.
+func childUnit(ouID, reach string) map[string]interface{} {
+	return map[string]interface{}{"ouId": ouID, "reach": reach}
+}
+
+// A sharing policy is created, read, edited and deleted through the application that governs it,
+// and the organization unit it reaches can be resolved at each step.
+func (ts *ApplicationAPITestSuite) TestApplicationSharingPolicyLifecycle() {
+	childOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "sharing-child", Name: "Sharing Child", Parent: &testOUID,
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(childOUID) }()
+
+	base := "/applications/" + testAppID + "/sharing-policies"
+
+	// The child cannot see the application before any policy reaches it, so there is nothing to
+	// resolve for it.
+	status, overlay := ts.sharingRequest("GET",
+		"/applications/"+testAppID+"/overlay-rules?ouId="+childOUID, nil)
+	ts.Require().Equal(http.StatusNotFound, status, "body: %v", overlay)
+	ts.Equal(ErrorApplicationNotSharedToOUCode, overlay["code"])
+
+	status, created := ts.sharingRequest("POST", base, map[string]interface{}{
+		"childUnits": allChildUnits(),
+	})
+	ts.Require().Equal(http.StatusCreated, status, "body: %v", created)
+	policyID, _ := created["id"].(string)
+	ts.Require().NotEmpty(policyID)
+	ts.Equal("share", created["stage"])
+	ts.Equal(float64(1), created["version"])
+	defer func() { _, _ = ts.sharingRequest("DELETE", base+"/"+policyID, nil) }()
+
+	status, overlay = ts.sharingRequest("GET",
+		"/applications/"+testAppID+"/overlay-rules?ouId="+childOUID, nil)
+	ts.Require().Equal(http.StatusOK, status)
+	ts.True(overlay["visible"].(bool), "reaching every child unit reaches the child")
+	ts.Empty(overlay["rules"], "an application declares no overlay fields")
+
+	status, fetched := ts.sharingRequest("GET", base+"/"+policyID, nil)
+	ts.Require().Equal(http.StatusOK, status)
+	childUnits, _ := fetched["childUnits"].(map[string]interface{})
+	ts.Require().NotNil(childUnits, "the policy comes back stating its sections")
+	ts.Equal("all", childUnits["mode"])
+	ts.NotContains(fetched, "allUnits", "a section the policy does not state is left out")
+	ts.NotContains(fetched, "otherTreeRoots")
+
+	status, listed := ts.sharingRequest("GET", base, nil)
+	ts.Require().Equal(http.StatusOK, status)
+	ts.GreaterOrEqual(listed["totalResults"].(float64), float64(1))
+
+	// Excluding the child from the section withdraws it.
+	status, updated := ts.sharingRequest("PUT", base+"/"+policyID, map[string]interface{}{
+		"version":    1,
+		"childUnits": allChildUnits(childOUID),
+	})
+	ts.Require().Equal(http.StatusOK, status, "body: %v", updated)
+	ts.Equal(float64(2), updated["version"])
+
+	status, overlay = ts.sharingRequest("GET",
+		"/applications/"+testAppID+"/overlay-rules?ouId="+childOUID, nil)
+	ts.Require().Equal(http.StatusNotFound, status, "the carve-out withdrew the child")
+	ts.Equal(ErrorApplicationNotSharedToOUCode, overlay["code"])
+
+	status, _ = ts.sharingRequest("DELETE", base+"/"+policyID, nil)
+	ts.Require().Equal(http.StatusNoContent, status)
+
+	status, _ = ts.sharingRequest("GET", base+"/"+policyID, nil)
+	ts.Equal(http.StatusNotFound, status, "the policy is gone")
+
+	// A delete says what the state should be afterwards, so repeating it succeeds.
+	status, _ = ts.sharingRequest("DELETE", base+"/"+policyID, nil)
+	ts.Equal(http.StatusNoContent, status, "deleting it again is not an error")
+}
+
+// A declared application's owner policy belongs in its resource file, so the API refuses one, while
+// a unit the file shares with can still reshare through it: there is nowhere else to record that.
+func (ts *ApplicationAPITestSuite) TestApplicationSharingOnADeclaredApplication() {
+	status, refused := ts.sharingRequest("POST", "/applications/decl-app-1/sharing-policies",
+		map[string]interface{}{"childUnits": allChildUnits()})
+	ts.Require().Equal(http.StatusBadRequest, status, "body: %v", refused)
+	ts.Equal("APP-1030", refused["code"], "the owner's sharing is declared with the application")
+
+	base := "/applications/decl-m2m-selected/sharing-policies"
+	status, reshare := ts.sharingRequest("POST", base, map[string]interface{}{
+		"initiatingOuId": "decl-m2m-child-a",
+		"childUnits":     selectedChildUnits(childUnit("decl-m2m-grandchild-a", "unit"))})
+	ts.Require().Equal(http.StatusCreated, status, "body: %v", reshare)
+	reshareID, _ := reshare["id"].(string)
+	defer func() { _, _ = ts.sharingRequest("DELETE", base+"/"+reshareID, nil) }()
+	ts.Equal("reshare", reshare["stage"])
+}
+
+// An organization unit that shared the application on cannot be deleted while that policy stands:
+// the policy rests on the unit's own view of the application. Once the policy is withdrawn, the unit
+// can go.
+func (ts *ApplicationAPITestSuite) TestApplicationSharingIssuerCannotBeDeleted() {
+	issuerOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "sharing-issuer", Name: "Sharing Issuer", Parent: &testOUID,
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(issuerOUID) }()
+
+	base := "/applications/" + testAppID + "/sharing-policies"
+	status, owner := ts.sharingRequest("POST", base, map[string]interface{}{
+		"childUnits": selectedChildUnits(childUnit(issuerOUID, "unit"))})
+	ts.Require().Equal(http.StatusCreated, status, "body: %v", owner)
+	ownerID, _ := owner["id"].(string)
+	defer func() { _, _ = ts.sharingRequest("DELETE", base+"/"+ownerID, nil) }()
+
+	status, reshare := ts.sharingRequest("POST", base, map[string]interface{}{
+		"initiatingOuId": issuerOUID, "childUnits": allChildUnits()})
+	ts.Require().Equal(http.StatusCreated, status, "body: %v", reshare)
+	reshareID, _ := reshare["id"].(string)
+
+	ts.Require().ErrorContains(testutils.DeleteOrganizationUnit(issuerOUID), "OU-1006",
+		"the unit's own policy keeps it from being deleted")
+
+	status, _ = ts.sharingRequest("DELETE", base+"/"+reshareID, nil)
+	ts.Require().Equal(http.StatusNoContent, status)
+	ts.Require().NoError(testutils.DeleteOrganizationUnit(issuerOUID),
+		"with its policy withdrawn, the unit can go")
+}
+
+// Each refusal names a different mistake, and the status separates a malformed request from a
+// conflict with state the caller has not seen.
+func (ts *ApplicationAPITestSuite) TestApplicationSharingPolicyRefusals() {
+	childOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "sharing-refusals-child", Name: "Sharing Refusals Child", Parent: &testOUID,
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(childOUID) }()
+
+	base := "/applications/" + testAppID + "/sharing-policies"
+
+	for _, tc := range []struct {
+		name     string
+		body     map[string]interface{}
+		wantCode int
+		wantErr  string
+	}{
+		{
+			name:     "no section at all",
+			body:     map[string]interface{}{},
+			wantCode: http.StatusBadRequest, wantErr: ErrorInvalidSharingPolicyCode,
+		},
+		{
+			name: "all child units naming an organization unit",
+			body: map[string]interface{}{"childUnits": map[string]interface{}{
+				"mode": "all", "units": []map[string]interface{}{childUnit(childOUID, "unit")}}},
+			wantCode: http.StatusBadRequest, wantErr: ErrorInvalidSharingPolicyCode,
+		},
+		{
+			name: "a child unit naming none",
+			body: map[string]interface{}{
+				"childUnits": selectedChildUnits(map[string]interface{}{"reach": "unit"})},
+			wantCode: http.StatusBadRequest, wantErr: ErrorInvalidSharingPolicyCode,
+		},
+		{
+			name: "a child unit with no reach",
+			body: map[string]interface{}{
+				"childUnits": selectedChildUnits(map[string]interface{}{"ouId": childOUID})},
+			wantCode: http.StatusBadRequest, wantErr: ErrorInvalidSharingPolicyCode,
+		},
+		{
+			name:     "all units through the API",
+			body:     map[string]interface{}{"allUnits": map[string]interface{}{}},
+			wantCode: http.StatusBadRequest, wantErr: ErrorDeploymentWideSharingCode,
+		},
+		{
+			name:     "every other tree's root through the API",
+			body:     map[string]interface{}{"otherTreeRoots": map[string]interface{}{"mode": "all"}},
+			wantCode: http.StatusBadRequest, wantErr: ErrorDeploymentWideSharingCode,
+		},
+		{
+			name: "an organization unit named twice",
+			body: map[string]interface{}{"childUnits": selectedChildUnits(
+				childUnit(childOUID, "unit"), childUnit(childOUID, "subtree"))},
+			wantCode: http.StatusBadRequest, wantErr: ErrorInvalidSharingPolicyCode,
+		},
+		{
+			name: "an exclusion on a section that names its units",
+			body: map[string]interface{}{"childUnits": map[string]interface{}{
+				"mode":          "selected",
+				"units":         []map[string]interface{}{childUnit(childOUID, "unit")},
+				"excludedOuIds": []string{childOUID}}},
+			wantCode: http.StatusBadRequest, wantErr: ErrorInvalidSharingPolicyCode,
+		},
+	} {
+		ts.Run(tc.name, func() {
+			status, body := ts.sharingRequest("POST", base, tc.body)
+			ts.Equal(tc.wantCode, status, "body: %v", body)
+			ts.Equal(tc.wantErr, body["code"])
+		})
+	}
+
+	// A second policy for the same organization unit is a conflict pointing at the one to edit.
+	status, created := ts.sharingRequest("POST", base, map[string]interface{}{
+		"childUnits": selectedChildUnits(childUnit(childOUID, "unit")),
+	})
+	ts.Require().Equal(http.StatusCreated, status, "body: %v", created)
+	policyID, _ := created["id"].(string)
+	defer func() { _, _ = ts.sharingRequest("DELETE", base+"/"+policyID, nil) }()
+
+	status, conflict := ts.sharingRequest("POST", base, map[string]interface{}{
+		"childUnits": allChildUnits(),
+	})
+	ts.Equal(http.StatusConflict, status, "body: %v", conflict)
+	ts.Equal(ErrorSharingPolicyExistsCode, conflict["code"])
+
+	// An edit against a version that moved is refused rather than flattening the write.
+	status, stale := ts.sharingRequest("PUT", base+"/"+policyID, map[string]interface{}{
+		"version":    99,
+		"childUnits": selectedChildUnits(childUnit(childOUID, "unit")),
+	})
+	ts.Equal(http.StatusConflict, status, "body: %v", stale)
+	ts.Equal(ErrorSharingPolicyVersionMismatchCode, stale["code"])
+
+	// A policy id this application does not own is not reachable through its path.
+	status, _ = ts.sharingRequest("GET",
+		base+"/00000000-0000-0000-0000-000000000000", nil)
+	ts.Equal(http.StatusNotFound, status)
+
+	// Deleting one is not an error, the way deleting an application that is not there is not.
+	status, _ = ts.sharingRequest("DELETE",
+		base+"/00000000-0000-0000-0000-000000000000", nil)
+	ts.Equal(http.StatusNoContent, status)
+}
+
+// A child named with reach unit is reached and the application stops there; with reach subtree it
+// carries on below it. Same unit, same endpoint, so the difference is the reach alone.
+func (ts *ApplicationAPITestSuite) TestApplicationSharingUnitReach() {
+	childOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "sharing-reach-child", Name: "Sharing Reach Child", Parent: &testOUID,
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(childOUID) }()
+
+	grandOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "sharing-reach-grand", Name: "Sharing Reach Grand", Parent: &childOUID,
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(grandOUID) }()
+
+	base := "/applications/" + testAppID + "/sharing-policies"
+	// An organization unit the application reaches resolves; one it does not is a 404.
+	overlay := func(ouID string) bool {
+		status, body := ts.sharingRequest("GET",
+			"/applications/"+testAppID+"/overlay-rules?ouId="+ouID, nil)
+		if status == http.StatusNotFound {
+			return false
+		}
+		ts.Require().Equal(http.StatusOK, status, "body: %v", body)
+		return body["visible"].(bool)
+	}
+
+	status, created := ts.sharingRequest("POST", base, map[string]interface{}{
+		"childUnits": selectedChildUnits(childUnit(childOUID, "unit")),
+	})
+	ts.Require().Equal(http.StatusCreated, status, "body: %v", created)
+	policyID, _ := created["id"].(string)
+	version := created["version"].(float64)
+	defer func() { _, _ = ts.sharingRequest("DELETE", base+"/"+policyID, nil) }()
+
+	ts.True(overlay(childOUID), "the named child is reached")
+	ts.False(overlay(grandOUID), "reach unit stops at the unit it names")
+
+	status, updated := ts.sharingRequest("PUT", base+"/"+policyID, map[string]interface{}{
+		"version":    version,
+		"childUnits": selectedChildUnits(childUnit(childOUID, "subtree")),
+	})
+	ts.Require().Equal(http.StatusOK, status, "body: %v", updated)
+
+	ts.True(overlay(childOUID), "the named child is still reached")
+	ts.True(overlay(grandOUID), "reach subtree carries on below it")
+}
+
+// A section reaching every child unit has one set of terms for everything it reaches, so a unit
+// cannot be named beside it. An organization unit excluded from it is withheld, not handed the
+// application some other way.
+func (ts *ApplicationAPITestSuite) TestApplicationSharingBlanketSectionNamesNoUnitBesideIt() {
+	childOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "sharing-carve-child", Name: "Sharing Carve Child", Parent: &testOUID,
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(childOUID) }()
+
+	base := "/applications/" + testAppID + "/sharing-policies"
+
+	// Naming a unit under mode all is refused, with or without the unit excluded.
+	status, refused := ts.sharingRequest("POST", base, map[string]interface{}{
+		"childUnits": map[string]interface{}{
+			"mode":          "all",
+			"excludedOuIds": []string{childOUID},
+			"units":         []map[string]interface{}{childUnit(childOUID, "unit")},
+		},
+	})
+	ts.Require().Equal(http.StatusBadRequest, status, "body: %v", refused)
+	ts.Equal(ErrorInvalidSharingPolicyCode, refused["code"])
+
+	// The exclusion alone is accepted and stored on the section.
+	status, created := ts.sharingRequest("POST", base, map[string]interface{}{
+		"childUnits": allChildUnits(childOUID),
+	})
+	ts.Require().Equal(http.StatusCreated, status, "body: %v", created)
+	policyID, _ := created["id"].(string)
+	defer func() { _, _ = ts.sharingRequest("DELETE", base+"/"+policyID, nil) }()
+
+	childUnits, _ := created["childUnits"].(map[string]interface{})
+	ts.Require().NotNil(childUnits)
+	ts.Equal("all", childUnits["mode"])
+	ts.Equal([]interface{}{childOUID}, childUnits["excludedOuIds"])
+	ts.NotContains(childUnits, "units")
+
+	status, body := ts.sharingRequest("GET",
+		"/applications/"+testAppID+"/overlay-rules?ouId="+childOUID, nil)
+	ts.Require().Equal(http.StatusNotFound, status, "the excluded unit is withheld: %v", body)
+	ts.Equal(ErrorApplicationNotSharedToOUCode, body["code"])
+}
+
+// An organization unit no policy reaches holds no terms, so the endpoint answers that there is
+// nothing to resolve rather than returning an answer saying it may do nothing. An organization
+// unit id that names nothing answers the same way.
+func (ts *ApplicationAPITestSuite) TestOverlayRulesAreNotFoundForAnUnreachedUnit() {
+	strangerOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "sharing-stranger-root", Name: "Sharing Stranger Root",
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(strangerOUID) }()
+
+	for _, tc := range []struct{ name, ouID string }{
+		{"a root in another tree", strangerOUID},
+		{"an organization unit that does not exist", "no-such-ou"},
+	} {
+		ts.Run(tc.name, func() {
+			status, body := ts.sharingRequest("GET",
+				"/applications/"+testAppID+"/overlay-rules?ouId="+tc.ouID, nil)
+
+			ts.Equal(http.StatusNotFound, status, "body: %v", body)
+			ts.Equal(ErrorApplicationNotSharedToOUCode, body["code"])
+		})
+	}
+
+	// The owner needs no policy to resolve, so the refusal above is about reach.
+	status, body := ts.sharingRequest("GET",
+		"/applications/"+testAppID+"/overlay-rules?ouId="+testOUID, nil)
+	ts.Require().Equal(http.StatusOK, status, "body: %v", body)
+	ts.True(body["owned"].(bool))
 }

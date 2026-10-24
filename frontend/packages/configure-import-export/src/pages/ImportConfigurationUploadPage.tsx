@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {DocumentTitle} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, Button, IconButton, LinearProgress, Stack, Typography, Alert, AppBreadcrumbs} from '@wso2/oxygen-ui';
@@ -303,6 +304,7 @@ export default function ImportConfigurationUploadPage(): JSX.Element {
 
   return (
     <Box sx={{minHeight: '100vh', display: 'flex', flexDirection: 'column'}}>
+      <DocumentTitle title={t('upload.title', 'Import configuration')} />
       <LinearProgress variant="determinate" value={33} sx={{height: 6}} />
 
       <Box

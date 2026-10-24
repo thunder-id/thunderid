@@ -49,6 +49,12 @@ const (
 	ExecutorNameApplicationActionValidator   = "ApplicationActionValidator"
 	ExecutorNameApplicationDelete            = "ApplicationDeleteExecutor"
 	ExecutorNameClientSecret                 = "ClientSecretExecutor"
+	ExecutorNameAccessChangeValidator        = "AccessChangeValidator"
+	ExecutorNameRole                         = "RoleExecutor"
+	ExecutorNameGroup                        = "GroupExecutor"
+	ExecutorNameActionDeletion               = "ActionDeletionExecutor"
+	ExecutorNameIdentityGovernance           = "IdentityGovernanceExecutor"
+	ExecutorNamePreSuspend                   = "PreSuspendExecutor"
 )
 
 // Executor mode constants
@@ -59,4 +65,18 @@ const (
 	ExecutorModeIdentify   = "identify"
 	ExecutorModeResolve    = "resolve"
 	ExecutorModeCheckState = "check_state"
+
+	ExecutorModeRoleAssignmentRemoval  = "role_assignment_removal"
+	ExecutorModeRoleDeletion           = "role_deletion"
+	ExecutorModeRolePermissionRemoval  = "role_permission_removal"
+	ExecutorModeGroupDeletion          = "group_deletion"
+	ExecutorModeGroupMembershipRemoval = "group_membership_removal"
+	ExecutorModeActionDeletion         = "action_deletion"
+
+	ExecutorModeRevoke        = "revoke"
+	ExecutorModeAdvanceCutoff = "advance_cutoff"
+
+	ExecutorModeUnlock    = "unlock"
+	ExecutorModeSuspend   = "suspend"
+	ExecutorModeUnsuspend = "unsuspend"
 )

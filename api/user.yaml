@@ -24,6 +24,8 @@ tags:
     description: Self-service operations that the authenticated user performs on their own profile.
   - name: User Types
     description: Manage user type schemas that define the attribute structure for different user categories.
+  - name: User Sharing
+    description: Share a user into other organization units without copying it, and resolve where it is visible.
 
 security:
   - OAuth2: [system]
@@ -37,7 +39,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
-        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/userFilterParam'
         - $ref: '#/components/parameters/includeQueryParam'
       responses:
         "200":
@@ -339,7 +341,7 @@ paths:
                   - email
       responses:
         "200":
-          description: User updated
+          description: User updated, with its `status`
           content:
             application/json:
               schema:
@@ -461,6 +463,16 @@ paths:
                     description:
                       key: "error.userservice.attribute_conflict_description"
                       defaultValue: "A user with the same unique attribute value already exists"
+                shared-user-move:
+                  summary: Moving a shared user to another organization unit
+                  value:
+                    code: "USR-1038"
+                    message:
+                      key: "error.userservice.shared_user_cannot_move"
+                      defaultValue: "Shared user cannot be moved"
+                    description:
+                      key: "error.userservice.shared_user_cannot_move_description"
+                      defaultValue: "The user is shared into other organization units. Delete its sharing policies before moving it to another organization unit"
         "404":
           description: User not found
           content:
@@ -796,6 +808,362 @@ paths:
                   key: "error.internal_server_error_description"
                   defaultValue: "An unexpected error occurred while processing the request"
 
+  /users/{id}/sharing-policies:
+    parameters:
+      - $ref: '#/components/parameters/userIdPathParam'
+    post:
+      tags:
+        - User Sharing
+      summary: Create a sharing policy
+      description: |
+        Records one organization unit's decision about which other organization units this user is
+        shared into. The user is not copied: the same identity becomes visible in the organization
+        units the policy reaches, and keeps living in its own. Exactly one policy exists per user per
+        initiating organization unit; a second create is refused.
+
+        The caller must be allowed to update users in the initiating organization unit: the user's
+        own unit for a share, or, for a reshare, a unit the user was already shared into. A user
+        cannot share itself.
+
+        A user declared in a resource file declares its owner's policy there too, so this endpoint
+        refuses one for it. An organization unit the declared policy shares with can still record
+        its own reshare here, unless users are configured to load from resource files only: then all
+        of their sharing, reshares included, is declared, and this endpoint refuses every policy.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SharingPolicyRequest'
+            examples:
+              allChildUnits:
+                summary: Every organization unit beneath the issuer
+                value:
+                  childUnits:
+                    mode: all
+              allChildUnitsWithExclusion:
+                summary: Every organization unit beneath the issuer except one branch
+                value:
+                  childUnits:
+                    mode: all
+                    excludedOuIds: ["acme-trial-customers"]
+              selectedChildUnits:
+                summary: Named children, one at a time
+                value:
+                  childUnits:
+                    mode: selected
+                    units:
+                      - ouId: "acme-customer-a"
+                        reach: unit
+                      - ouId: "acme-customer-b"
+                        reach: unit
+              childAndItsSubtree:
+                summary: One direct child and everything beneath it
+                value:
+                  childUnits:
+                    mode: selected
+                    units:
+                      - ouId: "acme-customer-a"
+                        reach: subtree
+              selectedRoots:
+                summary: Named roots of other trees, owner only
+                value:
+                  otherTreeRoots:
+                    mode: selected
+                    units:
+                      - ouId: "partner-root"
+              childUnitsAndRoots:
+                summary: Child units and roots of other trees together, owner only
+                value:
+                  childUnits:
+                    mode: all
+                  otherTreeRoots:
+                    mode: selected
+                    units:
+                      - ouId: "partner-root"
+              reshare:
+                summary: A reshare issued by a sharee
+                value:
+                  initiatingOuId: "acme-customer-a"
+                  childUnits:
+                    mode: selected
+                    units:
+                      - ouId: "acme-customer-a-eu"
+                        reach: unit
+      responses:
+        "201":
+          description: Sharing policy created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharingPolicy'
+              example:
+                id: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+                initiatingOuId: "acme-root"
+                stage: share
+                isReadOnly: false
+                version: 1
+                childUnits:
+                  mode: all
+                  excludedOuIds: ["acme-trial-customers"]
+        "400":
+          $ref: '#/components/responses/SharingPolicyCreateBadRequest'
+        "404":
+          $ref: '#/components/responses/SharingUserNotFound'
+        "409":
+          $ref: '#/components/responses/SharingPolicyConflict'
+        "403":
+          $ref: '#/components/responses/SharingForbidden'
+        "500":
+          $ref: '#/components/responses/SharingServerError'
+
+    get:
+      tags:
+        - User Sharing
+      summary: List sharing policies
+      description: |
+        Returns the user's sharing policies. A caller allowed to read users in the user's own
+        organization unit sees every policy; any other caller sees only the policies its own
+        organization units issued.
+      parameters:
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/offsetQueryParam'
+      responses:
+        "200":
+          description: Sharing policies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharingPolicyListResponse'
+              example:
+                totalResults: 2
+                startIndex: 1
+                count: 2
+                policies:
+                  # The owner's decision: customer A on its own, and customer B with
+                  # everything beneath it.
+                  - id: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+                    initiatingOuId: "acme-root"
+                    stage: share
+                    isReadOnly: false
+                    version: 2
+                    childUnits:
+                      mode: selected
+                      units:
+                        - ouId: "acme-customer-a"
+                          reach: unit
+                        - ouId: "acme-customer-b"
+                          reach: subtree
+                  # Customer A carrying the user one hop further, which only a unit the
+                  # owner's grant stops at may do. It names the policy that reached it.
+                  - id: "0195a2c0-7b41-7c66-8f03-9d1e6a2b4c57"
+                    initiatingOuId: "acme-customer-a"
+                    stage: reshare
+                    parentPolicyId: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+                    isReadOnly: false
+                    version: 1
+                    childUnits:
+                      mode: selected
+                      units:
+                        - ouId: "acme-customer-a-eu"
+                          reach: unit
+        "400":
+          $ref: '#/components/responses/SharingPolicyListBadRequest'
+        "404":
+          $ref: '#/components/responses/SharingUserNotFound'
+        "403":
+          $ref: '#/components/responses/SharingForbidden'
+        "500":
+          $ref: '#/components/responses/SharingServerError'
+
+
+  /users/{id}/sharing-policies/{policyId}:
+    parameters:
+      - $ref: '#/components/parameters/userIdPathParam'
+      - $ref: '#/components/parameters/sharingPolicyIdPathParam'
+    get:
+      tags:
+        - User Sharing
+      summary: Get a sharing policy
+      responses:
+        "200":
+          description: Sharing policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharingPolicy'
+              example:
+                id: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+                initiatingOuId: "acme-root"
+                stage: share
+                isReadOnly: false
+                version: 2
+                childUnits:
+                  mode: all
+                  excludedOuIds: ["acme-trial-customers"]
+        "404":
+          $ref: '#/components/responses/SharingPolicyNotFound'
+        "403":
+          $ref: '#/components/responses/SharingForbidden'
+        "500":
+          $ref: '#/components/responses/SharingServerError'
+
+    put:
+      tags:
+        - User Sharing
+      summary: Replace a sharing policy
+      description: |
+        Replaces the policy's sections. The request carries the `version` the caller believes it is
+        editing; an edit against a stale version is refused rather than silently flattening another
+        write.
+
+        Each section is held to the rule on its own. A section that reaches a whole group (`mode:
+        all`, or `allUnits`) keeps that reach: its exclusions can be added or removed, but it cannot
+        be dropped or turned into one that names units. A section that names units may add or drop
+        them or change their `reach`, and cannot become one that reaches a whole group. No edit may
+        reach past an organization unit that has already shared the user on.
+
+        This holds for `allUnits` and for `otherTreeRoots` with `mode: all` too, which a create may
+        not state. A policy that was imported with one keeps it: restate the section here and
+        rewrite its `excludedOuIds` to withhold units from it or hand them back. Editing a narrower
+        policy into one of those is refused, so the edit cannot reach where the create could not.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SharingPolicyUpdateRequest'
+            examples:
+              addAnExclusion:
+                summary: Exclude one organization unit from every child unit
+                value:
+                  version: 1
+                  childUnits:
+                    mode: all
+                    excludedOuIds: ["acme-trial-customers"]
+              widenANamedUnit:
+                summary: Carry the user on beneath a named child
+                value:
+                  version: 1
+                  childUnits:
+                    mode: selected
+                    units:
+                      - ouId: "acme-customer-a"
+                        reach: subtree
+              excludeFromAllUnits:
+                summary: Rewrite the exclusions on an imported deployment-wide policy
+                description: |
+                  The section is restated, which is what lets its exclusions move. A create may not
+                  state `allUnits`, and an edit may not introduce it.
+                value:
+                  version: 2
+                  allUnits:
+                    excludedOuIds: ["acme-trial-customers", "partner-sandbox"]
+      responses:
+        "200":
+          description: Sharing policy replaced
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharingPolicy'
+              example:
+                id: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+                initiatingOuId: "acme-root"
+                stage: share
+                isReadOnly: false
+                version: 2
+                childUnits:
+                  mode: all
+                  excludedOuIds: ["acme-trial-customers"]
+        "400":
+          $ref: '#/components/responses/SharingPolicyUpdateBadRequest'
+        "404":
+          $ref: '#/components/responses/SharingPolicyNotFound'
+        "409":
+          $ref: '#/components/responses/SharingPolicyConflict'
+        "403":
+          $ref: '#/components/responses/SharingForbidden'
+        "500":
+          $ref: '#/components/responses/SharingServerError'
+
+    delete:
+      tags:
+        - User Sharing
+      summary: Delete a sharing policy
+      description: |
+        Removes the policy and everything that depended on it: the policies its sharees issued, and
+        the per-organization-unit state of every unit that loses sight of the user.
+
+        A declared policy cannot be deleted here. Its existence belongs to the resource file that
+        declares it, so it goes away by being removed from that file.
+      responses:
+        "204":
+          description: |
+            Sharing policy deleted, or the user holds no policy under that id.
+        "400":
+          $ref: '#/components/responses/SharingPolicyDeleteBadRequest'
+        "404":
+          $ref: '#/components/responses/SharingUserNotFound'
+        "403":
+          $ref: '#/components/responses/SharingForbidden'
+        "500":
+          $ref: '#/components/responses/SharingServerError'
+
+
+  /users/{id}/overlay-rules:
+    parameters:
+      - $ref: '#/components/parameters/userIdPathParam'
+    get:
+      tags:
+        - User Sharing
+      summary: Resolve what an organization unit may do with the user
+      description: |
+        Answers for one organization unit, named in the `ouId` query parameter: whether it owns the
+        user, and which policies reached it.
+
+        An organization unit no policy reaches answers `404`, because the user is not
+        available there and so has no terms to resolve.
+      parameters:
+        - in: query
+          name: ouId
+          required: true
+          description: The organization unit to resolve for.
+          schema:
+            type: string
+          example: "acme-customer-a"
+      responses:
+        "200":
+          description: Resolved overlay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolvedOverlay'
+              examples:
+                reached:
+                  summary: An organization unit a policy reached
+                  value:
+                    ouId: "acme-customer-a"
+                    owned: false
+                    visible: true
+                    policyIds: ["0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"]
+                    rules: {}
+                owner:
+                  summary: The organization unit that owns the user
+                  value:
+                    ouId: "acme-root"
+                    owned: true
+                    visible: true
+                    policyIds: []
+                    rules: {}
+        "400":
+          $ref: '#/components/responses/OverlayRulesBadRequest'
+        "404":
+          $ref: '#/components/responses/OverlayNotResolvable'
+        "403":
+          $ref: '#/components/responses/SharingForbidden'
+        "500":
+          $ref: '#/components/responses/SharingServerError'
+
   /users/tree/{path}:
     get:
       tags:
@@ -817,7 +1185,7 @@ paths:
           example: "engineering/frontend"
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
-        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/userFilterParam'
         - $ref: '#/components/parameters/includeQueryParam'
       responses:
         "200":
@@ -1152,7 +1520,7 @@ paths:
                 email: "alice.wu@company.io"
       responses:
         "200":
-          description: User updated
+          description: User updated, with its `status`
           content:
             application/json:
               schema:
@@ -1308,6 +1676,148 @@ paths:
                   defaultValue: "Authentication is required to access this resource"
         "404":
           description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "USR-1003"
+                message:
+                  key: "error.userservice.user_not_found"
+                  defaultValue: "User not found"
+                description:
+                  key: "error.userservice.user_not_found_description"
+                  defaultValue: "The user with the specified id does not exist"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "USR-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
+  /users/me/ous:
+    get:
+      tags:
+        - Self
+      summary: List the organization units the caller can access
+      description: |
+        Lists the organization units the signed-in user can access: the one the user lives in and
+        every one the user is shared into, directly or through a reshare.
+
+        `current` is the organization unit the list is relative to: the one the caller's token was
+        issued for, or the user's own when the token names none. It is returned whatever the scope
+        or page, because the units a scope selects may not include it.
+      security:
+        - OAuth2: []
+      parameters:
+        - in: query
+          name: scope
+          required: false
+          description: |
+            Narrows the list, relative to `current`. When omitted, every accessible organization unit
+            is listed.
+            - `siblings`: `current` and the accessible units that share its parent. The parent itself
+              is not listed. When `current` is a top-level unit, its siblings are the other accessible
+              top-level units.
+          schema:
+            type: string
+            enum: [siblings]
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/offsetQueryParam'
+      responses:
+        "200":
+          description: Organization units the caller can access
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessibleOrganizationUnitListResponse'
+              examples:
+                every-unit:
+                  summary: No scope; the user lives in the Customers unit, signed in for Acme OU 1
+                  value:
+                    current: "7b6a5c4d-3e2f-4a1b-8c9d-0e1f2a3b4c5d"
+                    totalResults: 3
+                    startIndex: 1
+                    count: 3
+                    organizationUnits:
+                      - id: "4f3c2a1b-0d9e-4c8b-9a7f-6e5d4c3b2a10"
+                        handle: "customers"
+                        name: "Customers"
+                      - id: "7b6a5c4d-3e2f-4a1b-8c9d-0e1f2a3b4c5d"
+                        handle: "acme-ou-1"
+                        name: "Acme OU 1"
+                      - id: "9e8d7c6b-5a4f-4e3d-2c1b-0a9f8e7d6c5b"
+                        handle: "acme-ou-2"
+                        name: "Acme OU 2"
+                    links: []
+                siblings:
+                  summary: scope=siblings, for the same user and token
+                  value:
+                    current: "7b6a5c4d-3e2f-4a1b-8c9d-0e1f2a3b4c5d"
+                    totalResults: 2
+                    startIndex: 1
+                    count: 2
+                    organizationUnits:
+                      - id: "7b6a5c4d-3e2f-4a1b-8c9d-0e1f2a3b4c5d"
+                        handle: "acme-ou-1"
+                        name: "Acme OU 1"
+                      - id: "9e8d7c6b-5a4f-4e3d-2c1b-0a9f8e7d6c5b"
+                        handle: "acme-ou-2"
+                        name: "Acme OU 2"
+                    links: []
+        "400":
+          description: Invalid scope or pagination parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid-scope:
+                  summary: A scope this endpoint does not offer
+                  value:
+                    code: "USR-1036"
+                    message:
+                      key: "error.userservice.invalid_scope_parameter"
+                      defaultValue: "Invalid scope parameter"
+                    description:
+                      key: "error.userservice.invalid_scope_parameter_description"
+                      defaultValue: "The scope parameter, when given, must be siblings"
+                invalid-limit:
+                  summary: A limit outside its bounds
+                  value:
+                    code: "USR-1011"
+                    message:
+                      key: "error.userservice.invalid_limit_parameter"
+                      defaultValue: "Invalid pagination parameter"
+                    description:
+                      key: "error.userservice.invalid_limit_parameter_description"
+                      defaultValue: "The limit parameter must be a positive integer"
+        "401":
+          description: Unauthorized - missing or invalid authentication token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AUTH-4010"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "Authentication is required to access this resource"
+        "404":
+          description: |
+            Authenticated user not found. A token issued to an application or an agent rather than a
+            user is answered this way too.
           content:
             application/json:
               schema:
@@ -1955,7 +2465,7 @@ components:
           - display
       description: |
         Optional parameter to include additional display information in the response. The exact fields included depend on the endpoint. See each endpoint's response schema for details on which fields are enriched.
-    filterParam:
+    userFilterParam:
       in: query
       name: filter
       required: false
@@ -1979,6 +2489,327 @@ components:
         complex:
           summary: Complex filtering
           value: 'address.city eq "Mountain View"'
+    userIdPathParam:
+      in: path
+      name: id
+      required: true
+      description: User ID
+      schema:
+        type: string
+        format: uuid
+      example: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+    sharingPolicyIdPathParam:
+      in: path
+      name: policyId
+      required: true
+      description: Sharing policy ID
+      schema:
+        type: string
+      example: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+
+  responses:
+    SharingPolicyCreateBadRequest:
+      description: |
+        The policy is not one the issuing organization unit may write. The code says which kind of
+        mistake it is, and the description says what is wrong with this request in particular.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            declaredUser:
+              summary: The owner's policy of a user declared in a resource file
+              value:
+                code: "USR-1025"
+                message:
+                  key: "error.userservice.cannot_modify_declarative_resource"
+                  defaultValue: "Cannot modify declarative resource"
+                description:
+                  key: "error.userservice.cannot_modify_declarative_resource_description"
+                  defaultValue: "The user is declarative and cannot be modified or deleted"
+            noSection:
+              summary: No section stated
+              value:
+                code: "USR-1029"
+                message:
+                  key: "error.userservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed, reaches no organization unit, or states a section with fields its mode does not take: the policy reaches no organization unit"
+            fieldTheModeDoesNotTake:
+              summary: A section carrying a field its mode does not take
+              value:
+                code: "USR-1029"
+                message:
+                  key: "error.userservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed, reaches no organization unit, or states a section with fields its mode does not take: childUnits with mode all takes no units"
+            unitNamedTwice:
+              summary: An organization unit named twice, or one the issuer may not name
+              value:
+                code: "USR-1029"
+                message:
+                  key: "error.userservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_target_ou_description"
+                  defaultValue: "The target organization unit does not satisfy the policy's constraints: acme-customer-a is named more than once"
+            deploymentWideReach:
+              summary: A reach this endpoint may not create
+              value:
+                code: "USR-1037"
+                message:
+                  key: "error.userservice.deployment_wide_sharing_not_allowed"
+                  defaultValue: "Deployment-wide sharing is not allowed"
+                description:
+                  key: "error.userservice.deployment_wide_sharing_not_allowed_description"
+                  defaultValue: "A policy reaching all organization units or the roots of all other trees can only be created from a declarative resource file or an import"
+
+    SharingPolicyListBadRequest:
+      description: The page the listing asked for is not one it can return.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            invalidPage:
+              summary: A limit or offset outside its bounds, or not a number at all
+              description: |
+                A value this endpoint cannot parse and one the sharing framework refuses answer the
+                same way, so a caller sees one error for one mistake.
+              value:
+                code: "USR-1011"
+                message:
+                  key: "error.userservice.invalid_limit_parameter"
+                  defaultValue: "Invalid pagination parameter"
+                description:
+                  key: "error.userservice.invalid_limit_parameter_description"
+                  defaultValue: "The limit parameter must be a positive integer"
+
+    SharingPolicyUpdateBadRequest:
+      description: |
+        The replacement is not one this policy may become. Alongside the mistakes a create can
+        make, an edit answers for the reach the policy already has.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            noSection:
+              summary: No section stated
+              value:
+                code: "USR-1029"
+                message:
+                  key: "error.userservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed, reaches no organization unit, or states a section with fields its mode does not take: the policy reaches no organization unit"
+            fieldTheModeDoesNotTake:
+              summary: A section carrying a field its mode does not take
+              value:
+                code: "USR-1029"
+                message:
+                  key: "error.userservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed, reaches no organization unit, or states a section with fields its mode does not take: childUnits with mode all takes no units"
+            unitNamedTwice:
+              summary: An organization unit named twice, or one the issuer may not name
+              value:
+                code: "USR-1029"
+                message:
+                  key: "error.userservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_target_ou_description"
+                  defaultValue: "The target organization unit does not satisfy the policy's constraints: acme-customer-a is named more than once"
+            sectionKindChange:
+              summary: An edit that turns a section naming units into one reaching a whole group, or the reverse
+              value:
+                code: "USR-1029"
+                message:
+                  key: "error.userservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.scope_family_change_description"
+                  defaultValue: "A section naming organization units individually cannot become one reaching a whole family, or the reverse; delete the policy and issue the one you want instead"
+            declaredPolicy:
+              summary: An edit aimed at a policy a resource file declares
+              value:
+                code: "USR-1033"
+                message:
+                  key: "error.userservice.sharing_policy_declared"
+                  defaultValue: "Sharing policy is declared"
+                description:
+                  key: "error.userservice.sharing_policy_declared_description"
+                  defaultValue: "The sharing policy is declared in a resource file and cannot be changed through the API"
+
+    SharingPolicyDeleteBadRequest:
+      description: |
+        The policy exists but is not this endpoint's to remove. A policy that is simply absent
+        answers 204, because a delete says what the state should be afterwards.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            declaredPolicy:
+              summary: A delete aimed at a policy a resource file declares
+              value:
+                code: "USR-1033"
+                message:
+                  key: "error.userservice.sharing_policy_declared"
+                  defaultValue: "Sharing policy is declared"
+                description:
+                  key: "error.userservice.sharing_policy_declared_description"
+                  defaultValue: "The sharing policy is declared in a resource file and cannot be changed through the API"
+
+    OverlayRulesBadRequest:
+      description: The request does not say which organization unit to resolve for.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            missingOuId:
+              summary: The ouId query parameter is absent or empty
+              value:
+                code: "USR-1035"
+                message:
+                  key: "error.userservice.missing_ou_id_parameter"
+                  defaultValue: "Missing required parameter"
+                description:
+                  key: "error.userservice.missing_ou_id_parameter_description"
+                  defaultValue: "The 'ouId' query parameter is required"
+
+    SharingUserNotFound:
+      description: No such user
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "USR-1003"
+            message:
+              key: "error.userservice.user_not_found"
+              defaultValue: "User not found"
+            description:
+              key: "error.userservice.user_not_found_description"
+              defaultValue: "The user with the specified id does not exist"
+
+    OverlayNotResolvable:
+      description: |
+        No such user, or no sharing policy reaches the organization unit, so the user
+        is not available there and has no terms to resolve.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            notShared:
+              summary: An organization unit no policy reaches
+              value:
+                code: "USR-1034"
+                message:
+                  key: "error.userservice.user_not_shared_to_ou"
+                  defaultValue: "User is not shared to the organization unit"
+                description:
+                  key: "error.userservice.user_not_shared_to_ou_description"
+                  defaultValue: "No sharing policy reaches the specified organization unit, so the user is not available there"
+            noSuchUser:
+              summary: No such user
+              value:
+                code: "USR-1003"
+                message:
+                  key: "error.userservice.user_not_found"
+                  defaultValue: "User not found"
+                description:
+                  key: "error.userservice.user_not_found_description"
+                  defaultValue: "The user with the specified id does not exist"
+
+    SharingPolicyNotFound:
+      description: No such sharing policy on this user
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "USR-1030"
+            message:
+              key: "error.userservice.sharing_policy_not_found"
+              defaultValue: "Sharing policy not found"
+            description:
+              key: "error.userservice.sharing_policy_not_found_description"
+              defaultValue: "The user has no sharing policy with the specified id"
+
+    SharingPolicyConflict:
+      description: |
+        The organization unit already holds a policy for this user, or the policy moved
+        since it was read.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            alreadyExists:
+              summary: A second policy for the same organization unit
+              value:
+                code: "USR-1031"
+                message:
+                  key: "error.userservice.sharing_policy_exists"
+                  defaultValue: "Sharing policy already exists"
+                description:
+                  key: "error.userservice.sharing_policy_exists_description"
+                  defaultValue: "This organization unit already has a sharing policy for the user; edit it instead"
+            staleVersion:
+              summary: An edit against a stale version
+              value:
+                code: "USR-1032"
+                message:
+                  key: "error.userservice.sharing_policy_version_mismatch"
+                  defaultValue: "Sharing policy version mismatch"
+                description:
+                  key: "error.userservice.sharing_policy_version_mismatch_description"
+                  defaultValue: "The sharing policy changed since it was read; read it again and retry the edit"
+
+    SharingServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "USR-5000"
+            message:
+              key: "error.internal_server_error"
+              defaultValue: "Internal server error"
+            description:
+              key: "error.internal_server_error_description"
+              defaultValue: "An unexpected error occurred while processing the request"
+
+    SharingForbidden:
+      description: |
+        The caller may not act for the organization unit the request concerns: the initiating
+        organization unit for a create, edit, or delete, and the user's own unit or the policy's
+        initiating unit for a read.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "SSE-4030"
+            message:
+              key: "error.unauthorized"
+              defaultValue: "Unauthorized"
+            description:
+              key: "error.unauthorized_description"
+              defaultValue: "The caller is not authorized to perform this operation"
+
   schemas:
     ResourceUsage:
       type: object
@@ -2074,6 +2905,154 @@ components:
           type: boolean
           readOnly: true
           description: "Whether the user is declarative and cannot be modified or deleted by clients."
+        status:
+          $ref: '#/components/schemas/UserAccessStatus'
+        lastLoginAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: |
+            When the user last signed in, including session reuse. Set by the server and never
+            accepted on a write.
+
+            Absent until recorded. Recording is off for users unless
+            `accountAccess.user.recordLastLogin` is enabled, and the value can lag the latest
+            sign-in by up to `accountAccess.user.lastLoginResolutionSeconds` (one hour by default).
+            Use it to find inactive accounts, not to audit individual sign-ins.
+          example: "2026-09-09T18:22:04Z"
+
+    UserAccessStatus:
+      type: object
+      readOnly: true
+      description: |
+        The user's effective access status and the reason for it. Computed when the user is read
+        or updated, and never accepted on a write.
+      properties:
+        value:
+          type: string
+          readOnly: true
+          enum: [ACTIVE, LOCKED, SUSPENDED]
+          description: |
+            `ACTIVE`, `LOCKED` or `SUSPENDED`. When the user is both suspended and locked,
+            `SUSPENDED` is reported.
+
+            `SUSPENDED` is an administrative hold placed by the suspend flow. While suspended, the
+            user cannot authenticate, use existing sessions, get new or refreshed tokens, or recover
+            the account, but the record can still be updated. The unsuspend flow removes the
+            suspension and leaves the user `LOCKED` until self-service recovery or the unlock flow
+            clears the lock.
+
+            `LOCKED` is a hold after repeated failed sign-ins or after a suspension is released.
+            The suspension release lock does not expire, even when automatic locking is disabled.
+            An automatic lock does not expire when its duration is `0` or it forms at
+            `maxConsecutiveFailures`; other automatic locks expire on their own. Self-service
+            recovery with an unlock step or the administration unlock flow clears a lock earlier.
+          example: "ACTIVE"
+        details:
+          type: object
+          readOnly: true
+          description: |
+            Why the status applies and how it is cleared. Absent for `ACTIVE`.
+
+            An authentication refusal states only that the account is locked or suspended. The
+            locked methods, expiry times, and operator note are returned only here, to callers
+            allowed to read the user.
+          properties:
+            reason:
+              type: string
+              readOnly: true
+              enum: [FAILED_ATTEMPTS, SUSPENSION_RELEASE_LOCK, ADMINISTRATIVE_SUSPENSION]
+              description: |
+                What caused the status. `FAILED_ATTEMPTS` is an automatic lock after repeated failed
+                sign-ins. `SUSPENSION_RELEASE_LOCK` is the account-wide lock the unsuspend flow
+                leaves, which does not expire. `ADMINISTRATIVE_SUSPENSION` is a suspension placed by
+                an operator.
+
+                One reason covers every entry in `lockedMethods`. A suspension release lock is never
+                reported together with authentication method locks.
+              example: "FAILED_ATTEMPTS"
+            since:
+              type: string
+              format: date-time
+              readOnly: true
+              description: When the operator placed the hold. Absent for an automatic lock.
+            operatorNote:
+              type: string
+              readOnly: true
+              maxLength: 100
+              description: |
+                The note the operator entered when placing the hold. Absent when none was entered.
+                Never included in an authentication refusal or in `/users/me` responses.
+              example: "Credential exposure reported by the security team"
+            lockedMethods:
+              type: array
+              readOnly: true
+              description: |
+                The automatic locks currently in force, in a stable order. Absent unless the status
+                is `LOCKED`.
+
+                With `lockGranularity` set to `authentication_method`, each method locks separately,
+                so several entries can be present, each with its own expiry. An account-wide lock is
+                reported as a single entry with the method `entity`.
+              items:
+                type: object
+                properties:
+                  method:
+                    type: string
+                    readOnly: true
+                    description: |
+                      The locked authentication method, such as `credential`, or `entity` when every
+                      method is locked.
+                    example: "credential"
+                  expiresAt:
+                    type: string
+                    format: date-time
+                    readOnly: true
+                    description: |
+                      When the lock expires. **Absent when it does not expire**: self-service
+                      recovery or the unlock flow clears it.
+                    example: "2026-09-08T10:15:00Z"
+
+    AccessibleOrganizationUnit:
+      type: object
+      required: [id, handle, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        handle:
+          type: string
+        name:
+          type: string
+        logoUrl:
+          type: string
+          format: uri
+
+    AccessibleOrganizationUnitListResponse:
+      type: object
+      required: [current, totalResults, startIndex, count, organizationUnits, links]
+      properties:
+        current:
+          type: string
+          format: uuid
+          description: The organization unit the list is relative to.
+        totalResults:
+          type: integer
+          description: "Number of results that match the listing operation."
+        startIndex:
+          type: integer
+          description: "Index of the first element of the page, which will be equal to offset + 1."
+        count:
+          type: integer
+          description: "Number of elements in the returned page."
+        organizationUnits:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccessibleOrganizationUnit'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/Link'
 
     Link:
       type: object
@@ -2259,6 +3238,12 @@ components:
             display:
               type: string
               description: "The schema attribute to use as the human-readable display name for users of this type"
+            primaryEmail:
+              type: string
+              description: "Top-level email attribute used as the primary contact. Defaults to the only top-level email attribute; stays unset when there are several and none is selected. Must reference an email type."
+            primaryMobile:
+              type: string
+              description: "Top-level mobile attribute used as the primary contact. Defaults to the only top-level mobile attribute; stays unset when there are several and none is selected. Must reference a mobile type."
           additionalProperties: false
         schema:
           type: object
@@ -2266,12 +3251,12 @@ components:
           additionalProperties:
             oneOf:
               - type: object
-                description: "Leaf property - string or number"
+                description: "Leaf property - string, email, mobile, or number"
                 required: [type]
                 properties:
                   type:
                     type: string
-                    enum: ["string", "number"]
+                    enum: ["string", "email", "mobile", "number"]
                     description: "Data type of the property"
                   required:
                     type: boolean
@@ -2284,12 +3269,12 @@ components:
                   credential:
                     type: boolean
                     default: false
-                    description: "Whether this property should be treated as a credential attribute"
+                    description: "Whether this property should be treated as a credential attribute. Not supported for email or mobile types."
                   enum:
                     type: array
                     items:
                       type: string
-                    description: "List of allowed values for this property"
+                    description: "List of allowed values for this property. Not supported for email or mobile types."
                   regex:
                     type: string
                     description: "Regular expression pattern for validating the property value"
@@ -2340,16 +3325,20 @@ components:
                   items:
                     oneOf:
                       - type: object
-                        description: "Array of strings or numbers"
+                        description: "Array of strings, emails, mobiles, or numbers"
                         required: [type]
                         properties:
                           type:
                             type: string
-                            enum: ["string", "number"]
+                            enum: ["string", "email", "mobile", "number"]
                           enum:
                             type: array
                             items:
                               type: string
+                            description: "List of allowed values. Not supported for email or mobile types."
+                          regex:
+                            type: string
+                            description: "Custom validation pattern. Contact types use their default when omitted or empty."
                         additionalProperties: false
                       - type: object
                         description: "Array of booleans"
@@ -2459,6 +3448,12 @@ components:
                   display:
                     type: string
                     description: "The schema attribute to use as the human-readable display name for users of this type"
+                  primaryEmail:
+                    type: string
+                    description: "Top-level email attribute used as the primary contact. Defaults to the only top-level email attribute; stays unset when there are several and none is selected. Must reference an email type."
+                  primaryMobile:
+                    type: string
+                    description: "Top-level mobile attribute used as the primary contact. Defaults to the only top-level mobile attribute; stays unset when there are several and none is selected. Must reference a mobile type."
                 additionalProperties: false
               isReadOnly:
                 type: boolean
@@ -2536,6 +3531,343 @@ components:
           description: "JSON Schema definition for the user type"
           additionalProperties:
             $ref: "#/components/schemas/UserType/properties/schema/additionalProperties"
+
+    SharingPolicyRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        One organization unit's decision about this user. A policy states up to two
+        sections through this endpoint, and at least one: `childUnits` for the organization units
+        beneath the issuer, and `otherTreeRoots` for the roots of other trees. Each section either
+        reaches a whole group or names the organization units it reaches, never both.
+
+        A user shared with nobody has no policy at all.
+      anyOf:
+        - required: [childUnits]
+        - required: [otherTreeRoots]
+      properties:
+        initiatingOuId:
+          type: string
+          description: |
+            The organization unit whose decision this is. Omitted means the user's owner. A
+            unit other than the owner may only issue a policy where the user already reached
+            it and stopped there, and such a policy may state `childUnits` only.
+          example: "acme-root"
+        childUnits:
+          $ref: '#/components/schemas/ChildUnits'
+        otherTreeRoots:
+          $ref: '#/components/schemas/OtherTreeRootsSelected'
+        version:
+          type: integer
+          description: |
+            The policy version the caller believes it is editing. Required on an edit, ignored on a
+            create.
+          example: 1
+
+    SharingPolicyUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      description: |
+        A replacement for a policy's sections. Whose decision the policy is cannot change, so an
+        edit names no `initiatingOuId`. It is held to the rules of a create, with these differences.
+
+        Each section keeps its kind. A section that reaches a whole group (`mode: all`, or
+        `allUnits`) stays one: its `excludedOuIds` can be added to or removed from, but the section
+        cannot be dropped or turned into one that names units. That is also how a policy that
+        already reaches every organization unit, or the root of every other tree, keeps that reach
+        here although a create may not state it. A section that names units may add or drop units,
+        change a unit's `reach`, or be removed, but cannot become one that reaches a whole group.
+
+        An edit cannot reach past an organization unit that has already shared the user on. Widening
+        that unit from `unit` to `subtree` is refused until the policy it issued is removed.
+      anyOf:
+        - required: [allUnits]
+        - required: [childUnits]
+        - required: [otherTreeRoots]
+      properties:
+        allUnits:
+          $ref: '#/components/schemas/AllUnits'
+        childUnits:
+          $ref: '#/components/schemas/ChildUnits'
+        otherTreeRoots:
+          $ref: '#/components/schemas/OtherTreeRoots'
+        version:
+          type: integer
+          description: |
+            The policy version the caller believes it is editing. An edit against any other version
+            is refused, so a caller that has not seen the current one cannot overwrite it.
+          example: 1
+
+    AllUnits:
+      type: object
+      additionalProperties: false
+      description: |
+        Every organization unit in the deployment, at any depth, including units created later. It
+        stands alone: a policy that states it states neither `childUnits` nor `otherTreeRoots`.
+
+        A reach not bounded by the issuer's own position in the tree is a deployment decision, so
+        it is written where such decisions are reviewed: a resource file, or a document imported
+        from one. A create through this API may not state it. A policy written that way still
+        reads back through these endpoints, and an edit restates it to rewrite its exclusions.
+      properties:
+        excludedOuIds:
+          type: array
+          description: |
+            Organization units withheld from the section, each taking everything beneath it out of
+            reach as well. Any organization unit may be excluded.
+          items:
+            type: string
+          example: ["acme-trial-customers"]
+
+    ChildUnits:
+      description: |
+        The organization units beneath the issuer. Exactly one of the two shapes below, chosen by
+        `mode`.
+      oneOf:
+        - $ref: '#/components/schemas/ChildUnitsAll'
+        - $ref: '#/components/schemas/ChildUnitsSelected'
+      discriminator:
+        propertyName: mode
+        mapping:
+          all: '#/components/schemas/ChildUnitsAll'
+          selected: '#/components/schemas/ChildUnitsSelected'
+
+    ChildUnitsAll:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      description: Everything beneath the issuing organization unit, at any depth, including units created later.
+      properties:
+        mode:
+          type: string
+          enum: [all]
+        excludedOuIds:
+          type: array
+          description: |
+            Organization units withheld from the section, each taking everything beneath it out of
+            reach as well. Only organization units directly beneath the issuer may be excluded.
+          items:
+            type: string
+          example: ["acme-trial-customers"]
+
+    ChildUnitsSelected:
+      type: object
+      additionalProperties: false
+      required: [mode, units]
+      description: |
+        Named organization units directly beneath the issuer. It takes no `excludedOuIds`: an
+        organization unit is withheld by leaving it out of `units`.
+      properties:
+        mode:
+          type: string
+          enum: [selected]
+        units:
+          type: array
+          minItems: 1
+          description: The organization units reached. An organization unit is listed only once in a policy.
+          items:
+            $ref: '#/components/schemas/ChildUnit'
+
+    ChildUnit:
+      type: object
+      additionalProperties: false
+      required: [ouId, reach]
+      properties:
+        ouId:
+          type: string
+          description: A direct child of the issuing organization unit.
+          example: "acme-customer-a"
+        reach:
+          type: string
+          enum: [unit, subtree]
+          description: |
+            How far the user carries from the named organization unit. `unit` reaches it and
+            nothing below it, which leaves it free to pass the user on itself. `subtree`
+            reaches it and everything below it at any depth.
+          example: unit
+
+    OtherTreeRoots:
+      description: |
+        The root organization units of other trees, as a policy carries them. Every shape a create
+        may send, plus the one that only a resource file or an imported document may introduce.
+
+        An edit sends this shape rather than the create's, because a policy that already reaches
+        the root of every other tree has to be able to restate that to rewrite its exclusions.
+      oneOf:
+        - $ref: '#/components/schemas/OtherTreeRootsSelected'
+        - $ref: '#/components/schemas/OtherTreeRootsAll'
+      discriminator:
+        propertyName: mode
+        mapping:
+          selected: '#/components/schemas/OtherTreeRootsSelected'
+          all: '#/components/schemas/OtherTreeRootsAll'
+
+    OtherTreeRootsSelected:
+      type: object
+      additionalProperties: false
+      required: [mode, units]
+      description: |
+        Named root organization units of other trees, and nothing below them. Owner only. Another
+        tree is reached at its root alone; that root passes the user on within its own tree.
+        The root of the owner's own tree is not another tree and cannot be named.
+
+        When the owner sits below a root, this additionally requires
+        `resource_sharing.allow_child_ou_cross_tree_sharing`.
+      properties:
+        mode:
+          type: string
+          enum: [selected]
+        units:
+          type: array
+          minItems: 1
+          description: The root organization units reached. An organization unit is listed only once in a policy.
+          items:
+            $ref: '#/components/schemas/RootUnit'
+
+    OtherTreeRootsAll:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      description: |
+        The root organization unit of every other tree, including trees created later. Only a
+        resource file or an imported document may introduce it, so a create never sends it.
+      properties:
+        mode:
+          type: string
+          enum: [all]
+        excludedOuIds:
+          type: array
+          description: Root organization units withheld from the section, and with them their trees.
+          items:
+            type: string
+          example: ["partner-root"]
+
+    RootUnit:
+      type: object
+      additionalProperties: false
+      required: [ouId]
+      properties:
+        ouId:
+          type: string
+          description: The root organization unit of another tree.
+          example: "partner-root"
+
+    SharingPolicy:
+      type: object
+      description: |
+        A recorded sharing policy. Its sections come back in the shape a request states them in, so
+        an edit copies them, with `version`, into a `SharingPolicyUpdateRequest`. The other fields
+        are set by the server and are refused in a request body. A section the policy does not state
+        is left out.
+      properties:
+        id:
+          type: string
+          description: The policy's own identifier.
+          example: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+        initiatingOuId:
+          type: string
+          description: |
+            The organization unit whose decision this policy is. The owning organization unit is
+            not repeated here: it belongs to the user, which this path already names.
+          example: "acme-root"
+        stage:
+          type: string
+          enum: [share, reshare]
+          description: "`share` when the owner issued it, `reshare` when a sharee did."
+        parentPolicyId:
+          type: string
+          description: The policy that made this one's issuer able to see the user. Empty for an owner-issued policy.
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: Indicates if the policy is defined in declarative configuration and cannot be modified.
+        version:
+          type: integer
+          description: Bumped on every edit, and carried back on the next one.
+          example: 1
+        allUnits:
+          $ref: '#/components/schemas/AllUnits'
+        childUnits:
+          $ref: '#/components/schemas/ChildUnits'
+        otherTreeRoots:
+          $ref: '#/components/schemas/OtherTreeRoots'
+
+    SharingPolicyListResponse:
+      type: object
+      properties:
+        totalResults:
+          type: integer
+          description: How many policies the user has, not how many this page holds.
+          example: 2
+        startIndex:
+          type: integer
+          description: The one-based position of the first policy in this page.
+          example: 1
+        count:
+          type: integer
+          description: How many policies this page holds.
+          example: 2
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/SharingPolicy'
+        links:
+          type: array
+          description: Links to the first, previous, next and last pages, where they exist.
+          items:
+            $ref: '#/components/schemas/Link'
+          example:
+            - href: "/users/0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10/sharing-policies?offset=30&limit=30"
+              rel: "next"
+
+    ResolvedOverlay:
+      type: object
+      description: What one organization unit may do with the user.
+      properties:
+        ouId:
+          type: string
+          example: "acme-customer-a"
+        owned:
+          type: boolean
+          description: Whether the organization unit owns the user rather than being shared it.
+        visible:
+          type: boolean
+          description: |
+            Whether the organization unit can see the user at all. This is what decides
+            whether it may be named as the accessing organization unit on a token request.
+        policyIds:
+          type: array
+          description: Every policy that contributed, so an answer is traceable to its inputs.
+          items:
+            type: string
+        rules:
+          type: object
+          description: |
+            The effective rule per templated field: which of the user's fields the
+            organization unit may override, and on what terms. Always empty for now, because a
+            user declares no templated fields yet.
+          additionalProperties:
+            $ref: '#/components/schemas/OverlayRule'
+
+    OverlayRule:
+      type: object
+      description: What a reached organization unit may do with one field.
+      properties:
+        editable:
+          type: boolean
+        value:
+          type: array
+          items:
+            type: string
+        allowedValues:
+          type: array
+          items:
+            type: string
+        excludedValues:
+          type: array
+          items:
+            type: string
 
     Error:
       type: object

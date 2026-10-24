@@ -22,7 +22,7 @@ import {
 
 Use this guide to add <ProductName /> authentication to a Vue 3 application using the `@thunderid/vue` SDK.
 
-<SdkQuickstartDownload packageId="vue" icon={<VueLogo size={22} />} promptFlow="redirect-based" />
+<SdkQuickstartDownload packageId="vue" sample="quickstarts/vue" icon={<VueLogo size={22} />} promptFlow="redirect-based" />
 
 <TutorialHero>
 
@@ -61,13 +61,13 @@ Once it's running, the console is available at [https://localhost:8090/console](
     :::
 
 2. Navigate to **Applications**.
-3. Click **Add Application**.
+3. Click **Add application**.
 4. From the **Choose a type** page, select **Vue**.
 5. Enter a name (e.g. `My Vue App`).
 6. Click **Create**.
 7. Select how you want to sign in users (e.g., email/password, social login, etc.).
 8. Select Theme settings and other options.
-9. In the Configuration step, click on the banner to add Vite's development server URL to the list of **Authorized Redirect URIs** & **CORS Allowed Origins**. The default is `http://localhost:5173` (adjust the port if your dev server uses a different one).
+9. In the Configuration step, click on the banner to add Vite's development server URL to the list of **Authorized redirect URIs** & **CORS allowed origins**. The default is `http://localhost:5173` (adjust the port if your dev server uses a different one).
 
 :::note Note
 Copy the **Client ID** from the **General** tab. You'll need it when configuring the SDK.

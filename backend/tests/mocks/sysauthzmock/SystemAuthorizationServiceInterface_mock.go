@@ -19,10 +19,19 @@ func NewSystemAuthorizationServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *SystemAuthorizationServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &SystemAuthorizationServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -68,7 +77,7 @@ type SystemAuthorizationServiceInterfaceMock_CanGrantMembership_Call struct {
 //   - ctx context.Context
 //   - principalType sysauthz.PrincipalType
 //   - containerID string
-func (_e *SystemAuthorizationServiceInterfaceMock_Expecter) CanGrantMembership(ctx interface{}, principalType interface{}, containerID interface{}) *SystemAuthorizationServiceInterfaceMock_CanGrantMembership_Call {
+func (_e *SystemAuthorizationServiceInterfaceMock_Expecter) CanGrantMembership(ctx any, principalType any, containerID any) *SystemAuthorizationServiceInterfaceMock_CanGrantMembership_Call {
 	return &SystemAuthorizationServiceInterfaceMock_CanGrantMembership_Call{Call: _e.mock.On("CanGrantMembership", ctx, principalType, containerID)}
 }
 
@@ -132,7 +141,7 @@ type SystemAuthorizationServiceInterfaceMock_CanGrantPermissions_Call struct {
 // CanGrantPermissions is a helper method to define mock.On call
 //   - ctx context.Context
 //   - granted security.PermissionSet
-func (_e *SystemAuthorizationServiceInterfaceMock_Expecter) CanGrantPermissions(ctx interface{}, granted interface{}) *SystemAuthorizationServiceInterfaceMock_CanGrantPermissions_Call {
+func (_e *SystemAuthorizationServiceInterfaceMock_Expecter) CanGrantPermissions(ctx any, granted any) *SystemAuthorizationServiceInterfaceMock_CanGrantPermissions_Call {
 	return &SystemAuthorizationServiceInterfaceMock_CanGrantPermissions_Call{Call: _e.mock.On("CanGrantPermissions", ctx, granted)}
 }
 
@@ -203,7 +212,7 @@ type SystemAuthorizationServiceInterfaceMock_GetAccessibleResources_Call struct 
 //   - ctx context.Context
 //   - action security.Action
 //   - resourceType security.ResourceType
-func (_e *SystemAuthorizationServiceInterfaceMock_Expecter) GetAccessibleResources(ctx interface{}, action interface{}, resourceType interface{}) *SystemAuthorizationServiceInterfaceMock_GetAccessibleResources_Call {
+func (_e *SystemAuthorizationServiceInterfaceMock_Expecter) GetAccessibleResources(ctx any, action any, resourceType any) *SystemAuthorizationServiceInterfaceMock_GetAccessibleResources_Call {
 	return &SystemAuthorizationServiceInterfaceMock_GetAccessibleResources_Call{Call: _e.mock.On("GetAccessibleResources", ctx, action, resourceType)}
 }
 
@@ -277,7 +286,7 @@ type SystemAuthorizationServiceInterfaceMock_IsActionAllowed_Call struct {
 //   - ctx context.Context
 //   - action security.Action
 //   - actionCtx *sysauthz.ActionContext
-func (_e *SystemAuthorizationServiceInterfaceMock_Expecter) IsActionAllowed(ctx interface{}, action interface{}, actionCtx interface{}) *SystemAuthorizationServiceInterfaceMock_IsActionAllowed_Call {
+func (_e *SystemAuthorizationServiceInterfaceMock_Expecter) IsActionAllowed(ctx any, action any, actionCtx any) *SystemAuthorizationServiceInterfaceMock_IsActionAllowed_Call {
 	return &SystemAuthorizationServiceInterfaceMock_IsActionAllowed_Call{Call: _e.mock.On("IsActionAllowed", ctx, action, actionCtx)}
 }
 
@@ -327,7 +336,7 @@ type SystemAuthorizationServiceInterfaceMock_SetOUHierarchyResolver_Call struct 
 
 // SetOUHierarchyResolver is a helper method to define mock.On call
 //   - resolver sysauthz.OUHierarchyResolver
-func (_e *SystemAuthorizationServiceInterfaceMock_Expecter) SetOUHierarchyResolver(resolver interface{}) *SystemAuthorizationServiceInterfaceMock_SetOUHierarchyResolver_Call {
+func (_e *SystemAuthorizationServiceInterfaceMock_Expecter) SetOUHierarchyResolver(resolver any) *SystemAuthorizationServiceInterfaceMock_SetOUHierarchyResolver_Call {
 	return &SystemAuthorizationServiceInterfaceMock_SetOUHierarchyResolver_Call{Call: _e.mock.On("SetOUHierarchyResolver", resolver)}
 }
 
@@ -367,7 +376,7 @@ type SystemAuthorizationServiceInterfaceMock_SetPermissionResolver_Call struct {
 
 // SetPermissionResolver is a helper method to define mock.On call
 //   - resolver sysauthz.PermissionResolver
-func (_e *SystemAuthorizationServiceInterfaceMock_Expecter) SetPermissionResolver(resolver interface{}) *SystemAuthorizationServiceInterfaceMock_SetPermissionResolver_Call {
+func (_e *SystemAuthorizationServiceInterfaceMock_Expecter) SetPermissionResolver(resolver any) *SystemAuthorizationServiceInterfaceMock_SetPermissionResolver_Call {
 	return &SystemAuthorizationServiceInterfaceMock_SetPermissionResolver_Call{Call: _e.mock.On("SetPermissionResolver", resolver)}
 }
 

@@ -17,9 +17,16 @@ import {
 } from '@wso2/oxygen-ui';
 import {type JSX, type ReactNode, useCallback, useMemo} from 'react';
 import {useTranslation} from 'react-i18next';
+import KeyValuePairsField from './KeyValuePairsField';
 import MaskedSecretField from './MaskedSecretField';
 import type {OutboundAuthField, OutboundAuthMethod} from '../models/connection';
-import {AUTH_TYPE_FIELD, authPropertyField, AUTH_TYPE_NONE} from '../utils/connectionFormMapping';
+import {
+  AUTH_ADDITIONAL_PROPERTIES_FIELD,
+  AUTH_TYPE_FIELD,
+  authenticationAdditionalPropertiesError,
+  authPropertyField,
+  AUTH_TYPE_NONE,
+} from '../utils/connectionFormMapping';
 
 interface AuthenticationSectionProps {
   /** The methods the vendor supports, as the server described them. */
@@ -96,6 +103,8 @@ export default function AuthenticationSection({
   if (methods.length === 0) {
     return null;
   }
+
+  const additionalPropertiesError: string | undefined = authenticationAdditionalPropertiesError(values, methods);
 
   const renderField = (field: OutboundAuthField): ReactNode => {
     const name: string = authPropertyField(field.key);
@@ -188,6 +197,29 @@ export default function AuthenticationSection({
         {selected?.fields?.map((field) => (
           <Box key={field.key}>{renderField(field)}</Box>
         ))}
+
+        {selected?.additionalProperties && (
+          <KeyValuePairsField
+            id={`connection-field-${AUTH_ADDITIONAL_PROPERTIES_FIELD}`}
+            label={labelFor(selected.additionalProperties.displayName, selected.type)}
+            value={values[AUTH_ADDITIONAL_PROPERTIES_FIELD] ?? ''}
+            format="pairs"
+            onChange={(next) => onFieldChange(AUTH_ADDITIONAL_PROPERTIES_FIELD, next)}
+            error={
+              additionalPropertiesError
+                ? t(
+                    additionalPropertiesError,
+                    additionalPropertiesError === 'connections:validation.keyValuePair'
+                      ? 'Enter both a name and value for every header.'
+                      : 'Use each header name only once. Names are not case-sensitive.',
+                  )
+                : undefined
+            }
+            maskValues={Boolean(selected.additionalProperties.credential)}
+            addLabel={t('form.fields.httpHeaders.add', 'Add header')}
+            hasStoredValues={mode === 'edit'}
+          />
+        )}
       </Stack>
     </Box>
   );

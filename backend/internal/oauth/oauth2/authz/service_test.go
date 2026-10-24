@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package authz
@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
@@ -35,6 +36,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/flowexecmock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/jtimock"
@@ -491,6 +493,38 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_De
 	suite.Require().NotNil(captured)
 	assert.Equal(suite.T(), "https://rs-default.example.com",
 		captured.RuntimeData[flowcm.RuntimeKeyResourceServerIdentifier])
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_StripsSensitiveParams() {
+	app := suite.testApp()
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+	suite.mockValidator.On("validateInitialAuthorizationRequest", mock.Anything, mock.Anything, app).
+		Return(false, "", "")
+
+	var captured *flowexec.FlowInitContext
+	suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, ic *flowexec.FlowInitContext) { captured = ic }).
+		Return("test-flow-id", nil)
+	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
+
+	msg := suite.testMsg()
+	msg.RequestQueryParams["client_secret"] = []string{"supersecret"}
+	msg.RequestHeaders = map[string][]string{
+		"User-Agent":    {"curl/8.0"},
+		"Authorization": {"Bearer secret"},
+	}
+
+	svc := suite.newService()
+	_, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), msg)
+
+	suite.Require().Nil(authErr)
+	suite.Require().NotNil(captured)
+	suite.Require().NotNil(captured.InitiatorRequest)
+	// Credential query params and headers must not surface through the captured initiator request.
+	suite.NotContains(captured.InitiatorRequest.QueryParams, "client_secret")
+	suite.Empty(http.Header(captured.InitiatorRequest.Headers).Get("Authorization"))
+	// Non-sensitive values are preserved.
+	suite.Equal("curl/8.0", http.Header(captured.InitiatorRequest.Headers).Get("User-Agent"))
 }
 
 func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_NoResourceNoDefaultRejects() {
@@ -2725,4 +2759,61 @@ func (suite *AuthorizeServiceTestSuite) TestCreateAuthorizationCode_NoSessionIDW
 	assert.NoError(suite.T(), err)
 	assert.Empty(suite.T(), code.SessionID)
 	assert.NotEmpty(suite.T(), code.TokenFamilyID, "the tfid fallback is unaffected")
+}
+
+// An application under an administrative hold is refused at the browser funnel. The error is shown
+// on the server rather than sent to the redirect_uri (RFC 6749), and is not a server_error.
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_HeldApplication() {
+	app := suite.testApp()
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	governance.EXPECT().EvaluateAccess(mock.Anything, app.ID, providers.AccessPlaneApplication,
+		providers.AuthenticationMethod("")).Return(providers.AccessDecision{
+		Reason: providers.AccessRefusalReasonSuspended}, nil)
+
+	svc := suite.newService()
+	svc.governance = governance
+
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), suite.testMsg())
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), authErr)
+	assert.False(suite.T(), authErr.SendErrorToClient,
+		"a held application's rejection must never be redirected to its own callback")
+	assert.Empty(suite.T(), authErr.ClientRedirectURI)
+	assert.Equal(suite.T(), oauth2const.ErrorUnauthorizedClient, authErr.Code)
+	assert.Contains(suite.T(), authErr.Message, "currently unavailable")
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_GovernanceFaultIsAServerError() {
+	app := suite.testApp()
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	governance.EXPECT().EvaluateAccess(mock.Anything, app.ID, providers.AccessPlaneApplication,
+		providers.AuthenticationMethod("")).Return(providers.AccessDecision{}, &tidcommon.InternalServerError)
+
+	svc := suite.newService()
+	svc.governance = governance
+
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), suite.testMsg())
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), authErr)
+	assert.Equal(suite.T(), oauth2const.ErrorServerError, authErr.Code)
+	assert.False(suite.T(), authErr.SendErrorToClient)
+}
+
+// An unregistered client id is reported as a bad request rather than as a server fault, which is
+// what it always was.
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_UnknownClientIsNotAServerError() {
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").
+		Return(nil, nil)
+
+	svc := suite.newService()
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), suite.testMsg())
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), authErr)
+	assert.Equal(suite.T(), oauth2const.ErrorInvalidRequest, authErr.Code)
+	assert.False(suite.T(), authErr.SendErrorToClient)
 }

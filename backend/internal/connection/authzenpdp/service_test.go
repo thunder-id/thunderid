@@ -15,6 +15,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -235,6 +236,114 @@ func TestServiceRejectsInvalidConnectionBeforePersistence(t *testing.T) {
 	require.NotNil(t, updateErr)
 	require.Zero(t, store.createCalls)
 	require.Zero(t, store.updateCalls)
+}
+
+func TestServiceRejectsMaskedAPIKeyHeaderBeforePersistence(t *testing.T) {
+	store := &serviceStoreStub{}
+	service := newTestAuthZENPDPService(store, config.AuthZENPDPConfig{})
+	request := ConnectionRequest{
+		Name:     "AuthZEN PDP",
+		Endpoint: "https://pdp.example.com/evaluation",
+		Authentication: &outboundauth.Authentication{
+			Type:       string(outboundauth.TypeAPIKey),
+			Properties: map[string]string{"X-API-Key": "******"},
+		},
+	}
+
+	_, createErr := service.CreateAuthZENPDPConnection(context.Background(), request)
+	_, updateErr := service.UpdateAuthZENPDPConnection(context.Background(), "pdp-1", request)
+
+	require.Equal(t, "CON-1013", createErr.Code)
+	require.Equal(t, "CON-1013", updateErr.Code)
+	require.Zero(t, store.createCalls)
+	require.Zero(t, store.updateCalls)
+}
+
+func TestServiceUpdateRejectsRemoteHTTPForStoredAuthentication(t *testing.T) {
+	connection := AuthZENPDPConnection{
+		ID:       "pdp-1",
+		Name:     "AuthZEN PDP",
+		Endpoint: "https://pdp.example.com/evaluation",
+	}
+	connection.AuthenticationProperties = testAuthProperties(t, outboundauth.Authentication{
+		Type: string(outboundauth.TypeBearer), Properties: map[string]string{"token": "secret"},
+	})
+	store := &serviceStoreStub{connection: connection}
+	service := newTestAuthZENPDPService(store, config.AuthZENPDPConfig{})
+
+	_, svcErr := service.UpdateAuthZENPDPConnection(context.Background(), "pdp-1", ConnectionRequest{
+		Name:     "AuthZEN PDP",
+		Endpoint: "http://pdp.example.com/evaluation",
+		Authentication: &outboundauth.Authentication{
+			Type: string(outboundauth.TypeBearer), Properties: map[string]string{"token": "secret"},
+		},
+	})
+
+	require.NotNil(t, svcErr)
+	require.Zero(t, store.updateCalls)
+}
+
+func TestServiceUpdateKeepsOmittedAuthenticationOnlyForSameEndpoint(t *testing.T) {
+	connection := AuthZENPDPConnection{
+		ID: "pdp-1", Name: "AuthZEN PDP", Endpoint: "https://pdp.example.com/evaluation",
+	}
+	connection.AuthenticationProperties = testAuthProperties(t, outboundauth.Authentication{
+		Type: string(outboundauth.TypeBearer), Properties: map[string]string{"token": "secret"},
+	})
+	store := &serviceStoreStub{connection: connection}
+	service := newTestAuthZENPDPService(store, config.AuthZENPDPConfig{})
+
+	_, svcErr := service.UpdateAuthZENPDPConnection(context.Background(), "pdp-1", ConnectionRequest{
+		Name: "AuthZEN PDP", Endpoint: connection.Endpoint,
+	})
+	require.Nil(t, svcErr)
+	config, err := outboundauth.FromProperties(store.connection.AuthenticationProperties)
+	require.NoError(t, err)
+	require.Equal(t, "secret", config.Get("token"))
+
+	_, svcErr = service.UpdateAuthZENPDPConnection(context.Background(), "pdp-1", ConnectionRequest{
+		Name: "AuthZEN PDP", Endpoint: "https://other.example.com/evaluation",
+	})
+	require.NotNil(t, svcErr)
+	require.Equal(t, "CON-1014", svcErr.Code)
+	require.Equal(t, 1, store.updateCalls)
+}
+
+func TestServiceUpdateRequiresFreshAuthenticationForChangedBatchEndpoint(t *testing.T) {
+	connection := AuthZENPDPConnection{
+		ID: "pdp-1", Name: "AuthZEN PDP", Endpoint: "https://pdp.example.com/evaluation",
+		BatchEndpoint: "https://pdp.example.com/evaluations",
+	}
+	connection.AuthenticationProperties = testAuthProperties(t, outboundauth.Authentication{
+		Type: string(outboundauth.TypeBearer), Properties: map[string]string{"token": "old-token"},
+	})
+	store := &serviceStoreStub{connection: connection}
+	service := newTestAuthZENPDPService(store, config.AuthZENPDPConfig{})
+	request := ConnectionRequest{
+		Name: "AuthZEN PDP", Endpoint: connection.Endpoint,
+		BatchEndpoint: "https://other.example.com/evaluations",
+	}
+
+	_, svcErr := service.UpdateAuthZENPDPConnection(context.Background(), connection.ID, request)
+	require.NotNil(t, svcErr)
+	require.Equal(t, "CON-1014", svcErr.Code)
+	require.Zero(t, store.updateCalls)
+
+	request.Authentication = &outboundauth.Authentication{
+		Type: string(outboundauth.TypeBearer), Properties: map[string]string{"token": "******"},
+	}
+	_, svcErr = service.UpdateAuthZENPDPConnection(context.Background(), connection.ID, request)
+	require.NotNil(t, svcErr)
+	require.Equal(t, "CON-1014", svcErr.Code)
+	require.Zero(t, store.updateCalls)
+
+	request.Authentication.Properties["token"] = "new-token"
+	_, svcErr = service.UpdateAuthZENPDPConnection(context.Background(), connection.ID, request)
+	require.Nil(t, svcErr)
+	require.Equal(t, 1, store.updateCalls)
+	stored, err := outboundauth.FromProperties(store.connection.AuthenticationProperties)
+	require.NoError(t, err)
+	require.Equal(t, "new-token", stored.Get("token"))
 }
 
 func TestServiceRejectsEmptyConnectionName(t *testing.T) {

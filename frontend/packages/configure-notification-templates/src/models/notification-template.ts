@@ -70,6 +70,8 @@ export interface SmsTemplateContent {
  */
 export interface EmailTemplate {
   id: string;
+  /** The organization unit this template belongs to. Set at creation and immutable thereafter. */
+  ouId: string;
   handle: string;
   displayName: string;
   description?: string;
@@ -84,6 +86,8 @@ export interface EmailTemplate {
  */
 export interface SmsTemplate {
   id: string;
+  /** The organization unit this template belongs to. Set at creation and immutable thereafter. */
+  ouId: string;
   handle: string;
   displayName: string;
   description?: string;

@@ -15,7 +15,7 @@ vi.mock('react-i18next', async (importOriginal) => ({
         'flows:core.executions.identifying.description': 'Configure the Identify User step behavior.',
         'flows:core.executions.identifying.mode.label': 'Mode',
         'flows:core.executions.identifying.mode.placeholder': 'Select an action mode',
-        'flows:core.executions.identifying.mode.identify': 'Identify User',
+        'flows:core.executions.identifying.mode.identify': 'Identify user',
         'flows:core.executions.identifying.mode.resolve': 'Resolve User',
       };
       return translations[key] ?? key;

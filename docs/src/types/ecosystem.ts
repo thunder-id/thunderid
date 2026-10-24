@@ -381,6 +381,13 @@ export interface EcosystemEntry {
   version?: string;
   docs?: EcosystemDocs;
   links?: EcosystemLinks;
+  /**
+   * The sample in the `thunder-id/samples` repository whose released zip the
+   * page offers for download, as `<category>/<name>` (e.g.
+   * `integrations/flutter-app-auth`). Omit to offer the SDK quickstart sample
+   * released under this entry's id instead.
+   */
+  sample?: string;
   hero?: EcosystemHero;
   sections?: EcosystemSection[];
   /** Guides, each rendered on its own page. */

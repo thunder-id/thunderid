@@ -326,7 +326,7 @@ export default function AttestationSection({
     commitDigests(digests.filter((_, i) => i !== index));
   };
 
-  const devModeLabel = t('applications:edit.advanced.attestation.labels.devMode', 'Dev Mode');
+  const devModeLabel = t('applications:edit.advanced.attestation.labels.devMode', 'Dev mode');
   const devModeSwitch = (
     <FormControlLabel
       labelPlacement="start"
@@ -345,7 +345,7 @@ export default function AttestationSection({
 
   return (
     <SettingsCard
-      title={t('applications:edit.advanced.labels.attestation', 'Platform Attestation')}
+      title={t('applications:edit.advanced.labels.attestation', 'Platform attestation')}
       description={t(
         'applications:edit.advanced.attestation.intro',
         'Verify the binary identity of a mobile client when it initiates a flow directly. Choose the platform the ' +
@@ -395,7 +395,7 @@ export default function AttestationSection({
           <>
             <FormControl fullWidth>
               <FormLabel htmlFor="attestation-package-name">
-                {t('applications:edit.advanced.attestation.labels.packageName', 'Package Name')}
+                {t('applications:edit.advanced.attestation.labels.packageName', 'Package name')}
               </FormLabel>
               <TextField
                 id="attestation-package-name"
@@ -415,7 +415,7 @@ export default function AttestationSection({
               <FormLabel htmlFor="attestation-digests-section">
                 {t(
                   'applications:edit.advanced.attestation.labels.certificateSha256Digests',
-                  'Signing Certificate SHA-256 Digests',
+                  'Signing certificate SHA-256 digests',
                 )}
               </FormLabel>
               <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 2}}>
@@ -438,7 +438,7 @@ export default function AttestationSection({
                         // points at the surrounding Stack, not the individual inputs.
                         aria-label={`${t(
                           'applications:edit.advanced.attestation.labels.certificateSha256Digests',
-                          'Signing Certificate SHA-256 Digests',
+                          'Signing certificate SHA-256 digests',
                         )} ${index + 1}`}
                         value={digest}
                         onChange={(e) => handleDigestChange(index, e.target.value)}
@@ -471,7 +471,7 @@ export default function AttestationSection({
                     size="small"
                     disabled={disabled}
                   >
-                    {t('applications:edit.advanced.attestation.addDigest', 'Add Digest')}
+                    {t('applications:edit.advanced.attestation.addDigest', 'Add digest')}
                   </Button>
                 </Box>
               </Stack>
@@ -481,7 +481,7 @@ export default function AttestationSection({
               <FormLabel htmlFor="attestation-service-account">
                 {t(
                   'applications:edit.advanced.attestation.labels.serviceAccountCredentials',
-                  'Service Account Credentials',
+                  'Service account credentials',
                 )}
               </FormLabel>
               <TextField
@@ -522,7 +522,7 @@ export default function AttestationSection({
                   appleIncomplete && teamId.trim() === ''
                     ? t(
                         'applications:edit.advanced.attestation.error.appleIncomplete',
-                        'Both Team ID and Bundle ID are required together.',
+                        'Both team ID and bundle ID are required together.',
                       )
                     : t('applications:edit.advanced.attestation.hint.teamId', 'The Apple Developer Team ID.')
                 }
@@ -545,7 +545,7 @@ export default function AttestationSection({
                   appleIncomplete && bundleId.trim() === ''
                     ? t(
                         'applications:edit.advanced.attestation.error.appleIncomplete',
-                        'Both Team ID and Bundle ID are required together.',
+                        'Both team ID and bundle ID are required together.',
                       )
                     : t(
                         'applications:edit.advanced.attestation.hint.bundleId',

@@ -35,6 +35,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/dpopmock"
@@ -73,7 +74,7 @@ func (s *UserInfoServiceTestSuite) SetupTest() {
 	s.userInfoService = newUserInfoService(
 		s.mockJWTService, nil, nil, s.mockTokenValidator,
 		actorprovider.Initialize(s.mockInboundClient, s.mockEntityProvider, noopAuthnMgr(), nil, nil),
-		s.mockAttributeCacheService, nil,
+		s.mockAttributeCacheService, nil, nil,
 		oauthconfig.Config{JWT: engineconfig.JWTConfig{Issuer: testUserInfoIssuer, ValidityPeriod: 600}},
 	)
 
@@ -140,7 +141,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfoForDPoP_RevocationUnavailable(
 	actorProv := actorprovider.Initialize(s.mockInboundClient, s.mockEntityProvider, noopAuthnMgr(), nil, nil)
 	s.userInfoService = newUserInfoService(
 		s.mockJWTService, nil, nil, s.mockTokenValidator,
-		actorProv, s.mockAttributeCacheService, verifier, userInfoTestConfig())
+		actorProv, s.mockAttributeCacheService, verifier, nil, userInfoTestConfig())
 
 	token := "token.revocation.unavailable"
 	s.mockTokenValidator.On("ValidateAccessToken", mock.Anything, token).Return(
@@ -596,6 +597,58 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_AppNotFound_ReturnsInvalidTok
 	s.mockTokenValidator.AssertExpectations(s.T())
 	s.mockAttributeCacheService.AssertExpectations(s.T())
 	s.mockInboundClient.AssertExpectations(s.T())
+}
+
+// A token of a held application is refused as an invalid token, and no claims are read.
+func (s *UserInfoServiceTestSuite) TestGetUserInfo_HeldApplicationIsAnInvalidToken() {
+	token := s.heldAppToken("cache-held-123")
+	s.withGovernance(providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended}, nil)
+
+	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
+
+	s.Nil(response)
+	s.Require().NotNil(svcErr)
+	s.Equal(errorInvalidAccessToken.Code, svcErr.Code)
+	s.mockAttributeCacheService.AssertNotCalled(s.T(), "GetAttributeCache", mock.Anything, mock.Anything)
+}
+
+func (s *UserInfoServiceTestSuite) TestGetUserInfo_GovernanceFaultIsAServerError() {
+	token := s.heldAppToken("cache-fault-123")
+	s.withGovernance(providers.AccessDecision{}, &tidcommon.InternalServerError)
+
+	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
+
+	s.Nil(response)
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	s.mockAttributeCacheService.AssertNotCalled(s.T(), "GetAttributeCache", mock.Anything, mock.Anything)
+}
+
+// heldAppToken returns a token of client123, which resolves to app-123, for the hold tests.
+func (s *UserInfoServiceTestSuite) heldAppToken(cacheID string) string {
+	claims := map[string]interface{}{
+		"exp":       float64(time.Now().Add(time.Hour).Unix()),
+		"nbf":       float64(time.Now().Add(-time.Minute).Unix()),
+		"sub":       "user123",
+		"scope":     "openid profile",
+		"client_id": "client123",
+		"aci":       cacheID,
+	}
+	token := s.createToken(claims)
+	s.mockTokenValidator.On("ValidateAccessToken", mock.Anything, token).Return(
+		&tokenservice.AccessTokenClaims{Sub: "user123", Claims: claims}, nil)
+	s.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "client123").
+		Return(&providers.OAuthClient{ID: "app-123", ClientID: "client123"}, nil).Once()
+	return token
+}
+
+// withGovernance gives the service a governance port that answers app-123 with the decision.
+func (s *UserInfoServiceTestSuite) withGovernance(decision providers.AccessDecision,
+	svcErr *tidcommon.ServiceError) {
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(s.T())
+	governance.EXPECT().EvaluateAccess(mock.Anything, "app-123", providers.AccessPlaneApplication,
+		providers.AuthenticationMethod("")).Return(decision, svcErr)
+	s.userInfoService.(*userInfoService).governance = governance
 }
 
 // TestGetUserInfo_Success_GroupsNotInAllowedAttributes tests that groups are not included if not in allowed attributes
@@ -1272,7 +1325,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfoForDPoP_NotBoundToken_Rejected
 	actorProv := actorprovider.Initialize(s.mockInboundClient, s.mockEntityProvider, noopAuthnMgr(), nil, nil)
 	s.userInfoService = newUserInfoService(
 		s.mockJWTService, nil, nil, s.mockTokenValidator,
-		actorProv, s.mockAttributeCacheService, verifier, userInfoTestConfig())
+		actorProv, s.mockAttributeCacheService, verifier, nil, userInfoTestConfig())
 
 	claims := map[string]any{
 		"sub":   "user123",
@@ -1298,7 +1351,7 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfoForDPoP_VerifierFails_Rejected
 	actorProv := actorprovider.Initialize(s.mockInboundClient, s.mockEntityProvider, noopAuthnMgr(), nil, nil)
 	s.userInfoService = newUserInfoService(
 		s.mockJWTService, nil, nil, s.mockTokenValidator,
-		actorProv, s.mockAttributeCacheService, verifier, userInfoTestConfig())
+		actorProv, s.mockAttributeCacheService, verifier, nil, userInfoTestConfig())
 
 	claims := map[string]any{
 		"sub":   "user123",

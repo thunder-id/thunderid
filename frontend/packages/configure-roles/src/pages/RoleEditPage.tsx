@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useIsMutating} from '@tanstack/react-query';
-import {PageLoadingAnimation, QueryErrorNotice, UnsavedChangesBar} from '@thunderid/components';
+import {DocumentTitle, PageLoadingAnimation, QueryErrorNotice, UnsavedChangesBar} from '@thunderid/components';
 import {arePermissionsEqual, type ResourcePermissions} from '@thunderid/configure-resource-servers';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
@@ -118,7 +118,7 @@ export default function RoleEditPage(): JSX.Element {
     };
 
     try {
-      await updateRole.mutateAsync({roleId, data: updatedData});
+      await updateRole.mutateAsync({roleId, data: updatedData, current: role});
       setEditedRole({});
       await refetch();
     } catch (err: unknown) {
@@ -141,13 +141,21 @@ export default function RoleEditPage(): JSX.Element {
     });
   };
 
+  const resourceTypeTitle = t('navigation:pages.roles', 'Roles');
+
   if (isLoading) {
-    return <PageLoadingAnimation />;
+    return (
+      <>
+        <DocumentTitle title={resourceTypeTitle} />
+        <PageLoadingAnimation />
+      </>
+    );
   }
 
   if (fetchError) {
     return (
       <PageContent>
+        <DocumentTitle title={resourceTypeTitle} />
         <QueryErrorNotice
           error={fetchError}
           t={t}
@@ -163,7 +171,7 @@ export default function RoleEditPage(): JSX.Element {
               }}
               startIcon={<ArrowLeft size={16} />}
             >
-              {t('edit.page.back', 'Back to Roles')}
+              {t('edit.page.back', 'Back to roles')}
             </Button>
           }
         />
@@ -174,6 +182,7 @@ export default function RoleEditPage(): JSX.Element {
   if (!role) {
     return (
       <PageContent>
+        <DocumentTitle title={resourceTypeTitle} />
         <Alert severity="warning" sx={{mb: 2}}>
           {t('edit.page.notFound', 'Role not found')}
         </Alert>
@@ -185,7 +194,7 @@ export default function RoleEditPage(): JSX.Element {
           }}
           startIcon={<ArrowLeft size={16} />}
         >
-          {t('edit.page.back', 'Back to Roles')}
+          {t('edit.page.back', 'Back to roles')}
         </Button>
       </PageContent>
     );
@@ -193,6 +202,7 @@ export default function RoleEditPage(): JSX.Element {
 
   return (
     <PageContent>
+      <DocumentTitle title={role.name} />
       {role.isReadOnly && (
         <Alert severity="info" sx={{mb: 2}}>
           {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
@@ -201,7 +211,7 @@ export default function RoleEditPage(): JSX.Element {
       {/* Header */}
       <PageTitle>
         <PageTitle.BackButton component={<Link to={listUrl} />}>
-          {t('edit.page.back', 'Back to Roles')}
+          {t('edit.page.back', 'Back to roles')}
         </PageTitle.BackButton>
         <PageTitle.Header>
           <Stack direction="row" alignItems="center" spacing={1} mb={1}>
@@ -372,7 +382,7 @@ export default function RoleEditPage(): JSX.Element {
         <UnsavedChangesBar
           message={t('edit.page.unsavedChanges', 'You have unsaved changes')}
           resetLabel={t('edit.page.reset', 'Reset')}
-          saveLabel={t('edit.page.save', 'Save Changes')}
+          saveLabel={t('edit.page.save', 'Save changes')}
           savingLabel={t('edit.page.saving', 'Saving...')}
           isSaving={updateRole.isPending}
           saveDisabled={isRoleUpdating || role.isReadOnly === true}

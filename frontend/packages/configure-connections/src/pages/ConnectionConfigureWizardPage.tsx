@@ -1,7 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {FullScreenCreationWizardLayout} from '@thunderid/components';
+import {DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Box, Button, Paper, Stack, Typography} from '@wso2/oxygen-ui';
@@ -118,6 +118,9 @@ export default function ConnectionConfigureWizardPage(): JSX.Element | null {
         </Box>
       }
     >
+      <DocumentTitle
+        title={t('configure.heading', {vendor: meta.displayName, defaultValue: 'Configure your {{vendor}} connection'})}
+      />
       <Stack direction="column" spacing={3}>
         <Stack direction="column" spacing={1}>
           <Typography variant="h1" gutterBottom>

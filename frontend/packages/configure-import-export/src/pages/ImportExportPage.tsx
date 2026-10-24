@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {ExternalLink} from '@thunderid/components';
+import {DocumentTitle, ExternalLink} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {AppBreadcrumbs, Box, Card, CardContent, IconButton, LinearProgress, Stack, Typography} from '@wso2/oxygen-ui';
 import {FileOutput, FileInput, X} from '@wso2/oxygen-ui-icons-react';
@@ -62,6 +62,7 @@ export default function ImportExportPage(): JSX.Element {
 
   return (
     <Box sx={{minHeight: '100vh', display: 'flex', flexDirection: 'column'}}>
+      <DocumentTitle title={t('landing.title', 'Import / Export')} />
       <LinearProgress variant="determinate" value={0} sx={{height: 6}} />
 
       <Box sx={{flex: 1, display: 'flex', flexDirection: 'column'}}>

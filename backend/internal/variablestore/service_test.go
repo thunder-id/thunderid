@@ -82,6 +82,44 @@ func (s *ServiceTestSuite) TestCreateVariableRefusesADuplicate() {
 	s.Equal(ErrorAlreadyExists.Code, svcErr.Code)
 }
 
+func (s *ServiceTestSuite) TestCreateVariableRefusesAReferenceAsItsValue() {
+	ctx := context.Background()
+
+	for _, value := range []string{
+		"var:APP_REDIRECT_URIS",
+		"sec:APP_CLIENT_SECRET",
+		`["var:APP_REDIRECT_URIS"]`,
+		`["https://app.test/cb", "var:APP_REDIRECT_URIS"]`,
+	} {
+		_, svcErr := s.service.CreateVariable(ctx, VariableRequest{Name: "APP_REDIRECT_URIS", Value: value})
+		s.Require().NotNil(svcErr, value)
+		s.Equal(ErrorReferenceValue.Code, svcErr.Code, value)
+
+		_, _, svcErr = s.service.UpdateVariable(ctx, "APP_REDIRECT_URIS", VariableUpdateRequest{Value: value})
+		s.Require().NotNil(svcErr, value)
+		s.Equal(ErrorReferenceValue.Code, svcErr.Code, value)
+	}
+}
+
+func (s *ServiceTestSuite) TestCreateSecretRefusesAReferenceAsItsValue() {
+	ctx := context.Background()
+
+	for _, value := range []string{
+		"sec:DB_PASSWORD",
+		"var:DB_PASSWORD",
+		`["sec:DB_PASSWORD"]`,
+		`["s3cret", "var:DB_PASSWORD"]`,
+	} {
+		_, svcErr := s.service.CreateSecret(ctx, SecretRequest{Name: "DB_PASSWORD", Value: value})
+		s.Require().NotNil(svcErr, value)
+		s.Equal(ErrorReferenceValue.Code, svcErr.Code, value)
+
+		_, _, svcErr = s.service.UpdateSecret(ctx, "DB_PASSWORD", SecretUpdateRequest{Value: value})
+		s.Require().NotNil(svcErr, value)
+		s.Equal(ErrorReferenceValue.Code, svcErr.Code, value)
+	}
+}
+
 func (s *ServiceTestSuite) TestCreateVariableAcceptsAnEmptyValue() {
 	ctx := context.Background()
 	s.store.On("GetVariable", ctx, "EMPTY").Return(nil, nil).Once()
@@ -257,6 +295,17 @@ func mustMarshal(t require.TestingT, value interface{}) string {
 func TestValidateValueBounds(t *testing.T) {
 	assert.Nil(t, validateValue(strings.Repeat("v", maxValueLength)))
 	assert.NotNil(t, validateValue(strings.Repeat("v", maxValueLength+1)))
+	// A value that merely looks like a reference, or a list that is not one of strings, is a value.
+	assert.Nil(t, validateValue("var:not a name"))
+	assert.Nil(t, validateValue("https://app.test/cb?next=var:X"))
+	assert.Nil(t, validateValue(`["https://app.test/cb"]`))
+	assert.Nil(t, validateValue(`[1, 2]`))
+	assert.Nil(t, validateValue(`["var:APP_CLIENT_ID", null]`))
+	assert.Nil(t, validateValue(`["var:APP_CLIENT_ID", 1]`))
+	assert.Nil(t, validateValue(`[not json`))
+	assert.Equal(t, &ErrorReferenceValue, validateValue("var:APP_CLIENT_ID"))
+	assert.Equal(t, &ErrorReferenceValue, validateValue(` ["sec:APP_CLIENT_SECRET"]`))
+	assert.Equal(t, &ErrorReferenceValue, validateSecretValue("sec:APP_CLIENT_SECRET"))
 	assert.Nil(t, validateDescription(strings.Repeat("d", maxDescriptionLength)))
 	assert.NotNil(t, validateDescription(strings.Repeat("d", maxDescriptionLength+1)))
 }

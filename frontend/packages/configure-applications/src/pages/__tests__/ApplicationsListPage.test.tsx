@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
-import {render, screen} from '@thunderid/test-utils';
+import {render, screen, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import ApplicationsListPage from '../ApplicationsListPage';
 
@@ -48,6 +48,12 @@ describe('ApplicationsListPage', () => {
       renderWithProviders();
 
       expect(screen.getByRole('heading', {level: 1, name: 'Applications'})).toBeInTheDocument();
+    });
+
+    it('should set the browser tab title', async () => {
+      renderWithProviders();
+
+      await waitFor(() => expect(document.title).toBe('Applications | ThunderID'));
     });
 
     it('should render the page subtitle', () => {

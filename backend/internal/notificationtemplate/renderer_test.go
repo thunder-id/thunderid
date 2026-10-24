@@ -259,26 +259,27 @@ func (s *RendererTestSuite) TestResolve_UnresolvedContextFails() {
 	s.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
-// TestResolve_UnresolvedDesignFails covers the design failure modes: no theme supplied, and a token the
-// theme does not carry. Both fail closed rather than ship a partially-branded body.
-func (s *RendererTestSuite) TestResolve_UnresolvedDesignFails() {
+// TestResolve_UnresolvedDesignStrippedToEmpty covers the two unresolved-design cases: no theme supplied,
+// and a token the theme does not carry. Both strip the token to an empty string rather than failing the
+// send, so a design gap never blocks delivery.
+func (s *RendererTestSuite) TestResolve_UnresolvedDesignStrippedToEmpty() {
 	emailTmpl := templateDAO{
 		ID: "e1", Channel: ChannelTypeEmail, Handle: "h", DisplayName: "D",
-		Content: TemplateContent{Subject: "s", Body: "{{design(palette.primary.main)}}"},
+		Content: TemplateContent{Subject: "s", Body: "x{{design(palette.primary.main)}}y"},
 	}
 	p := s.newRenderer(s.translator(nil), s.designer(nil))
 
-	// No theme supplied: cannot resolve.
+	// No theme supplied: the design resolver is not consulted; the token is stripped.
 	s.expectGet(ChannelTypeEmail, "h", emailTmpl)
-	_, err := p.Resolve(s.ctx, "email", "h", RenderInput{})
-	s.Require().NotNil(err)
-	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+	rc, err := p.Resolve(s.ctx, "email", "h", RenderInput{})
+	s.Require().Nil(err)
+	s.Equal("xy", rc.Body)
 
-	// Theme supplied but the token is unknown: the resolver leaves it, so the render fails closed.
+	// Theme supplied but the token is unknown: the resolver leaves it, then it is stripped.
 	s.expectGet(ChannelTypeEmail, "h", emailTmpl)
-	_, err = p.Resolve(s.ctx, "email", "h", RenderInput{ThemeID: "theme1"})
-	s.Require().NotNil(err)
-	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+	rc, err = p.Resolve(s.ctx, "email", "h", RenderInput{ThemeID: "theme1"})
+	s.Require().Nil(err)
+	s.Equal("xy", rc.Body)
 }
 
 // TestResolve_DesignResolverError covers the design resolver returning a service error.

@@ -17,6 +17,9 @@ docs:
   quickstart: /docs/next/getting-started/connect-your-application/android
 links:
   github: https://github.com/thunder-id/android-sdks
+  samples: https://github.com/thunder-id/samples/tree/main/quickstarts/android
+# Offers the quickstart's released zip at the top of the page, from the samples repo releases.
+sample: quickstarts/android
 apiReference:
   source: manual
 
@@ -503,7 +506,7 @@ guides:
     title: Try the Android Sample App
     icon: terminal
     description: Run the {{ProductName}} Android sample app to see the full authentication lifecycle end to end.
-    intro: 'The SDK repository ships a sample app in [`samples/quickstart`](https://github.com/thunder-id/android-sdks/tree/main/samples/quickstart)
+    intro: 'The [samples repository](https://github.com/thunder-id/samples) ships a sample app in [`quickstarts/android`](https://github.com/thunder-id/samples/tree/main/quickstarts/android)
       that exercises the full authentication lifecycle end to end: sign-in, sign-up, and sign-out via the SDK''s app-native
       Flow Execution. } />'
     sections:
@@ -517,7 +520,8 @@ guides:
         code:
           lang: bash
           content: |-
-            cd samples/quickstart
+            git clone https://github.com/thunder-id/samples.git
+            cd samples/quickstarts/android
             cp config.properties.example config.properties
       - title: Configure the Android Sample
         description: 'This sample uses app-native authentication (Flow Execution API), so only the base URL and application

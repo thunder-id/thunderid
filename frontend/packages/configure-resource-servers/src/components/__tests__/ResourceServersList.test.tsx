@@ -122,7 +122,7 @@ describe('ResourceServersList', () => {
   it('shows a Read Only button for the read-only row', () => {
     renderWithProviders(<ResourceServersList />);
 
-    expect(screen.getByRole('button', {name: 'Read Only'})).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Read only'})).toBeInTheDocument();
   });
 
   it('does not show a Delete button for the read-only row', () => {

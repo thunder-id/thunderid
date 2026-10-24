@@ -5,6 +5,7 @@ package flowconfig
 
 import (
 	"testing"
+	"time"
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 
@@ -35,6 +36,7 @@ func (s *FlowConfigTestSuite) TestFromServerRuntime() {
 		Server: engineconfig.ServerConfig{
 			HTTPOnly: true,
 		},
+		JWT: engineconfig.JWTConfig{Leeway: 30},
 	}
 	err := config.InitializeServerRuntime("/tmp/test-flow-config", cfg)
 	s.Require().NoError(err)
@@ -42,6 +44,7 @@ func (s *FlowConfigTestSuite) TestFromServerRuntime() {
 	result := FromServerRuntime()
 
 	s.False(result.SecureCookies, "HTTPOnly deployment must not mark cookies Secure")
+	s.Equal(30*time.Second, result.TokenLeeway)
 	// Session config is sourced from the server-config section at the composition root, not here.
 	s.Zero(result.Session.IdleTimeoutSeconds)
 	s.Zero(result.Session.AbsoluteTimeoutSeconds)

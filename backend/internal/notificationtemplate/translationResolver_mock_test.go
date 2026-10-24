@@ -18,10 +18,19 @@ func newTranslationResolverMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *translationResolverMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &translationResolverMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -79,7 +88,7 @@ type translationResolverMock_ResolveTranslationsForKey_Call struct {
 //   - language string
 //   - namespace string
 //   - key string
-func (_e *translationResolverMock_Expecter) ResolveTranslationsForKey(ctx interface{}, language interface{}, namespace interface{}, key interface{}) *translationResolverMock_ResolveTranslationsForKey_Call {
+func (_e *translationResolverMock_Expecter) ResolveTranslationsForKey(ctx any, language any, namespace any, key any) *translationResolverMock_ResolveTranslationsForKey_Call {
 	return &translationResolverMock_ResolveTranslationsForKey_Call{Call: _e.mock.On("ResolveTranslationsForKey", ctx, language, namespace, key)}
 }
 

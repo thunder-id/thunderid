@@ -121,9 +121,9 @@ func (f *entityFileBasedStore) LockEntity(ctx context.Context, id string) (provi
 	return providers.Entity{}, errors.New("LockEntity is not supported in file-based store")
 }
 
-// ResolveLinkedAccount finds the declarative entity linked to a subject at a connection.
-func (f *entityFileBasedStore) ResolveLinkedAccount(ctx context.Context,
-	idpID, sub string) (*string, error) {
+// ResolveLinkedAccounts finds the declarative entities linked to a subject at a connection.
+func (f *entityFileBasedStore) ResolveLinkedAccounts(ctx context.Context,
+	idpID, sub string) ([]string, error) {
 	resources, err := f.listEntityResources()
 	if err != nil {
 		return nil, err
@@ -146,15 +146,7 @@ func (f *entityFileBasedStore) ResolveLinkedAccount(ctx context.Context,
 			matches = append(matches, resource.Entity.ID)
 		}
 	}
-
-	if len(matches) == 0 {
-		return nil, ErrEntityNotFound
-	}
-	if len(matches) > 1 {
-		return nil, ErrAmbiguousEntity
-	}
-
-	return &matches[0], nil
+	return matches, nil
 }
 
 // IdentifyEntity identifies an entity with the given filters by linear search.
@@ -306,6 +298,100 @@ func (f *entityFileBasedStore) GetEntityListByOUIDs(ctx context.Context, categor
 	}
 
 	return applyPagination(entities, limit, offset), nil
+}
+
+// GetEntityListCountBySystemAttributes retrieves the number of entities a system attribute query
+// selects from the file store.
+func (f *entityFileBasedStore) GetEntityListCountBySystemAttributes(ctx context.Context, category string,
+	sysQuery SystemAttributeQuery) (int, error) {
+	entities, err := f.listBySystemAttributes(category, sysQuery)
+	if err != nil {
+		return 0, err
+	}
+	return len(entities), nil
+}
+
+// GetEntityListBySystemAttributes retrieves the entities a system attribute query selects from the
+// file store, with pagination.
+func (f *entityFileBasedStore) GetEntityListBySystemAttributes(ctx context.Context, category string,
+	sysQuery SystemAttributeQuery, limit, offset int) ([]providers.Entity, error) {
+	entities, err := f.listBySystemAttributes(category, sysQuery)
+	if err != nil {
+		return nil, err
+	}
+	return applyPagination(entities, limit, offset), nil
+}
+
+// GetEntityListCountBySystemAttributesAndOUIDs retrieves the number of entities a system attribute query
+// selects within the given organization units from the file store.
+func (f *entityFileBasedStore) GetEntityListCountBySystemAttributesAndOUIDs(ctx context.Context,
+	category string, sysQuery SystemAttributeQuery, ouIDs []string) (int, error) {
+	entities, err := f.listBySystemAttributesInOUs(category, sysQuery, ouIDs)
+	if err != nil {
+		return 0, err
+	}
+	return len(entities), nil
+}
+
+// GetEntityListBySystemAttributesAndOUIDs retrieves the entities a system attribute query selects within
+// the given organization units from the file store, with pagination.
+func (f *entityFileBasedStore) GetEntityListBySystemAttributesAndOUIDs(ctx context.Context,
+	category string, sysQuery SystemAttributeQuery, ouIDs []string, limit, offset int) (
+	[]providers.Entity, error) {
+	entities, err := f.listBySystemAttributesInOUs(category, sysQuery, ouIDs)
+	if err != nil {
+		return nil, err
+	}
+	return applyPagination(entities, limit, offset), nil
+}
+
+// listBySystemAttributesInOUs returns the entities a system attribute query selects that belong to one
+// of the given organization units.
+func (f *entityFileBasedStore) listBySystemAttributesInOUs(category string,
+	sysQuery SystemAttributeQuery, ouIDs []string) ([]providers.Entity, error) {
+	entities, err := f.listBySystemAttributes(category, sysQuery)
+	if err != nil {
+		return nil, err
+	}
+
+	ouIDSet := make(map[string]struct{}, len(ouIDs))
+	for _, id := range ouIDs {
+		ouIDSet[id] = struct{}{}
+	}
+	inOUs := make([]providers.Entity, 0, len(entities))
+	for _, e := range entities {
+		if _, ok := ouIDSet[e.OUID]; ok {
+			inOUs = append(inOUs, e)
+		}
+	}
+	return inOUs, nil
+}
+
+// listBySystemAttributes returns the entities of a category that a system attribute query selects. The
+// system attribute values are matched against the system attributes only, and the other filters the
+// way the list filters match them.
+func (f *entityFileBasedStore) listBySystemAttributes(category string,
+	sysQuery SystemAttributeQuery) ([]providers.Entity, error) {
+	resources, err := f.listEntityResources()
+	if err != nil {
+		return nil, err
+	}
+
+	entities := make([]providers.Entity, 0)
+	for _, resource := range resources {
+		if string(resource.Entity.Category) != category {
+			continue
+		}
+		if len(sysQuery.SystemAttributes) == 0 ||
+			!matchesFilters(resource.Entity.SystemAttributes, sysQuery.SystemAttributes) {
+			continue
+		}
+		combined := mergeJSONObjects(resource.Entity.Attributes, resource.Entity.SystemAttributes)
+		if matchesFilters(combined, sysQuery.Attributes) {
+			entities = append(entities, resource.Entity)
+		}
+	}
+	return entities, nil
 }
 
 // GetGroupCountForEntity returns 0 for file-based store (groups are for mutable entities only).

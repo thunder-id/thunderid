@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice, ResourceAvatar, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
+import {DocumentTitle, QueryErrorNotice, ResourceAvatar, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {
@@ -146,6 +146,7 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
 
   return (
     <PageContent>
+      <DocumentTitle title={data?.name ?? t('navigation:pages.connections', 'Connections')} />
       <Button
         variant="text"
         startIcon={<ChevronLeft size={16} />}
@@ -278,7 +279,7 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
             </SettingsCard>
 
             <SettingsCard
-              title={t('trustedIssuers:detail.tokenExchange.title', 'Token Exchange')}
+              title={t('trustedIssuers:detail.tokenExchange.title', 'Token exchange')}
               description={t(
                 'trustedIssuers:detail.tokenExchange.description',
                 'Exchange subject tokens from this issuer for access tokens.',

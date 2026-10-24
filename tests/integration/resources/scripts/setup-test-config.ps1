@@ -30,6 +30,8 @@ gateway:
   # The default of one gateway would refuse the second registration in every uniqueness test before
   # the rule under test was reached.
   max_gateways: 5
+  # The suite registers gateways on localhost.
+  allow_private_addresses: true
 
 tls:
   cert_file: "config/certs/server.cert"
@@ -95,7 +97,7 @@ if ($DbType -eq "postgres") {
     password: ""
     sslmode: ""
     path: "database/configdb.db"
-    options: "cache=shared"
+    options: "cache=shared&_pragma=foreign_keys(1)"
 
   runtime_transient:
     type: sqlite
@@ -106,7 +108,7 @@ if ($DbType -eq "postgres") {
     password: ""
     sslmode: ""
     path: "database/runtime_transient.db"
-    options: "cache=shared"
+    options: "cache=shared&_pragma=foreign_keys(1)"
 
   entity:
     type: sqlite
@@ -117,7 +119,7 @@ if ($DbType -eq "postgres") {
     password: ""
     sslmode: ""
     path: "database/entitydb.db"
-    options: "cache=shared"
+    options: "cache=shared&_pragma=foreign_keys(1)"
 
   runtime_persistent:
     type: sqlite
@@ -128,7 +130,7 @@ if ($DbType -eq "postgres") {
     password: ""
     sslmode: ""
     path: "database/runtime_persistent.db"
-    options: "cache=shared"
+    options: "cache=shared&_pragma=foreign_keys(1)"
 "@
 }
 

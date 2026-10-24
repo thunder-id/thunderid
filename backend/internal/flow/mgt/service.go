@@ -19,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/executormeta"
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
+	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -84,9 +85,16 @@ type flowMgtService struct {
 	compositeStore      *compositeFlowStore
 	transactioner       providers.Transactioner
 	dependencyRegistry  resourcedependency.Registry
+	templateResolver    notificationTemplateProvider
 	serverConfigSvc     serverConfigProvider
 	ouSvc               ouProvider
 	logger              *log.Logger
+}
+
+// notificationTemplateProvider maps a template handle (within a channel) to its id.
+type notificationTemplateProvider interface {
+	GetTemplateByHandle(ctx context.Context, channel notificationtemplate.ChannelType, handle string) (
+		*notificationtemplate.Template, *tidcommon.ServiceError)
 }
 
 // newFlowMgtService creates a new instance of flowMgtService.
@@ -101,6 +109,7 @@ func newFlowMgtService(
 	transactioner providers.Transactioner,
 	serverConfigSvc serverConfigProvider,
 	ouSvc ouProvider,
+	templateResolver notificationTemplateProvider,
 ) FlowMgtServiceInterface {
 	return &flowMgtService{
 		store:               store,
@@ -113,6 +122,7 @@ func newFlowMgtService(
 		transactioner:       transactioner,
 		serverConfigSvc:     serverConfigSvc,
 		ouSvc:               ouSvc,
+		templateResolver:    templateResolver,
 		logger:              log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 	}
 }
@@ -329,10 +339,16 @@ func (s *flowMgtService) GetFlowUsages(
 // GetResourceDependencies returns the flows that reference the resource identified by
 // (resourceType, id). It implements the resourcedependency.Provider interface: an active flow
 // references an identity provider or notification sender when one of its nodes carries the matching
-// ID in its properties. Such a reference blocks deletion of the target, since the flow would break
-// without it.
+// ID in its properties, and references a notification template when a node carries the matching
+// email/SMS template handle. Such a reference blocks deletion of the target, since the flow would
+// break without it.
 func (s *flowMgtService) GetResourceDependencies(
 	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
+	// Templates are referenced by handle, not id, so they need a channel-aware path.
+	if resourceType == resourcedependency.ResourceTypeNotificationTemplate {
+		return s.notificationTemplateUsages(ctx, id)
+	}
+
 	var propertyKey string
 	switch resourceType {
 	case resourcedependency.ResourceTypeIDP:
@@ -345,7 +361,7 @@ func (s *flowMgtService) GetResourceDependencies(
 
 	flows, err := s.store.ListActiveFlowsWithNodes(ctx)
 	if err != nil {
-		s.logger.Error(ctx, "Failed to list flows for dependency lookup", log.Error(err))
+		// The registry logs provider errors; don't double-log here.
 		return nil, err
 	}
 
@@ -376,6 +392,91 @@ func flowReferencesResource(flow *providers.CompleteFlowDefinition, propertyKey,
 		}
 	}
 	return false
+}
+
+// notificationTemplateUsages reports active flows that reference the template id. References are by
+// handle, so each is resolved to an id and matched. The resolver is always injected by the service
+// manager; a missing one is a wiring fault and fails closed (errors out) so the registry reports
+// usage as unknown and the delete is blocked rather than letting a referenced template be removed.
+func (s *flowMgtService) notificationTemplateUsages(ctx context.Context, id string) (
+	[]resourcedependency.ResourceDependency, error) {
+	if s.templateResolver == nil {
+		// The registry logs provider errors; return the error so the delete fails closed.
+		return nil, fmt.Errorf("notification template resolver not configured")
+	}
+
+	flows, err := s.store.ListActiveFlowsWithNodes(ctx)
+	if err != nil {
+		// The registry logs provider errors; don't double-log here.
+		return nil, err
+	}
+
+	// Memoize handle->id within this call; a template may be referenced by many nodes.
+	resolved := make(map[string]string)
+	resolve := func(channel notificationtemplate.ChannelType, handle string) (string, error) {
+		key := string(channel) + ":" + handle
+		if tid, ok := resolved[key]; ok {
+			return tid, nil
+		}
+		tmpl, svcErr := s.templateResolver.GetTemplateByHandle(ctx, channel, handle)
+		if svcErr != nil {
+			if svcErr.Code == notificationtemplate.ErrorTemplateNotFound.Code {
+				// Dangling handle: cannot be the target. Cache the miss.
+				resolved[key] = ""
+				return "", nil
+			}
+			return "", fmt.Errorf("resolve template %s/%s: %s", channel, handle, svcErr.Code)
+		}
+		resolved[key] = tmpl.ID
+		return tmpl.ID, nil
+	}
+
+	usages := make([]resourcedependency.ResourceDependency, 0)
+	for _, flow := range flows {
+		references, err := flowReferencesTemplate(flow, id, resolve)
+		if err != nil {
+			return nil, err
+		}
+		if references {
+			usages = append(usages, resourcedependency.ResourceDependency{
+				ResourceType:     resourcedependency.ResourceTypeFlow,
+				ID:               flow.ID,
+				DisplayName:      flow.Name,
+				BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+			})
+		}
+	}
+
+	return usages, nil
+}
+
+// flowReferencesTemplate reports whether any node references template id via its email/SMS template
+// handle property.
+func flowReferencesTemplate(flow *providers.CompleteFlowDefinition, id string,
+	resolve func(notificationtemplate.ChannelType, string) (string, error)) (bool, error) {
+	channelByProp := map[string]notificationtemplate.ChannelType{
+		nodePropertyKeyEmailTemplate: notificationtemplate.ChannelTypeEmail,
+		nodePropertyKeySMSTemplate:   notificationtemplate.ChannelTypeSMS,
+	}
+	for i := range flow.Nodes {
+		if flow.Nodes[i].Properties == nil {
+			continue
+		}
+		for prop, channel := range channelByProp {
+			handle, ok := flow.Nodes[i].Properties[prop].(string)
+			if !ok || handle == "" {
+				continue
+			}
+			tid, err := resolve(channel, handle)
+			if err != nil {
+				return false, err
+			}
+			if tid != "" && tid == id {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 // GetFlowByHandle retrieves a flow definition by its handle and type.

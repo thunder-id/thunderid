@@ -5,6 +5,8 @@ package connection
 
 import (
 	"context"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -104,6 +106,44 @@ func (s *DeclarativeResourceTestSuite) TestConnectionModelFromSenderDTOSMSGatewa
 	s.Equal("https://sms.example.com/send", model.URL)
 }
 
+func (s *DeclarativeResourceTestSuite) TestConnectionModelFromSenderDTOLegacySMSGatewayHeaders() {
+	cases := []struct {
+		name   string
+		value  string
+		secret bool
+	}{
+		{"plain headers", "X-API-Key: legacy-secret, X-Tenant: tenant-1", false},
+		{"encrypted headers", "X-API-Key: legacy-secret, X-Tenant: tenant-1", true},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			dto := ncommon.NotificationSenderDTO{
+				ID: "sg-1", Name: "Legacy SMS", Type: ncommon.NotificationSenderTypeMessage,
+				Provider: ncommon.NotificationProviderTypeCustom,
+				Properties: []cmodels.Property{
+					mustProperty(s.T(), ncommon.CustomPropKeyURL, "https://sms.example.com/send", false),
+					mustProperty(s.T(), ncommon.CustomPropKeyHTTPHeaders, tc.value, tc.secret),
+				},
+			}
+
+			model, err := connectionModelFromSenderDTO(dto)
+			s.Require().NoError(err)
+			s.Require().NotNil(model.Authentication)
+			s.Equal(string(outboundauth.TypeNone), model.Authentication.Type)
+			s.Equal(tc.value, model.HTTPHeaders)
+			s.Empty(s.exporter.GetResourceRulesForResource(&model).SecretVariables)
+
+			_, imported, err := connectionModelToDTO(model)
+			s.Require().NoError(err)
+			s.Require().NotNil(imported)
+			roundTripped, err := connectionModelFromSenderDTO(*imported)
+			s.Require().NoError(err)
+			s.Equal(model.Authentication, roundTripped.Authentication)
+			s.Equal(model.HTTPHeaders, roundTripped.HTTPHeaders)
+		})
+	}
+}
+
 func (s *DeclarativeResourceTestSuite) TestConnectionModelToDTORoundTripsEachVendor() {
 	cases := []struct {
 		name     string
@@ -201,6 +241,10 @@ type: authzen-pdp
 name: Production PDP
 endpoint: http://localhost:3592/access/v1/evaluation
 batchEndpoint: http://localhost:3592/access/v1/evaluations
+authentication:
+  type: api_key
+  properties:
+    X-API-Key: secret
 subjectAttributeMappings:
   - subjectCategory: user
     entityType: TravelCustomer
@@ -214,14 +258,32 @@ subjectAttributeMappings:
 	pdp, ok := dto.(*authzenpdp.AuthZENPDPConnection)
 	s.Require().True(ok)
 	s.Equal("pdp-1", pdp.ID)
-	s.Equal("authzen-pdp", connectionModelFromAuthZENPDP(*pdp).Type)
 	s.Equal("http://localhost:3592/access/v1/evaluation", pdp.Endpoint)
 	s.Equal("http://localhost:3592/access/v1/evaluations", pdp.BatchEndpoint)
-	exported := connectionModelFromAuthZENPDP(*pdp)
+	exported, err := connectionModelFromAuthZENPDP(*pdp)
+	s.Require().NoError(err)
+	s.Equal("authzen-pdp", exported.Type)
+	s.Require().NotNil(exported.Authentication)
+	s.Equal(string(outboundauth.TypeAPIKey), exported.Authentication.Type)
+	s.Equal(map[string]string{"X-Api-Key": "secret"}, exported.Authentication.Properties)
 	s.Equal("pdp-1", connectionResourceID(pdp))
 
-	roundTripped := connectionModelToAuthZENPDP(exported)
+	roundTripped, err := connectionModelToAuthZENPDP(exported)
+	s.Require().NoError(err)
 	s.Require().NotNil(roundTripped)
+	authenticationConfig, err := outboundauth.FromProperties(roundTripped.AuthenticationProperties)
+	s.Require().NoError(err)
+	s.Equal(map[string]string{"X-Api-Key": "secret"}, authenticationConfig.Properties)
+}
+
+func (s *DeclarativeResourceTestSuite) TestAuthZENPDPDeclarativeImportRejectsMaskedCredential() {
+	_, err := connectionModelToAuthZENPDP(connectionExportModel{
+		Type: authZENPDPVendorName,
+		Authentication: &outboundauth.Authentication{
+			Type: string(outboundauth.TypeBearer), Properties: map[string]string{"token": "******"},
+		},
+	})
+	s.Error(err)
 }
 
 func (s *DeclarativeResourceTestSuite) TestParseConnectionFromNodeIDPVendor() {
@@ -411,7 +473,17 @@ func (s *DeclarativeResourceTestSuite) TestGetResourceRulesForResourceSecretSele
 		{connectionExportModel{Type: "twilio"}, []string{"AuthToken"}},
 		{connectionExportModel{Type: "vonage"}, []string{"APISecret"}},
 		{connectionExportModel{Type: "authzen-pdp"}, nil},
+		{connectionExportModel{Type: "authzen-pdp", Authentication: &outboundauth.Authentication{
+			Type: string(outboundauth.TypeBearer), Properties: map[string]string{"token": "secret"},
+		}}, []string{"Authentication.Properties.token"}},
+		{connectionExportModel{Type: "authzen-pdp", Authentication: &outboundauth.Authentication{
+			Type: string(outboundauth.TypeAPIKey), Properties: map[string]string{"X-API-Key": "secret"},
+		}}, []string{"Authentication.Properties.X-API-Key"}},
 		{connectionExportModel{Type: smsGatewayVendorName}, nil},
+		{connectionExportModel{Type: smsGatewayVendorName,
+			Authentication: &outboundauth.Authentication{
+				Type: string(outboundauth.TypeAPIKey), Properties: map[string]string{"X-API-Key": "secret"},
+			}}, []string{"Authentication.Properties.X-API-Key"}},
 	}
 	for _, tc := range cases {
 		rules := s.exporter.GetResourceRulesForResource(&tc.model)
@@ -740,4 +812,55 @@ func (s *DeclarativeResourceTestSuite) TestGetResourceRulesExternalizesAuthentic
 	// Nor when the connection authenticates with nothing at all.
 	rules = exporter.GetResourceRulesForResource(&connectionExportModel{Type: emailSMTPVendorName})
 	s.Empty(rules.SecretVariables)
+}
+
+// yamlPathOf names the YAML field a struct path of connectionExportModel reaches: each struct
+// segment by its yaml tag, and the segments under a map by their key.
+func yamlPathOf(structPath string) string {
+	parts := strings.Split(structPath, ".")
+	current := reflect.TypeOf(connectionExportModel{})
+	named := make([]string, 0, len(parts))
+	for i, part := range parts {
+		if current.Kind() == reflect.Pointer {
+			current = current.Elem()
+		}
+		if current.Kind() == reflect.Map {
+			named = append(named, parts[i:]...)
+			break
+		}
+		field, ok := current.FieldByName(part)
+		if !ok {
+			named = append(named, part)
+			continue
+		}
+		named = append(named, strings.Split(field.Tag.Get("yaml"), ",")[0])
+		current = field.Type
+	}
+	return strings.Join(named, ".")
+}
+
+// Every secret a connection of any vendor exports a reference for is one of the fields the exporter
+// says may hold a secret, so an import can put each one back where it came from and nowhere else.
+func (s *DeclarativeResourceTestSuite) TestSecretFieldsCoverEveryVendorsSecrets() {
+	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil)
+	fields := exporter.SecretFields()
+	s.Contains(fields, "authentication.properties."+outboundauth.FieldBasicPassword)
+
+	for _, model := range []*connectionExportModel{
+		{Type: "google", ClientSecret: "s"},
+		{Type: "twilio", AuthToken: "t"},
+		{Type: "vonage", APISecret: "a"},
+		{Type: emailSMTPVendorName, Authentication: &outboundauth.Authentication{
+			Type: string(outboundauth.TypeBasic),
+			Properties: map[string]string{
+				outboundauth.FieldBasicUsername: "mailer", outboundauth.FieldBasicPassword: "p",
+			},
+		}},
+	} {
+		rules := exporter.GetResourceRulesForResource(model)
+		s.Require().NotEmpty(rules.SecretVariables, model.Type)
+		for _, path := range rules.SecretVariables {
+			s.Contains(fields, yamlPathOf(path), model.Type)
+		}
+	}
 }

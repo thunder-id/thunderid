@@ -21,11 +21,11 @@ export default function EditAdvancedSettings({onDeleteClick = undefined}: EditAd
     <Stack spacing={3}>
       {onDeleteClick && (
         <SettingsCard
-          title={t('userTypes:edit.general.dangerZone.title', 'Danger Zone')}
+          title={t('userTypes:edit.general.dangerZone.title', 'Danger zone')}
           description={t('userTypes:edit.general.dangerZone.description', 'Irreversible actions for this user type.')}
         >
           <Typography variant="h6" gutterBottom color="error">
-            {t('userTypes:edit.general.dangerZone.deleteUserType', 'Delete User Type')}
+            {t('userTypes:edit.general.dangerZone.deleteUserType', 'Delete user type')}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
             {t(

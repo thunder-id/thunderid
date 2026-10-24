@@ -14,10 +14,12 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 )
 
 // credentialExport wires a user exporter over mocks for one user of type "person" named alice.
@@ -25,6 +27,7 @@ type credentialExport struct {
 	users       *UserServiceInterfaceMock
 	entities    *entitymock.EntityServiceInterfaceMock
 	entityTypes *entitytypemock.EntityTypeServiceInterfaceMock
+	sharing     *sharingmock.SharingServiceInterfaceMock
 	exporter    *userExporter
 }
 
@@ -34,8 +37,12 @@ func newCredentialExport(t *testing.T, username string) *credentialExport {
 		users:       NewUserServiceInterfaceMock(t),
 		entities:    entitymock.NewEntityServiceInterfaceMock(t),
 		entityTypes: entitytypemock.NewEntityTypeServiceInterfaceMock(t),
+		sharing:     sharingmock.NewSharingServiceInterfaceMock(t),
 	}
-	c.exporter = newUserExporter(c.users, c.entities, c.entityTypes)
+	c.exporter = newUserExporter(c.users, c.entities, c.entityTypes, c.sharing)
+	// The user is shared nowhere unless a test says otherwise.
+	c.sharing.On("ExportPolicies", context.Background(), UserSharingType, "user-1").
+		Return([]sharing.ReplayablePolicy(nil), (*tidcommon.ServiceError)(nil)).Maybe()
 
 	attrs, err := json.Marshal(map[string]interface{}{"username": username})
 	require.NoError(t, err)

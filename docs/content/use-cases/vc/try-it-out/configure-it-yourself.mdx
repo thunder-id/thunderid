@@ -26,7 +26,7 @@ The Sky Pass claims come from the credential subject's profile. The tryout needs
 
 1. **Create the `Customer` user type.**
 
-   Navigate to **User Types** and create a new type. Set the name to `Customer` (category: User) and add the following attributes:
+   Navigate to **User types** and create a new type. Set the name to `Customer` (category: User) and add the following attributes:
 
    | Attribute     | Type   | Properties        |
    | ------------- | ------ | ----------------- |
@@ -58,7 +58,7 @@ The Sky Pass claims come from the credential subject's profile. The tryout needs
 
 ## Set Up the Sky Pass Credential
 
-The credential configuration defines what <ProductName /> issues over OpenID4VCI. In the Console, navigate to **Verifiable Credentials** → **Templates** and create a new template:
+The credential configuration defines what <ProductName /> issues over OpenID4VCI. In the Console, navigate to **Verifiable credentials** → **Templates** and create a new template:
 
 - **Name:** Wayfinder Sky Pass
 - **Handle (identifier / scope):** `wayfinder-skypass`, the create wizard auto-derives the handle from the name (as `wayfinder-sky-pass`); change it to `wayfinder-skypass` so it matches the sample's frontend and kiosk.
@@ -69,7 +69,7 @@ The credential configuration's identifier doubles as the OAuth scope the wallet 
 
 ## Set Up the Lounge Presentation
 
-The presentation definition is what the Skyline Lounge asks the wallet to disclose. In the Console, navigate to **Verifiable Credentials** → **Presentations** and create a new definition:
+The presentation definition is what the Skyline Lounge asks the wallet to disclose. In the Console, navigate to **Verifiable credentials** → **Presentations** and create a new definition:
 
 - **Name:** Skyline Lounge Access
 - **Handle (identifier):** `wayfinder-skypass`, as with the credential, override the auto-derived handle so it stays `wayfinder-skypass` (the kiosk requests this definition by that id).
@@ -85,6 +85,6 @@ Each wallet vendor uses a fixed OAuth `client_id` and redirect URI for the OpenI
 
 **Using the Console (recommended)**
 
-In the Console, go to **Applications** → **Add Application** and select **Digital Wallet** as the application type. On the **Connect Your Wallet** step, pick **Heidi** from the wallet dropdown: the Console pre-fills the client ID (`c3ce7a6c-2bbb-4abe-909c-41bc9463d3c5`) and redirect URI (`ch.ubique.funke://issuance`) automatically. Set **Allowed User Types** to `Customer` and finish the wizard. Repeat for **Lissi** (pre-fills `9c481dc3-2ad0-4fe0-881d-c32ad02fe0fc` / `https://oob.lissi.io/vci-cb`).
+In the Console, go to **Applications** → **Add application** and select **Digital wallet** as the application type. On the **Connect Your Wallet** step, pick **Heidi** from the wallet dropdown: the Console pre-fills the client ID (`c3ce7a6c-2bbb-4abe-909c-41bc9463d3c5`) and redirect URI (`ch.ubique.funke://issuance`) automatically. Set **Allowed user types** to `Customer` and finish the wizard. Repeat for **Lissi** (pre-fills `9c481dc3-2ad0-4fe0-881d-c32ad02fe0fc` / `https://oob.lissi.io/vci-cb`).
 
 With the foundation, credential, presentation, and wallet clients in place, continue to [Issue Credential](../issue-credential).

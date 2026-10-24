@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package group
@@ -48,8 +48,8 @@ type groupStoreInterface interface {
 	GetDirectGroupParents(ctx context.Context, groupIDs []string) ([]string, error)
 }
 
-// maxGroupNestingDepth bounds the ancestor walk so a pathologically deep chain cannot turn an
-// authorization check into an unbounded sequence of queries. Cycles are handled by the visited set.
+// maxGroupNestingDepth bounds a walk through group nesting, up or down, so a pathologically deep chain
+// cannot turn an authorization check into an unbounded sequence of queries. Cycles are handled by the visited set.
 const maxGroupNestingDepth = 32
 
 // resolveTransitiveGroupAncestors returns the IDs of all groups containing groupID, directly or

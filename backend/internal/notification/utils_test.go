@@ -627,9 +627,9 @@ func (suite *UtilsTestSuite) TestValidateEmailNotificationSender_PropertyErrors(
 		{"auth without password", withTLS(
 			basicAuthOverrides(new("user"), nil), common.TLSModeSTARTTLS,
 		), "password"},
-		{"unsupported auth type", map[string]*string{
+		{"auth type unsupported by SMTP", map[string]*string{
 			"authentication_type": new("bearer"),
-		}, "unsupported authentication type"},
+		}, "not supported by this provider"},
 	}
 
 	for _, tc := range cases {

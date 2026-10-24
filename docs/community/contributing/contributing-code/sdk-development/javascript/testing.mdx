@@ -34,11 +34,13 @@ Six sample apps are exercised, each on its own port:
 | nextjs | 3001 |
 | nuxt | 3002 |
 
-The `samples/node/quickstart` app has no UI and is spawned directly by its own spec.
+The `node` quickstart has no UI and is spawned directly by its own spec.
+
+The quickstarts live in the [samples repository](https://github.com/thunder-id/samples) and depend on the published packages. `tests/e2e/scripts/prepare-samples.ts` copies them into `tests/e2e/.samples` and installs each against tarballs of your local package builds, so the suite tests your changes. It clones `main` by default; set `THUNDERID_SAMPLES_REF` to use another branch or tag, or `THUNDERID_SAMPLES_DIR` to use a local checkout of the samples repository.
 
 ### Configure and Run
 
-You need `curl`, `jq`, `unzip`, `pnpm`, and `lsof` on your PATH. One script does everything:
+You need `curl`, `jq`, `unzip`, `pnpm`, `lsof`, and `git` on your PATH. One script does everything:
 
 ```bash
 cd tests/e2e
@@ -51,7 +53,7 @@ Arguments pass through to Playwright, so run a single spec with:
 ./run-e2e.sh tests/react-quickstart/sign-in-out.spec.ts
 ```
 
-The script owns the whole lifecycle. It downloads and starts a server, mints an admin token, imports the test applications, writes each sample's `.env`, starts all six apps, runs the tests, then stops the apps and restores any `.env` it replaced.
+The script owns the whole lifecycle. It downloads and starts a server, mints an admin token, imports the test applications, builds the packages, prepares the quickstarts, writes each sample's `.env`, starts all six apps, runs the tests, then stops the apps.
 
 :::note
 `run-e2e.sh` aborts if anything already answers on `https://localhost:8090`. Stop any server you started by hand before running it.

@@ -4,6 +4,7 @@
 import {Box, Typography} from '@wso2/oxygen-ui';
 import {JSX} from 'react';
 import ProductName from '@site/src/components/ProductName';
+import useIsDarkMode from '@site/src/hooks/useIsDarkMode';
 
 /**
  * Page header.
@@ -15,6 +16,7 @@ import ProductName from '@site/src/components/ProductName';
  * so the heading lines up with "Filters" and the search bar beneath it.
  */
 export default function EcosystemHero(): JSX.Element {
+  const eyebrowColor = useIsDarkMode() ? '#8bf9fa' : '#1a6fe8';
   return (
     <Box sx={{position: 'relative', pt: {xs: 6, md: 8}, pb: {xs: 4, md: 5}}}>
       <Box sx={{maxWidth: 1200, mx: 'auto', px: {xs: 2, sm: 4}}}>
@@ -30,12 +32,12 @@ export default function EcosystemHero(): JSX.Element {
               fontWeight: 600,
               letterSpacing: '0.18em',
               textTransform: 'uppercase',
-              color: '#8bf9fa',
+              color: eyebrowColor,
             }}
           >
             <Box
               component="span"
-              sx={{width: 5, height: 5, borderRadius: '50%', bgcolor: '#8bf9fa', boxShadow: '0 0 10px #8bf9fa'}}
+              sx={{width: 5, height: 5, borderRadius: '50%', bgcolor: eyebrowColor, boxShadow: `0 0 10px ${eyebrowColor}`}}
             />
             SDKs &amp; Tools
           </Box>

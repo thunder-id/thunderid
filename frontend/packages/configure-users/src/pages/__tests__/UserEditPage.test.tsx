@@ -890,7 +890,7 @@ describe('UserEditPage', () => {
       await waitFor(() => {
         const dialog = screen.getByRole('dialog');
         expect(dialog).toBeInTheDocument();
-        expect(within(dialog).getByText('Delete User')).toBeInTheDocument();
+        expect(within(dialog).getByText('Delete user')).toBeInTheDocument();
         expect(within(dialog).getByText(/Are you sure you want to delete this user/i)).toBeInTheDocument();
       });
     });

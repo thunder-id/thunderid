@@ -6,7 +6,13 @@ import {type ComponentProps, useState} from 'react';
 import {getI18n} from 'react-i18next';
 import {beforeAll, describe, expect, it, vi} from 'vitest';
 import type {OutboundAuthMethod} from '../../models/connection';
-import {AUTH_TYPE_FIELD, authPropertyField} from '../../utils/connectionFormMapping';
+import {
+  AUTH_ADDITIONAL_PROPERTIES_FIELD,
+  AUTH_TYPE_FIELD,
+  authPropertyField,
+  MASKED_SECRET,
+} from '../../utils/connectionFormMapping';
+import {decodeKeyValuePairs, encodeKeyValuePairs} from '../../utils/keyValuePairs';
 import AuthenticationSection from '../AuthenticationSection';
 
 vi.mock('@thunderid/contexts', async (importOriginal) => ({
@@ -35,6 +41,22 @@ const BASIC_METHODS: OutboundAuthMethod[] = [
       },
     ],
     type: 'basic',
+  },
+];
+
+/** The methods the server reports for an HTTP endpoint connection. */
+const HTTP_METHODS: OutboundAuthMethod[] = [
+  ...BASIC_METHODS,
+  {
+    displayName: 'Bearer token',
+    fields: [{credential: true, displayName: 'Bearer token', key: 'token', required: true, type: 'string'}],
+    type: 'bearer',
+  },
+  {
+    additionalProperties: {credential: true, displayName: 'API key headers', key: '', required: true, type: 'string'},
+    displayName: 'API key',
+    fields: [],
+    type: 'api_key',
   },
 ];
 
@@ -253,5 +275,63 @@ describe('AuthenticationSection', () => {
     });
 
     expect(document.getElementById(`connection-field-${authPropertyField('payload')}`)).toBeNull();
+  });
+
+  describe('HTTP endpoint methods', () => {
+    it('offers None, Basic, Bearer token and API key', () => {
+      renderSection({methods: HTTP_METHODS});
+
+      fireEvent.mouseDown(screen.getByRole('combobox'));
+
+      expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+        'None',
+        'Basic',
+        'Bearer token',
+        'API key',
+      ]);
+    });
+
+    it('asks for the bearer token as a masked credential', () => {
+      const {onFieldChange} = renderSection({methods: HTTP_METHODS, values: {[AUTH_TYPE_FIELD]: 'bearer'}});
+
+      expect(field(authPropertyField('token')).getAttribute('type')).toBe('password');
+      fireEvent.change(field(authPropertyField('token')), {target: {value: 'tok-1'}});
+
+      expect(onFieldChange).toHaveBeenLastCalledWith(authPropertyField('token'), 'tok-1');
+    });
+
+    it('collects API-key headers as masked name and value rows', () => {
+      const {onFieldChange} = renderSection({methods: HTTP_METHODS, values: {[AUTH_TYPE_FIELD]: 'api_key'}});
+      const id = `${AUTH_ADDITIONAL_PROPERTIES_FIELD}`;
+
+      fireEvent.change(field(`${id}-name-1`), {target: {value: 'X-Api-Key'}});
+      fireEvent.change(field(`${id}-value-1`), {target: {value: 'k-1'}});
+
+      expect(field(`${id}-value-1`).getAttribute('type')).toBe('password');
+      expect(onFieldChange).toHaveBeenLastCalledWith(
+        AUTH_ADDITIONAL_PROPERTIES_FIELD,
+        encodeKeyValuePairs([{name: 'X-Api-Key', value: 'k-1'}], 'pairs'),
+      );
+    });
+
+    it('reports a header left without its value instead of dropping it', () => {
+      const {onFieldChange} = renderSection({
+        methods: HTTP_METHODS,
+        mode: 'edit',
+        hasStoredSecret: true,
+        values: {
+          [AUTH_TYPE_FIELD]: 'api_key',
+          [AUTH_ADDITIONAL_PROPERTIES_FIELD]: encodeKeyValuePairs([{name: 'X-Api-Key', value: MASKED_SECRET}], 'pairs'),
+        },
+      });
+      const id = AUTH_ADDITIONAL_PROPERTIES_FIELD;
+
+      expect(field(`${id}-value-1`)).toBeDisabled();
+      fireEvent.click(screen.getByTestId(`connection-field-${id}-update-1`));
+
+      const last: string = onFieldChange.mock.lastCall?.[1] as string;
+      expect(decodeKeyValuePairs(last, 'pairs')).toEqual([{name: 'X-Api-Key', value: ''}]);
+      expect(screen.getByText('Enter both a name and value for every header.')).toBeInTheDocument();
+    });
   });
 });

@@ -155,6 +155,47 @@ func TestJSONFormatter_Format(t *testing.T) {
 	}
 }
 
+func TestJSONFormatter_FormatServerIdentifier(t *testing.T) {
+	f := newJSONFormatter()
+
+	tests := []struct {
+		name             string
+		serverIdentifier string
+	}{
+		{name: "set", serverIdentifier: "org-1:development"},
+		{name: "unset", serverIdentifier: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := f.Format(&providers.Event{
+				TraceID:          "trace-123",
+				EventID:          "event-456",
+				Type:             string(event.EventTypeTokenIssued),
+				Component:        "TestComponent",
+				Status:           providers.StatusSuccess,
+				ServerIdentifier: tt.serverIdentifier,
+			})
+			if err != nil {
+				t.Fatalf("Format() error = %v", err)
+			}
+
+			var result map[string]interface{}
+			if err := json.Unmarshal(data, &result); err != nil {
+				t.Fatalf("Format() produced invalid JSON: %v", err)
+			}
+
+			value, present := result["server_identifier"]
+			if !present {
+				t.Fatal("server_identifier missing from output")
+			}
+			if value != tt.serverIdentifier {
+				t.Errorf("server_identifier = %v, want %v", value, tt.serverIdentifier)
+			}
+		})
+	}
+}
+
 func TestJSONFormatter_FormatMultipleEvents(t *testing.T) {
 	f := newJSONFormatter()
 

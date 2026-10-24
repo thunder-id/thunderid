@@ -25,9 +25,10 @@ func Initialize(
 		authZENPDPService,
 		// PDP endpoints are admin-configured and may be internal hosts, so no
 		// SSRF dial guard. The engine stamps its own per-request context
-		// deadline, so the client itself stays unbounded, matching the
-		// previous NewHTTPClientWithTimeout(0) behavior.
-		httpservice.NewHTTPClient(httpservice.HTTPClientConfig{DisableTimeout: true}),
+		// deadline, so the client itself stays unbounded, and the client never
+		// follows redirects, matching the previous
+		// NewHTTPClientWithoutRedirects(0, false) behavior.
+		httpservice.NewHTTPClient(httpservice.HTTPClientConfig{DisableTimeout: true, DisableRedirects: true}),
 	)
 	return newAuthorizationService(
 		rbacEngine,

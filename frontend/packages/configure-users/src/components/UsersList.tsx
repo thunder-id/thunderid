@@ -88,7 +88,7 @@ export default function UsersList() {
       },
       {
         field: 'ouHandle',
-        headerName: t('users:listing.columns.organizationUnit', 'Organization Unit'),
+        headerName: t('users:listing.columns.organizationUnit', 'Organization unit'),
         flex: 0.5,
         minWidth: 150,
         renderCell: (params: DataGrid.GridRenderCellParams<UserWithDetails>) => (
@@ -109,7 +109,7 @@ export default function UsersList() {
         renderCell: (params: DataGrid.GridRenderCellParams<UserWithDetails>) => (
           <ListingTable.RowActions>
             {params.row.isReadOnly ? (
-              <Tooltip title={t('common:status.readOnly', 'Read Only')}>
+              <Tooltip title={t('common:status.readOnly', 'Read only')}>
                 <IconButton size="small" disableRipple sx={{cursor: 'default'}}>
                   <Eye size={16} />
                 </IconButton>

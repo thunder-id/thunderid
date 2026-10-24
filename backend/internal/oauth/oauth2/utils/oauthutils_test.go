@@ -1,9 +1,10 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package utils
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net/url"
@@ -17,7 +18,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 )
 
 type OAuth2UtilsTestSuite struct {
@@ -1935,4 +1938,58 @@ func (suite *OAuth2UtilsTestSuite) TestEnsureClientSubTypeAttribute_LeavesUserCo
 
 	assert.Equal(suite.T(), []string{"email"}, token.AccessToken.UserConfig.Attributes)
 	assert.Equal(suite.T(), []string{constants.ClaimSubType}, token.AccessToken.ClientConfig.Attributes)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestIsClientHeld() {
+	client := &providers.OAuthClient{ID: "app-1"}
+	cases := []struct {
+		name     string
+		decision providers.AccessDecision
+		svcErr   *tidcommon.ServiceError
+		held     bool
+		wantErr  bool
+	}{
+		{name: "Admitted", decision: providers.AccessDecision{Admitted: true}},
+		{
+			name:     "Refused",
+			decision: providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended},
+			held:     true,
+		},
+		{name: "GovernanceFault", svcErr: &tidcommon.InternalServerError, wantErr: true},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+			governance.EXPECT().EvaluateAccess(context.Background(), "app-1", providers.AccessPlaneApplication,
+				providers.AuthenticationMethod("")).Return(tc.decision, tc.svcErr)
+
+			held, svcErr := IsClientHeld(context.Background(), governance, client)
+
+			suite.Equal(tc.held, held)
+			if tc.wantErr {
+				suite.Equal(&tidcommon.InternalServerError, svcErr)
+			} else {
+				suite.Nil(svcErr)
+			}
+		})
+	}
+}
+
+func (suite *OAuth2UtilsTestSuite) TestIsClientHeld_NothingToCheck() {
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	for name, tc := range map[string]struct {
+		governance providers.IdentityGovernanceProvider
+		client     *providers.OAuthClient
+	}{
+		"NoGovernance": {nil, &providers.OAuthClient{ID: "app-1"}},
+		"NoClient":     {governance, nil},
+		"NoEntityID":   {governance, &providers.OAuthClient{}},
+	} {
+		suite.Run(name, func() {
+			held, svcErr := IsClientHeld(context.Background(), tc.governance, tc.client)
+
+			suite.False(held)
+			suite.Nil(svcErr)
+		})
+	}
 }

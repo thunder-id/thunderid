@@ -20,9 +20,12 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
+	sharedrevocation "github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/cibamock"
+	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/revocationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 )
@@ -34,6 +37,7 @@ type CIBAGrantHandlerTestSuite struct {
 	mockTokenBuilder     *tokenservicemock.TokenBuilderInterfaceMock
 	mockAttrCacheService *attributecachemock.AttributeCacheServiceInterfaceMock
 	mockResource         *resourcemock.ResourceServiceInterfaceMock
+	mockEnforcement      *revocationmock.EnforcementServiceInterfaceMock
 	oauthApp             *providers.OAuthClient
 	tokenReq             *model.TokenRequest
 }
@@ -47,8 +51,9 @@ func (suite *CIBAGrantHandlerTestSuite) SetupTest() {
 	suite.mockTokenBuilder = tokenservicemock.NewTokenBuilderInterfaceMock(suite.T())
 	suite.mockAttrCacheService = attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
 	suite.mockResource = resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	suite.mockEnforcement = revocationmock.NewEnforcementServiceInterfaceMock(suite.T())
 	suite.handler = newCIBAGrantHandler(suite.mockCIBAService, suite.mockTokenBuilder,
-		suite.mockAttrCacheService, suite.mockResource)
+		suite.mockAttrCacheService, suite.mockResource, nil)
 	suite.oauthApp = &providers.OAuthClient{
 		ClientID: "client-1",
 		ScopeClaims: map[string][]string{
@@ -647,4 +652,130 @@ func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Authenticated_CarriesSes
 	suite.Nil(errResp)
 	suite.Require().NotNil(resp)
 	suite.Equal("sess-1", resp.SessionID)
+}
+
+// pollAgainstDenyList polls an authenticated record against an enforcing handler, echoing the minted scopes.
+func (suite *CIBAGrantHandlerTestSuite) pollAgainstDenyList(record *ciba.CIBAAuthRequest,
+	lookup func(context.Context, revocation.RevocationIdentity) error) (*model.TokenResponseDTO, *model.ErrorResponse) {
+	suite.handler = newCIBAGrantHandler(suite.mockCIBAService, suite.mockTokenBuilder,
+		suite.mockAttrCacheService, suite.mockResource, suite.mockEnforcement)
+	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+	suite.expectResourceServer()
+	suite.mockEnforcement.EXPECT().EnsureNotRevoked(mock.Anything, mock.Anything).RunAndReturn(lookup)
+	suite.mockTokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, ctx *tokenservice.AccessTokenBuildContext) (*model.TokenDTO, error) {
+			return &model.TokenDTO{Token: "access-token", Scopes: ctx.Scopes}, nil
+		}).Maybe()
+	suite.mockTokenBuilder.EXPECT().BuildIDToken(mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: "id-token"}, nil).Maybe()
+	suite.mockCIBAService.EXPECT().MarkConsumed(mock.Anything, "auth-req-1").Return(true, nil).Maybe()
+
+	return suite.handler.HandleGrant(context.Background(), suite.tokenReq, suite.oauthApp)
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_ScopeRevokedAfterAuthenticationIsNotMinted() {
+	record := suite.boundAuthenticatedRecord(oidcReadWriteScopes)
+	record.AuthTime = time.Now().Add(-time.Minute)
+
+	resp, errResp := suite.pollAgainstDenyList(record, denyListLookup(revocation.CriteriaRevocation{
+		Criterion: revocation.Criterion{
+			Type:  revocation.CriterionTypeEntityScope,
+			Value: sharedrevocation.EntityScopeCriterionValue("user-1", testCIBAResourceURL, "write"),
+		},
+		Reason: revocation.RevocationReasonRoleAssignmentRemoved,
+		Cutoff: record.AuthTime.Add(30 * time.Second),
+	}))
+
+	suite.Require().Nil(errResp)
+	suite.Equal([]string{"openid", "read"}, resp.AccessToken.Scopes)
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_EveryScopeRevokedAfterAuthenticationIsRefused() {
+	record := suite.boundAuthenticatedRecord("read write")
+	record.AuthTime = time.Now().Add(-time.Minute)
+	revokedAfterAuthentication := func(scope string) revocation.CriteriaRevocation {
+		return revocation.CriteriaRevocation{
+			Criterion: revocation.Criterion{
+				Type:  revocation.CriterionTypeEntityScope,
+				Value: sharedrevocation.EntityScopeCriterionValue("user-1", testCIBAResourceURL, scope),
+			},
+			Reason: revocation.RevocationReasonRoleAssignmentRemoved,
+			Cutoff: record.AuthTime.Add(30 * time.Second),
+		}
+	}
+
+	resp, errResp := suite.pollAgainstDenyList(record,
+		denyListLookup(revokedAfterAuthentication("read"), revokedAfterAuthentication("write")))
+
+	suite.Nil(resp)
+	suite.Equal(&model.ErrorResponse{
+		Error: constants.ErrorInvalidGrant, ErrorDescription: "The authorization grant has been revoked"}, errResp)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
+	suite.mockCIBAService.AssertNotCalled(suite.T(), "MarkConsumed", mock.Anything, mock.Anything)
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_ScopeRevokedBeforeAuthorizationOnAReusedSessionIsMinted() {
+	record := suite.boundAuthenticatedRecord(oidcReadWriteScopes)
+	record.AuthTime = time.Now().Add(-time.Hour)
+	record.AuthorizedAt = time.Now().Add(-time.Minute)
+
+	resp, errResp := suite.pollAgainstDenyList(record, denyListLookup(revocation.CriteriaRevocation{
+		Criterion: revocation.Criterion{
+			Type:  revocation.CriterionTypeEntityScope,
+			Value: sharedrevocation.EntityScopeCriterionValue("user-1", testCIBAResourceURL, "write"),
+		},
+		Reason: revocation.RevocationReasonRoleAssignmentRemoved,
+		Cutoff: time.Now().Add(-30 * time.Minute),
+	}))
+
+	suite.Require().Nil(errResp)
+	suite.Equal([]string{"openid", "read", "write"}, resp.AccessToken.Scopes)
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_RecordWithoutAuthorizationTimeFallsBackToAuthTime() {
+	record := suite.boundAuthenticatedRecord(oidcReadWriteScopes)
+	record.AuthTime = time.Now().Add(-time.Hour)
+
+	resp, errResp := suite.pollAgainstDenyList(record, denyListLookup(revocation.CriteriaRevocation{
+		Criterion: revocation.Criterion{
+			Type:  revocation.CriterionTypeEntityScope,
+			Value: sharedrevocation.EntityScopeCriterionValue("user-1", testCIBAResourceURL, "write"),
+		},
+		Reason: revocation.RevocationReasonRoleAssignmentRemoved,
+		Cutoff: time.Now().Add(-30 * time.Minute),
+	}))
+
+	suite.Require().Nil(errResp)
+	suite.Equal([]string{"openid", "read"}, resp.AccessToken.Scopes)
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_SubjectRevokedAfterAuthenticationIsRefused() {
+	record := suite.boundAuthenticatedRecord(oidcReadWriteScopes)
+	record.AuthTime = time.Now().Add(-time.Minute)
+
+	resp, errResp := suite.pollAgainstDenyList(record, denyListLookup(revocation.CriteriaRevocation{
+		Criterion: revocation.Criterion{Type: revocation.CriterionTypeSubject, Value: "user-1"},
+		Reason:    revocation.RevocationReasonUserDeleted,
+		Cutoff:    record.AuthTime.Add(30 * time.Second),
+	}))
+
+	suite.Nil(resp)
+	suite.Require().NotNil(errResp)
+	suite.Equal(constants.ErrorInvalidGrant, errResp.Error)
+	suite.mockCIBAService.AssertNotCalled(suite.T(), "MarkConsumed", mock.Anything, mock.Anything)
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_DenyListUnavailableIsRefused() {
+	record := suite.boundAuthenticatedRecord(oidcReadWriteScopes)
+	record.AuthTime = time.Now().Add(-time.Minute)
+
+	resp, errResp := suite.pollAgainstDenyList(record, func(context.Context, revocation.RevocationIdentity) error {
+		return revocation.ErrEnforcementUnavailable
+	})
+
+	suite.Nil(resp)
+	suite.Require().NotNil(errResp)
+	suite.Equal(constants.ErrorServerError, errResp.Error)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
+	suite.mockCIBAService.AssertNotCalled(suite.T(), "MarkConsumed", mock.Anything, mock.Anything)
 }

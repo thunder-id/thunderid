@@ -601,7 +601,7 @@ export default function AddMemberDialog({
           onClick={handleAdd}
           disabled={totalSelected === 0 || isSubmitting || membershipUnavailable}
         >
-          {t('groups:addMember.add', 'Add Selected')}
+          {t('groups:addMember.add', 'Add selected')}
         </Button>
       </DialogActions>
     </Dialog>

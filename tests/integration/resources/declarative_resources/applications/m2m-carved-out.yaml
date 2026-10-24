@@ -6,14 +6,14 @@ ouId: decl-m2m-root
 type: fullstack
 template: web
 url: https://example.com
-# A broad target with a carve-out: naming a branch withholds it and everything beneath it. This is
+# Every child unit with a carve-out: naming a branch withholds it and everything beneath it. This is
 # how one customer is excluded without enumerating all the others.
 sharingPolicies:
   - id: decl-m2m-carved-out-policy-1
-    targets:
-      - scope: allChildren
-        excludedOuIds:
-          - decl-m2m-child-b
+    childUnits:
+      mode: all
+      excludedOuIds:
+        - decl-m2m-child-b
 inboundAuthConfig:
   - type: "oauth2"
     config:

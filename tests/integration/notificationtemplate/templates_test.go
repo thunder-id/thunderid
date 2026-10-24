@@ -16,11 +16,12 @@ import (
 )
 
 // TemplatesTestSuite exercises the notification-template REST surface end to end, focusing on the
-// per-channel content rules: an email requires a subject, while SMS forbids one. Templates are
-// deployment-scoped, so no organization unit setup is needed.
+// per-channel content rules: an email requires a subject, while SMS forbids one. A template records the
+// organization unit it is created under, so the suite resolves the bootstrap OU and creates under it.
 type TemplatesTestSuite struct {
 	suite.Suite
 	client     *http.Client
+	ouID       string
 	createdIDs []channelID
 }
 
@@ -35,6 +36,9 @@ func TestTemplatesTestSuite(t *testing.T) {
 
 func (ts *TemplatesTestSuite) SetupSuite() {
 	ts.client = testutils.GetHTTPClient()
+	ouID, err := testutils.FindBootstrapOUID()
+	ts.Require().NoError(err)
+	ts.ouID = ouID
 }
 
 // TearDownSuite deletes every template the suite created so re-runs do not hit handle conflicts.
@@ -84,8 +88,20 @@ func idOf(body []byte) string {
 	return resp.ID
 }
 
-// create posts a template and, on success, records its id for cleanup.
+func ouIDOf(body []byte) string {
+	var resp struct {
+		OUID string `json:"ouId"`
+	}
+	_ = json.Unmarshal(body, &resp)
+	return resp.OUID
+}
+
+// create posts a template and, on success, records its id for cleanup. It defaults ouId to the
+// bootstrap OU so content-rule cases fail for their intended reason, not a missing ouId.
 func (ts *TemplatesTestSuite) create(channel string, body map[string]interface{}) (int, []byte) {
+	if _, ok := body["ouId"]; !ok {
+		body["ouId"] = ts.ouID
+	}
 	status, respBody := ts.do(http.MethodPost,
 		fmt.Sprintf("/notification-templates/%s/templates", channel), body)
 	if status == http.StatusCreated {
@@ -105,9 +121,12 @@ func (ts *TemplatesTestSuite) TestEmailLifecycle() {
 	ts.Require().Equalf(http.StatusCreated, status, "body: %s", body)
 	id := idOf(body)
 	ts.Require().NotEmpty(id)
+	ts.Require().Equal(ts.ouID, ouIDOf(body))
 
-	status, _ = ts.do(http.MethodGet, "/notification-templates/email/templates/"+id, nil)
+	status, body = ts.do(http.MethodGet, "/notification-templates/email/templates/"+id, nil)
 	ts.Require().Equal(http.StatusOK, status)
+	// ouId is set at creation and returned on reads.
+	ts.Require().Equal(ts.ouID, ouIDOf(body))
 
 	status, body = ts.do(http.MethodPut, "/notification-templates/email/templates/"+id,
 		map[string]interface{}{
@@ -115,6 +134,8 @@ func (ts *TemplatesTestSuite) TestEmailLifecycle() {
 			"content":     map[string]string{"subject": "Welcome again", "body": "<p>Hi</p>"},
 		})
 	ts.Require().Equalf(http.StatusOK, status, "body: %s", body)
+	// ouId is immutable: it is not part of the update body and the stored value is preserved.
+	ts.Require().Equal(ts.ouID, ouIDOf(body))
 
 	status, _ = ts.do(http.MethodDelete, "/notification-templates/email/templates/"+id, nil)
 	ts.Require().Equal(http.StatusNoContent, status)
@@ -245,6 +266,31 @@ func (ts *TemplatesTestSuite) TestInvalidChannel() {
 		})
 	ts.Require().Equal(http.StatusBadRequest, status)
 	ts.Require().Equal("NTM-1007", errorCode(body))
+}
+
+// TestMissingOU confirms a create with no ouId is rejected with NTM-1025.
+func (ts *TemplatesTestSuite) TestMissingOU() {
+	status, body := ts.do(http.MethodPost, "/notification-templates/email/templates",
+		map[string]interface{}{
+			"handle":      "it-missing-ou",
+			"displayName": "Missing OU",
+			"content":     map[string]string{"subject": "s", "body": "<p>b</p>"},
+		})
+	ts.Require().Equal(http.StatusBadRequest, status)
+	ts.Require().Equal("NTM-1025", errorCode(body))
+}
+
+// TestInvalidOU confirms a create whose ouId does not reference an existing OU is rejected with
+// NTM-1025.
+func (ts *TemplatesTestSuite) TestInvalidOU() {
+	status, body := ts.create("email", map[string]interface{}{
+		"handle":      "it-invalid-ou",
+		"ouId":        "00000000-0000-0000-0000-000000000000",
+		"displayName": "Invalid OU",
+		"content":     map[string]string{"subject": "s", "body": "<p>b</p>"},
+	})
+	ts.Require().Equal(http.StatusBadRequest, status)
+	ts.Require().Equal("NTM-1025", errorCode(body))
 }
 
 // TestHandleConflict confirms a duplicate handle in the same channel is rejected with 409 against the

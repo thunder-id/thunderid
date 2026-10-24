@@ -1,7 +1,7 @@
 # SDK Development Specification
 
 - **Status:** Draft
-- **Version:** 0.4
+- **Version:** 0.6
 - **Related documents:**
   [threat-model.md](threat-model.md),
   [#5305](https://github.com/thunder-id/thunderid/issues/5305),
@@ -248,14 +248,14 @@ PKCE, sending the user to the ThunderID authorization endpoint and handling the 
 is the mode for anything that can safely redirect and receive a callback, and it is the mode
 that keeps the application away from user credentials entirely.
 
-**Embedded mode**, also called app-native, drives the ThunderID Flow Execution API directly
-and keeps the user inside the application. The SDK posts to `/flow/execute` with an
-`applicationId` and a `flowType`, receives a `flowId` with a `flowStatus` of `PROMPT_ONLY` and
-a description of the inputs or actions the step requires, and submits each step back with the
-`flowId`, the chosen action, and the collected inputs. A `flowStatus` of `COMPLETE` carries the
-assertion; `ERROR` carries a `failureReason` the SDK surfaces as an authentication failure.
-Multi-factor steps arrive as further `PROMPT_ONLY` steps and are surfaced to the application
-the same way. It is the mode for native mobile and for any application that renders its own
+**Embedded mode**, also called app-native, drives the ThunderID Flow Execution API directly and
+keeps the user inside the application. The SDK posts to `/flow/execute` with an `applicationId`
+and a `flowType`, receives an `executionId` with a `flowStatus` of `INCOMPLETE` and a
+description of the inputs or actions the step requires, and submits each step back with the
+`executionId`, the chosen action, and the collected inputs. A `flowStatus` of `COMPLETE` carries
+the assertion; `ERROR` carries a `failureReason` the SDK surfaces as an authentication failure.
+Multi-factor steps arrive as further `INCOMPLETE` steps and are surfaced to the application the
+same way. It is the mode for native mobile and for any application that renders its own
 authentication UI.
 
 The mode is set through the `mode` configuration key, taking `redirect` or `embedded`. An SDK
@@ -338,7 +338,7 @@ this table already covers.
 | `tokenValidation` | Object | No | Validation on | Clock tolerance, and per-claim switches that MUST be rejected when they would disable a check required by [Security requirements](#security-requirements) against a non-loopback `baseUrl`. Disabling a mandatory check is a test affordance, not a deployment option. |
 | `tokenLifecycle` | Object | No | Platform default | Refresh timing and lifecycle behaviour. |
 | `allowedExternalUrls` | List | No | Empty | Origins the SDK may attach an access token to when tokens are held in isolated storage. Every entry MUST use HTTPS. See [Token attachment](#token-attachment) for how entries are matched. |
-| `syncSession` | Boolean | No | `false` | Synchronizes the application session with the server session. Subject to third-party cookie restrictions. |
+| `session` | Object | No | Disabled | Browser SDKs only. Behaviour around the server's SSO session. `silentSignIn.beforeRedirect` (default `false`) makes `signIn` try a silent `prompt=none` sign-in first and continue with the redirect when it fails; it MUST be skipped when the caller sets its own `prompt`. `silentSignIn.timeout` (milliseconds, default `10000`) bounds how long a silent sign-in waits before reporting the user as signed out, including from `signInSilently`. Silent sign-in only finds the session when the browser sends the server's session cookie to the iframe, which needs the application on the same site as the server. |
 | `backchannelLogout` | Object | No | Disabled | Server-side SDKs only. Turns on [back-channel logout handling](#back-channel-logout-handling): `enabled`, the `path` of the handler where the SDK mounts it, and the `store` that records ended sessions. An SDK that cannot receive the request MUST document the key as unsupported. |
 | `organizationHandle` | String | No | None | Organization identifier, required when a custom domain is configured. |
 | `organizationChain` | Object | No | None | Chained authentication across organization contexts. |
@@ -661,6 +661,22 @@ exchange completes. The challenge method is S256; `plain` MUST NOT be used.
 **State.** A cryptographically random `state` on every authorization request, validated on
 callback. A mismatch fails authentication.
 
+**Federated redirects in embedded mode.** A `REDIRECTION` step carries a `redirectURL` with a
+`state` the server issued. The SDK opens it in a browser session and resubmits the callback's
+`code` and `state` to the flow with the step's `executionId` and challenge token. A browser SDK
+MUST accept a callback only from the popup it opened, either posted with the application's
+origin or read from the popup's same-origin URL. No SDK may submit a callback that lacks a
+`code` or a `state`: the server checks the state only when the client sends one, so a callback
+submitted without one is checked nowhere. On mobile, the SDK MUST also reject, with
+`invalidGrant`, a callback whose `state` differs from the `state` in `redirectURL`. It MUST
+likewise reject every callback to a `redirectURL` that has no `state` or an empty one. After a
+match, it resubmits the `state` from `redirectURL`. On Android any installed app can open the
+callback scheme. On iOS, `ASWebAuthenticationSession` hands the callback straight to the
+session, and iOS applies the same rules so the mobile SDKs follow one rule. The server always
+issues a state, so neither rule rejects a genuine callback. The response to a submitted callback
+MAY be another `REDIRECTION`, and the SDK MUST follow it the same way, in sign-in and sign-up
+alike.
+
 **Endpoint trust.** Every endpoint the SDK calls has to be one it trusts before it sends
 anything to it. Discovery metadata is fetched over HTTPS, and its `issuer` MUST match the
 expected issuer exactly, by string comparison, before any endpoint in the document is used. A
@@ -693,9 +709,11 @@ retained beyond the call. Transport is HTTPS with no exception: the loopback all
 configured for embedded mode against a non-HTTPS `baseUrl` MUST be rejected at initialization.
 Certificate pinning SHOULD be available as an option on platforms that support it.
 
-**Logging.** Access tokens masked, refresh tokens never logged, passwords and one-time codes
-never logged, email addresses and phone numbers masked. These rules apply at every log level
-and before any caller-supplied logger is invoked.
+**Logging.** Access tokens masked; refresh tokens, passwords, one-time codes, and
+authorization codes never logged, nor a callback URL that carries a code; email addresses and
+phone numbers masked. These rules apply at every log level and before any caller-supplied
+logger is invoked. Values that are never logged are also kept out of the error messages and
+crash reports the SDK produces.
 
 **Sessions.** Access tokens are refreshed ahead of expiry, refresh tokens are rotated on use
 with stored tokens updated atomically, concurrent refreshes are deduplicated to a single
@@ -971,6 +989,14 @@ and identical, so a platform cannot quietly ship a weaker default.
   non-loopback `baseUrl`, when initialization runs, then it is rejected.
 - **AC4.12:** Given two clients configured with different `instanceId` values, when one signs
   in, then the other's stored tokens and session state are unchanged.
+- **AC4.13:** Given an embedded flow returns a `REDIRECTION` step, when its callback lacks a
+  `code` or a `state`, then nothing is submitted to the flow and it reports an error.
+- **AC4.14:** Given a mobile SDK and a `REDIRECTION` step, when a callback arrives whose `state`
+  differs from the `state` in `redirectURL`, or the `redirectURL` has no `state` or an empty one,
+  then it fails with `invalidGrant` and nothing is submitted.
+- **AC4.15:** Given a submitted callback whose response is another `REDIRECTION`, in sign-in or
+  sign-up, when the SDK handles it, then it opens the new `redirectURL` rather than rendering an
+  empty step.
 - **AC4.7:** Given concurrent calls arrive while a token refresh is in flight, when they are
   served, then only one refresh request was issued.
 
@@ -1112,3 +1138,5 @@ session ended, so a user who signs out elsewhere is not left signed in to my app
 | 0.2 | 2026-09-15 | Cross-SDK parity enforcement stated as an outcome. How a check reads and records the decision is left to the implementation. |
 | 0.3 | 2026-09-26 | Management operations for applications, users, and agents added as an optional capability. |
 | 0.4 | 2026-10-06 | Back-channel logout handling added as an optional capability for SDKs with a server runtime. |
+| 0.5 | 2026-10-15 | `syncSession` replaced by a `session` object. The server does not implement OpenID Connect Session Management, so there is no check-session iframe for an SDK to synchronize with. `session.silentSignIn` configures silent sign-in from the SSO session instead. |
+| 0.6 | 2026-10-20 | Federated redirects in embedded mode: a callback without a `state` is never submitted, mobile SDKs compare it with the request's `state`, and a chained `REDIRECTION` is followed (AC4.13 to AC4.15). Authorization codes, and the callback URLs that carry them, are never logged. |

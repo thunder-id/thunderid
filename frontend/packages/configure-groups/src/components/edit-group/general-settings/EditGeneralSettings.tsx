@@ -72,14 +72,14 @@ export default function EditGeneralSettings({group}: EditGeneralSettingsProps): 
                             ? t('common:actions.copied')
                             : t(
                                 'groups:edit.general.sections.quickCopy.copyOrganizationUnitHandle',
-                                'Copy Organization Unit Handle',
+                                'Copy organization unit handle',
                               )
                         }
                       >
                         <IconButton
                           aria-label={t(
                             'groups:edit.general.sections.quickCopy.copyOrganizationUnitHandle',
-                            'Copy Organization Unit Handle',
+                            'Copy organization unit handle',
                           )}
                           onClick={() => {
                             handleCopyToClipboard(group.ouHandle!, 'ouHandle').catch(() => null);

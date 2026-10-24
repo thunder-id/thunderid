@@ -41,18 +41,18 @@ The employee's sign-in never touches the MCP authorization server directly. The 
 
 ### As the MCP Authorization Server
 
-<ProductName /> protects the MCP server and accepts ID-JAGs issued by the enterprise identity provider. Register that identity provider as a **Trusted Token Issuer** connection with ID-JAG enabled, and clients present their ID-JAGs to <ProductName />'s token endpoint using the `jwt-bearer` grant to receive an access token for the MCP server. See [Accept Identity Assertions from an External IdP](../../../../guides/protocols/oauth-oidc/identity-assertion-grant/accept-identity-assertions).
+<ProductName /> protects the MCP server and accepts ID-JAGs issued by the enterprise identity provider. Register that identity provider as a **Trusted token issuer** connection with ID-JAG enabled, and clients present their ID-JAGs to <ProductName />'s token endpoint using the `jwt-bearer` grant to receive an access token for the MCP server. See [Accept Identity Assertions from an External IdP](../../../../guides/protocols/oauth-oidc/identity-assertion-grant/accept-identity-assertions).
 
 ### As the Enterprise IdP
 
-<ProductName /> can also act as the enterprise identity provider issuing the ID-JAGs. An application already signed in to <ProductName />, with the **Identity Assertions (ID-JAG)** toggle enabled, exchanges its ID token for an ID-JAG targeting a downstream MCP authorization server, then presents that grant to obtain an access token for the MCP server it needs to reach. See [Issue Identity Assertions (ID-JAG)](../../../../guides/protocols/oauth-oidc/identity-assertion-grant/issue-identity-assertions).
+<ProductName /> can also act as the enterprise identity provider issuing the ID-JAGs. An application already signed in to <ProductName />, with the **Identity assertions (ID-JAG)** toggle enabled, exchanges its ID token for an ID-JAG targeting a downstream MCP authorization server, then presents that grant to obtain an access token for the MCP server it needs to reach. See [Issue Identity Assertions (ID-JAG)](../../../../guides/protocols/oauth-oidc/identity-assertion-grant/issue-identity-assertions).
 
 ## Terminology Map
 
 | EMA term | <ProductName /> feature |
 |---|---|
-| MCP authorization server validating ID-JAGs | The jwt-bearer grant with a **Trusted Token Issuer** connection |
-| Enterprise IdP issuing ID-JAGs | Token exchange with **Identity Assertions (ID-JAG)** enabled on an application |
+| MCP authorization server validating ID-JAGs | The jwt-bearer grant with a **Trusted token issuer** connection |
+| Enterprise IdP issuing ID-JAGs | Token exchange with **Identity assertions (ID-JAG)** enabled on an application |
 | Identity assertion (the IdP's proof of sign-in, per the IETF draft) | The ID token obtained at sign-in |
 | ID-JAG | The JWT with header `typ: oauth-id-jag+jwt` |
 

@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen} from '@testing-library/react';
@@ -163,6 +163,22 @@ vi.mock('../adapters/DynamicInputPlaceholderAdapter', () => ({
   default: ({resource}: {resource: Element}) => (
     <div data-testid="dynamic-input-placeholder-adapter" data-resource-id={resource.id}>
       Dynamic Input Placeholder Adapter
+    </div>
+  ),
+}));
+
+vi.mock('../adapters/KeyValueListAdapter', () => ({
+  default: ({resource}: {resource: Element}) => (
+    <div data-testid="key-value-list-adapter" data-resource-id={resource.id}>
+      Key Value List Adapter
+    </div>
+  ),
+}));
+
+vi.mock('../adapters/CopyableTextAdapter', () => ({
+  default: ({resource}: {resource: Element}) => (
+    <div data-testid="copyable-text-adapter" data-resource-id={resource.id}>
+      Copyable Text Adapter
     </div>
   ),
 }));
@@ -502,6 +518,34 @@ describe('CommonElementFactory', () => {
 
       expect(screen.getByTestId('dynamic-input-placeholder-adapter')).toBeInTheDocument();
       expect(screen.getByTestId('dynamic-input-placeholder-adapter')).toHaveAttribute('data-resource-id', 'element-1');
+    });
+  });
+
+  describe('Key Value List Element', () => {
+    it('should render KeyValueListAdapter for KeyValueList type', () => {
+      const keyValueListElement = createMockElement({
+        category: ElementCategories.Display,
+        type: ElementTypes.KeyValueList,
+      });
+
+      render(<CommonElementFactory stepId="step-1" resource={keyValueListElement} />);
+
+      expect(screen.getByTestId('key-value-list-adapter')).toBeInTheDocument();
+      expect(screen.getByTestId('key-value-list-adapter')).toHaveAttribute('data-resource-id', 'element-1');
+    });
+  });
+
+  describe('Copyable Text Element', () => {
+    it('should render CopyableTextAdapter for CopyableText type', () => {
+      const copyableTextElement = createMockElement({
+        category: ElementCategories.Display,
+        type: ElementTypes.CopyableText,
+      });
+
+      render(<CommonElementFactory stepId="step-1" resource={copyableTextElement} />);
+
+      expect(screen.getByTestId('copyable-text-adapter')).toBeInTheDocument();
+      expect(screen.getByTestId('copyable-text-adapter')).toHaveAttribute('data-resource-id', 'element-1');
     });
   });
 

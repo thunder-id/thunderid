@@ -11,7 +11,7 @@ import {
   InputAdornment,
   TextField,
 } from '@wso2/oxygen-ui';
-import {Eye, EyeOff, Lock} from '@wso2/oxygen-ui-icons-react';
+import {Eye, EyeOff, Lock, RotateCcw} from '@wso2/oxygen-ui-icons-react';
 import {type JSX, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 
@@ -28,6 +28,7 @@ interface MaskedSecretFieldProps {
   error?: string;
   hint?: string;
   required?: boolean;
+  showStoredControls?: boolean;
 }
 
 export default function MaskedSecretField({
@@ -41,6 +42,7 @@ export default function MaskedSecretField({
   error = undefined,
   hint = undefined,
   required = false,
+  showStoredControls = true,
 }: MaskedSecretFieldProps): JSX.Element {
   const {t} = useTranslation('connections');
   const [visible, setVisible] = useState(false);
@@ -66,11 +68,18 @@ export default function MaskedSecretField({
               },
             }}
           />
-          <Button variant="outlined" onClick={() => onReplacingChange(true)} data-testid={`${id}-replace`}>
-            {t('form.secret.update')}
-          </Button>
+          {showStoredControls && (
+            <Button
+              variant="outlined"
+              startIcon={<RotateCcw size={16} />}
+              onClick={() => onReplacingChange(true)}
+              data-testid={`${id}-replace`}
+            >
+              {t('form.secret.update')}
+            </Button>
+          )}
         </Box>
-        <FormHelperText>{t('form.secret.keepHelp')}</FormHelperText>
+        {showStoredControls && <FormHelperText>{t('form.secret.keepHelp')}</FormHelperText>}
       </FormControl>
     );
   }

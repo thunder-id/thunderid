@@ -62,12 +62,12 @@ export default function TokenValidationSection({
   const {t} = useTranslation();
   const [activeValidationTab, setActiveValidationTab] = useState<'access' | 'id' | 'refresh'>('access');
 
-  const title = t('applications:edit.token.token_validation.title', 'Token Validity');
+  const title = t('applications:edit.token.token_validation.title', 'Token validity');
   const description = t(
     'applications:edit.token.token_validation.description',
     'Configure how long tokens remain valid before expiration',
   );
-  const label = t('applications:edit.token.labels.token_validity', 'Token Validity');
+  const label = t('applications:edit.token.labels.token_validity', 'Token validity');
   const hint = t('applications:edit.token.validity.hint', 'Token validity period in seconds (e.g., 3600 for 1 hour)');
 
   const renderField = (
@@ -107,9 +107,9 @@ export default function TokenValidationSection({
             }}
             sx={{borderBottom: 1, borderColor: 'divider'}}
           >
-            <Tab label={t('applications:edit.token.tabs.access_token', 'Access Token')} />
-            <Tab label={t('applications:edit.token.tabs.id_token', 'ID Token')} />
-            <Tab label={t('applications:edit.token.tabs.refresh_token', 'Refresh Token')} />
+            <Tab label={t('applications:edit.token.tabs.access_token', 'Access token')} />
+            <Tab label={t('applications:edit.token.tabs.id_token', 'ID token')} />
+            <Tab label={t('applications:edit.token.tabs.refresh_token', 'Refresh token')} />
           </Tabs>
           <Box sx={{p: 3}}>
             {activeValidationTab === 'access' && renderField('accessTokenValidity')}

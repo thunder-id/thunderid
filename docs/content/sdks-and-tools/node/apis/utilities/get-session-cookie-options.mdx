@@ -69,7 +69,6 @@ app.get('/callback', async (req, res) => {
     (authUrl) => res.redirect(authUrl),
     sessionId,
     req.query.code as string,
-    req.query.session_state as string,
     req.query.state as string,
   )
 

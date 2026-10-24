@@ -41,37 +41,6 @@ hero:
       href: https://docs.spring.io/spring-security/reference/
       variant: secondary
       external: true
-  aside:
-    type: install
-    footnote: Spring's own starters · Boot 3.2+ · Java 17+
-    tabs:
-      - label: gradle
-        code:
-          file: build.gradle.kts
-          lang: kotlin
-          content: |-
-            implementation("org.springframework.boot:spring-boot-starter-oauth2-client")
-            implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
-      - label: groovy
-        code:
-          file: build.gradle
-          lang: groovy
-          content: |-
-            implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
-            implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
-      - label: maven
-        code:
-          file: pom.xml
-          lang: xml
-          content: |-
-            <dependency>
-              <groupId>org.springframework.boot</groupId>
-              <artifactId>spring-boot-starter-oauth2-client</artifactId>
-            </dependency>
-            <dependency>
-              <groupId>org.springframework.boot</groupId>
-              <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
-            </dependency>
 
 sections:
   - type: steps
@@ -206,23 +175,6 @@ sections:
         badge: {label: supported, tone: success}
       - cells: [Spring Boot 2.7 / Security 5, legacy]
         badge: {label: unsupported, tone: danger}
-
-  - type: linkGrid
-    id: beyond
-    title: Beyond this guide
-    intro: >-
-      Everything past this configuration is ordinary Spring Security, documented by the Spring team. These are
-      the pages worth bookmarking.
-    items:
-      - label: OAuth2 Login
-        href: https://docs.spring.io/spring-security/reference/servlet/oauth2/login/index.html
-        external: true
-      - label: OAuth2 Resource Server
-        href: https://docs.spring.io/spring-security/reference/servlet/oauth2/resource-server/index.html
-        external: true
-      - label: Method security
-        href: https://docs.spring.io/spring-security/reference/servlet/authorization/method-security.html
-        external: true
 
   - type: support
     id: support

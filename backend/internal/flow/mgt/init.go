@@ -40,6 +40,7 @@ func Initialize(
 	graphBuilder graphbuilder.GraphBuilderInterface,
 	serverConfigSvc serverConfigProvider,
 	ouSvc ouProvider,
+	templateResolver notificationTemplateProvider,
 	configHandler *FlowConfigHandler,
 ) (FlowMgtServiceInterface, declarativeresource.ResourceExporter, error) {
 	flowValidator := newFlowValidator(executorRegistry, interceptorRegistry, graphBuilder)
@@ -52,6 +53,7 @@ func Initialize(
 	service := newFlowMgtService(
 		store, inferenceService, graphBuilder, executorRegistry,
 		interceptorRegistry, flowValidator, compositeStore, transactioner, serverConfigSvc, ouSvc,
+		templateResolver,
 	)
 
 	// TODO: Check whether this can be improved to avoid injecting configHandler to flow mgt service

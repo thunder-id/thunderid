@@ -39,6 +39,11 @@ const (
 	// nodePropertyKeyNotificationSenderID is the node property key that references a notification
 	// sender by its ID.
 	nodePropertyKeyNotificationSenderID = "senderId"
+	// nodePropertyKeyEmailTemplate / nodePropertyKeySMSTemplate reference a managed notification
+	// template by its handle; the key implies the channel. They mirror the executor property keys
+	// (internal/flow/executor).
+	nodePropertyKeyEmailTemplate = "emailTemplate"
+	nodePropertyKeySMSTemplate   = "smsTemplate"
 )
 
 // authToRegLabelTerms maps authentication UI label terms to their registration equivalents.

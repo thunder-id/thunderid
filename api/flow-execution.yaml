@@ -248,7 +248,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         "403":
-          description: 'Forbidden: Direct flow initiation is not permitted for this application type'
+          description: >
+            Forbidden: Direct flow initiation is not permitted for this application or its OAuth
+            configuration, or the application is suspended.
           content:
             application/json:
               schema:
@@ -268,8 +270,10 @@ components:
       name: Flow-Secret
       description: >-
         Flow Secret used to authenticate backend/server-side applications when initiating a flow
-        directly. Required for non-public clients that do not use the redirect-based
-        authorization_code flow; ignored for other applications.
+        directly. Required for full-stack, custom, and mcp applications with no OAuth configuration,
+        or with a confidential OAuth client that has the urn:ietf:params:oauth:grant-type:token-exchange
+        grant and does not use the redirect-based authorization_code flow; ignored for other
+        applications.
     OAuth2:
       type: oauth2
       description: >-

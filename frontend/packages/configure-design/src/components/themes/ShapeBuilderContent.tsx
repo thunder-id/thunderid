@@ -32,7 +32,7 @@ export default function ShapeBuilderContent({draft, onUpdate}: ShapeBuilderConte
 
   return (
     <Stack gap={1}>
-      <ConfigCard title={t('themes.forms.shape_builder.border_radius.title', 'Border Radius')}>
+      <ConfigCard title={t('themes.forms.shape_builder.border_radius.title', 'Border radius')}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" mb={0.5}>
           <Typography variant="body2" sx={{fontWeight: 600, fontSize: '0.875rem', color: 'text.secondary'}}>
             {t('themes.forms.shape_builder.fields.radius.label', 'Radius')}
@@ -113,7 +113,7 @@ export default function ShapeBuilderContent({draft, onUpdate}: ShapeBuilderConte
         </Stack>
       </ConfigCard>
 
-      <ConfigCard title={t('themes.forms.shape_builder.border_style.title', 'Border Style')} defaultOpen={false}>
+      <ConfigCard title={t('themes.forms.shape_builder.border_style.title', 'Border style')} defaultOpen={false}>
         <SelectRow
           label={t('themes.forms.shape_builder.fields.width.label', 'Width')}
           value={borderWidth}

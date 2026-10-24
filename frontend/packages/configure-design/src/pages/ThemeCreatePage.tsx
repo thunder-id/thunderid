@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {FullScreenCreationWizardLayout} from '@thunderid/components';
+import {DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
 import {useCreateTheme, useGetTheme, useGetThemes, type Theme} from '@thunderid/design';
 import {getErrorMessage, kebabCase} from '@thunderid/utils';
 import {Alert, Box, Button, CircularProgress} from '@wso2/oxygen-ui';
@@ -54,7 +54,7 @@ export default function ThemeCreatePage(): JSX.Element {
 
   const STEPS: Record<ThemeCreateStep, {label: string}> = {
     NAME: {label: t('themes.createWizard.steps.name', 'Details')},
-    COLOR: {label: t('themes.forms.configure_color.title', 'Primary Color')},
+    COLOR: {label: t('themes.forms.configure_color.title', 'Primary color')},
   };
 
   const [currentStep, setCurrentStep] = useState<ThemeCreateStep>('NAME');
@@ -212,7 +212,7 @@ export default function ThemeCreatePage(): JSX.Element {
             <Box sx={{display: 'flex', alignItems: 'center', gap: 2}}>
               {createTheme.isPending && <CircularProgress size={20} />}
               <Button variant="contained" onClick={handleCreate} disabled={createTheme.isPending} sx={{minWidth: 140}}>
-                {t('themes.forms.configure_color.actions.create.label', 'Create Theme')}
+                {t('themes.forms.configure_color.actions.create.label', 'Create theme')}
               </Button>
             </Box>
           ) : (
@@ -223,6 +223,7 @@ export default function ThemeCreatePage(): JSX.Element {
         </Box>
       }
     >
+      <DocumentTitle title={t('themes.forms.configure_color.actions.create.label', 'Create theme')} />
       {error && (
         <Alert severity="error" sx={{mb: 3}} onClose={clearCreateError}>
           {error}

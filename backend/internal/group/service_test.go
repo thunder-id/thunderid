@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -19,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -3075,4 +3077,316 @@ func TestResolveAppDisplay_AppUsesSystemAttributesName(t *testing.T) {
 		SystemAttributes: json.RawMessage(`{"name":"My App"}`),
 	}
 	require.Equal(t, "My App", resolveAppDisplay(app))
+}
+
+type groupChangeFixture struct {
+	store    *groupStoreInterfaceMock
+	entities *entitymock.EntityServiceInterfaceMock
+	authz    *sysauthzmock.SystemAuthorizationServiceInterfaceMock
+	service  *groupService
+}
+
+func newGroupChangeFixture(t *testing.T) *groupChangeFixture {
+	f := &groupChangeFixture{
+		store:    newGroupStoreInterfaceMock(t),
+		entities: entitymock.NewEntityServiceInterfaceMock(t),
+		authz:    sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t),
+	}
+	f.service = &groupService{
+		groupStore:    f.store,
+		entityService: f.entities,
+		authzService:  f.authz,
+		transactioner: &stubTransactioner{},
+	}
+	return f
+}
+
+func (f *groupChangeFixture) mayUpdateGroup() {
+	f.store.On("GetGroup", mock.Anything, "grp-001").Return(GroupDAO{ID: "grp-001", OUID: testOUID1}, nil)
+	f.authz.On("IsActionAllowed", mock.Anything, security.ActionUpdateGroup, &sysauthz.ActionContext{
+		ResourceType: security.ResourceTypeGroup, OUID: testOUID1, ResourceID: "grp-001",
+	}).Return(true, (*tidcommon.ServiceError)(nil))
+	f.authz.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeGroup, "grp-001").
+		Return((*tidcommon.ServiceError)(nil))
+}
+
+func (suite *GroupServiceTestSuite) TestValidateDeleteGroup_AcceptsWithoutDeleting() {
+	f := newGroupChangeFixture(suite.T())
+	f.store.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil)
+	f.store.On("GetGroup", mock.Anything, "grp-001").Return(GroupDAO{ID: "grp-001", OUID: testOUID1}, nil)
+	f.authz.On("IsActionAllowed", mock.Anything, security.ActionDeleteGroup, &sysauthz.ActionContext{
+		ResourceType: security.ResourceTypeGroup, OUID: testOUID1, ResourceID: "grp-001",
+	}).Return(true, (*tidcommon.ServiceError)(nil))
+
+	svcErr := f.service.ValidateDeleteGroup(context.Background(), "grp-001")
+
+	suite.Require().Nil(svcErr)
+	f.store.AssertNotCalled(suite.T(), "DeleteGroup", mock.Anything, mock.Anything)
+}
+
+func (suite *GroupServiceTestSuite) TestValidateDeleteGroup_Refusals() {
+	cases := map[string]struct {
+		groupID string
+		setup   func(f *groupChangeFixture)
+		want    tidcommon.ServiceError
+	}{
+		"missing id": {"", func(*groupChangeFixture) {}, ErrorMissingGroupID},
+		"declarative group": {"grp-001", func(f *groupChangeFixture) {
+			f.store.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(true, nil)
+		}, ErrorImmutableGroup},
+		"declarative check failure": {"grp-001", func(f *groupChangeFixture) {
+			f.store.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, errors.New("db down"))
+		}, tidcommon.InternalServerError},
+		"group not found": {"grp-001", func(f *groupChangeFixture) {
+			f.store.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil)
+			f.store.On("GetGroup", mock.Anything, "grp-001").Return(GroupDAO{}, ErrGroupNotFound)
+		}, ErrorGroupNotFound},
+		"caller may not delete": {"grp-001", func(f *groupChangeFixture) {
+			f.store.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil)
+			f.store.On("GetGroup", mock.Anything, "grp-001").Return(GroupDAO{ID: "grp-001", OUID: testOUID1}, nil)
+			f.authz.On("IsActionAllowed", mock.Anything, security.ActionDeleteGroup, mock.Anything).
+				Return(false, (*tidcommon.ServiceError)(nil))
+		}, tidcommon.ErrorUnauthorized},
+	}
+	for name, tc := range cases {
+		suite.Run(name, func() {
+			f := newGroupChangeFixture(suite.T())
+			tc.setup(f)
+
+			svcErr := f.service.ValidateDeleteGroup(context.Background(), tc.groupID)
+
+			suite.Require().NotNil(svcErr)
+			suite.Equal(tc.want.Code, svcErr.Code)
+		})
+	}
+}
+
+func (suite *GroupServiceTestSuite) TestValidateRemoveGroupMembers_AcceptsWithoutRemoving() {
+	f := newGroupChangeFixture(suite.T())
+	f.mayUpdateGroup()
+	f.entities.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001"}).
+		Return([]providers.Entity{{ID: "usr-001", Category: providers.EntityCategoryUser}}, nil)
+	f.authz.On("GetAccessibleResources", mock.Anything, security.ActionUpdateGroup, security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{AllAllowed: true}, (*tidcommon.ServiceError)(nil))
+
+	svcErr := f.service.ValidateRemoveGroupMembers(context.Background(), "grp-001",
+		[]Member{{ID: "usr-001", Type: MemberTypeUser}})
+
+	suite.Require().Nil(svcErr)
+	f.store.AssertNotCalled(suite.T(), "RemoveGroupMembers", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *GroupServiceTestSuite) TestValidateRemoveGroupMembers_RefusesAMemberOutsideTheCallersOU() {
+	f := newGroupChangeFixture(suite.T())
+	f.mayUpdateGroup()
+	f.entities.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001"}).
+		Return([]providers.Entity{{ID: "usr-001", Category: providers.EntityCategoryUser}}, nil)
+	f.authz.On("GetAccessibleResources", mock.Anything, security.ActionUpdateGroup, security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{IDs: []string{testOUID1}}, (*tidcommon.ServiceError)(nil))
+	f.entities.On("ValidateEntityIDsInOUs", mock.Anything, []string{"usr-001"}, []string{testOUID1}).
+		Return([]string{"usr-001"}, nil)
+
+	svcErr := f.service.ValidateRemoveGroupMembers(context.Background(), "grp-001",
+		[]Member{{ID: "usr-001", Type: MemberTypeUser}})
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+}
+
+func (suite *GroupServiceTestSuite) TestValidateRemoveGroupMembers_RefusesACallerWhoMayNotChangeMembers() {
+	f := newGroupChangeFixture(suite.T())
+	f.store.On("GetGroup", mock.Anything, "grp-001").Return(GroupDAO{ID: "grp-001", OUID: testOUID1}, nil)
+	f.authz.On("IsActionAllowed", mock.Anything, security.ActionUpdateGroup, mock.Anything).
+		Return(true, (*tidcommon.ServiceError)(nil))
+	f.authz.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeGroup, "grp-001").
+		Return(&tidcommon.ErrorUnauthorized)
+
+	svcErr := f.service.ValidateRemoveGroupMembers(context.Background(), "grp-001",
+		[]Member{{ID: "usr-001", Type: MemberTypeUser}})
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	f.entities.AssertNotCalled(suite.T(), "GetEntitiesByIDs", mock.Anything, mock.Anything)
+}
+
+func (suite *GroupServiceTestSuite) TestValidateRemoveGroupMembers_RefusesAMalformedRequest() {
+	f := newGroupChangeFixture(suite.T())
+	cases := map[string]struct {
+		groupID string
+		members []Member
+		want    tidcommon.ServiceError
+	}{
+		"missing group":  {"", []Member{{ID: "usr-001", Type: MemberTypeUser}}, ErrorMissingGroupID},
+		"no members":     {"grp-001", nil, ErrorEmptyMembers},
+		"unknown type":   {"grp-001", []Member{{ID: "usr-001", Type: "robot"}}, ErrorInvalidMemberType},
+		"missing member": {"grp-001", []Member{{Type: MemberTypeUser}}, ErrorInvalidRequestFormat},
+	}
+	for name, tc := range cases {
+		suite.Run(name, func() {
+			svcErr := f.service.ValidateRemoveGroupMembers(context.Background(), tc.groupID, tc.members)
+
+			suite.Require().NotNil(svcErr)
+			suite.Equal(tc.want.Code, svcErr.Code)
+		})
+	}
+	f.store.AssertNotCalled(suite.T(), "GetGroup", mock.Anything, mock.Anything)
+}
+
+func (suite *GroupServiceTestSuite) TestValidateRemoveGroupMembers_RefusesAnUnknownGroupMember() {
+	f := newGroupChangeFixture(suite.T())
+	f.mayUpdateGroup()
+	f.store.On("ValidateGroupIDs", mock.Anything, []string{"child-grp"}).Return([]string{"child-grp"}, nil)
+
+	svcErr := f.service.ValidateRemoveGroupMembers(context.Background(), "grp-001",
+		[]Member{{ID: "child-grp", Type: MemberTypeGroup}})
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorInvalidGroupMemberID.Code, svcErr.Code)
+}
+
+// readableGroup stubs a group the caller may read, holding the members as the store records them.
+func (f *groupChangeFixture) readableGroup(groupID string, members ...Member) {
+	f.store.On("GetGroup", mock.Anything, groupID).Return(GroupDAO{ID: groupID, OUID: testOUID1}, nil)
+	f.authz.On("IsActionAllowed", mock.Anything, security.ActionReadGroup, &sysauthz.ActionContext{
+		ResourceType: security.ResourceTypeGroup, OUID: testOUID1, ResourceID: groupID,
+	}).Return(true, (*tidcommon.ServiceError)(nil))
+	f.store.On("GetGroupMemberCount", mock.Anything, groupID).Return(len(members), nil)
+	f.store.On("GetGroupMembers", mock.Anything, groupID, serverconst.MaxPageSize, 0).Return(members, nil)
+}
+
+func (f *groupChangeFixture) knownUsers(ids ...string) {
+	users := make([]providers.Entity, 0, len(ids))
+	for _, id := range ids {
+		users = append(users, providers.Entity{ID: id, Category: providers.EntityCategoryUser})
+	}
+	f.entities.On("GetEntitiesByIDs", mock.Anything, ids).Return(users, nil)
+}
+
+func (suite *GroupServiceTestSuite) TestGetTransitiveMemberEntities_SurvivesAMembershipCycle() {
+	f := newGroupChangeFixture(suite.T())
+	f.readableGroup("grp-001", Member{ID: "child-grp", Type: MemberTypeGroup})
+	f.readableGroup("child-grp",
+		Member{ID: "grp-001", Type: MemberTypeGroup}, Member{ID: "usr-001", Type: memberTypeEntity})
+	f.knownUsers("usr-001")
+
+	entityIDs, svcErr := f.service.GetTransitiveMemberEntities(context.Background(), "grp-001")
+
+	suite.Require().Nil(svcErr)
+	suite.Equal([]string{"usr-001"}, entityIDs)
+}
+
+func (suite *GroupServiceTestSuite) TestGetTransitiveMemberEntities_DeduplicatesADiamond() {
+	f := newGroupChangeFixture(suite.T())
+	f.readableGroup("grp-001", Member{ID: "left", Type: MemberTypeGroup}, Member{ID: "right", Type: MemberTypeGroup})
+	f.readableGroup("left", Member{ID: "usr-001", Type: memberTypeEntity})
+	f.readableGroup("right", Member{ID: "usr-001", Type: memberTypeEntity})
+	f.knownUsers("usr-001")
+
+	entityIDs, svcErr := f.service.GetTransitiveMemberEntities(context.Background(), "grp-001")
+
+	suite.Require().Nil(svcErr)
+	suite.Equal([]string{"usr-001"}, entityIDs)
+}
+
+func (suite *GroupServiceTestSuite) TestGetTransitiveMemberEntities_ReadsEveryPage() {
+	f := newGroupChangeFixture(suite.T())
+	f.store.On("GetGroup", mock.Anything, "grp-001").Return(GroupDAO{ID: "grp-001", OUID: testOUID1}, nil)
+	f.authz.On("IsActionAllowed", mock.Anything, security.ActionReadGroup, mock.Anything).
+		Return(true, (*tidcommon.ServiceError)(nil))
+	f.store.On("GetGroupMemberCount", mock.Anything, "grp-001").Return(serverconst.MaxPageSize+1, nil)
+	f.store.On("GetGroupMembers", mock.Anything, "grp-001", serverconst.MaxPageSize, 0).
+		Return([]Member{{ID: "usr-001", Type: memberTypeEntity}}, nil)
+	f.store.On("GetGroupMembers", mock.Anything, "grp-001", serverconst.MaxPageSize, serverconst.MaxPageSize).
+		Return([]Member{{ID: "usr-002", Type: memberTypeEntity}}, nil)
+	f.knownUsers("usr-001")
+	f.knownUsers("usr-002")
+
+	entityIDs, svcErr := f.service.GetTransitiveMemberEntities(context.Background(), "grp-001")
+
+	suite.Require().Nil(svcErr)
+	suite.Equal([]string{"usr-001", "usr-002"}, entityIDs)
+}
+
+func (suite *GroupServiceTestSuite) TestGetTransitiveMemberEntities_RefusesNestingBeyondTheBound() {
+	f := newGroupChangeFixture(suite.T())
+	for depth := 0; depth < maxGroupNestingDepth; depth++ {
+		f.readableGroup(fmt.Sprintf("g-%d", depth), Member{ID: fmt.Sprintf("g-%d", depth+1), Type: MemberTypeGroup})
+	}
+
+	_, svcErr := f.service.GetTransitiveMemberEntities(context.Background(), "g-0")
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorGroupNestingTooDeep.Code, svcErr.Code)
+	suite.Equal(fmt.Sprintf("The group's members are nested more than %d levels deep, which cannot be expanded",
+		maxGroupNestingDepth), svcErr.ErrorDescription.String())
+	f.store.AssertNotCalled(suite.T(), "GetGroup", mock.Anything, fmt.Sprintf("g-%d", maxGroupNestingDepth))
+}
+
+// Every nested group is read with the caller's own access, so a group it cannot read refuses the walk.
+func (suite *GroupServiceTestSuite) TestGetTransitiveMemberEntities_RefusesANestedGroupTheCallerCannotRead() {
+	f := newGroupChangeFixture(suite.T())
+	f.readableGroup("grp-001", Member{ID: "child-grp", Type: MemberTypeGroup})
+	f.store.On("GetGroup", mock.Anything, "child-grp").Return(GroupDAO{ID: "child-grp", OUID: testOUID2}, nil)
+	f.authz.On("IsActionAllowed", mock.Anything, security.ActionReadGroup, &sysauthz.ActionContext{
+		ResourceType: security.ResourceTypeGroup, OUID: testOUID2, ResourceID: "child-grp",
+	}).Return(false, (*tidcommon.ServiceError)(nil))
+
+	_, svcErr := f.service.GetTransitiveMemberEntities(context.Background(), "grp-001")
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	f.store.AssertNotCalled(suite.T(), "GetGroupMembers", mock.Anything, "child-grp", mock.Anything, mock.Anything)
+}
+
+func (suite *GroupServiceTestSuite) TestGetDirectGroupMember_FindsTheMember() {
+	f := newGroupChangeFixture(suite.T())
+	f.readableGroup("grp-001",
+		Member{ID: "usr-001", Type: memberTypeEntity}, Member{ID: "child-grp", Type: MemberTypeGroup})
+	f.knownUsers("usr-001")
+
+	member, svcErr := f.service.GetDirectGroupMember(context.Background(), "grp-001", "child-grp")
+
+	suite.Require().Nil(svcErr)
+	suite.Equal(&Member{ID: "child-grp", Type: MemberTypeGroup}, member)
+}
+
+func (suite *GroupServiceTestSuite) TestGetDirectGroupMember_NilForANonMember() {
+	f := newGroupChangeFixture(suite.T())
+	f.readableGroup("grp-001", Member{ID: "usr-001", Type: memberTypeEntity})
+	f.knownUsers("usr-001")
+
+	member, svcErr := f.service.GetDirectGroupMember(context.Background(), "grp-001", "usr-002")
+
+	suite.Require().Nil(svcErr)
+	suite.Nil(member)
+}
+
+func (suite *GroupServiceTestSuite) TestGetDirectGroupMember_FindsAMemberOnALaterPage() {
+	f := newGroupChangeFixture(suite.T())
+	f.store.On("GetGroup", mock.Anything, "grp-001").Return(GroupDAO{ID: "grp-001", OUID: testOUID1}, nil)
+	f.authz.On("IsActionAllowed", mock.Anything, security.ActionReadGroup, mock.Anything).
+		Return(true, (*tidcommon.ServiceError)(nil))
+	f.store.On("GetGroupMemberCount", mock.Anything, "grp-001").Return(serverconst.MaxPageSize+1, nil)
+	f.store.On("GetGroupMembers", mock.Anything, "grp-001", serverconst.MaxPageSize, 0).
+		Return([]Member{{ID: "usr-001", Type: memberTypeEntity}}, nil)
+	f.store.On("GetGroupMembers", mock.Anything, "grp-001", serverconst.MaxPageSize, serverconst.MaxPageSize).
+		Return([]Member{{ID: "usr-002", Type: memberTypeEntity}}, nil)
+	f.knownUsers("usr-001")
+	f.knownUsers("usr-002")
+
+	member, svcErr := f.service.GetDirectGroupMember(context.Background(), "grp-001", "usr-002")
+
+	suite.Require().Nil(svcErr)
+	suite.Equal(&Member{ID: "usr-002", Type: MemberTypeUser}, member)
+}
+
+func (suite *GroupServiceTestSuite) TestGetDirectGroupMember_CarriesTheReadError() {
+	f := newGroupChangeFixture(suite.T())
+	f.store.On("GetGroup", mock.Anything, "grp-001").Return(GroupDAO{}, ErrGroupNotFound)
+
+	member, svcErr := f.service.GetDirectGroupMember(context.Background(), "grp-001", "usr-001")
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorGroupNotFound.Code, svcErr.Code)
+	suite.Nil(member)
 }

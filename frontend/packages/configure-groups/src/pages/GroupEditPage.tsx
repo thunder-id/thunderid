@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {PageLoadingAnimation, QueryErrorNotice, UnsavedChangesBar} from '@thunderid/components';
+import {DocumentTitle, PageLoadingAnimation, QueryErrorNotice, UnsavedChangesBar} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -140,13 +140,21 @@ export default function GroupEditPage(): JSX.Element {
     });
   };
 
+  const resourceTypeTitle = t('navigation:pages.groups', 'Groups');
+
   if (isLoading) {
-    return <PageLoadingAnimation />;
+    return (
+      <>
+        <DocumentTitle title={resourceTypeTitle} />
+        <PageLoadingAnimation />
+      </>
+    );
   }
 
   if (fetchError) {
     return (
       <PageContent>
+        <DocumentTitle title={resourceTypeTitle} />
         <QueryErrorNotice
           error={fetchError}
           t={t}
@@ -162,7 +170,7 @@ export default function GroupEditPage(): JSX.Element {
               }}
               startIcon={<ArrowLeft size={16} />}
             >
-              {t('edit.page.back', 'Back to Groups')}
+              {t('edit.page.back', 'Back to groups')}
             </Button>
           }
         />
@@ -173,6 +181,7 @@ export default function GroupEditPage(): JSX.Element {
   if (!group) {
     return (
       <PageContent>
+        <DocumentTitle title={resourceTypeTitle} />
         <Alert severity="warning" sx={{mb: 2}}>
           {t('edit.page.notFound', 'Group not found')}
         </Alert>
@@ -184,7 +193,7 @@ export default function GroupEditPage(): JSX.Element {
           }}
           startIcon={<ArrowLeft size={16} />}
         >
-          {t('edit.page.back', 'Back to Groups')}
+          {t('edit.page.back', 'Back to groups')}
         </Button>
       </PageContent>
     );
@@ -192,6 +201,7 @@ export default function GroupEditPage(): JSX.Element {
 
   return (
     <PageContent>
+      <DocumentTitle title={group.name} />
       {group.isReadOnly && (
         <Alert severity="info" sx={{mb: 2}}>
           {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
@@ -200,7 +210,7 @@ export default function GroupEditPage(): JSX.Element {
       {/* Header */}
       <PageTitle>
         <PageTitle.BackButton component={<Link to={listUrl} />}>
-          {t('edit.page.back', 'Back to Groups')}
+          {t('edit.page.back', 'Back to groups')}
         </PageTitle.BackButton>
         <PageTitle.Header>
           <Stack direction="row" alignItems="center" spacing={1} mb={1}>
@@ -361,7 +371,7 @@ export default function GroupEditPage(): JSX.Element {
         <UnsavedChangesBar
           message={t('edit.page.unsavedChanges', 'You have unsaved changes')}
           resetLabel={t('edit.page.reset', 'Reset')}
-          saveLabel={t('edit.page.save', 'Save Changes')}
+          saveLabel={t('edit.page.save', 'Save changes')}
           savingLabel={t('edit.page.saving', 'Saving...')}
           isSaving={updateGroup.isPending}
           saveDisabled={group.isReadOnly === true}

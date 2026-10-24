@@ -425,7 +425,7 @@ func accountLinkingTargets(attr string, claims map[string]interface{},
 // as a lookup key: letters, digits and underscores only.
 func isPlainAttributeName(name string) bool {
 	return name != "" && strings.IndexFunc(name, func(r rune) bool {
-		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_')
+		return (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '_'
 	}) == -1
 }
 

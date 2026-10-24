@@ -5,7 +5,7 @@
 export {type User} from './concepts/user';
 
 // Primitive Types: These types represent fundamental data structures or patterns that can be widely reused across the codebase, such as error representations or utility types.
-export {type ApiError} from './primitives/ApiError';
+export {type ApiError, type I18nMessage} from './primitives/ApiError';
 export {type ApiFilteringParams} from './primitives/ApiFilteringParams';
 export {type ApiPaginationLink} from './primitives/ApiPaginationLink';
 export {type RecursivePartial} from './primitives/RecursivePartial';

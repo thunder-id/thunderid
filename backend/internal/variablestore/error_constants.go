@@ -124,6 +124,22 @@ var (
 		},
 	}
 
+	// ErrorReferenceValue is returned when a value is a reference to a variable or a secret, or a list
+	// holding one, rather than the value a reference stands for.
+	ErrorReferenceValue = common.ServiceError{
+		Type: common.ClientErrorType,
+		Code: "VAR-1011",
+		Error: common.I18nMessage{
+			Key:          "error.variablestore.reference_value",
+			DefaultValue: "A reference is not a value",
+		},
+		ErrorDescription: common.I18nMessage{
+			Key: "error.variablestore.reference_value_description",
+			DefaultValue: "The store holds what a var: or sec: reference stands for, " +
+				"so a value cannot be a reference or a list holding one",
+		},
+	}
+
 	// ErrorInvalidDescription is returned when a description is longer than the column holds.
 	ErrorInvalidDescription = common.ServiceError{
 		Type: common.ClientErrorType,

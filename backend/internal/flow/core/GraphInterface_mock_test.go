@@ -15,10 +15,19 @@ func NewGraphInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *GraphInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &GraphInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -61,7 +70,7 @@ type GraphInterfaceMock_AddEdge_Call struct {
 // AddEdge is a helper method to define mock.On call
 //   - fromNodeID string
 //   - toNodeID string
-func (_e *GraphInterfaceMock_Expecter) AddEdge(fromNodeID interface{}, toNodeID interface{}) *GraphInterfaceMock_AddEdge_Call {
+func (_e *GraphInterfaceMock_Expecter) AddEdge(fromNodeID any, toNodeID any) *GraphInterfaceMock_AddEdge_Call {
 	return &GraphInterfaceMock_AddEdge_Call{Call: _e.mock.On("AddEdge", fromNodeID, toNodeID)}
 }
 
@@ -117,7 +126,7 @@ type GraphInterfaceMock_AddNode_Call struct {
 
 // AddNode is a helper method to define mock.On call
 //   - node NodeInterface
-func (_e *GraphInterfaceMock_Expecter) AddNode(node interface{}) *GraphInterfaceMock_AddNode_Call {
+func (_e *GraphInterfaceMock_Expecter) AddNode(node any) *GraphInterfaceMock_AddNode_Call {
 	return &GraphInterfaceMock_AddNode_Call{Call: _e.mock.On("AddNode", node)}
 }
 
@@ -260,7 +269,7 @@ type GraphInterfaceMock_GetInterceptors_Call struct {
 
 // GetInterceptors is a helper method to define mock.On call
 //   - mode providers.InterceptorMode
-func (_e *GraphInterfaceMock_Expecter) GetInterceptors(mode interface{}) *GraphInterfaceMock_GetInterceptors_Call {
+func (_e *GraphInterfaceMock_Expecter) GetInterceptors(mode any) *GraphInterfaceMock_GetInterceptors_Call {
 	return &GraphInterfaceMock_GetInterceptors_Call{Call: _e.mock.On("GetInterceptors", mode)}
 }
 
@@ -322,7 +331,7 @@ type GraphInterfaceMock_GetNode_Call struct {
 
 // GetNode is a helper method to define mock.On call
 //   - nodeID string
-func (_e *GraphInterfaceMock_Expecter) GetNode(nodeID interface{}) *GraphInterfaceMock_GetNode_Call {
+func (_e *GraphInterfaceMock_Expecter) GetNode(nodeID any) *GraphInterfaceMock_GetNode_Call {
 	return &GraphInterfaceMock_GetNode_Call{Call: _e.mock.On("GetNode", nodeID)}
 }
 
@@ -421,7 +430,7 @@ type GraphInterfaceMock_GetSegmentByID_Call struct {
 
 // GetSegmentByID is a helper method to define mock.On call
 //   - segmentID string
-func (_e *GraphInterfaceMock_Expecter) GetSegmentByID(segmentID interface{}) *GraphInterfaceMock_GetSegmentByID_Call {
+func (_e *GraphInterfaceMock_Expecter) GetSegmentByID(segmentID any) *GraphInterfaceMock_GetSegmentByID_Call {
 	return &GraphInterfaceMock_GetSegmentByID_Call{Call: _e.mock.On("GetSegmentByID", segmentID)}
 }
 
@@ -474,7 +483,7 @@ type GraphInterfaceMock_GetSegmentByStartNode_Call struct {
 
 // GetSegmentByStartNode is a helper method to define mock.On call
 //   - nodeID string
-func (_e *GraphInterfaceMock_Expecter) GetSegmentByStartNode(nodeID interface{}) *GraphInterfaceMock_GetSegmentByStartNode_Call {
+func (_e *GraphInterfaceMock_Expecter) GetSegmentByStartNode(nodeID any) *GraphInterfaceMock_GetSegmentByStartNode_Call {
 	return &GraphInterfaceMock_GetSegmentByStartNode_Call{Call: _e.mock.On("GetSegmentByStartNode", nodeID)}
 }
 
@@ -803,7 +812,7 @@ type GraphInterfaceMock_RemoveEdge_Call struct {
 // RemoveEdge is a helper method to define mock.On call
 //   - fromNodeID string
 //   - toNodeID string
-func (_e *GraphInterfaceMock_Expecter) RemoveEdge(fromNodeID interface{}, toNodeID interface{}) *GraphInterfaceMock_RemoveEdge_Call {
+func (_e *GraphInterfaceMock_Expecter) RemoveEdge(fromNodeID any, toNodeID any) *GraphInterfaceMock_RemoveEdge_Call {
 	return &GraphInterfaceMock_RemoveEdge_Call{Call: _e.mock.On("RemoveEdge", fromNodeID, toNodeID)}
 }
 
@@ -848,7 +857,7 @@ type GraphInterfaceMock_SetEdges_Call struct {
 
 // SetEdges is a helper method to define mock.On call
 //   - edges map[string][]string
-func (_e *GraphInterfaceMock_Expecter) SetEdges(edges interface{}) *GraphInterfaceMock_SetEdges_Call {
+func (_e *GraphInterfaceMock_Expecter) SetEdges(edges any) *GraphInterfaceMock_SetEdges_Call {
 	return &GraphInterfaceMock_SetEdges_Call{Call: _e.mock.On("SetEdges", edges)}
 }
 
@@ -888,7 +897,7 @@ type GraphInterfaceMock_SetInterceptors_Call struct {
 
 // SetInterceptors is a helper method to define mock.On call
 //   - resolved map[providers.InterceptorMode][]InterceptorUnitInterface
-func (_e *GraphInterfaceMock_Expecter) SetInterceptors(resolved interface{}) *GraphInterfaceMock_SetInterceptors_Call {
+func (_e *GraphInterfaceMock_Expecter) SetInterceptors(resolved any) *GraphInterfaceMock_SetInterceptors_Call {
 	return &GraphInterfaceMock_SetInterceptors_Call{Call: _e.mock.On("SetInterceptors", resolved)}
 }
 
@@ -928,7 +937,7 @@ type GraphInterfaceMock_SetNodes_Call struct {
 
 // SetNodes is a helper method to define mock.On call
 //   - nodes map[string]NodeInterface
-func (_e *GraphInterfaceMock_Expecter) SetNodes(nodes interface{}) *GraphInterfaceMock_SetNodes_Call {
+func (_e *GraphInterfaceMock_Expecter) SetNodes(nodes any) *GraphInterfaceMock_SetNodes_Call {
 	return &GraphInterfaceMock_SetNodes_Call{Call: _e.mock.On("SetNodes", nodes)}
 }
 
@@ -968,7 +977,7 @@ type GraphInterfaceMock_SetSegments_Call struct {
 
 // SetSegments is a helper method to define mock.On call
 //   - segments []Segment
-func (_e *GraphInterfaceMock_Expecter) SetSegments(segments interface{}) *GraphInterfaceMock_SetSegments_Call {
+func (_e *GraphInterfaceMock_Expecter) SetSegments(segments any) *GraphInterfaceMock_SetSegments_Call {
 	return &GraphInterfaceMock_SetSegments_Call{Call: _e.mock.On("SetSegments", segments)}
 }
 
@@ -1019,7 +1028,7 @@ type GraphInterfaceMock_SetStartNode_Call struct {
 
 // SetStartNode is a helper method to define mock.On call
 //   - startNodeID string
-func (_e *GraphInterfaceMock_Expecter) SetStartNode(startNodeID interface{}) *GraphInterfaceMock_SetStartNode_Call {
+func (_e *GraphInterfaceMock_Expecter) SetStartNode(startNodeID any) *GraphInterfaceMock_SetStartNode_Call {
 	return &GraphInterfaceMock_SetStartNode_Call{Call: _e.mock.On("SetStartNode", startNodeID)}
 }
 
@@ -1059,7 +1068,7 @@ type GraphInterfaceMock_SetVersion_Call struct {
 
 // SetVersion is a helper method to define mock.On call
 //   - version int
-func (_e *GraphInterfaceMock_Expecter) SetVersion(version interface{}) *GraphInterfaceMock_SetVersion_Call {
+func (_e *GraphInterfaceMock_Expecter) SetVersion(version any) *GraphInterfaceMock_SetVersion_Call {
 	return &GraphInterfaceMock_SetVersion_Call{Call: _e.mock.On("SetVersion", version)}
 }
 

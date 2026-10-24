@@ -8,6 +8,7 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -17,10 +18,19 @@ func NewSharingServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *SharingServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &SharingServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +87,7 @@ type SharingServiceInterfaceMock_CreateDeclarativePolicy_Call struct {
 //   - resourceID string
 //   - owningOUID string
 //   - req PolicyRequest
-func (_e *SharingServiceInterfaceMock_Expecter) CreateDeclarativePolicy(ctx interface{}, rt interface{}, resourceID interface{}, owningOUID interface{}, req interface{}) *SharingServiceInterfaceMock_CreateDeclarativePolicy_Call {
+func (_e *SharingServiceInterfaceMock_Expecter) CreateDeclarativePolicy(ctx any, rt any, resourceID any, owningOUID any, req any) *SharingServiceInterfaceMock_CreateDeclarativePolicy_Call {
 	return &SharingServiceInterfaceMock_CreateDeclarativePolicy_Call{Call: _e.mock.On("CreateDeclarativePolicy", ctx, rt, resourceID, owningOUID, req)}
 }
 
@@ -163,7 +173,7 @@ type SharingServiceInterfaceMock_CreatePolicy_Call struct {
 //   - resourceID string
 //   - owningOUID string
 //   - req PolicyRequest
-func (_e *SharingServiceInterfaceMock_Expecter) CreatePolicy(ctx interface{}, rt interface{}, resourceID interface{}, owningOUID interface{}, req interface{}) *SharingServiceInterfaceMock_CreatePolicy_Call {
+func (_e *SharingServiceInterfaceMock_Expecter) CreatePolicy(ctx any, rt any, resourceID any, owningOUID any, req any) *SharingServiceInterfaceMock_CreatePolicy_Call {
 	return &SharingServiceInterfaceMock_CreatePolicy_Call{Call: _e.mock.On("CreatePolicy", ctx, rt, resourceID, owningOUID, req)}
 }
 
@@ -240,7 +250,7 @@ type SharingServiceInterfaceMock_DeleteOverlayValue_Call struct {
 //   - resourceID string
 //   - ouID string
 //   - fieldKey string
-func (_e *SharingServiceInterfaceMock_Expecter) DeleteOverlayValue(ctx interface{}, rt interface{}, resourceID interface{}, ouID interface{}, fieldKey interface{}) *SharingServiceInterfaceMock_DeleteOverlayValue_Call {
+func (_e *SharingServiceInterfaceMock_Expecter) DeleteOverlayValue(ctx any, rt any, resourceID any, ouID any, fieldKey any) *SharingServiceInterfaceMock_DeleteOverlayValue_Call {
 	return &SharingServiceInterfaceMock_DeleteOverlayValue_Call{Call: _e.mock.On("DeleteOverlayValue", ctx, rt, resourceID, ouID, fieldKey)}
 }
 
@@ -287,6 +297,71 @@ func (_c *SharingServiceInterfaceMock_DeleteOverlayValue_Call) RunAndReturn(run 
 	return _c
 }
 
+// DeletePoliciesForResource provides a mock function for the type SharingServiceInterfaceMock
+func (_mock *SharingServiceInterfaceMock) DeletePoliciesForResource(ctx context.Context, rt ResourceType, resourceID string) *common.ServiceError {
+	ret := _mock.Called(ctx, rt, resourceID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeletePoliciesForResource")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, rt, resourceID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// SharingServiceInterfaceMock_DeletePoliciesForResource_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeletePoliciesForResource'
+type SharingServiceInterfaceMock_DeletePoliciesForResource_Call struct {
+	*mock.Call
+}
+
+// DeletePoliciesForResource is a helper method to define mock.On call
+//   - ctx context.Context
+//   - rt ResourceType
+//   - resourceID string
+func (_e *SharingServiceInterfaceMock_Expecter) DeletePoliciesForResource(ctx any, rt any, resourceID any) *SharingServiceInterfaceMock_DeletePoliciesForResource_Call {
+	return &SharingServiceInterfaceMock_DeletePoliciesForResource_Call{Call: _e.mock.On("DeletePoliciesForResource", ctx, rt, resourceID)}
+}
+
+func (_c *SharingServiceInterfaceMock_DeletePoliciesForResource_Call) Run(run func(ctx context.Context, rt ResourceType, resourceID string)) *SharingServiceInterfaceMock_DeletePoliciesForResource_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ResourceType
+		if args[1] != nil {
+			arg1 = args[1].(ResourceType)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_DeletePoliciesForResource_Call) Return(serviceError *common.ServiceError) *SharingServiceInterfaceMock_DeletePoliciesForResource_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_DeletePoliciesForResource_Call) RunAndReturn(run func(ctx context.Context, rt ResourceType, resourceID string) *common.ServiceError) *SharingServiceInterfaceMock_DeletePoliciesForResource_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DeletePolicy provides a mock function for the type SharingServiceInterfaceMock
 func (_mock *SharingServiceInterfaceMock) DeletePolicy(ctx context.Context, policyID string) *common.ServiceError {
 	ret := _mock.Called(ctx, policyID)
@@ -314,7 +389,7 @@ type SharingServiceInterfaceMock_DeletePolicy_Call struct {
 // DeletePolicy is a helper method to define mock.On call
 //   - ctx context.Context
 //   - policyID string
-func (_e *SharingServiceInterfaceMock_Expecter) DeletePolicy(ctx interface{}, policyID interface{}) *SharingServiceInterfaceMock_DeletePolicy_Call {
+func (_e *SharingServiceInterfaceMock_Expecter) DeletePolicy(ctx any, policyID any) *SharingServiceInterfaceMock_DeletePolicy_Call {
 	return &SharingServiceInterfaceMock_DeletePolicy_Call{Call: _e.mock.On("DeletePolicy", ctx, policyID)}
 }
 
@@ -385,7 +460,7 @@ type SharingServiceInterfaceMock_ExportPolicies_Call struct {
 //   - ctx context.Context
 //   - rt ResourceType
 //   - resourceID string
-func (_e *SharingServiceInterfaceMock_Expecter) ExportPolicies(ctx interface{}, rt interface{}, resourceID interface{}) *SharingServiceInterfaceMock_ExportPolicies_Call {
+func (_e *SharingServiceInterfaceMock_Expecter) ExportPolicies(ctx any, rt any, resourceID any) *SharingServiceInterfaceMock_ExportPolicies_Call {
 	return &SharingServiceInterfaceMock_ExportPolicies_Call{Call: _e.mock.On("ExportPolicies", ctx, rt, resourceID)}
 }
 
@@ -458,7 +533,7 @@ type SharingServiceInterfaceMock_GetPolicy_Call struct {
 // GetPolicy is a helper method to define mock.On call
 //   - ctx context.Context
 //   - policyID string
-func (_e *SharingServiceInterfaceMock_Expecter) GetPolicy(ctx interface{}, policyID interface{}) *SharingServiceInterfaceMock_GetPolicy_Call {
+func (_e *SharingServiceInterfaceMock_Expecter) GetPolicy(ctx any, policyID any) *SharingServiceInterfaceMock_GetPolicy_Call {
 	return &SharingServiceInterfaceMock_GetPolicy_Call{Call: _e.mock.On("GetPolicy", ctx, policyID)}
 }
 
@@ -529,7 +604,7 @@ type SharingServiceInterfaceMock_GetPolicyList_Call struct {
 //   - resourceID string
 //   - limit int
 //   - offset int
-func (_e *SharingServiceInterfaceMock_Expecter) GetPolicyList(ctx interface{}, rt interface{}, resourceID interface{}, limit interface{}, offset interface{}) *SharingServiceInterfaceMock_GetPolicyList_Call {
+func (_e *SharingServiceInterfaceMock_Expecter) GetPolicyList(ctx any, rt any, resourceID any, limit any, offset any) *SharingServiceInterfaceMock_GetPolicyList_Call {
 	return &SharingServiceInterfaceMock_GetPolicyList_Call{Call: _e.mock.On("GetPolicyList", ctx, rt, resourceID, limit, offset)}
 }
 
@@ -576,6 +651,80 @@ func (_c *SharingServiceInterfaceMock_GetPolicyList_Call) RunAndReturn(run func(
 	return _c
 }
 
+// GetResourceDependencies provides a mock function for the type SharingServiceInterfaceMock
+func (_mock *SharingServiceInterfaceMock) GetResourceDependencies(ctx context.Context, resourceType string, id string) ([]resourcedependency.ResourceDependency, error) {
+	ret := _mock.Called(ctx, resourceType, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetResourceDependencies")
+	}
+
+	var r0 []resourcedependency.ResourceDependency
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) ([]resourcedependency.ResourceDependency, error)); ok {
+		return returnFunc(ctx, resourceType, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) []resourcedependency.ResourceDependency); ok {
+		r0 = returnFunc(ctx, resourceType, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]resourcedependency.ResourceDependency)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, resourceType, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// SharingServiceInterfaceMock_GetResourceDependencies_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetResourceDependencies'
+type SharingServiceInterfaceMock_GetResourceDependencies_Call struct {
+	*mock.Call
+}
+
+// GetResourceDependencies is a helper method to define mock.On call
+//   - ctx context.Context
+//   - resourceType string
+//   - id string
+func (_e *SharingServiceInterfaceMock_Expecter) GetResourceDependencies(ctx any, resourceType any, id any) *SharingServiceInterfaceMock_GetResourceDependencies_Call {
+	return &SharingServiceInterfaceMock_GetResourceDependencies_Call{Call: _e.mock.On("GetResourceDependencies", ctx, resourceType, id)}
+}
+
+func (_c *SharingServiceInterfaceMock_GetResourceDependencies_Call) Run(run func(ctx context.Context, resourceType string, id string)) *SharingServiceInterfaceMock_GetResourceDependencies_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_GetResourceDependencies_Call) Return(resourceDependencys []resourcedependency.ResourceDependency, err error) *SharingServiceInterfaceMock_GetResourceDependencies_Call {
+	_c.Call.Return(resourceDependencys, err)
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_GetResourceDependencies_Call) RunAndReturn(run func(ctx context.Context, resourceType string, id string) ([]resourcedependency.ResourceDependency, error)) *SharingServiceInterfaceMock_GetResourceDependencies_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // IsVisible provides a mock function for the type SharingServiceInterfaceMock
 func (_mock *SharingServiceInterfaceMock) IsVisible(ctx context.Context, rt ResourceType, resourceID string, ouID string) (bool, *common.ServiceError) {
 	ret := _mock.Called(ctx, rt, resourceID, ouID)
@@ -614,7 +763,7 @@ type SharingServiceInterfaceMock_IsVisible_Call struct {
 //   - rt ResourceType
 //   - resourceID string
 //   - ouID string
-func (_e *SharingServiceInterfaceMock_Expecter) IsVisible(ctx interface{}, rt interface{}, resourceID interface{}, ouID interface{}) *SharingServiceInterfaceMock_IsVisible_Call {
+func (_e *SharingServiceInterfaceMock_Expecter) IsVisible(ctx any, rt any, resourceID any, ouID any) *SharingServiceInterfaceMock_IsVisible_Call {
 	return &SharingServiceInterfaceMock_IsVisible_Call{Call: _e.mock.On("IsVisible", ctx, rt, resourceID, ouID)}
 }
 
@@ -695,7 +844,7 @@ type SharingServiceInterfaceMock_ListPolicies_Call struct {
 //   - ctx context.Context
 //   - rt ResourceType
 //   - resourceID string
-func (_e *SharingServiceInterfaceMock_Expecter) ListPolicies(ctx interface{}, rt interface{}, resourceID interface{}) *SharingServiceInterfaceMock_ListPolicies_Call {
+func (_e *SharingServiceInterfaceMock_Expecter) ListPolicies(ctx any, rt any, resourceID any) *SharingServiceInterfaceMock_ListPolicies_Call {
 	return &SharingServiceInterfaceMock_ListPolicies_Call{Call: _e.mock.On("ListPolicies", ctx, rt, resourceID)}
 }
 
@@ -728,6 +877,82 @@ func (_c *SharingServiceInterfaceMock_ListPolicies_Call) Return(policys []Policy
 }
 
 func (_c *SharingServiceInterfaceMock_ListPolicies_Call) RunAndReturn(run func(ctx context.Context, rt ResourceType, resourceID string) ([]Policy, *common.ServiceError)) *SharingServiceInterfaceMock_ListPolicies_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListResourceSharedOUIDs provides a mock function for the type SharingServiceInterfaceMock
+func (_mock *SharingServiceInterfaceMock) ListResourceSharedOUIDs(ctx context.Context, rt ResourceType, resourceID string) ([]string, *common.ServiceError) {
+	ret := _mock.Called(ctx, rt, resourceID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListResourceSharedOUIDs")
+	}
+
+	var r0 []string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string) ([]string, *common.ServiceError)); ok {
+		return returnFunc(ctx, rt, resourceID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string) []string); ok {
+		r0 = returnFunc(ctx, rt, resourceID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, ResourceType, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, rt, resourceID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// SharingServiceInterfaceMock_ListResourceSharedOUIDs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListResourceSharedOUIDs'
+type SharingServiceInterfaceMock_ListResourceSharedOUIDs_Call struct {
+	*mock.Call
+}
+
+// ListResourceSharedOUIDs is a helper method to define mock.On call
+//   - ctx context.Context
+//   - rt ResourceType
+//   - resourceID string
+func (_e *SharingServiceInterfaceMock_Expecter) ListResourceSharedOUIDs(ctx any, rt any, resourceID any) *SharingServiceInterfaceMock_ListResourceSharedOUIDs_Call {
+	return &SharingServiceInterfaceMock_ListResourceSharedOUIDs_Call{Call: _e.mock.On("ListResourceSharedOUIDs", ctx, rt, resourceID)}
+}
+
+func (_c *SharingServiceInterfaceMock_ListResourceSharedOUIDs_Call) Run(run func(ctx context.Context, rt ResourceType, resourceID string)) *SharingServiceInterfaceMock_ListResourceSharedOUIDs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ResourceType
+		if args[1] != nil {
+			arg1 = args[1].(ResourceType)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_ListResourceSharedOUIDs_Call) Return(strings []string, serviceError *common.ServiceError) *SharingServiceInterfaceMock_ListResourceSharedOUIDs_Call {
+	_c.Call.Return(strings, serviceError)
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_ListResourceSharedOUIDs_Call) RunAndReturn(run func(ctx context.Context, rt ResourceType, resourceID string) ([]string, *common.ServiceError)) *SharingServiceInterfaceMock_ListResourceSharedOUIDs_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -771,7 +996,7 @@ type SharingServiceInterfaceMock_ListVisibleResourceIDs_Call struct {
 //   - ctx context.Context
 //   - rt ResourceType
 //   - ouID string
-func (_e *SharingServiceInterfaceMock_Expecter) ListVisibleResourceIDs(ctx interface{}, rt interface{}, ouID interface{}) *SharingServiceInterfaceMock_ListVisibleResourceIDs_Call {
+func (_e *SharingServiceInterfaceMock_Expecter) ListVisibleResourceIDs(ctx any, rt any, ouID any) *SharingServiceInterfaceMock_ListVisibleResourceIDs_Call {
 	return &SharingServiceInterfaceMock_ListVisibleResourceIDs_Call{Call: _e.mock.On("ListVisibleResourceIDs", ctx, rt, ouID)}
 }
 
@@ -833,7 +1058,7 @@ type SharingServiceInterfaceMock_LoadDeclarativeResources_Call struct {
 // LoadDeclarativeResources is a helper method to define mock.On call
 //   - ctx context.Context
 //   - cfg DeclarativeLoaderConfig
-func (_e *SharingServiceInterfaceMock_Expecter) LoadDeclarativeResources(ctx interface{}, cfg interface{}) *SharingServiceInterfaceMock_LoadDeclarativeResources_Call {
+func (_e *SharingServiceInterfaceMock_Expecter) LoadDeclarativeResources(ctx any, cfg any) *SharingServiceInterfaceMock_LoadDeclarativeResources_Call {
 	return &SharingServiceInterfaceMock_LoadDeclarativeResources_Call{Call: _e.mock.On("LoadDeclarativeResources", ctx, cfg)}
 }
 
@@ -878,7 +1103,7 @@ type SharingServiceInterfaceMock_RegisterResourceType_Call struct {
 
 // RegisterResourceType is a helper method to define mock.On call
 //   - decl ResourceOverlayFieldDeclaration
-func (_e *SharingServiceInterfaceMock_Expecter) RegisterResourceType(decl interface{}) *SharingServiceInterfaceMock_RegisterResourceType_Call {
+func (_e *SharingServiceInterfaceMock_Expecter) RegisterResourceType(decl any) *SharingServiceInterfaceMock_RegisterResourceType_Call {
 	return &SharingServiceInterfaceMock_RegisterResourceType_Call{Call: _e.mock.On("RegisterResourceType", decl)}
 }
 
@@ -902,6 +1127,92 @@ func (_c *SharingServiceInterfaceMock_RegisterResourceType_Call) Return() *Shari
 
 func (_c *SharingServiceInterfaceMock_RegisterResourceType_Call) RunAndReturn(run func(decl ResourceOverlayFieldDeclaration)) *SharingServiceInterfaceMock_RegisterResourceType_Call {
 	_c.Run(run)
+	return _c
+}
+
+// ReplacePoliciesForResource provides a mock function for the type SharingServiceInterfaceMock
+func (_mock *SharingServiceInterfaceMock) ReplacePoliciesForResource(ctx context.Context, rt ResourceType, resourceID string, owningOUID string, requests []PolicyRequest) (PolicyReplay, *PolicyReplayError) {
+	ret := _mock.Called(ctx, rt, resourceID, owningOUID, requests)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ReplacePoliciesForResource")
+	}
+
+	var r0 PolicyReplay
+	var r1 *PolicyReplayError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string, string, []PolicyRequest) (PolicyReplay, *PolicyReplayError)); ok {
+		return returnFunc(ctx, rt, resourceID, owningOUID, requests)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string, string, []PolicyRequest) PolicyReplay); ok {
+		r0 = returnFunc(ctx, rt, resourceID, owningOUID, requests)
+	} else {
+		r0 = ret.Get(0).(PolicyReplay)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, ResourceType, string, string, []PolicyRequest) *PolicyReplayError); ok {
+		r1 = returnFunc(ctx, rt, resourceID, owningOUID, requests)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*PolicyReplayError)
+		}
+	}
+	return r0, r1
+}
+
+// SharingServiceInterfaceMock_ReplacePoliciesForResource_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReplacePoliciesForResource'
+type SharingServiceInterfaceMock_ReplacePoliciesForResource_Call struct {
+	*mock.Call
+}
+
+// ReplacePoliciesForResource is a helper method to define mock.On call
+//   - ctx context.Context
+//   - rt ResourceType
+//   - resourceID string
+//   - owningOUID string
+//   - requests []PolicyRequest
+func (_e *SharingServiceInterfaceMock_Expecter) ReplacePoliciesForResource(ctx any, rt any, resourceID any, owningOUID any, requests any) *SharingServiceInterfaceMock_ReplacePoliciesForResource_Call {
+	return &SharingServiceInterfaceMock_ReplacePoliciesForResource_Call{Call: _e.mock.On("ReplacePoliciesForResource", ctx, rt, resourceID, owningOUID, requests)}
+}
+
+func (_c *SharingServiceInterfaceMock_ReplacePoliciesForResource_Call) Run(run func(ctx context.Context, rt ResourceType, resourceID string, owningOUID string, requests []PolicyRequest)) *SharingServiceInterfaceMock_ReplacePoliciesForResource_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ResourceType
+		if args[1] != nil {
+			arg1 = args[1].(ResourceType)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		var arg4 []PolicyRequest
+		if args[4] != nil {
+			arg4 = args[4].([]PolicyRequest)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_ReplacePoliciesForResource_Call) Return(policyReplay PolicyReplay, policyReplayError *PolicyReplayError) *SharingServiceInterfaceMock_ReplacePoliciesForResource_Call {
+	_c.Call.Return(policyReplay, policyReplayError)
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_ReplacePoliciesForResource_Call) RunAndReturn(run func(ctx context.Context, rt ResourceType, resourceID string, owningOUID string, requests []PolicyRequest) (PolicyReplay, *PolicyReplayError)) *SharingServiceInterfaceMock_ReplacePoliciesForResource_Call {
+	_c.Call.Return(run)
 	return _c
 }
 
@@ -943,7 +1254,7 @@ type SharingServiceInterfaceMock_ResolveOverlayRules_Call struct {
 //   - rt ResourceType
 //   - resourceID string
 //   - ouID string
-func (_e *SharingServiceInterfaceMock_Expecter) ResolveOverlayRules(ctx interface{}, rt interface{}, resourceID interface{}, ouID interface{}) *SharingServiceInterfaceMock_ResolveOverlayRules_Call {
+func (_e *SharingServiceInterfaceMock_Expecter) ResolveOverlayRules(ctx any, rt any, resourceID any, ouID any) *SharingServiceInterfaceMock_ResolveOverlayRules_Call {
 	return &SharingServiceInterfaceMock_ResolveOverlayRules_Call{Call: _e.mock.On("ResolveOverlayRules", ctx, rt, resourceID, ouID)}
 }
 
@@ -1023,7 +1334,7 @@ type SharingServiceInterfaceMock_ResolveOverlayValues_Call struct {
 //   - rt ResourceType
 //   - resourceID string
 //   - ouID string
-func (_e *SharingServiceInterfaceMock_Expecter) ResolveOverlayValues(ctx interface{}, rt interface{}, resourceID interface{}, ouID interface{}) *SharingServiceInterfaceMock_ResolveOverlayValues_Call {
+func (_e *SharingServiceInterfaceMock_Expecter) ResolveOverlayValues(ctx any, rt any, resourceID any, ouID any) *SharingServiceInterfaceMock_ResolveOverlayValues_Call {
 	return &SharingServiceInterfaceMock_ResolveOverlayValues_Call{Call: _e.mock.On("ResolveOverlayValues", ctx, rt, resourceID, ouID)}
 }
 
@@ -1096,7 +1407,7 @@ type SharingServiceInterfaceMock_SetOverlayValue_Call struct {
 //   - ouID string
 //   - fieldKey string
 //   - value []string
-func (_e *SharingServiceInterfaceMock_Expecter) SetOverlayValue(ctx interface{}, rt interface{}, resourceID interface{}, ouID interface{}, fieldKey interface{}, value interface{}) *SharingServiceInterfaceMock_SetOverlayValue_Call {
+func (_e *SharingServiceInterfaceMock_Expecter) SetOverlayValue(ctx any, rt any, resourceID any, ouID any, fieldKey any, value any) *SharingServiceInterfaceMock_SetOverlayValue_Call {
 	return &SharingServiceInterfaceMock_SetOverlayValue_Call{Call: _e.mock.On("SetOverlayValue", ctx, rt, resourceID, ouID, fieldKey, value)}
 }
 
@@ -1185,7 +1496,7 @@ type SharingServiceInterfaceMock_UpdatePolicy_Call struct {
 //   - ctx context.Context
 //   - policyID string
 //   - req PolicyRequest
-func (_e *SharingServiceInterfaceMock_Expecter) UpdatePolicy(ctx interface{}, policyID interface{}, req interface{}) *SharingServiceInterfaceMock_UpdatePolicy_Call {
+func (_e *SharingServiceInterfaceMock_Expecter) UpdatePolicy(ctx any, policyID any, req any) *SharingServiceInterfaceMock_UpdatePolicy_Call {
 	return &SharingServiceInterfaceMock_UpdatePolicy_Call{Call: _e.mock.On("UpdatePolicy", ctx, policyID, req)}
 }
 

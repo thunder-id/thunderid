@@ -16,6 +16,31 @@ afterEach(() => {
 const noop = () => undefined;
 const identity = (s: string | undefined) => s;
 
+describe('FlowComponentRenderer KEY_VALUE_LIST routing', () => {
+  it('renders KeyValueListAdapter when component type is KEY_VALUE_LIST', () => {
+    const component = {
+      id: 'kv-1',
+      type: 'KEY_VALUE_LIST',
+      source: 'linkingPromptDetails',
+    } as unknown as EmbeddedFlowComponent;
+
+    renderWithProviders(
+      <FlowComponentRenderer
+        component={component}
+        index={0}
+        values={{}}
+        isLoading={false}
+        resolve={identity}
+        onInputChange={noop}
+        onSubmit={noop}
+        additionalData={{linkingPromptDetails: [{label: 'Email', value: 'jane@example.com'}]}}
+      />,
+    );
+
+    expect(screen.getByText('jane@example.com')).toBeTruthy();
+  });
+});
+
 describe('FlowComponentRenderer — COPYABLE_TEXT routing', () => {
   it('renders CopyableTextAdapter when component type is COPYABLE_TEXT', () => {
     const component = {

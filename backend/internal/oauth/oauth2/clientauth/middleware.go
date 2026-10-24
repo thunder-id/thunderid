@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package clientauth
@@ -14,11 +14,13 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// ClientAuthMiddleware authenticates OAuth2 clients and attaches client info to request context.
+// ClientAuthMiddleware authenticates OAuth2 clients and attaches client info to request context. A
+// client that governance holds fails authentication.
 // The issuer is the authorization server's issuer identifier, accepted as the audience of a client
 // assertion JWT (private_key_jwt authentication), per FAPI 2.0 Security Profile Section 5.3.2.1.
 func ClientAuthMiddleware(actorProvider providers.ActorProvider,
 	authnProvider providers.AuthnProviderManager,
+	governance providers.IdentityGovernanceProvider,
 	jwtService jwt.JWTServiceInterface,
 	jtiStore jti.JTIStoreInterface,
 	issuer string,
@@ -28,7 +30,7 @@ func ClientAuthMiddleware(actorProvider providers.ActorProvider,
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
 			// Authenticate client
-			clientInfo, authErr := authenticate(ctx, r, actorProvider, authnProvider, jwtService,
+			clientInfo, authErr := authenticate(ctx, r, actorProvider, authnProvider, governance, jwtService,
 				jtiStore, issuer, assertionCfg, jwtLeeway)
 			if authErr != nil {
 				// If the client attempted to authenticate via the Authorization

@@ -165,7 +165,7 @@ function FormAdapter({
               }}
               sx={dashedAddButtonSx}
             >
-              {t('flows:core.steps.view.addField', 'Add Field')}
+              {t('flows:core.steps.view.addField', 'Add field')}
             </Button>
           </Box>
         )}

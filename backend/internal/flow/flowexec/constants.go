@@ -29,13 +29,13 @@ type flowInitiationMode int
 const (
 	// flowInitiationNotPermitted indicates the application may not initiate a new authentication flow
 	// via a direct HTTP call. This covers redirect-based apps (OAuth 2.0 authorization_code grant),
-	// which must initiate through their protocol component, and machine-to-machine apps
-	// (client_credentials as the only grant), which obtain tokens directly at the token endpoint and
-	// do not run flows. Neither is issued a Flow Secret.
+	// which must initiate through their protocol component, and apps without the token-exchange
+	// grant (such as client_credentials, jwt-bearer, or CIBA clients), which cannot redeem a flow
+	// assertion and do not run flows themselves. Neither is issued a Flow Secret.
 	flowInitiationNotPermitted flowInitiationMode = iota
 	// flowInitiationFlowSecret indicates a backend / server-side application — one that does not sign
-	// in by redirect, or an embedded app with no protocol profile at all — that may initiate a flow
-	// directly by presenting a valid Flow Secret.
+	// in by redirect and has the token-exchange grant, or an embedded app with no protocol profile at
+	// all — that may initiate a flow directly by presenting a valid Flow Secret.
 	flowInitiationFlowSecret
 	// flowInitiationAttestation indicates a mobile application that may initiate a flow directly by
 	// presenting a valid platform attestation (e.g. a Google Play Integrity token) proving its binary

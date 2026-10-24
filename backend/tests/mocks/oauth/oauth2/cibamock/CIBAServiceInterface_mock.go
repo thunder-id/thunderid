@@ -19,10 +19,19 @@ func NewCIBAServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *CIBAServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &CIBAServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -76,7 +85,7 @@ type CIBAServiceInterfaceMock_GetByAuthReqID_Call struct {
 // GetByAuthReqID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - authReqID string
-func (_e *CIBAServiceInterfaceMock_Expecter) GetByAuthReqID(ctx interface{}, authReqID interface{}) *CIBAServiceInterfaceMock_GetByAuthReqID_Call {
+func (_e *CIBAServiceInterfaceMock_Expecter) GetByAuthReqID(ctx any, authReqID any) *CIBAServiceInterfaceMock_GetByAuthReqID_Call {
 	return &CIBAServiceInterfaceMock_GetByAuthReqID_Call{Call: _e.mock.On("GetByAuthReqID", ctx, authReqID)}
 }
 
@@ -136,7 +145,7 @@ type CIBAServiceInterfaceMock_HandleCallback_Call struct {
 //   - ctx context.Context
 //   - authReqID string
 //   - assertion string
-func (_e *CIBAServiceInterfaceMock_Expecter) HandleCallback(ctx interface{}, authReqID interface{}, assertion interface{}) *CIBAServiceInterfaceMock_HandleCallback_Call {
+func (_e *CIBAServiceInterfaceMock_Expecter) HandleCallback(ctx any, authReqID any, assertion any) *CIBAServiceInterfaceMock_HandleCallback_Call {
 	return &CIBAServiceInterfaceMock_HandleCallback_Call{Call: _e.mock.On("HandleCallback", ctx, authReqID, assertion)}
 }
 
@@ -212,7 +221,7 @@ type CIBAServiceInterfaceMock_InitiateBackchannelAuth_Call struct {
 //   - ctx context.Context
 //   - request *ciba.BackchannelAuthRequest
 //   - oauthApp *providers.OAuthClient
-func (_e *CIBAServiceInterfaceMock_Expecter) InitiateBackchannelAuth(ctx interface{}, request interface{}, oauthApp interface{}) *CIBAServiceInterfaceMock_InitiateBackchannelAuth_Call {
+func (_e *CIBAServiceInterfaceMock_Expecter) InitiateBackchannelAuth(ctx any, request any, oauthApp any) *CIBAServiceInterfaceMock_InitiateBackchannelAuth_Call {
 	return &CIBAServiceInterfaceMock_InitiateBackchannelAuth_Call{Call: _e.mock.On("InitiateBackchannelAuth", ctx, request, oauthApp)}
 }
 
@@ -283,7 +292,7 @@ type CIBAServiceInterfaceMock_MarkConsumed_Call struct {
 // MarkConsumed is a helper method to define mock.On call
 //   - ctx context.Context
 //   - authReqID string
-func (_e *CIBAServiceInterfaceMock_Expecter) MarkConsumed(ctx interface{}, authReqID interface{}) *CIBAServiceInterfaceMock_MarkConsumed_Call {
+func (_e *CIBAServiceInterfaceMock_Expecter) MarkConsumed(ctx any, authReqID any) *CIBAServiceInterfaceMock_MarkConsumed_Call {
 	return &CIBAServiceInterfaceMock_MarkConsumed_Call{Call: _e.mock.On("MarkConsumed", ctx, authReqID)}
 }
 
@@ -341,7 +350,7 @@ type CIBAServiceInterfaceMock_UpdateLastPolled_Call struct {
 //   - ctx context.Context
 //   - authReqID string
 //   - polledAt time.Time
-func (_e *CIBAServiceInterfaceMock_Expecter) UpdateLastPolled(ctx interface{}, authReqID interface{}, polledAt interface{}) *CIBAServiceInterfaceMock_UpdateLastPolled_Call {
+func (_e *CIBAServiceInterfaceMock_Expecter) UpdateLastPolled(ctx any, authReqID any, polledAt any) *CIBAServiceInterfaceMock_UpdateLastPolled_Call {
 	return &CIBAServiceInterfaceMock_UpdateLastPolled_Call{Call: _e.mock.On("UpdateLastPolled", ctx, authReqID, polledAt)}
 }
 
@@ -404,7 +413,7 @@ type CIBAServiceInterfaceMock_UpdateState_Call struct {
 //   - ctx context.Context
 //   - authReqID string
 //   - state ciba.CIBARequestState
-func (_e *CIBAServiceInterfaceMock_Expecter) UpdateState(ctx interface{}, authReqID interface{}, state interface{}) *CIBAServiceInterfaceMock_UpdateState_Call {
+func (_e *CIBAServiceInterfaceMock_Expecter) UpdateState(ctx any, authReqID any, state any) *CIBAServiceInterfaceMock_UpdateState_Call {
 	return &CIBAServiceInterfaceMock_UpdateState_Call{Call: _e.mock.On("UpdateState", ctx, authReqID, state)}
 }
 

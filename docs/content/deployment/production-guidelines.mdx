@@ -61,7 +61,7 @@ The default configuration uses SQLite, which stores data in local files. SQLite 
 | `config` | Application configuration, flows, and identity providers |
 | `runtime_transient` | Short-lived OAuth state: authorization codes, requests, and nonces |
 | `entity` | User accounts and credentials |
-| `runtime_persistent` | Long-lived operational state: revoked tokens, SSO sessions, and consents |
+| `runtime_persistent` | Long-lived operational state: revoked tokens, SSO sessions, consents, and account access state |
 
 Configure each database in `deployment.yaml`:
 
@@ -352,7 +352,9 @@ If PostgreSQL uses a private CA with `verify-full`, mount the CA certificate rea
 
 ## Configure Rate Limiting
 
-<ProductName /> does not apply rate limiting, account lockout, or brute-force protection to Direct API endpoints. The Direct Auth Secret authenticates callers, but it does not limit repeated requests.
+<ProductName /> does not apply rate limiting to Direct API endpoints. The Direct Auth Secret authenticates callers, but it does not limit repeated requests.
+
+Automatic account lockout does apply to these endpoints, and it is not a substitute for rate limiting. Lockout counts failures per identity and holds the sign-in method that failed, so it protects an account from guessing. It does nothing about request volume: an unlimited caller can still enumerate identifiers, drive messaging costs through repeated OTP delivery, and lock legitimate accounts out on purpose.
 
 Configure rate limits at the API gateway, ingress, or front door for:
 

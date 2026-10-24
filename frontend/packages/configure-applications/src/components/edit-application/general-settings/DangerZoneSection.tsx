@@ -29,14 +29,14 @@ export default function DangerZoneSection({onDeleteClick}: DangerZoneSectionProp
 
   return (
     <SettingsCard
-      title={t('applications:edit.general.sections.dangerZone.title', 'Danger Zone')}
+      title={t('applications:edit.general.sections.dangerZone.title', 'Danger zone')}
       description={t(
         'applications:edit.general.sections.dangerZone.description',
         'Actions in this section are irreversible. Proceed with caution.',
       )}
     >
       <Typography variant="h6" gutterBottom color="error">
-        {t('applications:edit.general.sections.dangerZone.deleteApplication.title', 'Delete Application')}
+        {t('applications:edit.general.sections.dangerZone.deleteApplication.title', 'Delete application')}
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
         {t(
@@ -45,7 +45,7 @@ export default function DangerZoneSection({onDeleteClick}: DangerZoneSectionProp
         )}
       </Typography>
       <Button data-testid="delete-application-button" variant="contained" color="error" onClick={onDeleteClick}>
-        {t('applications:edit.general.sections.dangerZone.deleteApplication.button', 'Delete Application')}
+        {t('applications:edit.general.sections.dangerZone.deleteApplication.button', 'Delete application')}
       </Button>
     </SettingsCard>
   );

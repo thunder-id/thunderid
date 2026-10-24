@@ -6,11 +6,13 @@ package model
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/tests/testhelpers"
 )
 
 type SchemaValidateTestSuite struct {
@@ -24,6 +26,153 @@ func TestSchemaValidateTestSuite(t *testing.T) {
 
 func (s *SchemaValidateTestSuite) SetupTest() {
 	s.logger = log.GetLogger()
+}
+
+func (s *SchemaValidateTestSuite) TestValidationLogs_ExcludeAttributeValues() {
+	type validationLogCase struct {
+		name       string
+		definition string
+		payload    string
+		reason     string
+		property   string
+		attribute  string
+	}
+	testCases := []validationLogCase{
+		{
+			name: "default email", definition: `{"contact":{"type":"email"}}`,
+			payload: `{"contact":"privacy-canary@example"}`,
+			reason:  "Regex pattern mismatch", property: "contact",
+		},
+		{
+			name: "default mobile", definition: `{"contact":{"type":"mobile"}}`,
+			payload: `{"contact":"+1555123456789012"}`,
+			reason:  "Regex pattern mismatch", property: "contact",
+		},
+		{
+			name:       "custom credential regex",
+			definition: `{"secret":{"type":"string","credential":true,"regex":"^[A-Z]+$"}}`,
+			payload:    `{"secret":"credential-canary"}`,
+			reason:     "Regex pattern mismatch", property: "secret",
+		},
+		{
+			name: "string enum", definition: `{"value":{"type":"string","enum":["allowed"]}}`,
+			payload: `{"value":"privacy-canary@example.test"}`,
+			reason:  "Value not in enum", property: "value",
+		},
+		{
+			name: "number enum", definition: `{"value":{"type":"number","enum":[1]}}`,
+			payload: `{"value":86753}`,
+			reason:  "Value not in enum", property: "value",
+		},
+		{
+			name:       "unknown top-level attribute",
+			definition: `{"known":{"type":"string"}}`,
+			payload:    `{"unexpectedContact":"privacy-canary@example.test credential-canary"}`,
+			reason:     "Attribute not defined in schema",
+			attribute:  "unexpectedContact",
+		},
+		{
+			name:       "unknown nested attribute",
+			definition: `{"profile":{"type":"object","properties":{"known":{"type":"string"}}}}`,
+			payload:    `{"profile":{"unexpectedContact":"privacy-canary@example.test credential-canary"}}`,
+			reason:     "Attribute not defined in schema", attribute: "profile.unexpectedContact",
+		},
+		{
+			name: "unknown array object attribute",
+			definition: `{"profiles":{"type":"array","items":{"type":"object",` +
+				`"properties":{"known":{"type":"string"}}}}}`,
+			payload: `{"profiles":[{"unexpectedContact":"privacy-canary@example.test credential-canary"}]}`,
+			reason:  "Attribute not defined in schema", attribute: "profiles[0].unexpectedContact",
+		},
+	}
+	for _, kind := range []string{TypeEmail, TypeMobile} {
+		for _, nested := range []bool{false, true} {
+			definition := fmt.Sprintf(`{"contacts":{"type":"array","items":{"type":%q}}}`, kind)
+			payload := `{"contacts":["privacy-canary@example"]}`
+			property := "contacts[0]"
+			if nested {
+				definition = fmt.Sprintf(`{"profile":{"type":"object","properties":{"contact":{"type":%q}}}}`, kind)
+				payload = `{"profile":{"contact":"privacy-canary@example"}}`
+				property = "profile.contact"
+			}
+			testCases = append(testCases, validationLogCase{
+				fmt.Sprintf("%s at %s", kind, property), definition, payload, "Regex pattern mismatch", property, "",
+			})
+		}
+	}
+	for _, kind := range []string{TypeString, TypeEmail, TypeMobile, TypeNumber, TypeBoolean, TypeArray, TypeObject} {
+		definition := fmt.Sprintf(`{"value":{"type":%q}}`, kind)
+		switch kind {
+		case TypeArray:
+			definition = `{"value":{"type":"array","items":{"type":"string"}}}`
+		case TypeObject:
+			definition = `{"value":{"type":"object","properties":{"known":{"type":"string"}}}}`
+		}
+		reasonType := kind
+		if IsStringBackedType(kind) {
+			reasonType = TypeString
+		}
+		for _, wrongValue := range []struct {
+			name string
+			json string
+		}{
+			{"object", `{"email":"privacy-canary@example.test","password":"credential-canary"}`},
+			{"array", `["privacy-canary@example.test","credential-canary"]`},
+			{"string", `"privacy-canary@example.test credential-canary"`},
+		} {
+			if wrongValue.name == kind || (IsStringBackedType(kind) && wrongValue.name == TypeString) {
+				continue
+			}
+			testCases = append(testCases, validationLogCase{
+				fmt.Sprintf("%s rejects %s", kind, wrongValue.name), definition,
+				`{"value":` + wrongValue.json + `}`,
+				"Expected " + reasonType + " but got different type", "value", "",
+			})
+		}
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			schema, err := CompileSchema(json.RawMessage(tc.definition))
+			s.Require().NoError(err)
+			out := testhelpers.CaptureLogs(s.T(), "DEBUG", func() {
+				valid, err := schema.Validate(context.Background(), json.RawMessage(tc.payload), s.logger, false)
+				s.Require().NoError(err)
+				s.False(valid)
+			})
+			s.Contains(out, tc.reason)
+			if tc.property != "" {
+				s.Contains(out, "property="+tc.property)
+			}
+			if tc.attribute != "" {
+				s.Contains(out, "attribute="+tc.attribute)
+			}
+			for _, secret := range []string{"privacy-canary", "credential-canary", "1555123456789012", "86753"} {
+				s.NotContains(out, secret)
+			}
+		})
+	}
+}
+
+func (s *SchemaValidateTestSuite) TestUniquenessLogs_ExcludeInvalidObjectValue() {
+	schema, err := CompileSchema(json.RawMessage(`{
+		"profile":{"type":"object","properties":{"email":{"type":"email","unique":true}}}
+	}`))
+	s.Require().NoError(err)
+	out := testhelpers.CaptureLogs(s.T(), "DEBUG", func() {
+		valid, err := schema.ValidateUniqueness(context.Background(),
+			map[string]interface{}{"profile": "privacy-canary@example.test credential-canary"},
+			func(map[string]interface{}) (bool, error) {
+				s.Fail("uniqueness lookup must not run for an invalid object")
+				return false, nil
+			}, s.logger)
+		s.Require().NoError(err)
+		s.False(valid)
+	})
+	s.Contains(out, "Expected object but got different type")
+	s.Contains(out, "property=profile")
+	s.NotContains(out, "privacy-canary")
+	s.NotContains(out, "credential-canary")
 }
 
 func (s *SchemaValidateTestSuite) TestValidAttributes_Pass() {
@@ -503,4 +652,224 @@ func (s *SchemaValidateTestSuite) TestGetAttributes_UniqueOnlyAndType() {
 	s.True(subjectCandidates[0].Unique)
 	s.True(subjectCandidates[0].Required)
 	s.Equal(TypeString, subjectCandidates[0].Type)
+}
+
+// validatePayload compiles the definition and validates the payload against it.
+func (s *SchemaValidateTestSuite) validatePayload(definition, payload string) bool {
+	schema, err := CompileSchema(json.RawMessage(definition))
+	s.Require().NoError(err)
+	ok, err := schema.Validate(context.Background(), json.RawMessage(payload), s.logger, false)
+	s.Require().NoError(err)
+	return ok
+}
+
+func (s *SchemaValidateTestSuite) TestContactValues_DefaultFormat() {
+	testCases := []struct {
+		kind  string
+		value interface{}
+		valid bool
+	}{
+		{TypeEmail, "User+tag@example.com", true},
+		{TypeEmail, "", false},
+		{TypeEmail, "Name <a@b.com>", false},
+		{TypeEmail, " a@b.com", false},
+		{TypeEmail, "a@b.com ", false},
+		{TypeEmail, "a b@b.com", false},
+		{TypeEmail, "person\u00a0@example.com", false},
+		{TypeEmail, "person\v@example.com", false},
+		{TypeEmail, "person\u2003@example.com", false},
+		{TypeEmail, "person\u2028@example.com", false},
+		{TypeEmail, "person\u2029@example.com", false},
+		{TypeEmail, "person\ufeff@example.com", false},
+		{TypeEmail, "person\u0085@example.com", true},
+		{TypeEmail, "person\u200b@example.com", true},
+		{TypeEmail, "ü@b.com", true},
+		{TypeEmail, "invalid", false},
+		{TypeEmail, 7, false},
+		{TypeMobile, "+12", true},
+		{TypeMobile, "+123456789012345", true},
+		{TypeMobile, "+1234567890123456", false},
+		{TypeMobile, "+01", false},
+		{TypeMobile, "+1", false},
+		{TypeMobile, "12345", false},
+		{TypeMobile, "+12 345", false},
+		{TypeMobile, "+12\n", false},
+		{TypeMobile, "", false},
+		{TypeMobile, nil, false},
+	}
+
+	for _, tc := range testCases {
+		s.Run(fmt.Sprintf("%s/%v", tc.kind, tc.value), func() {
+			payload, err := json.Marshal(map[string]interface{}{"contact": tc.value})
+			s.Require().NoError(err)
+			s.Equal(tc.valid, s.validatePayload(
+				fmt.Sprintf(`{"contact":{"type":%q,"required":true}}`, tc.kind), string(payload)))
+		})
+	}
+}
+
+func (s *SchemaValidateTestSuite) TestContactValues_NestedAndArray() {
+	definition := `{
+		"work":   {"type": "email", "regex": "@example\\.com$"},
+		"nested": {"type": "object", "properties": {"email": {"type": "email"}}},
+		"phones": {"type": "array", "items": {"type": "mobile"}}
+	}`
+
+	s.True(s.validatePayload(definition,
+		`{"work":"a@example.com","nested":{"email":"b@example.com"},"phones":["+123"]}`))
+	for _, payload := range []string{
+		`{"work":"b@other.com"}`, `{"nested":{"email":"bad"}}`, `{"phones":["bad"]}`, `{"phones":[""]}`,
+	} {
+		s.False(s.validatePayload(definition, payload), payload)
+	}
+}
+
+func (s *SchemaValidateTestSuite) TestContactValues_SuppliedEmptyValuesValidated() {
+	definition := `{
+		"work":   {"type": "email"},
+		"phone":  {"type": "mobile"},
+		"nested": {"type": "object", "properties": {"email": {"type": "email"}}}
+	}`
+
+	s.False(s.validatePayload(definition, `{"work":"","phone":"","nested":{"email":""}}`))
+}
+
+func (s *SchemaValidateTestSuite) TestContactValues_Uniqueness() {
+	schema, err := CompileSchema(json.RawMessage(`{"work":{"type":"email","unique":true}}`))
+	s.Require().NoError(err)
+
+	for _, value := range []string{"a@example.com", ""} {
+		ok, err := schema.ValidateUniqueness(context.Background(), map[string]interface{}{"work": value},
+			func(attrs map[string]interface{}) (bool, error) {
+				s.Equal(value, attrs["work"])
+				return true, nil
+			}, s.logger)
+		s.Require().NoError(err)
+		s.False(ok)
+	}
+}
+
+func (s *SchemaValidateTestSuite) TestContactAttributes_RejectCredentialAndEnum() {
+	for _, kind := range []string{TypeEmail, TypeMobile} {
+		for _, definition := range []string{
+			`{"contact":{"type":%q,"credential":true}}`,
+			`{"contact":{"type":%q,"enum":["a@example.com","+123"]}}`,
+			`{"contacts":{"type":"array","items":{"type":%q,"enum":["a@example.com","+123"]}}}`,
+		} {
+			_, err := CompileSchema(json.RawMessage(fmt.Sprintf(definition, kind)))
+			s.Error(err)
+		}
+	}
+}
+
+func (s *SchemaValidateTestSuite) TestStringAttribute_NoContactFormat() {
+	s.True(s.validatePayload(`{"email":{"type":"string"}}`, `{"email":"not an email"}`))
+}
+
+func (s *SchemaValidateTestSuite) TestGetAttributes_ContactType() {
+	schema, err := CompileSchema(json.RawMessage(`{
+		"work":   {"type": "email"},
+		"phone":  {"type": "mobile"},
+		"nested": {"type": "object", "properties": {"email": {"type": "email"}}}
+	}`))
+	s.Require().NoError(err)
+
+	attrs := schema.GetAttributes(AttributeFilter{AllowNonCredential: true, Type: TypeEmail})
+	s.Require().Len(attrs, 1)
+	s.Equal("work", attrs[0].Attribute)
+	s.Equal(TypeEmail, attrs[0].Type)
+	s.Equal(DisplayAttributeValid, schema.ValidateAsDisplayAttribute("work"))
+}
+
+func (s *SchemaValidateTestSuite) TestValidateAsPrimaryContact() {
+	schema, err := CompileSchema(json.RawMessage(`{
+		"work":   {"type": "email"},
+		"phone":  {"type": "mobile"},
+		"nested": {"type": "object", "properties": {"email": {"type": "email"}}}
+	}`))
+	s.Require().NoError(err)
+
+	s.Equal(PrimaryContactValid, schema.ValidateAsPrimaryContact("work", TypeEmail))
+	s.Equal(PrimaryContactValid, schema.ValidateAsPrimaryContact("phone", TypeMobile))
+	s.Equal(PrimaryContactNotFound, schema.ValidateAsPrimaryContact("missing", TypeEmail))
+	s.Equal(PrimaryContactNotFound, schema.ValidateAsPrimaryContact("nested.email", TypeEmail))
+	s.Equal(PrimaryContactTypeMismatch, schema.ValidateAsPrimaryContact("work", TypeMobile))
+	s.Equal(PrimaryContactTypeMismatch, schema.ValidateAsPrimaryContact("nested", TypeEmail))
+}
+
+func (s *SchemaValidateTestSuite) TestIsStringBackedType() {
+	for _, attrType := range []string{TypeString, TypeEmail, TypeMobile} {
+		s.True(IsStringBackedType(attrType), attrType)
+	}
+	for _, attrType := range []string{TypeNumber, TypeBoolean, TypeObject, TypeArray} {
+		s.False(IsStringBackedType(attrType), attrType)
+	}
+}
+
+func (s *SchemaValidateTestSuite) TestContactRegex_Override() {
+	testCases := []struct {
+		name, definition, payload string
+		valid                     bool
+	}{
+		{"default email", `{"contact":{"type":"email"}}`, `{"contact":"a@example.com"}`, true},
+		{"default mobile", `{"contact":{"type":"mobile"}}`, `{"contact":"0771234567"}`, false},
+		{"custom email", `{"contact":{"type":"email","regex":"^.+@localhost$"}}`, `{"contact":"a@localhost"}`, true},
+		{
+			"custom email restriction",
+			`{"contact":{"type":"email","regex":"^.+@localhost$"}}`,
+			`{"contact":"a@example.com"}`, false,
+		},
+		{
+			"custom local mobile",
+			`{"contact":{"type":"mobile","regex":"^0[0-9]{9}$"}}`,
+			`{"contact":"0771234567"}`, true,
+		},
+		{
+			"custom mobile restriction",
+			`{"contact":{"type":"mobile","regex":"^0[0-9]{9}$"}}`,
+			`{"contact":"+94771234567"}`, false,
+		},
+		{"pattern alias", `{"contact":{"type":"mobile","pattern":"^0[0-9]{9}$"}}`, `{"contact":"0771234567"}`, true},
+		{"empty regex", `{"contact":{"type":"email","regex":""}}`, `{"contact":"admin-defined-value"}`, false},
+		{"empty pattern", `{"contact":{"type":"mobile","pattern":""}}`, `{"contact":"admin-defined-value"}`, false},
+		{"empty email regex default", `{"contact":{"type":"email","regex":""}}`, `{"contact":"a@example.com"}`, true},
+		{"empty mobile regex default", `{"contact":{"type":"mobile","regex":""}}`, `{"contact":"+94771234567"}`, true},
+		{"required empty", `{"contact":{"type":"email","required":true,"regex":".*"}}`, `{"contact":""}`, true},
+		{"optional omitted", `{"contact":{"type":"mobile"}}`, `{}`, true},
+		{"optional empty default", `{"contact":{"type":"email"}}`, `{"contact":""}`, false},
+		{"optional empty allowed by regex", `{"contact":{"type":"email","regex":".*"}}`, `{"contact":""}`, true},
+		{"optional empty", `{"contact":{"type":"mobile","regex":"^0[0-9]{9}$"}}`, `{"contact":""}`, false},
+		{
+			"custom array",
+			`{"contact":{"type":"array","items":{"type":"mobile","regex":"^0[0-9]{9}$"}}}`,
+			`{"contact":["0771234567"]}`, true,
+		},
+		{
+			"empty array item",
+			`{"contact":{"type":"array","items":{"type":"email","regex":".*"}}}`,
+			`{"contact":[""]}`, true,
+		},
+		{
+			"custom nested",
+			`{"contact":{"type":"object","properties":{"email":{"type":"email","regex":"^.+@localhost$"}}}}`,
+			`{"contact":{"email":"a@localhost"}}`, true,
+		},
+		{"custom wrong JSON type", `{"contact":{"type":"mobile","regex":".*"}}`, `{"contact":7}`, false},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			s.Equal(tc.valid, s.validatePayload(tc.definition, tc.payload))
+		})
+	}
+}
+
+func (s *SchemaValidateTestSuite) TestContactRegex_InvalidDefinitionRejected() {
+	for _, definition := range []string{
+		`{"contact":{"type":"email","regex":"("}}`,
+		`{"contact":{"type":"mobile","regex":".*","pattern":".*"}}`,
+	} {
+		_, err := CompileSchema(json.RawMessage(definition))
+		s.Error(err, definition)
+	}
 }

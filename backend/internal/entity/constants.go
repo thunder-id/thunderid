@@ -12,3 +12,6 @@ var reservedSystemAttributes = []string{
 	authnprovidercm.SystemAttrCredentialUpdatedAt,
 	authnprovidercm.SystemAttrLinkedIDs,
 }
+
+// maxEntityStateLength is the longest state the runtime table's STATE column holds.
+const maxEntityStateLength = 50

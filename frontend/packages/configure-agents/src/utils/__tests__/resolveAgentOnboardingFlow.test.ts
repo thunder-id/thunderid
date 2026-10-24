@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {describe, expect, it, vi} from 'vitest';
-import resolveAgentOnboardingFlow, {
-  AgentOnboardingFlowProblem,
-  findAdministrationFlowId,
-  type HttpLike,
-} from '../resolveAgentOnboardingFlow';
+import resolveAgentOnboardingFlow, {AgentOnboardingFlowProblem, type HttpLike} from '../resolveAgentOnboardingFlow';
 
 const SERVER_URL = 'https://localhost:8090';
 
@@ -76,6 +72,21 @@ describe('resolveAgentOnboardingFlow', () => {
     expect(result.handle).toBe('missing-handle');
   });
 
+  // A handle can be reused across flow types, so matching on handle alone could run a flow the
+  // engine would reject.
+  it('should report FLOW_MISSING when the handle belongs to a flow that is not an administration flow', async () => {
+    const http = httpReturning((url) =>
+      url.includes('/server-config/flow')
+        ? configLayers('target')
+        : {data: {flows: [{id: 'reg-id', handle: 'target', flowType: 'REGISTRATION'}]}},
+    );
+
+    const result = await resolveAgentOnboardingFlow(http, SERVER_URL);
+
+    expect(result.problem).toBe(AgentOnboardingFlowProblem.FlowMissing);
+    expect(result.flowId).toBeUndefined();
+  });
+
   // Only the merged layer is what the server applies; reading the declarative layer would report a
   // handle an operator has already overridden.
   it('should read the handle from the merged layer only', async () => {
@@ -96,42 +107,5 @@ describe('resolveAgentOnboardingFlow', () => {
     const http: HttpLike = {request: vi.fn().mockRejectedValue(new Error('boom'))};
 
     await expect(resolveAgentOnboardingFlow(http, SERVER_URL)).rejects.toThrow('boom');
-  });
-});
-
-describe('findAdministrationFlowId', () => {
-  // The listing is newest first, which puts the bootstrap flow last. A single page would stop
-  // finding it once a deployment accumulates enough administration flows.
-  it('should walk past a full page to find a handle on a later page', async () => {
-    const firstPage = Array.from({length: 100}, (_, i) => ({
-      id: `id-${i}`,
-      handle: `handle-${i}`,
-      flowType: 'ADMINISTRATION',
-    }));
-    const http = httpReturning((url) =>
-      url.includes('offset=0')
-        ? {data: {flows: firstPage}}
-        : {data: {flows: [{id: 'wanted', handle: 'target', flowType: 'ADMINISTRATION'}]}},
-    );
-
-    await expect(findAdministrationFlowId(http, SERVER_URL, 'target')).resolves.toBe('wanted');
-    expect(http.calls).toHaveLength(2);
-  });
-
-  it('should stop on a short page rather than paging forever', async () => {
-    const http = httpReturning(() => ({data: {flows: [{id: 'a', handle: 'x', flowType: 'ADMINISTRATION'}]}}));
-
-    await expect(findAdministrationFlowId(http, SERVER_URL, 'not-there')).resolves.toBeNull();
-    expect(http.calls).toHaveLength(1);
-  });
-
-  // A handle can be reused across flow types, so matching on handle alone could run a flow the
-  // engine would reject.
-  it('should ignore a matching handle that is not an administration flow', async () => {
-    const http = httpReturning(() => ({
-      data: {flows: [{id: 'reg-id', handle: 'target', flowType: 'REGISTRATION'}]},
-    }));
-
-    await expect(findAdministrationFlowId(http, SERVER_URL, 'target')).resolves.toBeNull();
   });
 });

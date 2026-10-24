@@ -1,7 +1,13 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {PageLoadingAnimation, QueryErrorNotice, ResourceAvatar, UnsavedChangesBar} from '@thunderid/components';
+import {
+  DocumentTitle,
+  PageLoadingAnimation,
+  QueryErrorNotice,
+  ResourceAvatar,
+  UnsavedChangesBar,
+} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -131,7 +137,7 @@ export default function OrganizationUnitEditPage({
 
   const backButtonText = fromOU
     ? t('organizationUnits:edit.page.backToOU', {name: fromOU.name})
-    : t('organizationUnits:edit.page.back', 'Back to Organization Units');
+    : t('organizationUnits:edit.page.back', 'Back to organization units');
 
   const handleTabChange = (_event: SyntheticEvent, newValue: number): void => {
     setTabState({organizationUnitId: id, value: newValue});
@@ -227,13 +233,21 @@ export default function OrganizationUnitEditPage({
     });
   };
 
+  const resourceTypeTitle = t('navigation:pages.organizationUnits', 'Organization units');
+
   if (isLoading) {
-    return <PageLoadingAnimation />;
+    return (
+      <>
+        <DocumentTitle title={resourceTypeTitle} />
+        <PageLoadingAnimation />
+      </>
+    );
   }
 
   if (fetchError) {
     return (
       <PageContent>
+        <DocumentTitle title={resourceTypeTitle} />
         <QueryErrorNotice
           error={fetchError}
           t={tForErrors}
@@ -251,7 +265,7 @@ export default function OrganizationUnitEditPage({
               }}
               startIcon={<ArrowLeft size={16} />}
             >
-              {t('organizationUnits:edit.page.back', 'Back to Organization Units')}
+              {t('organizationUnits:edit.page.back', 'Back to organization units')}
             </Button>
           }
         />
@@ -262,6 +276,7 @@ export default function OrganizationUnitEditPage({
   if (!organizationUnit) {
     return (
       <PageContent>
+        <DocumentTitle title={resourceTypeTitle} />
         <Alert severity="warning" sx={{mb: 2}}>
           {t('organizationUnits:edit.page.notFound')}
         </Alert>
@@ -273,7 +288,7 @@ export default function OrganizationUnitEditPage({
           }}
           startIcon={<ArrowLeft size={16} />}
         >
-          {t('organizationUnits:edit.page.back', 'Back to Organization Units')}
+          {t('organizationUnits:edit.page.back', 'Back to organization units')}
         </Button>
       </PageContent>
     );
@@ -281,6 +296,7 @@ export default function OrganizationUnitEditPage({
 
   return (
     <PageContent>
+      <DocumentTitle title={organizationUnit.name} />
       {organizationUnit.isReadOnly && (
         <Alert severity="info" sx={{mb: 2}}>
           {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
@@ -299,7 +315,7 @@ export default function OrganizationUnitEditPage({
             editable={!organizationUnit.isReadOnly}
             value={editedOU.logoUrl ?? organizationUnit.logoUrl ?? undefined}
             fallback={OrganizationUnitTreeConstants.DEFAULT_AVATAR}
-            editAriaLabel={t('organizationUnits:edit.page.logoUpdate.label', 'Update Logo')}
+            editAriaLabel={t('organizationUnits:edit.page.logoUpdate.label', 'Update logo')}
             onSelect={(newLogoUrl: string) => {
               updateOrganizationUnit.reset(); // a save error is stale once the form changes
               setEditedOU((prev) => {

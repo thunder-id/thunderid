@@ -44,6 +44,36 @@ func TestGetCategory(t *testing.T) {
 			eventType:    EventTypeBackchannelLogoutFailed,
 			wantCategory: CategoryAuthentication,
 		},
+		{
+			name:         "lock formed",
+			eventType:    EventTypeIdentityLocked,
+			wantCategory: CategoryAuthentication,
+		},
+		{
+			name:         "self-service unlock",
+			eventType:    EventTypeIdentitySelfUnlocked,
+			wantCategory: CategoryAuthentication,
+		},
+		{
+			name:         "self-service unlock failed",
+			eventType:    EventTypeIdentitySelfUnlockFailed,
+			wantCategory: CategoryAuthentication,
+		},
+		{
+			name:         "operator unlock",
+			eventType:    EventTypeIdentityUnlocked,
+			wantCategory: CategoryAdministration,
+		},
+		{
+			name:         "server config updated",
+			eventType:    EventTypeServerConfigUpdated,
+			wantCategory: CategoryAdministration,
+		},
+		{
+			name:         "server config update failed",
+			eventType:    EventTypeServerConfigUpdateFailed,
+			wantCategory: CategoryAdministration,
+		},
 
 		// Flow events
 		{

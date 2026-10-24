@@ -49,6 +49,29 @@ vi.mock('@/api/useUpdateAgentType', () => ({
 vi.mock('@/components/edit-agent-type/schema-settings/EditSchemaSettings', () => ({
   default: ({onPropertiesChange}: {onPropertiesChange: (props: unknown[]) => void}) => (
     <div data-testid="edit-schema-settings">
+      {(['email', 'mobile'] as const).map((type) => (
+        <button
+          key={type}
+          type="button"
+          onClick={() =>
+            onPropertiesChange([
+              {
+                id: '0',
+                name: 'contact',
+                displayName: '',
+                type,
+                required: true,
+                unique: false,
+                credential: false,
+                enum: [],
+                regex: '',
+              },
+            ])
+          }
+        >
+          Clear {type} Regex
+        </button>
+      ))}
       <button
         type="button"
         onClick={() =>
@@ -236,7 +259,7 @@ describe('ViewAgentTypePage', () => {
 
       expect(screen.getByText('Failed to load agent type information')).toBeInTheDocument();
       expect(screen.queryByText('Boom')).not.toBeInTheDocument();
-      expect(screen.getByRole('button', {name: /Back to Agents/i})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: /Back to agents/i})).toBeInTheDocument();
     });
 
     it('renders a not-found message when no data is returned', () => {
@@ -246,7 +269,7 @@ describe('ViewAgentTypePage', () => {
 
       // The page falls back to a translation that resolves to "Agent type not found" via test-utils i18n
       expect(screen.getByRole('alert')).toBeInTheDocument();
-      expect(screen.getByRole('button', {name: /Back to Agents/i})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: /Back to agents/i})).toBeInTheDocument();
     });
 
     it('navigates back from error state', async () => {
@@ -259,7 +282,7 @@ describe('ViewAgentTypePage', () => {
 
       render(<ViewAgentTypePage />);
 
-      await user.click(screen.getByRole('button', {name: /Back to Agents/i}));
+      await user.click(screen.getByRole('button', {name: /Back to agents/i}));
 
       await waitFor(() => {
         expect(mockNavigate).toHaveBeenCalledWith('/agents');
@@ -271,13 +294,19 @@ describe('ViewAgentTypePage', () => {
     it('renders the agent type heading', () => {
       render(<ViewAgentTypePage />);
 
-      expect(screen.getByText('Agent Schema')).toBeInTheDocument();
+      expect(screen.getByText('Agent schema')).toBeInTheDocument();
+    });
+
+    it('sets the browser tab title', async () => {
+      render(<ViewAgentTypePage />);
+
+      await waitFor(() => expect(document.title).toBe('Agent schema | ThunderID'));
     });
 
     it('renders the back link to /agents', () => {
       render(<ViewAgentTypePage />);
 
-      const backLink = screen.getByRole('link', {name: /Back to Agents/i});
+      const backLink = screen.getByRole('link', {name: /Back to agents/i});
       expect(backLink).toHaveAttribute('href', '/agents');
     });
   });
@@ -405,6 +434,21 @@ describe('ViewAgentTypePage', () => {
       });
       expect(screen.queryByText(/Confirm schema changes/i)).not.toBeInTheDocument();
     });
+
+    it.each(['email', 'mobile'] as const)(
+      'validates a blank %s regex before showing a breaking-change warning',
+      async (type) => {
+        const user = userEvent.setup();
+        render(<ViewAgentTypePage />);
+
+        await user.click(screen.getByText(`Clear ${type} Regex`));
+        await user.click(await screen.findByRole('button', {name: /^Save$/i}));
+
+        expect(screen.getByText(`Enter a regular expression for ${type} attributes.`)).toBeInTheDocument();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(mockMutateAsync).not.toHaveBeenCalled();
+      },
+    );
 
     it('shows the duplicate-property validation error inline, not as a toast', async () => {
       const user = userEvent.setup();

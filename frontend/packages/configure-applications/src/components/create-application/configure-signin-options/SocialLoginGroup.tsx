@@ -80,7 +80,7 @@ export default function SocialLoginGroup({
 
   return (
     <AuthMethodGroup
-      title={t('applications:onboarding.configure.security.socialLogin.title', 'Social Login')}
+      title={t('applications:onboarding.configure.security.socialLogin.title', 'Social login')}
       checked={checked}
       indeterminate={indeterminate}
       onCheckedChange={handleCheckedChange}

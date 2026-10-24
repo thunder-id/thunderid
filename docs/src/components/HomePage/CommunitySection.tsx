@@ -1,253 +1,173 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
-import {Box, Card, Container, Typography, useTheme} from '@wso2/oxygen-ui';
-import {MessagesSquareIcon} from '@wso2/oxygen-ui-icons-react';
-import {JSX} from 'react';
-import useIsDarkMode from '../../hooks/useIsDarkMode';
-import useScrollAnimation from '../../hooks/useScrollAnimation';
+import {Box, Container} from '@wso2/oxygen-ui';
+import {ArrowRight, Bug, GitPullRequest, Map as MapIcon, MessageSquare} from '@wso2/oxygen-ui-icons-react';
+import type {JSX, ReactNode} from 'react';
+import {DISPLAY_FONT, useHomeTokens, HOME_MAX_WIDTH} from './homeTheme';
+import {Reveal, Section, SectionHeading} from './shared';
 import type {DocusaurusProductConfig} from '@site/docusaurus.product.config';
-import {useDocsUrl} from '@site/src/hooks/useDocsUrl';
 
-interface CommunityCardProps {
-  icon: JSX.Element;
-  iconBg: string;
+interface CommunityLink {
+  icon: ReactNode;
   title: string;
   description: string;
-  linkLabel: string;
   href: string;
 }
 
-function CommunityCard({icon, iconBg, title, description, linkLabel, href}: CommunityCardProps) {
-  const isDark = useIsDarkMode();
-  const theme = useTheme();
+function CommunityCard({link, delay}: {link: CommunityLink; delay: number}): JSX.Element {
+  const t = useHomeTokens();
+  const external = /^https?:\/\//.test(link.href);
 
   return (
-    <Card
-      sx={{
-        flex: 1,
-        p: {xs: 3, sm: 4},
-        pt: {xs: 4, sm: 5},
-        pb: {xs: 3, sm: 4},
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        textAlign: 'center',
-        cursor: 'pointer',
-        transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-        bgcolor: isDark ? 'rgba(255, 255, 255, 0.03)' : 'background.paper',
-        backdropFilter: 'blur(12px)',
-        border: '1px solid',
-        borderColor: 'divider',
-        borderRadius: '16px',
-        position: 'relative',
-        overflow: 'hidden',
-        '&::before': {
-          content: '""',
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          height: '2px',
-          background: `linear-gradient(90deg, ${theme.vars?.palette.primary.dark} 0%, ${theme.vars?.palette.primary.main} 100%)`,
-          opacity: 0,
-          transition: 'opacity 0.3s ease',
-        },
-        '&:hover::before': {opacity: 1},
-        '&:hover': {
-          transform: 'translateY(-6px)',
-          boxShadow: isDark
-            ? `0 16px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(${theme.vars?.palette.primary.main} / 0.2)`
-            : `0 16px 40px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(${theme.vars?.palette.primary.main} / 0.15)`,
-          borderColor: `rgba(${theme.vars?.palette.primary.main} / 0.3)`,
-          bgcolor: isDark ? 'rgba(255, 255, 255, 0.045)' : 'rgba(0, 0, 0, 0.025)',
-        },
-      }}
-      onClick={() => window.open(href, '_blank', 'noopener noreferrer')}
-    >
+    <Reveal component="li" delay={delay}>
       <Box
+        component={Link}
+        to={link.href}
+        {...(external ? {target: '_blank', rel: 'noopener noreferrer'} : {})}
         sx={{
-          width: 60,
-          height: 60,
-          borderRadius: '16px',
+          position: 'relative',
+          height: '100%',
+          minHeight: 128,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
-          background: isDark ? iconBg : 'rgba(59,130,246,0.1)',
-          color: isDark ? 'common.white' : 'primary.main',
-          border: isDark ? 'none' : '1px solid rgba(59,130,246,0.2)',
-          mb: 3,
-          boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.2)' : '0 4px 14px rgba(59,130,246,0.14)',
-          transition: 'transform 0.3s ease, box-shadow 0.3s ease',
-          '.MuiCard-root:hover &': {
-            transform: 'scale(1.1)',
-            boxShadow: isDark ? '0 12px 32px rgba(0,0,0,0.3)' : '0 8px 20px rgba(59,130,246,0.22)',
+          gap: {xs: 2, sm: 2.75},
+          p: {xs: 2.75, sm: '30px 32px'},
+          borderRadius: '20px',
+          border: '1px solid',
+          borderColor: t.line,
+          bgcolor: t.surface,
+          backdropFilter: 'blur(14px)',
+          color: 'text.primary',
+          textDecoration: 'none',
+          transition: 'border-color 0.2s, transform 0.2s, background-color 0.2s',
+          '&:hover': {
+            borderColor: 'rgba(54,136,255,0.55)',
+            transform: 'translateY(-2px)',
+            bgcolor: t.isDark ? 'rgba(8,32,64,0.7)' : '#fff',
+            color: 'text.primary',
+            textDecoration: 'none',
           },
+          '&:hover .community-go': {opacity: 1, transform: 'translateX(3px)'},
         }}
       >
-        {icon}
+        <Box
+          component="span"
+          sx={{
+            flex: 'none',
+            width: {xs: 48, sm: 56},
+            height: {xs: 48, sm: 56},
+            borderRadius: '14px',
+            display: 'grid',
+            placeItems: 'center',
+            color: t.cyan,
+            bgcolor: 'rgba(0,213,255,0.08)',
+            border: '1px solid rgba(0,213,255,0.25)',
+          }}
+        >
+          {link.icon}
+        </Box>
+        <Box
+          component="span"
+          sx={{flex: 1, minWidth: 0, pr: 4, fontSize: '1.03rem', lineHeight: 1.55, color: 'text.secondary'}}
+        >
+          <Box
+            component="strong"
+            sx={{
+              display: 'block',
+              mb: 0.5,
+              fontFamily: DISPLAY_FONT,
+              fontSize: {xs: '1.125rem', sm: '1.25rem'},
+              fontWeight: 600,
+              letterSpacing: '-0.01em',
+              color: 'text.primary',
+            }}
+          >
+            {link.title}
+          </Box>
+          {link.description}
+        </Box>
+        <Box
+          component="span"
+          className="community-go"
+          aria-hidden
+          sx={{
+            position: 'absolute',
+            right: 26,
+            top: '50%',
+            mt: '-10px',
+            display: 'flex',
+            color: t.link,
+            opacity: 0.55,
+            transition: 'opacity 0.2s, transform 0.2s',
+          }}
+        >
+          <ArrowRight size={20} strokeWidth={2} />
+        </Box>
       </Box>
-      <Typography variant="h6" sx={{fontWeight: 600, mb: 1, color: 'text.primary', fontSize: '1.1rem'}}>
-        {title}
-      </Typography>
-      <Typography variant="body2" sx={{mb: 3, color: 'text.secondary', lineHeight: 1.7, fontSize: '0.9rem'}}>
-        {description}
-      </Typography>
-      <Typography
-        variant="body2"
-        sx={{
-          mt: 'auto',
-          color: 'primary.main',
-          fontWeight: 500,
-          fontSize: '0.9rem',
-          transition: 'color 0.2s ease',
-          '&:hover': {color: 'primary.dark'},
-        }}
-      >
-        {linkLabel} &rarr;
-      </Typography>
-    </Card>
-  );
-}
-
-function GitForkIcon() {
-  return (
-    <svg
-      width="26"
-      height="26"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="18" r="3" />
-      <circle cx="6" cy="6" r="3" />
-      <circle cx="18" cy="6" r="3" />
-      <path d="M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9" />
-      <path d="M12 12v3" />
-    </svg>
-  );
-}
-
-function IssueIcon() {
-  return (
-    <svg
-      width="26"
-      height="26"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="10" />
-      <line x1="12" y1="8" x2="12" y2="12" />
-      <line x1="12" y1="16" x2="12.01" y2="16" />
-    </svg>
+    </Reveal>
   );
 }
 
 export default function CommunitySection(): JSX.Element {
-  const theme = useTheme();
-  const {ref, isVisible} = useScrollAnimation({threshold: 0.15});
-  const docsUrl = useDocsUrl();
   const {siteConfig} = useDocusaurusContext();
-  const productName = (siteConfig.customFields?.product as DocusaurusProductConfig).project.name;
-  const discussionsUrl = (siteConfig.customFields?.product as DocusaurusProductConfig).project.source.github
-    .discussionsUrl;
-  const issuesUrl = (siteConfig.customFields?.product as DocusaurusProductConfig).project.source.github.issuesUrl;
+  const product = siteConfig.customFields?.product as DocusaurusProductConfig;
+  const productName = product.project.name;
+  const {url: githubUrl, discussionsUrl, issuesUrl} = product.project.source.github;
+
+  const links: CommunityLink[] = [
+    {
+      icon: <GitPullRequest size={26} strokeWidth={1.6} />,
+      title: 'Contribute.',
+      description: 'Pick up a good first issue, or propose a feature.',
+      href: '/community/contributing/propose-a-feature',
+    },
+    {
+      icon: <MessageSquare size={26} strokeWidth={1.6} />,
+      title: 'Discuss.',
+      description: 'Ask questions and share ideas on GitHub Discussions.',
+      href: discussionsUrl,
+    },
+    {
+      icon: <Bug size={26} strokeWidth={1.6} />,
+      title: 'Report an issue.',
+      description: 'Help find bugs and suggest improvements.',
+      href: issuesUrl,
+    },
+    {
+      icon: <MapIcon size={26} strokeWidth={1.6} />,
+      title: 'Follow the roadmap.',
+      description: "See what's planned and weigh in.",
+      href: `${githubUrl}/milestones`,
+    },
+  ];
 
   return (
-    <Box component="section" sx={{py: {xs: 8, lg: 12}, borderTop: '1px solid', borderColor: 'divider'}}>
-      <Container maxWidth="lg" sx={{px: {xs: 2, sm: 4}}}>
+    <Section id="community">
+      <Container maxWidth={false} sx={{maxWidth: HOME_MAX_WIDTH, px: {xs: 2, sm: 4}}}>
+        <SectionHeading
+          eyebrow="Get involved"
+          title={`Join the ${productName} community`}
+          description={`${productName} is built in the open, with an ever-growing community of contributors. Shape where it goes next.`}
+        />
         <Box
-          ref={ref}
+          component="ul"
           sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            textAlign: 'center',
-            opacity: isVisible ? 1 : 0,
-            transform: isVisible ? 'translateY(0)' : 'translateY(32px)',
-            transition: 'opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1)',
+            listStyle: 'none',
+            m: 0,
+            p: 0,
+            display: 'grid',
+            gridTemplateColumns: {xs: '1fr', md: 'repeat(2, 1fr)'},
+            gap: 2,
           }}
         >
-          <Typography
-            variant="h3"
-            sx={{
-              mb: 2,
-              fontSize: {xs: '1.75rem', sm: '2.25rem', md: '2.5rem'},
-              fontWeight: 700,
-              color: 'text.primary',
-            }}
-          >
-            Join the {productName}{' '}
-            <Box
-              component="span"
-              sx={{
-                background: `linear-gradient(90deg, ${theme.vars?.palette.primary.dark} 0%, ${theme.vars?.palette.primary.main} 100%)`,
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-              }}
-            >
-              community
-            </Box>
-          </Typography>
-          <Typography
-            variant="body1"
-            sx={{
-              mb: 6,
-              fontSize: {xs: '0.95rem', sm: '1.05rem'},
-              color: 'text.secondary',
-              lineHeight: 1.7,
-              maxWidth: '600px',
-            }}
-          >
-            We&apos;re building {productName} with you. Engage with our ever-growing community to get the latest
-            updates, product support, and more.
-          </Typography>
-
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: {xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)'},
-              width: '100%',
-              maxWidth: 900,
-              gap: 3,
-            }}
-          >
-            <CommunityCard
-              icon={<GitForkIcon />}
-              iconBg="rgba(59,130,246,0.10)"
-              title="Contribute"
-              description={`Help shape ${productName} by submitting features, fixes, or improvements.`}
-              linkLabel="Start Contributing"
-              href={docsUrl('/community/contributing/propose-a-feature')}
-            />
-            <CommunityCard
-              icon={<IssueIcon />}
-              iconBg="rgba(59,130,246,0.10)"
-              title="Report issues"
-              description={`Identify bugs and suggest enhancements to make ${productName} better for everyone.`}
-              linkLabel="Open an Issue"
-              href={issuesUrl}
-            />
-            <CommunityCard
-              icon={<MessagesSquareIcon />}
-              iconBg="rgba(59,130,246,0.10)"
-              title="Join the Discussions"
-              description="Ask questions, share ideas, and connect with the community through GitHub Discussions"
-              linkLabel="Open Discussions"
-              href={discussionsUrl}
-            />
-          </Box>
+          {links.map((l, i) => (
+            <CommunityCard key={l.title} link={l} delay={i * 80} />
+          ))}
         </Box>
       </Container>
-    </Box>
+    </Section>
   );
 }

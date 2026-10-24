@@ -252,7 +252,7 @@ var (
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
 		AllowedUserTypes:          []string{githubRegEntityType.Handle},
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+			"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 		},
 	}
 )
@@ -414,13 +414,6 @@ func (ts *GithubRegistrationFlowTestSuite) TearDownSuite() {
 		}
 	}
 
-	// Delete test organization unit
-	if githubRegTestOUID != "" {
-		if err := testutils.DeleteOrganizationUnit(githubRegTestOUID); err != nil {
-			ts.T().Logf("Failed to delete test organization unit during teardown: %v", err)
-		}
-	}
-
 	// Clean up any remaining users
 	if len(ts.config.CreatedUserIDs) > 0 {
 		if err := testutils.CleanupUsers(ts.config.CreatedUserIDs); err != nil {
@@ -430,6 +423,13 @@ func (ts *GithubRegistrationFlowTestSuite) TearDownSuite() {
 
 	if ts.entityTypeID != "" {
 		_ = testutils.DeleteUserType(ts.entityTypeID)
+	}
+
+	// Delete test organization unit
+	if githubRegTestOUID != "" {
+		if err := testutils.DeleteOrganizationUnit(githubRegTestOUID); err != nil {
+			ts.T().Logf("Failed to delete test organization unit during teardown: %v", err)
+		}
 	}
 
 	// Stop mock server
@@ -523,7 +523,7 @@ func (ts *GithubRegistrationFlowTestSuite) TestGithubRegistrationFlowCompleteSuc
 	ts.Require().NotNil(jwtClaims, "JWT claims should not be nil")
 
 	// Validate JWT contains expected user type and OU ID
-	ts.Require().Equal(githubRegEntityType.Handle, jwtClaims.UserType, "Expected userType to match created schema")
+	ts.Require().Equal(githubRegEntityType.Handle, jwtClaims.UserTypeHandle, "Expected userTypeHandle to match created schema")
 	ts.Require().NotEmpty(jwtClaims.OUID, "Expected ouId to be present")
 	ts.Require().Equal(githubRegTestAppID, jwtClaims.Aud, "Expected aud to match the application ID")
 	ts.Require().NotEmpty(jwtClaims.Sub, "JWT subject should not be empty")

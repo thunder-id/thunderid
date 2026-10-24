@@ -237,12 +237,12 @@ function StackAdapter({
         const moveActions = isRow ? (
           <>
             {!isFirst && (
-              <Handle label="Move Left" onClick={() => handleMove(component.id, -1)}>
+              <Handle label="Move left" onClick={() => handleMove(component.id, -1)}>
                 <ChevronLeft size={16} />
               </Handle>
             )}
             {!isLast && (
-              <Handle label="Move Right" onClick={() => handleMove(component.id, 1)}>
+              <Handle label="Move right" onClick={() => handleMove(component.id, 1)}>
                 <ChevronRight size={16} />
               </Handle>
             )}
@@ -250,12 +250,12 @@ function StackAdapter({
         ) : (
           <>
             {!isFirst && (
-              <Handle label="Move Up" onClick={() => handleMove(component.id, -1)}>
+              <Handle label="Move up" onClick={() => handleMove(component.id, -1)}>
                 <ChevronUp size={16} />
               </Handle>
             )}
             {!isLast && (
-              <Handle label="Move Down" onClick={() => handleMove(component.id, 1)}>
+              <Handle label="Move down" onClick={() => handleMove(component.id, 1)}>
                 <ChevronDown size={16} />
               </Handle>
             )}
@@ -318,7 +318,7 @@ function StackAdapter({
           }}
           sx={{...dashedAddButtonSx, mt: 1.5}}
         >
-          {t('flows:core.steps.view.addComponent', 'Add Component')}
+          {t('flows:core.steps.view.addComponent', 'Add component')}
         </Button>
       )}
       <Menu

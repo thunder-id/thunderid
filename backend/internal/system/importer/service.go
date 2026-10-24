@@ -9,12 +9,14 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	agentmodel "github.com/thunder-id/thunderid/internal/agent/model"
+	"github.com/thunder-id/thunderid/internal/application"
 	appmodel "github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/connection"
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
@@ -28,6 +30,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/secretresolver"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
@@ -144,6 +147,12 @@ type roleAdapter interface {
 
 type roleAssignmentAdapter interface {
 	AddAssignments(ctx context.Context, id string, assignments []role.RoleAssignment) *tidcommon.ServiceError
+}
+
+// sharingPolicyAdapter applies the sharing policies a document carries for one resource.
+type sharingPolicyAdapter interface {
+	ReplacePoliciesForResource(ctx context.Context, rt sharing.ResourceType, resourceID, owningOUID string,
+		requests []sharing.PolicyRequest) (sharing.PolicyReplay, *sharing.PolicyReplayError)
 }
 
 type groupAdapter interface {
@@ -271,6 +280,7 @@ type importService struct {
 	entityTypeService              entityTypeAdapter
 	roleService                    roleAdapter
 	roleAssignmentService          roleAssignmentAdapter
+	sharingService                 sharingPolicyAdapter
 	groupService                   groupAdapter
 	resourceService                resourceServerAdapter
 	themeService                   themeAdapter
@@ -413,6 +423,16 @@ func (s *importService) ImportResources(
 		if resolved {
 			outcome = s.importDocument(ctx, doc, options, request.DryRun, flowIDAliases)
 		}
+		if outcome.Status == statusSuccess {
+			switch doc.ResourceType {
+			case resourceTypeUser, resourceTypeAgent, resourceTypeApplication:
+				if _, present := documentState(doc); present {
+					outcome.Message = strings.TrimSpace(outcome.Message +
+						" State in the document was ignored; a new identity starts ACTIVE " +
+						"and an existing identity keeps its state")
+				}
+			}
+		}
 		results = append(results, outcome)
 
 		if doc.ResourceType == resourceTypeFlow && outcome.Status == statusSuccess && originalFlowID != "" &&
@@ -460,11 +480,15 @@ func (s *importService) ImportResources(
 // A document whose references the store does not all hold is refused, naming them, rather than written
 // with the reference text where a value belongs: a client secret stored as "sec:NAME" would reject
 // every authentication, for a reason that no longer mentions the name.
+//
+// A document that refers to a secret from a field that is not a credential is refused too, before
+// the store is read: resolved there, the secret would be stored as an ordinary value and could be
+// read back by whoever wrote the document.
 func (s *importService) resolveReferences(ctx context.Context, doc parsedDocument) (ImportItemOutcome, bool) {
 	if s.references == nil {
 		return ImportItemOutcome{}, true
 	}
-	err := s.references.ResolveNode(ctx, doc.Node)
+	err := s.references.ResolveDocument(ctx, doc.ResourceType, doc.Node)
 	if err == nil {
 		return ImportItemOutcome{}, true
 	}
@@ -474,6 +498,11 @@ func (s *importService) resolveReferences(ctx context.Context, doc parsedDocumen
 		Status:       statusFailed,
 		Code:         ErrorUnresolvedReference.Code,
 		Message:      err.Error(),
+	}
+	var misplaced *secretresolver.MisplacedSecretError
+	if errors.As(err, &misplaced) {
+		outcome.Code = ErrorMisplacedSecret.Code
+		return outcome, false
 	}
 	var unresolved *secretresolver.UnresolvedError
 	if !errors.As(err, &unresolved) {
@@ -1062,6 +1091,16 @@ func (s *importService) importApplication(
 	if options.IsUpsertEnabled() && req.ID != "" {
 		updated, svcErr := s.applicationService.UpdateApplication(ctx, req.ID, appDTO)
 		if svcErr == nil {
+			stored, getErr := s.applicationService.GetApplication(ctx, updated.ID)
+			if getErr != nil {
+				return serviceErrorOutcome(resourceTypeApplication, updated.ID, updated.Name,
+					operationUpdate, getErr)
+			}
+			if outcome := s.applySharingPolicies(ctx, application.ApplicationSharingType,
+				resourceTypeApplication, updated.ID, updated.Name, stored.OUID,
+				req.SharingPolicies, operationUpdate); outcome != nil {
+				return *outcome
+			}
 			return ImportItemOutcome{
 				ResourceType: resourceTypeApplication,
 				ResourceID:   updated.ID,
@@ -1128,6 +1167,20 @@ func (s *importService) importApplication(
 			Code:         svcErr.Code,
 			Message:      svcErr.Error.DefaultValue,
 		}
+	}
+
+	// The policies come after the application exists, because a policy names the resource it
+	// governs. A refusal therefore has to undo the create: the caller is told the document failed
+	// and gets no id back, so an application left behind would hold the name and client id a retry
+	// needs.
+	if outcome := s.applySharingPolicies(ctx, application.ApplicationSharingType,
+		resourceTypeApplication, created.ID, created.Name, created.OUID,
+		req.SharingPolicies, operationCreate); outcome != nil {
+		if delErr := s.applicationService.DeleteApplication(ctx, created.ID); delErr != nil {
+			log.GetLogger().Error(ctx, "Failed to remove an application whose sharing policies were refused",
+				log.String("appID", created.ID), log.String("code", delErr.Code))
+		}
+		return *outcome
 	}
 
 	return ImportItemOutcome{

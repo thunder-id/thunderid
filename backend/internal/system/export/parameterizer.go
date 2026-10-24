@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -228,12 +229,17 @@ func (p *parameterizer) ToParameterizedYAML(ctx context.Context, obj interface{}
 // because only that style reads them at all: a reference-style export writes no value beside the
 // document. The names are the same in either style, so they are the ones a reference names.
 //
+// A list is reported as the JSON list of its items, which is what the reference a reference-style
+// export writes for it expands from on import. A list is never a credential.
+//
 // Three kinds of value are left out, as no reference would find them:
-//   - an empty one, which there is nothing to keep for;
+//   - an empty one, a list with no items included, which there is nothing to keep for and which the
+//     export leaves as it is;
 //   - one that is already a well-formed reference, which the export keeps as it stands rather than
 //     naming it again, so storing it would put a reference where its value belongs;
-//   - a list, since no reference expands into list items and a reference-style export leaves
-//     a list as it is.
+//   - a list holding a reference among its items, which the export keeps item by item rather than
+//     referring to, so nothing is stored under the list's name and the reference is not copied into
+//     a store that holds values.
 func (p *parameterizer) PlaceholderValues(ctx context.Context, obj interface{},
 	resourceType string, resourceName string,
 	rules *declarativeresource.ResourceRules) (map[string]string, map[string]string, error) {
@@ -257,7 +263,13 @@ func (p *parameterizer) PlaceholderValues(ctx context.Context, obj interface{},
 		lists[named.pathToVariableName(resourceName, path)] = true
 	}
 	for name, value := range values {
-		if value == "" || valueref.IsWellFormedReference(value) || lists[name] {
+		if lists[name] {
+			if items, ok := listItems(value); ok && len(items) > 0 && !holdsReference(items) {
+				variables[name] = value
+			}
+			continue
+		}
+		if value == "" || valueref.IsWellFormedReference(value) {
 			continue
 		}
 		if credentials[name] {
@@ -275,6 +287,25 @@ func (p *parameterizer) PlaceholderValues(ctx context.Context, obj interface{},
 	return variables, secrets, nil
 }
 
+// listItems reads a list's value, the JSON list of its items, and reports false for anything else.
+func listItems(value string) ([]string, bool) {
+	var items []string
+	if err := json.Unmarshal([]byte(value), &items); err != nil {
+		return nil, false
+	}
+	return items, true
+}
+
+// holdsReference reports whether a list holds a reference among its items.
+func holdsReference(items []string) bool {
+	for _, item := range items {
+		if valueref.IsWellFormedReference(item) {
+			return true
+		}
+	}
+	return false
+}
+
 // mappedCredentials reads the string entries of a map named as a dynamic property field, each under
 // the name generatePropertyVarName gives its key.
 //
@@ -289,7 +320,7 @@ func (p *parameterizer) mappedCredentials(
 ) map[string]string {
 	values := map[string]string{}
 	v := reflect.ValueOf(obj)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			return values
 		}
@@ -376,7 +407,7 @@ func (p *parameterizer) extractDynamicPropertyValues(
 	}
 
 	v := reflect.ValueOf(obj)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			return values
 		}
@@ -537,7 +568,7 @@ func (p *parameterizer) structToNodeIgnoringOmitempty(
 	obj interface{}, node *yaml.Node, rules *resourceRules, currentPath string, resourceName string,
 ) error {
 	v := reflect.ValueOf(obj)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			node.Kind = yaml.ScalarNode
 			node.Tag = "!!null"
@@ -646,7 +677,7 @@ func (p *parameterizer) appendInlineStructFields(
 	rules *resourceRules, currentPath, resourceName string,
 ) error {
 	v := fieldValue
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			return nil
 		}
@@ -721,7 +752,7 @@ func (p *parameterizer) isEmptyValue(v reflect.Value) bool {
 		return v.Uint() == 0
 	case reflect.Float32, reflect.Float64:
 		return v.Float() == 0
-	case reflect.Interface, reflect.Ptr:
+	case reflect.Interface, reflect.Pointer:
 		return v.IsNil()
 	}
 	return false
@@ -1098,7 +1129,7 @@ func (p *parameterizer) handleMapNode(
 func (p *parameterizer) fieldToNode(
 	v reflect.Value, rules *resourceRules, currentPath string, resourceName string) (*yaml.Node, error) {
 	// Handle nil pointers
-	if v.Kind() == reflect.Ptr && v.IsNil() {
+	if v.Kind() == reflect.Pointer && v.IsNil() {
 		return &yaml.Node{
 			Kind:  yaml.ScalarNode,
 			Tag:   "!!null",
@@ -1107,7 +1138,7 @@ func (p *parameterizer) fieldToNode(
 	}
 
 	// Dereference pointers
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 
@@ -1178,7 +1209,7 @@ func (p *parameterizer) structToMapIgnoringOmitempty(obj interface{}) (map[strin
 	result := make(map[string]interface{})
 
 	v := reflect.ValueOf(obj)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 
@@ -1219,12 +1250,12 @@ func (p *parameterizer) structToMapIgnoringOmitempty(obj interface{}) (map[strin
 // handling nested structs, maps, slices, and pointers
 func (p *parameterizer) convertFieldToInterface(v reflect.Value) interface{} {
 	// Handle nil pointers
-	if v.Kind() == reflect.Ptr && v.IsNil() {
+	if v.Kind() == reflect.Pointer && v.IsNil() {
 		return nil
 	}
 
 	// Dereference pointers
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 
@@ -1289,7 +1320,7 @@ func (p *parameterizer) convertStructPathsToYAMLPaths(
 	}
 
 	objType := reflect.TypeOf(obj)
-	if objType.Kind() == reflect.Ptr {
+	if objType.Kind() == reflect.Pointer {
 		objType = objType.Elem()
 	}
 
@@ -1330,7 +1361,7 @@ func (p *parameterizer) convertPathToYAMLPath(objType reflect.Type, path string)
 
 	currentType := objType
 	for _, part := range parts {
-		if currentType.Kind() == reflect.Ptr {
+		if currentType.Kind() == reflect.Pointer {
 			currentType = currentType.Elem()
 		}
 
@@ -1434,12 +1465,9 @@ func (p *parameterizer) parameterizeNode(node *yaml.Node, rules *resourceRules, 
 
 	// Process array variables.
 	//
-	// A reference names one held value, and there is no form of it that expands into list items, so
-	// in reference style the list is left as it is rather than written as something that cannot be
-	// resolved. Nothing here is a credential: what is parameterized as an array is an address list.
-	if p.style == ValueReferences {
-		return nil
-	}
+	// In reference style a list becomes a list of one reference, which the importing deployment
+	// expands into the items its variable holds. Nothing here is a credential: what is parameterized
+	// as an array is an address list.
 	for _, path := range rules.ArrayVariables {
 		varName := p.pathToVariableName(resourceName, path)
 		if err := p.replaceArrayNode(root, path, varName); err != nil {
@@ -1448,6 +1476,26 @@ func (p *parameterizer) parameterizeNode(node *yaml.Node, rules *resourceRules, 
 	}
 
 	return nil
+}
+
+// referToList replaces a list's items with one reference to the variable holding them. A list that
+// already holds a reference, a variable's or a secret's, keeps its items as they are, literal ones
+// beside the reference included, so a resource written from an import exports what it read and an
+// import keeps the literal items beside the ones the reference resolves to. That is the test
+// PlaceholderValues makes too, so a list it leaves out is never one this rewrites into a reference to
+// a variable no gateway is given. An empty list is left empty: there is nothing for
+// a gateway to hold in its place, and referring to it would ask every gateway for a value that is
+// nothing, such as the redirect URIs of a client that signs no user in.
+func (p *parameterizer) referToList(list *yaml.Node, varName string) {
+	if len(list.Content) == 0 {
+		return
+	}
+	for _, item := range list.Content {
+		if valueref.IsWellFormedReference(item.Value) {
+			return
+		}
+	}
+	list.Content = []*yaml.Node{{Kind: yaml.ScalarNode, Tag: "!!str", Value: valueref.VariableReference(varName)}}
 }
 
 // pathToVariableName converts path to uppercase variable name with app name prefix
@@ -1622,6 +1670,10 @@ func (p *parameterizer) replaceArrayNode(node *yaml.Node, path string, varName s
 						return nil
 					}
 				} else if i == len(parts)-1 {
+					if valueNode.Kind == yaml.SequenceNode && p.style == ValueReferences {
+						p.referToList(valueNode, varName)
+						return nil
+					}
 					// Replace array with template range syntax
 					if valueNode.Kind == yaml.SequenceNode {
 						// Create a new sequence node with template content
@@ -1733,7 +1785,7 @@ func (p *parameterizer) renderMappingValue(buf *bytes.Buffer, valueNode *yaml.No
 	} else {
 		// Regular scalar value
 		buf.WriteString(" ")
-		buf.WriteString(valueNode.Value)
+		buf.WriteString(scalarText(valueNode))
 		buf.WriteString("\n")
 	}
 	return nil
@@ -1767,7 +1819,7 @@ func (p *parameterizer) renderSequenceItemMapping(buf *bytes.Buffer, item *yaml.
 				buf.WriteString(strings.ReplaceAll(val, `'`, `''`))
 				buf.WriteString(`'`)
 			} else {
-				buf.WriteString(val)
+				buf.WriteString(scalarText(valueNode))
 			}
 			buf.WriteString("\n")
 		} else if p.isTemplateSequence(valueNode) {
@@ -1817,7 +1869,7 @@ func (p *parameterizer) renderSequenceNode(buf *bytes.Buffer, node *yaml.Node, i
 			}
 		} else {
 			// Scalar value
-			buf.WriteString(item.Value)
+			buf.WriteString(scalarText(item))
 			buf.WriteString("\n")
 		}
 	}
@@ -1843,6 +1895,58 @@ func (p *parameterizer) renderNode(buf *bytes.Buffer, node *yaml.Node, indent in
 		buf.WriteString(node.Value)
 	}
 	return nil
+}
+
+// scalarText returns a scalar as it is written after its key or dash: as it is, unless its field is
+// tagged yamlfmt:"quoted" or plain YAML could not read it back whole, a lone ":", a value holding
+// ": " or one holding " #" for instance, in which case it is double-quoted. A value that reads back
+// whole is left as it is, whatever it reads as, and so is a JSON string literal, since some are
+// written as YAML on purpose, such as a user's JSON-encoded attributes.
+func scalarText(node *yaml.Node) string {
+	if node.Style == yaml.DoubleQuotedStyle {
+		return strconv.Quote(node.Value)
+	}
+	if node.Tag != "!!str" || node.Value == "" || templateVariablePattern.MatchString(node.Value) {
+		return node.Value
+	}
+	var read yaml.Node
+	if err := yaml.Unmarshal([]byte("value: "+node.Value), &read); err == nil && len(read.Content) == 1 &&
+		len(read.Content[0].Content) == 2 {
+		// The text is compared as the parser keeps it, so what it dropped as a comment shows up
+		// whatever the rest reads as: "true # archived" reads as true and would lose its tail. A
+		// value that reads as a mapping or a list is written as YAML on purpose and kept, unless the
+		// parser dropped a comment from it: "[draft] # pending" reads as a list and loses its tail
+		// just the same. A JSON string literal, which a user's attributes hold, reads as the same
+		// string and is kept too.
+		value := read.Content[0].Content[1]
+		if hasComment(&read) {
+			return strconv.Quote(node.Value)
+		}
+		if value.Kind != yaml.ScalarNode || value.Value == node.Value || isJSONString(node.Value) {
+			return node.Value
+		}
+	}
+	return strconv.Quote(node.Value)
+}
+
+// hasComment says whether the parser kept a comment anywhere in a node, which is text it dropped from
+// the values.
+func hasComment(node *yaml.Node) bool {
+	if node.HeadComment != "" || node.LineComment != "" || node.FootComment != "" {
+		return true
+	}
+	for _, child := range node.Content {
+		if hasComment(child) {
+			return true
+		}
+	}
+	return false
+}
+
+// isJSONString says whether a value is a JSON string literal, quotes included.
+func isJSONString(value string) bool {
+	var text string
+	return strings.HasPrefix(value, `"`) && json.Unmarshal([]byte(value), &text) == nil
 }
 
 // storedPropertyValue reads a dynamic property's stored value, empty when it cannot be read.

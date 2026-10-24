@@ -54,7 +54,7 @@ func (h *logoutHandler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 		ClientID:              r.FormValue(constants.RequestParamClientID),
 		PostLogoutRedirectURI: r.FormValue(constants.RequestParamPostLogoutRedirect),
 		State:                 r.FormValue(constants.RequestParamState),
-		Headers:               sysutils.SanitizeRawMultiValueStringMap(r.Header),
+		Headers:               sysutils.SanitizeRawMultiValueStringMap(sysutils.HeadersWithHost(r)),
 		// r.Form, not r.URL.Query(): on a POST the parameters arrive in the form body, which the query
 		// string does not carry. ParseForm merges both, so the flow sees the same set either way.
 		QueryParams: sysutils.SanitizeRawMultiValueStringMap(r.Form),

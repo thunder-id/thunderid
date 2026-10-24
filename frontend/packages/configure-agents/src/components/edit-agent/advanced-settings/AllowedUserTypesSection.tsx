@@ -42,7 +42,7 @@ export default function AllowedUserTypesSection({
 
   return (
     <SettingsCard
-      title={t('agents:edit.flows.allowedUserTypes.title', 'Allowed User Types')}
+      title={t('agents:edit.flows.allowedUserTypes.title', 'Allowed user types')}
       description={t(
         'agents:edit.flows.allowedUserTypes.description',
         'Restrict which user types can sign up through this agent.',
@@ -50,7 +50,7 @@ export default function AllowedUserTypesSection({
     >
       <FormControl fullWidth>
         <FormLabel htmlFor="agent-allowed-user-types">
-          {t('agents:edit.flows.allowedUserTypes.label', 'User Types')}
+          {t('agents:edit.flows.allowedUserTypes.label', 'User types')}
         </FormLabel>
         <Autocomplete
           multiple

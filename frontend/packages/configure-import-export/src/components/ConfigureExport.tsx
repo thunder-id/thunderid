@@ -729,7 +729,7 @@ export default function ConfigureExport({
 
     items.push({
       id: 'agent-types',
-      label: t('importExport:configureExport.labels.agentTypes', 'Agent Types'),
+      label: t('importExport:configureExport.labels.agentTypes', 'Agent types'),
       icon: <Bot size={16} />,
       value: agentTypesCount,
       status: 'ready',

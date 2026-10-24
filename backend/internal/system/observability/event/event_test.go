@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -45,6 +46,27 @@ func TestNewEvent(t *testing.T) {
 
 	if evt.Data == nil {
 		t.Error("Data map should be initialized")
+	}
+}
+
+func TestNewEvent_ServerIdentifier(t *testing.T) {
+	config.ResetServerRuntime()
+	t.Cleanup(config.ResetServerRuntime)
+
+	evt := NewEvent("trace-123", string(EventTypeTokenIssued), "TestComponent")
+	if evt.ServerIdentifier != "" {
+		t.Errorf("Expected empty ServerIdentifier without server runtime, got %s", evt.ServerIdentifier)
+	}
+
+	cfg := &config.Config{}
+	cfg.Server.Identifier = "org-1:development"
+	if err := config.InitializeServerRuntime("/tmp/test", cfg); err != nil {
+		t.Fatalf("Failed to initialize server runtime: %v", err)
+	}
+
+	evt = NewEvent("trace-123", string(EventTypeTokenIssued), "TestComponent")
+	if evt.ServerIdentifier != "org-1:development" {
+		t.Errorf("Expected ServerIdentifier org-1:development, got %s", evt.ServerIdentifier)
 	}
 }
 

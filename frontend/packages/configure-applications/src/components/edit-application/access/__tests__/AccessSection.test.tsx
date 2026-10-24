@@ -76,7 +76,7 @@ describe('AccessSection', () => {
       render(<AccessSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />);
 
       const titles = screen.getAllByTestId('card-title').map((el) => el.textContent);
-      expect(titles).toEqual(['Allowed User Types', 'Agent Sign-In', 'Application Access']);
+      expect(titles).toEqual(['Allowed user types', 'Agent sign-in', 'Application access']);
     });
 
     it('should render allowed user types autocomplete', () => {
@@ -87,7 +87,7 @@ describe('AccessSection', () => {
 
       render(<AccessSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />);
 
-      expect(screen.getByLabelText('Allowed User Types')).toBeInTheDocument();
+      expect(screen.getByLabelText('Allowed user types')).toBeInTheDocument();
     });
 
     it('should render application URL field', () => {
@@ -117,8 +117,8 @@ describe('AccessSection', () => {
         />,
       );
 
-      expect(screen.queryByLabelText('Allowed User Types')).not.toBeInTheDocument();
-      expect(screen.queryByLabelText('Enable Agent Sign-In')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Allowed user types')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Enable agent sign-in')).not.toBeInTheDocument();
       // The generic application URL field stays visible for every client type.
       expect(screen.getByLabelText('Application URL')).toBeInTheDocument();
     });
@@ -148,7 +148,7 @@ describe('AccessSection', () => {
     });
   });
 
-  describe('Allowed User Types', () => {
+  describe('Allowed user types', () => {
     it('should display selected user types from application', () => {
       vi.mocked(useGetUserTypes).mockReturnValue({
         data: mockUserTypes,
@@ -188,7 +188,7 @@ describe('AccessSection', () => {
 
       render(<AccessSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />);
 
-      const input = screen.getByLabelText('Allowed User Types');
+      const input = screen.getByLabelText('Allowed user types');
       await user.click(input);
 
       await waitFor(() => {
@@ -198,8 +198,8 @@ describe('AccessSection', () => {
     });
   });
 
-  describe('Agent Sign-In', () => {
-    const agentSignInToggle = (): HTMLElement => screen.getByLabelText('Enable Agent Sign-In');
+  describe('Agent sign-in', () => {
+    const agentSignInToggle = (): HTMLElement => screen.getByLabelText('Enable agent sign-in');
 
     beforeEach(() => {
       vi.mocked(useGetUserTypes).mockReturnValue({
@@ -356,7 +356,7 @@ describe('AccessSection', () => {
 
       render(<AccessSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />);
 
-      const input = screen.getByLabelText('Allowed User Types');
+      const input = screen.getByLabelText('Allowed user types');
       await user.click(input);
 
       const guestOption = await screen.findByRole('option', {name: 'Guest'});
@@ -429,7 +429,7 @@ describe('AccessSection', () => {
 
       render(<AccessSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />);
 
-      expect(screen.getByLabelText('Allowed User Types')).toBeInTheDocument();
+      expect(screen.getByLabelText('Allowed user types')).toBeInTheDocument();
     });
 
     it('should handle null application allowedUserTypes', () => {
@@ -451,7 +451,7 @@ describe('AccessSection', () => {
         />,
       );
 
-      expect(screen.getByLabelText('Allowed User Types')).toBeInTheDocument();
+      expect(screen.getByLabelText('Allowed user types')).toBeInTheDocument();
     });
   });
 
@@ -525,7 +525,7 @@ describe('AccessSection', () => {
       expect(urlInput).toBeDisabled();
 
       // Allowed User Types autocomplete input should be disabled
-      const autocompleteInput = screen.getByLabelText('Allowed User Types');
+      const autocompleteInput = screen.getByLabelText('Allowed user types');
       expect(autocompleteInput).toBeDisabled();
     });
   });

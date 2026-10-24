@@ -202,3 +202,18 @@ func (suite *RegistryTestSuite) TestValidateReferenceUpdateStopsOnFirstError() {
 	second.UpdateValidatorMock.AssertNotCalled(suite.T(), "ValidateReferenceUpdate",
 		mock.Anything, mock.Anything, mock.Anything)
 }
+
+func (suite *RegistryTestSuite) TestSummarizeBlockingUsagesHumanizesTypes() {
+	usages := []ResourceDependency{
+		{ResourceType: ResourceTypeFlow},
+		{ResourceType: ResourceTypeFlow},
+		// A camelCase / non-shared type must not leak its raw identifier into the summary.
+		{ResourceType: "systemEndpoint"},
+		{ResourceType: ResourceTypeNotificationSender},
+	}
+
+	summary := SummarizeBlockingUsages(usages)
+
+	// Sorted by raw type; rendered with humanized, lowercase nouns.
+	suite.Equal("2 flow(s), 1 notification sender(s), 1 system endpoint(s)", summary)
+}

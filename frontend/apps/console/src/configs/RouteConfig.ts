@@ -10,6 +10,7 @@ import type {FlowRoutePaths} from '@thunderid/configure-flows';
 import type {GroupRoutePaths} from '@thunderid/configure-groups';
 import type {ImportExportRoutePaths} from '@thunderid/configure-import-export';
 import type {NotificationTemplateRoutePaths} from '@thunderid/configure-notification-templates';
+import type {OnboardingRoutePaths} from '@thunderid/configure-onboarding';
 import type {OrganizationUnitRoutePaths} from '@thunderid/configure-organization-units';
 import type {ResourceServerRoutePaths} from '@thunderid/configure-resource-servers';
 import type {RoleRoutePaths} from '@thunderid/configure-roles';
@@ -28,23 +29,6 @@ import type {VerifiableCredentialRoutePaths} from '@thunderid/configure-verifiab
  * @public
  */
 export interface ConsoleRoutePaths {
-  home: {
-    list: () => string;
-  };
-  welcome: {
-    root: () => string;
-    createProject: () => string;
-    getStarted: () => string;
-    getStartedApplicationsTypes: () => string;
-    getStartedApplicationsCreate: () => string;
-    getStartedAgentsCreate: () => string;
-    tryoutSecuringApplication: () => string;
-    tryoutAiAgents: () => string;
-    tryoutMcp: () => string;
-    importConfigurationUpload: () => string;
-    importConfigurationValidate: () => string;
-    importConfigurationSummary: () => string;
-  };
   settings: {
     list: () => string;
   };
@@ -78,6 +62,7 @@ export type RouteConfig = OrganizationUnitRoutePaths &
   FlowRoutePaths &
   GroupRoutePaths &
   RoleRoutePaths &
+  OnboardingRoutePaths &
   ConsoleRoutePaths;
 
 /**

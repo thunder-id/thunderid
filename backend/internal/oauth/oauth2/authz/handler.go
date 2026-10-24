@@ -140,10 +140,11 @@ func (ah *authorizeHandler) getOAuthMessageForGetRequest(r *http.Request) (*OAut
 		}
 	}
 
+	// Fold the inbound host in so {{request(init.header.Host)}} resolves; Go carries it on r.Host.
 	return &OAuthMessage{
 		RequestType:        oauth2const.TypeInitialAuthorizationRequest,
 		Resources:          resources,
-		RequestHeaders:     sysutils.SanitizeRawMultiValueStringMap(r.Header),
+		RequestHeaders:     sysutils.SanitizeRawMultiValueStringMap(sysutils.HeadersWithHost(r)),
 		RequestQueryParams: sysutils.SanitizeRawMultiValueStringMap(queryParams),
 	}, nil
 }

@@ -153,6 +153,19 @@ func (f *fileBasedStore) ListAllPoliciesForResource(
 	return f.listForResource(rt, resourceID), nil
 }
 
+// ListPoliciesIssuedBy returns every declared policy one organization unit issued.
+func (f *fileBasedStore) ListPoliciesIssuedBy(_ context.Context, ouID string) ([]Policy, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	out := make([]Policy, 0)
+	for _, p := range f.policies {
+		if p.InitiatingOUID == ouID {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
 // ListPoliciesRelevantToChain returns every declared policy that could bear on the chain. The chain
 // is not consulted: coverage is decided in memory by the caller, and a declaration set is small
 // enough that narrowing it here would only duplicate that decision.

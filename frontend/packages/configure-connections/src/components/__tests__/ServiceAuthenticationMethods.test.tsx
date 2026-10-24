@@ -8,42 +8,37 @@ import {AuthenticationMethods} from '../../models/authentication-methods';
 import ServiceAuthenticationMethods from '../ServiceAuthenticationMethods';
 
 function StoredAPIKeyHeaders(): ReturnType<typeof ServiceAuthenticationMethods> {
-  const [replacing, setReplacing] = useState(false);
-
+  const [headers, setHeaders] = useState('X-API-Key: ******');
   return (
     <ServiceAuthenticationMethods
       method={AuthenticationMethods.API_KEY}
       bearerToken=""
       basicUsername=""
       basicPassword=""
-      httpHeaders=""
+      httpHeaders={headers}
       hasStoredHTTPHeaders
-      headersReplacing={replacing}
       hasStoredSecret={false}
       replacing={false}
-      onChange={vi.fn()}
-      onHeadersReplacingChange={setReplacing}
+      onChange={(_name, value) => setHeaders(value)}
       onReplacingChange={vi.fn()}
     />
   );
 }
 
-function StoredBasicCredentials(): ReturnType<typeof ServiceAuthenticationMethods> {
+function StoredBasicCredentials({onChange = vi.fn()}: {onChange?: (name: string, value: string) => void}) {
   const [replacing, setReplacing] = useState(false);
 
   return (
     <ServiceAuthenticationMethods
       method={AuthenticationMethods.BASIC}
       bearerToken=""
-      basicUsername=""
+      basicUsername="test-user"
       basicPassword=""
       httpHeaders=""
       hasStoredHTTPHeaders={false}
-      headersReplacing={false}
       hasStoredSecret
       replacing={replacing}
-      onChange={vi.fn()}
-      onHeadersReplacingChange={vi.fn()}
+      onChange={onChange}
       onReplacingChange={setReplacing}
     />
   );
@@ -60,11 +55,9 @@ describe('ServiceAuthenticationMethods', () => {
         basicPassword=""
         httpHeaders=""
         hasStoredHTTPHeaders={false}
-        headersReplacing={false}
         hasStoredSecret={false}
         replacing={false}
         onChange={onChange}
-        onHeadersReplacingChange={vi.fn()}
         onReplacingChange={vi.fn()}
       />,
     );
@@ -86,11 +79,9 @@ describe('ServiceAuthenticationMethods', () => {
         basicPassword=""
         httpHeaders=""
         hasStoredHTTPHeaders={false}
-        headersReplacing={false}
         hasStoredSecret={false}
         replacing={false}
         onChange={onChange}
-        onHeadersReplacingChange={vi.fn()}
         onReplacingChange={onReplacingChange}
       />,
     );
@@ -112,11 +103,9 @@ describe('ServiceAuthenticationMethods', () => {
         basicPassword=""
         httpHeaders=""
         hasStoredHTTPHeaders={false}
-        headersReplacing={false}
         hasStoredSecret={false}
         replacing={false}
         onChange={onChange}
-        onHeadersReplacingChange={vi.fn()}
         onReplacingChange={onReplacingChange}
       />,
     );
@@ -138,7 +127,6 @@ describe('ServiceAuthenticationMethods', () => {
         basicPassword=""
         httpHeaders=""
         hasStoredHTTPHeaders={false}
-        headersReplacing={false}
         hasStoredSecret={false}
         replacing={false}
         errors={{
@@ -146,7 +134,6 @@ describe('ServiceAuthenticationMethods', () => {
           basicPassword: 'Password is required.',
         }}
         onChange={vi.fn()}
-        onHeadersReplacingChange={vi.fn()}
         onReplacingChange={vi.fn()}
       />,
     );
@@ -157,22 +144,27 @@ describe('ServiceAuthenticationMethods', () => {
 
   it('reports API-key header changes', () => {
     const onChange = vi.fn();
-    render(
-      <ServiceAuthenticationMethods
-        method={AuthenticationMethods.API_KEY}
-        bearerToken=""
-        basicUsername=""
-        basicPassword=""
-        httpHeaders=""
-        hasStoredHTTPHeaders={false}
-        headersReplacing={false}
-        hasStoredSecret={false}
-        replacing={false}
-        onChange={onChange}
-        onHeadersReplacingChange={vi.fn()}
-        onReplacingChange={vi.fn()}
-      />,
-    );
+    function APIKeyEditor(): ReturnType<typeof ServiceAuthenticationMethods> {
+      const [headers, setHeaders] = useState('');
+      return (
+        <ServiceAuthenticationMethods
+          method={AuthenticationMethods.API_KEY}
+          bearerToken=""
+          basicUsername=""
+          basicPassword=""
+          httpHeaders={headers}
+          hasStoredHTTPHeaders={false}
+          hasStoredSecret={false}
+          replacing={false}
+          onChange={(name, value) => {
+            onChange(name, value);
+            setHeaders(value);
+          }}
+          onReplacingChange={vi.fn()}
+        />
+      );
+    }
+    render(<APIKeyEditor />);
 
     fireEvent.change(document.getElementById('connection-field-httpHeaders-name-1')!, {
       target: {value: 'X-API-Key'},
@@ -191,27 +183,40 @@ describe('ServiceAuthenticationMethods', () => {
     expect(document.getElementById('connection-field-httpHeaders-value-1')).toHaveAttribute('type', 'password');
   });
 
-  it('masks saved API-key headers until the user chooses to update them', () => {
+  it('keeps each saved API-key header masked until its row is updated', () => {
     render(<StoredAPIKeyHeaders />);
 
-    expect(screen.getAllByDisplayValue('••••••••••••••••')).toHaveLength(2);
-    expect(document.getElementById('connection-field-httpHeaders-name-1')).not.toBeInTheDocument();
+    expect(document.getElementById('connection-field-httpHeaders-name-1')).toHaveValue('X-API-Key');
+    expect(document.getElementById('connection-field-httpHeaders-value-1')).toHaveValue('••••••••••••••••');
+    expect(document.getElementById('connection-field-httpHeaders-value-1')).toBeDisabled();
+
+    fireEvent.click(screen.getByTestId('connection-field-httpHeaders-update-1'));
+
+    expect(document.getElementById('connection-field-httpHeaders-value-1')).not.toBeDisabled();
+  });
+
+  it('shows the saved Basic username while keeping the password masked', () => {
+    const onChange = vi.fn();
+    render(<StoredBasicCredentials onChange={onChange} />);
+
+    const credentialFields = screen.getByTestId('basic-credentials-fields');
+    expect(credentialFields).toContainElement(document.getElementById('connection-field-basicUsername'));
+    expect(credentialFields).toContainElement(document.getElementById('connection-field-basicPassword'));
+    expect(credentialFields).toContainElement(screen.getByRole('button', {name: 'Update'}));
+    expect(document.getElementById('connection-field-basicUsername')).toHaveValue('test-user');
+    expect(document.getElementById('connection-field-basicUsername')).toBeDisabled();
+    expect(document.getElementById('connection-field-basicPassword')).toBeDisabled();
+    expect(document.getElementById('connection-field-basicPassword')).toHaveValue('••••••••••••••••');
+    expect(screen.queryByText('Leave unchanged to keep the stored secret.')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', {name: 'Update'}));
 
-    expect(document.getElementById('connection-field-httpHeaders-name-1')).toBeInTheDocument();
-    expect(screen.queryAllByDisplayValue('••••••••••••••••')).toHaveLength(0);
-  });
-
-  it('shows both Basic credentials when updating stored credentials', () => {
-    render(<StoredBasicCredentials />);
-
-    expect(document.getElementById('connection-field-basicUsername')).toBeDisabled();
-    expect(document.getElementById('connection-field-basicPassword')).toBeDisabled();
-
-    fireEvent.click(screen.getAllByRole('button', {name: 'Update'})[0]);
-
     expect(document.getElementById('connection-field-basicUsername')).not.toBeDisabled();
+    expect(document.getElementById('connection-field-basicUsername')).toHaveValue('test-user');
     expect(document.getElementById('connection-field-basicPassword')).not.toBeDisabled();
+    expect(screen.getByText('Username sent with each PDP request.')).toBeInTheDocument();
+
+    fireEvent.change(document.getElementById('connection-field-basicUsername')!, {target: {value: 'new-user'}});
+    expect(onChange).toHaveBeenCalledWith('basicUsername', 'new-user');
   });
 });

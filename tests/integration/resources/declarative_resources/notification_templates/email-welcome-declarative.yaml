@@ -1,0 +1,12 @@
+resource_type: notification_template
+id: decl-notification-template-1
+channel: email
+handle: it-declarative-welcome
+ouId: 01900000-0000-7000-8000-000000000001
+displayName: Declarative Welcome
+description: A declaratively defined email template for integration testing
+content:
+  subject: Welcome
+  body: "<p>Hi {{ctx(name)}}</p>"
+design:
+  colorScheme: light

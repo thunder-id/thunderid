@@ -195,7 +195,7 @@ describe('AddAssignmentDialog', () => {
       renderComponent();
 
       expect(screen.getByRole('dialog')).toBeInTheDocument();
-      expect(screen.getByText('Add Assignment')).toBeInTheDocument();
+      expect(screen.getByText('Add assignment')).toBeInTheDocument();
     });
 
     it('should not render dialog when open is false', () => {

@@ -28,13 +28,18 @@ var allReasons = map[Reason]bool{
 	ReasonCodeReplay:                   false,
 	ReasonExplicitTokenFamily:          false,
 	ReasonApplicationDeleted:           false,
-	ReasonRoleDeleted:                  false,
 	ReasonUserDeleted:                  false,
 	ReasonApplicationSecretRegenerated: true,
 	ReasonRoleAssignmentRemoved:        true,
-	ReasonGroupMembershipRemoved:       true,
-	ReasonOrganizationUnitChanged:      true,
-	ReasonConsentRevoked:               true,
+	ReasonRolePermissionRemoved:        true,
+	// A deleted role, group or scope revokes only what predates the action.
+	ReasonRoleDeleted:             true,
+	ReasonActionDeleted:           true,
+	ReasonGroupDeleted:            true,
+	ReasonGroupMembershipRemoved:  true,
+	ReasonOrganizationUnitChanged: true,
+	ReasonConsentRevoked:          true,
+	ReasonIdentitySuspended:       true,
 }
 
 func (s *RevocationModelTestSuite) TestIsBoundaryReason() {
@@ -57,7 +62,7 @@ func (s *RevocationModelTestSuite) TestIsBoundaryReasonUnknownIsTerminal() {
 // the former while the Resource Server cache classifies entries with the latter.
 func (s *RevocationModelTestSuite) TestBoundaryReasonsMatchesPredicate() {
 	boundary := BoundaryReasons()
-	s.Len(boundary, 5)
+	s.Len(boundary, 10)
 
 	for _, reason := range boundary {
 		s.True(IsBoundaryReason(reason), "%q is listed as boundary but not classified as one", reason)

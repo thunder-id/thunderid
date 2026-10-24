@@ -1,7 +1,13 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {PageLoadingAnimation, QueryErrorNotice, ResourceAvatar, UnsavedChangesBar} from '@thunderid/components';
+import {
+  DocumentTitle,
+  PageLoadingAnimation,
+  QueryErrorNotice,
+  ResourceAvatar,
+  UnsavedChangesBar,
+} from '@thunderid/components';
 import {useGetAgentType, useGetAgentTypes} from '@thunderid/configure-agent-types';
 import {
   getBackchannelLogoutUriServerError,
@@ -43,6 +49,7 @@ import ShowClientSecret from '../components/ShowClientSecret';
 import AgentConstants from '../constants/agent-constants';
 import useAgentRoutes from '../hooks/useAgentRoutes';
 import type {Agent, OAuthAgentConfig} from '../models/agent';
+import isDelegatedAgent from '../utils/isDelegatedAgent';
 
 interface TabPanelProps {
   children?: ReactNode;
@@ -151,7 +158,10 @@ export default function AgentEditPage(): JSX.Element {
     const attributes = dropNonConformingOptionalAttributes(updatedData.attributes ?? {}, agentTypeDetails?.schema);
 
     try {
-      await updateAgent.mutateAsync({agentId, data: {...updatedData, attributes}});
+      await updateAgent.mutateAsync({
+        agentId,
+        data: {...updatedData, attributes, delegated: isDelegatedAgent(updatedData.inboundAuthConfig)},
+      });
       setEditedAgent({});
       await refetch();
       setSectionResetKey((key) => key + 1);
@@ -165,13 +175,21 @@ export default function AgentEditPage(): JSX.Element {
     [editedAgent, agent],
   );
 
+  const resourceTypeTitle = t('agents:listing.title', 'Agents');
+
   if (isLoading || isSchemaResolving) {
-    return <PageLoadingAnimation />;
+    return (
+      <>
+        <DocumentTitle title={resourceTypeTitle} />
+        <PageLoadingAnimation />
+      </>
+    );
   }
 
   if (error) {
     return (
       <PageContent>
+        <DocumentTitle title={resourceTypeTitle} />
         <QueryErrorNotice
           error={error}
           t={tForErrors}
@@ -191,6 +209,7 @@ export default function AgentEditPage(): JSX.Element {
   if (!agent) {
     return (
       <PageContent>
+        <DocumentTitle title={resourceTypeTitle} />
         <Alert severity="warning" sx={{mb: 2}}>
           {t('agents:edit.page.notFound', 'Agent not found')}
         </Alert>
@@ -395,6 +414,7 @@ export default function AgentEditPage(): JSX.Element {
 
   return (
     <PageContent>
+      <DocumentTitle title={agent.display ?? agent.id} />
       {agent.isReadOnly && (
         <Alert severity="info" sx={{mb: 2}}>
           {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
@@ -411,7 +431,7 @@ export default function AgentEditPage(): JSX.Element {
             editable={isLogoEditable}
             value={editedAgent.logoUrl ?? agent.logoUrl}
             fallback={AgentConstants.DEFAULT_AVATAR}
-            editAriaLabel={t('agents:edit.page.logoUpdate.label', 'Update Logo')}
+            editAriaLabel={t('agents:edit.page.logoUpdate.label', 'Update logo')}
             onSelect={
               isLogoEditable
                 ? (newLogoUrl: string) => {

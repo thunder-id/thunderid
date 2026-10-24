@@ -61,7 +61,7 @@ export default function AdvancedTab({
       >
         <FormControl fullWidth>
           <FormLabel htmlFor="resource-server-identifier">
-            {t('resourceServers:edit.advanced.identifier.label', 'Identifier (Audience)')}
+            {t('resourceServers:edit.advanced.identifier.label', 'Identifier (audience)')}
           </FormLabel>
           <TextField
             id="resource-server-identifier"
@@ -110,7 +110,7 @@ export default function AdvancedTab({
             disabled={Boolean(resourceServer.isReadOnly) || pdpConnections.isLoading}
           >
             <MenuItem value={AuthorizationEngines.RBAC}>
-              {t('resourceServers:edit.advanced.authorizationEngine.option.rbac', 'Local - Role Based Access Control')}
+              {t('resourceServers:edit.advanced.authorizationEngine.option.rbac', 'Local - role based access control')}
             </MenuItem>
             {hasSelectedPDP && (
               <MenuItem value={`${PDP_OPTION_PREFIX}${pdpConnectionId}`}>
@@ -145,7 +145,7 @@ export default function AdvancedTab({
             ) : (
               t(
                 'resourceServers:edit.advanced.authorizationEngine.hint',
-                'Choose Local - Role Based Access Control or a configured PDP connection for this resource server.',
+                'Choose Local - role based access control or a configured PDP connection for this resource server.',
               )
             )}
           </FormHelperText>

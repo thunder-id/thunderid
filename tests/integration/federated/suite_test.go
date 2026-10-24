@@ -309,7 +309,7 @@ var fedAuthzApp = testutils.Application{
 	RedirectURIs:     []string{"http://localhost:3000/callback"},
 	AllowedUserTypes: []string{fedPersonType.Handle},
 	AssertionConfig: map[string]interface{}{
-		"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+		"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 	},
 }
 
@@ -321,7 +321,7 @@ var fedOAuthApp = testutils.Application{
 	RedirectURIs:     []string{"http://localhost:3000/callback"},
 	AllowedUserTypes: []string{fedPersonType.Handle},
 	AssertionConfig: map[string]interface{}{
-		"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+		"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 	},
 }
 
@@ -333,7 +333,7 @@ var fedAuthApp = testutils.Application{
 	RedirectURIs:     []string{"http://localhost:3000/callback"},
 	AllowedUserTypes: []string{fedPersonType.Handle},
 	AssertionConfig: map[string]interface{}{
-		"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+		"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 	},
 }
 
@@ -345,7 +345,7 @@ var fedStrictAuthApp = testutils.Application{
 	RedirectURIs:     []string{"http://localhost:3000/callback"},
 	AllowedUserTypes: []string{fedPersonType.Handle},
 	AssertionConfig: map[string]interface{}{
-		"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+		"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 	},
 }
 
@@ -358,7 +358,7 @@ var fedTestApp = testutils.Application{
 	RedirectURIs:              []string{"http://localhost:3000/callback"},
 	AllowedUserTypes:          []string{fedPersonType.Handle},
 	AssertionConfig: map[string]interface{}{
-		"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+		"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 	},
 }
 
@@ -647,7 +647,7 @@ func (s *FederatedMappingSuite) createScenarioApp(
 		AuthFlowID:         flowID,
 		RegistrationFlowID: regFlowID,
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": append([]string{"userType", "ouId"}, assertionAttributes...),
+			"userAttributes": append([]string{"userTypeHandle", "ouId"}, assertionAttributes...),
 		},
 	})
 	s.Require().NoError(err, "failed to create the scenario application")

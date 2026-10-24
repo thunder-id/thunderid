@@ -47,7 +47,7 @@ export default function ColorBuilderContent({colors, onUpdate}: ColorBuilderCont
   const main = t('themes.forms.color_builder.fields.main.label', 'Main');
   const light = t('themes.forms.color_builder.fields.light.label', 'Light');
   const dark = t('themes.forms.color_builder.fields.dark.label', 'Dark');
-  const contrastText = t('themes.forms.color_builder.fields.contrast_text.label', 'Contrast Text');
+  const contrastText = t('themes.forms.color_builder.fields.contrast_text.label', 'Contrast text');
 
   return (
     <Stack gap={1}>
@@ -137,14 +137,14 @@ export default function ColorBuilderContent({colors, onUpdate}: ColorBuilderCont
           {c.common.onBackground !== undefined &&
             field(
               ['common', 'onBackground'],
-              t('themes.forms.color_builder.fields.on_background.label', 'On Background'),
+              t('themes.forms.color_builder.fields.on_background.label', 'On background'),
             )}
         </ConfigCard>
       )}
 
       {/* Borders & Dividers */}
       {c.divider !== undefined && (
-        <ConfigCard title={t('themes.forms.color_builder.borders.title', 'Borders & Dividers')} defaultOpen={false}>
+        <ConfigCard title={t('themes.forms.color_builder.borders.title', 'Borders & dividers')} defaultOpen={false}>
           {field(['divider'], t('themes.forms.color_builder.fields.divider.label', 'Divider'))}
         </ConfigCard>
       )}

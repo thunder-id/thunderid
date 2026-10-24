@@ -16,10 +16,19 @@ func NewVerifierInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *VerifierInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &VerifierInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -73,7 +82,7 @@ type VerifierInterfaceMock_Verify_Call struct {
 // Verify is a helper method to define mock.On call
 //   - ctx context.Context
 //   - params VerifyParams
-func (_e *VerifierInterfaceMock_Expecter) Verify(ctx interface{}, params interface{}) *VerifierInterfaceMock_Verify_Call {
+func (_e *VerifierInterfaceMock_Expecter) Verify(ctx any, params any) *VerifierInterfaceMock_Verify_Call {
 	return &VerifierInterfaceMock_Verify_Call{Call: _e.mock.On("Verify", ctx, params)}
 }
 

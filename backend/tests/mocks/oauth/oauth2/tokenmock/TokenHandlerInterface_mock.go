@@ -16,10 +16,19 @@ func NewTokenHandlerInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *TokenHandlerInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &TokenHandlerInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -51,7 +60,7 @@ type TokenHandlerInterfaceMock_HandleTokenRequest_Call struct {
 // HandleTokenRequest is a helper method to define mock.On call
 //   - w http.ResponseWriter
 //   - r *http.Request
-func (_e *TokenHandlerInterfaceMock_Expecter) HandleTokenRequest(w interface{}, r interface{}) *TokenHandlerInterfaceMock_HandleTokenRequest_Call {
+func (_e *TokenHandlerInterfaceMock_Expecter) HandleTokenRequest(w any, r any) *TokenHandlerInterfaceMock_HandleTokenRequest_Call {
 	return &TokenHandlerInterfaceMock_HandleTokenRequest_Call{Call: _e.mock.On("HandleTokenRequest", w, r)}
 }
 

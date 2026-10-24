@@ -25,6 +25,8 @@ type HierarchyEnumeratorInterface interface {
 	DescendantOUIDs(ctx context.Context, ouID string) ([]string, *tidcommon.ServiceError)
 	// AllOUIDs returns every organization unit in the deployment, every tree included.
 	AllOUIDs(ctx context.Context) ([]string, *tidcommon.ServiceError)
+	// RootOUIDs returns the organization units that have no parent: the top unit of every tree.
+	RootOUIDs(ctx context.Context) ([]string, *tidcommon.ServiceError)
 }
 
 // ouHierarchyEnumerator implements HierarchyEnumeratorInterface using direct store access,
@@ -86,7 +88,7 @@ func (r *ouHierarchyEnumerator) DescendantOUIDs(
 
 // AllOUIDs returns every organization unit in the deployment, every tree included.
 func (r *ouHierarchyEnumerator) AllOUIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
-	roots, svcErr := r.rootOUIDs(ctx)
+	roots, svcErr := r.RootOUIDs(ctx)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -123,8 +125,8 @@ func (r *ouHierarchyEnumerator) childOUIDs(
 	}
 }
 
-// rootOUIDs pages through the organization units that have no parent.
-func (r *ouHierarchyEnumerator) rootOUIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
+// RootOUIDs pages through the organization units that have no parent.
+func (r *ouHierarchyEnumerator) RootOUIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
 	var out []string
 	for offset := 0; ; offset += hierarchyPageSize {
 		page, err := r.store.GetOrganizationUnitList(ctx, hierarchyPageSize, offset, nil)

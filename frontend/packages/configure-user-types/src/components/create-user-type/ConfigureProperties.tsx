@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useResolveDisplayName} from '@thunderid/hooks';
+import {getContactTypesMissingRegex, isContactAttributeType} from '@thunderid/utils';
 import {FormControl, FormLabel, MenuItem, Paper, Select, Stack, Typography} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useCallback, useEffect, useMemo, useRef} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {SchemaPropertyInput} from '../../types/user-types';
+import {getMissingPrimaryContactTypes} from '../../utils/primaryContacts';
 import SchemaPropertyEditor from '../shared/SchemaPropertyEditor';
 
 /**
@@ -48,7 +50,7 @@ export default function ConfigureProperties({
     () =>
       properties.filter(
         (p) =>
-          (p.type === 'string' || p.type === 'number' || p.type === 'enum') &&
+          (p.type === 'string' || isContactAttributeType(p.type) || p.type === 'number' || p.type === 'enum') &&
           !p.credential &&
           p.name.trim().length > 0,
       ),
@@ -80,7 +82,11 @@ export default function ConfigureProperties({
   useEffect((): void => {
     if (onReadyChange) {
       const hasValidProperty = properties.some((prop) => prop.name.trim().length > 0);
-      onReadyChange(hasValidProperty);
+      onReadyChange(
+        hasValidProperty &&
+          getContactTypesMissingRegex(properties).length === 0 &&
+          getMissingPrimaryContactTypes(properties).length === 0,
+      );
     }
   }, [properties, onReadyChange]);
 
@@ -105,7 +111,7 @@ export default function ConfigureProperties({
           eligibleDisplayProperties.length > 0 ? (
             <Paper variant="outlined" sx={{px: 3, py: 3, borderRadius: 2}}>
               <FormControl fullWidth>
-                <FormLabel>{t('userTypes:displayAttribute', 'Display Attribute')}</FormLabel>
+                <FormLabel>{t('userTypes:displayAttribute', 'Display attribute')}</FormLabel>
                 <Typography variant="body2" color="text.secondary" sx={{mb: 1}}>
                   {t(
                     'userTypes:displayAttributeHint',

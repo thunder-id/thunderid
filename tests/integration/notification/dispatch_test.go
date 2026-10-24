@@ -5,10 +5,12 @@ package notification
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -244,7 +246,10 @@ func (ts *DispatchTestSuite) TestDispatchCustomHeaders() {
 	senderID := ts.createSender("Dispatch Custom Headers Sender", map[string]interface{}{
 		"httpMethod":  "POST",
 		"contentType": "JSON",
-		"httpHeaders": "X-Dispatch-Test: integration",
+		"authentication": map[string]interface{}{
+			"type":       "api_key",
+			"properties": map[string]string{"X-Dispatch-Test": "integration"},
+		},
 	})
 
 	ts.Require().Equal(http.StatusOK, ts.sendOTP(senderID), "Expected the OTP send to succeed")
@@ -253,6 +258,154 @@ func (ts *DispatchTestSuite) TestDispatchCustomHeaders() {
 	ts.Require().NotNil(message, "The gateway should have received a request")
 	ts.Equal("integration", message.Headers["X-Dispatch-Test"],
 		"The configured header should be present on the outbound request, got %v", message.Headers)
+}
+
+func (ts *DispatchTestSuite) TestDispatchBearerAndBasicAuthentication() {
+	for _, test := range []struct {
+		name           string
+		authentication map[string]interface{}
+		authorization  string
+	}{
+		{"bearer", map[string]interface{}{
+			"type": "bearer", "properties": map[string]string{"token": "test-token"},
+		}, "Bearer test-token"},
+		{"basic", map[string]interface{}{
+			"type": "basic", "properties": map[string]string{"username": "test-user", "password": "test-password"},
+		}, "Basic " + base64.StdEncoding.EncodeToString([]byte("test-user:test-password"))},
+	} {
+		ts.Run(test.name, func() {
+			ts.mockServer.ClearMessages()
+			senderID := ts.createSender("Dispatch "+test.name+" Sender", map[string]interface{}{
+				"httpMethod": "POST", "contentType": "JSON", "authentication": test.authentication,
+			})
+			ts.Require().Equal(http.StatusOK, ts.sendOTP(senderID))
+			message := ts.waitForDispatch()
+			ts.Require().NotNil(message)
+			ts.Equal(test.authorization, message.Headers["Authorization"])
+		})
+	}
+}
+
+func (ts *DispatchTestSuite) TestDispatchLegacyPlaintextHeaders() {
+	if testutils.GetDBType() != "sqlite" {
+		ts.T().Skip("legacy stored-property fixture uses the SQLite config DB")
+	}
+	senderID := ts.createSender("Legacy Plaintext Headers Sender", map[string]interface{}{
+		"httpMethod": "POST", "contentType": "JSON",
+	})
+	ts.setLegacyHeaders(senderID, "X-Legacy-Key: legacy-secret, X-Tenant: legacy-tenant", false)
+	ts.assertLegacyHeadersVisible(senderID, "X-Legacy-Key: legacy-secret, X-Tenant: legacy-tenant")
+
+	ts.Require().Equal(http.StatusOK, ts.sendOTP(senderID))
+	message := ts.waitForDispatch()
+	ts.Require().NotNil(message)
+	ts.Equal("legacy-secret", message.Headers["X-Legacy-Key"])
+	ts.Equal("legacy-tenant", message.Headers["X-Tenant"])
+}
+
+func (ts *DispatchTestSuite) TestDispatchGeneralHeadersWithEmptyAndReservedValues() {
+	senderID := ts.createSender("General Empty Header Sender", map[string]interface{}{
+		"httpMethod": "POST", "contentType": "JSON",
+		"httpHeaders": "Content-Type: text/plain, X-Empty: ",
+	})
+
+	ts.Require().Equal(http.StatusOK, ts.sendOTP(senderID))
+	message := ts.waitForDispatch()
+	ts.Require().NotNil(message)
+	ts.Equal("text/plain", message.Headers["Content-Type"])
+	value, exists := message.Headers["X-Empty"]
+	ts.True(exists)
+	ts.Empty(value)
+}
+
+func (ts *DispatchTestSuite) TestDispatchRejectsMalformedLegacyHeaders() {
+	if testutils.GetDBType() != "sqlite" {
+		ts.T().Skip("legacy stored-property fixture uses the SQLite config DB")
+	}
+	senderID := ts.createSender("Malformed Legacy Headers Sender", map[string]interface{}{
+		"httpMethod": "POST", "contentType": "JSON",
+	})
+	ts.setLegacyHeaders(senderID, "malformed-header-without-value", false)
+	ts.NotEqual(http.StatusOK, ts.sendOTP(senderID))
+}
+
+func (ts *DispatchTestSuite) TestDispatchLegacyEncryptedHeaders() {
+	if testutils.GetDBType() != "sqlite" {
+		ts.T().Skip("legacy stored-property fixture uses the SQLite config DB")
+	}
+	headers := "X-Legacy-Key: encrypted-secret, X-Tenant: encrypted-tenant"
+	senderID := ts.createSender("Legacy Encrypted Headers Sender", map[string]interface{}{
+		"httpMethod": "POST", "contentType": "JSON",
+		"authentication": map[string]interface{}{
+			"type": "api_key", "properties": map[string]string{"X-Staging": headers},
+		},
+	})
+	ts.setLegacyHeaders(senderID, "", true)
+	ts.assertLegacyHeadersVisible(senderID, headers)
+
+	ts.Require().Equal(http.StatusOK, ts.sendOTP(senderID))
+	message := ts.waitForDispatch()
+	ts.Require().NotNil(message)
+	ts.Equal("encrypted-secret", message.Headers["X-Legacy-Key"])
+	ts.Equal("encrypted-tenant", message.Headers["X-Tenant"])
+}
+
+type storedSenderProperty struct {
+	Name     string `json:"name"`
+	Value    string `json:"value"`
+	IsSecret bool   `json:"isSecret"`
+}
+
+// setLegacyHeaders replaces a test sender's new authentication properties with the old stored
+// representation. It uses an already encrypted API-key property for the encrypted case.
+func (ts *DispatchTestSuite) setLegacyHeaders(senderID, plaintext string, encrypted bool) {
+	deploymentID, err := testutils.QueryConfigDB(fmt.Sprintf(
+		`SELECT DEPLOYMENT_ID FROM "NOTIFICATION_SENDER" WHERE ID='%s';`, senderID))
+	ts.Require().NoError(err)
+	ts.Require().NotEmpty(deploymentID)
+	query := fmt.Sprintf(`SELECT PROPERTIES FROM "NOTIFICATION_SENDER" WHERE ID='%s' AND DEPLOYMENT_ID='%s';`,
+		senderID, deploymentID)
+	storedJSON, err := testutils.QueryConfigDB(query)
+	ts.Require().NoError(err)
+	var stored []storedSenderProperty
+	ts.Require().NoError(json.Unmarshal([]byte(storedJSON), &stored))
+
+	legacyValue := plaintext
+	properties := make([]storedSenderProperty, 0, len(stored)+1)
+	for _, property := range stored {
+		if property.Name == "authentication_X-Staging" {
+			legacyValue = property.Value
+		}
+		if !strings.HasPrefix(property.Name, "authentication_") {
+			properties = append(properties, property)
+		}
+	}
+	ts.Require().NotEmpty(legacyValue)
+	properties = append(properties, storedSenderProperty{
+		Name: "http_headers", Value: legacyValue, IsSecret: encrypted,
+	})
+	encoded, err := json.Marshal(properties)
+	ts.Require().NoError(err)
+	escaped := strings.ReplaceAll(string(encoded), "'", "''")
+	update := fmt.Sprintf(`UPDATE "NOTIFICATION_SENDER" SET PROPERTIES='%s' `+
+		`WHERE ID='%s' AND DEPLOYMENT_ID='%s'; SELECT changes();`, escaped, senderID, deploymentID)
+	changed, err := testutils.QueryConfigDB(update)
+	ts.Require().NoError(err)
+	ts.Equal("1", changed)
+}
+
+func (ts *DispatchTestSuite) assertLegacyHeadersVisible(senderID, expected string) {
+	request, err := http.NewRequest(http.MethodGet, testutils.TestServerURL+smsGatewayPath+"/"+senderID, nil)
+	ts.Require().NoError(err)
+	response, err := ts.client.Do(request)
+	ts.Require().NoError(err)
+	defer response.Body.Close()
+	ts.Require().Equal(http.StatusOK, response.StatusCode)
+	var connection struct {
+		HTTPHeaders string `json:"httpHeaders"`
+	}
+	ts.Require().NoError(json.NewDecoder(response.Body).Decode(&connection))
+	ts.Equal(expected, connection.HTTPHeaders)
 }
 
 // TestDispatchGatewayFailure confirms a gateway error surfaces rather than being reported as a

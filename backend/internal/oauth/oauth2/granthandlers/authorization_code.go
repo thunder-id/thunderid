@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package granthandlers
@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/pkce"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -24,10 +25,11 @@ import (
 
 // authorizationCodeGrantHandler handles the authorization code grant type.
 type authorizationCodeGrantHandler struct {
-	authzService    authz.AuthorizeServiceInterface
-	tokenBuilder    tokenservice.TokenBuilderInterface
-	attributeCache  attributecache.AttributeCacheServiceInterface
-	resourceService providers.ResourceServerProvider
+	authzService       authz.AuthorizeServiceInterface
+	tokenBuilder       tokenservice.TokenBuilderInterface
+	attributeCache     attributecache.AttributeCacheServiceInterface
+	resourceService    providers.ResourceServerProvider
+	enforcementService revocation.EnforcementServiceInterface
 }
 
 // newAuthorizationCodeGrantHandler creates a new instance of AuthorizationCodeGrantHandler.
@@ -36,12 +38,14 @@ func newAuthorizationCodeGrantHandler(
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	attributeCache attributecache.AttributeCacheServiceInterface,
 	resourceService providers.ResourceServerProvider,
+	enforcementService revocation.EnforcementServiceInterface,
 ) GrantHandlerInterface {
 	return &authorizationCodeGrantHandler{
-		authzService:    authzService,
-		tokenBuilder:    tokenBuilder,
-		attributeCache:  attributeCache,
-		resourceService: resourceService,
+		authzService:       authzService,
+		tokenBuilder:       tokenBuilder,
+		attributeCache:     attributeCache,
+		resourceService:    resourceService,
+		enforcementService: enforcementService,
 	}
 }
 
@@ -141,23 +145,32 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		return nil, errResp
 	}
 
-	var accessTokenAudiences, accessTokenScopes []string
+	var accessTokenAudiences, permissionScopes []string
 	if targetRS == nil {
 		// OIDC-only (or scopeless) request with no resource: the token is not bound to a resource
 		// server, so its audience is the app's configured default audiences (falling back to the
 		// client_id) and it carries only the OIDC scopes.
 		accessTokenAudiences = []string{oauthApp.ResolveDefaultAudience(tokenRequest.ClientID)}
-		accessTokenScopes = oidcScopes
 	} else {
-		downscopedNonOidc, dErr := resourceindicators.DownscopeToResourceServer(
+		permissionScopes, errResp = resourceindicators.DownscopeToResourceServer(
 			ctx, h.resourceService, targetRS.ID, nonOidcScopes)
-		if dErr != nil {
-			return nil, dErr
+		if errResp != nil {
+			return nil, errResp
 		}
 		accessTokenAudiences = []string{targetRS.Identifier}
-		accessTokenScopes = make([]string, 0, len(oidcScopes)+len(downscopedNonOidc))
-		accessTokenScopes = append(accessTokenScopes, oidcScopes...)
-		accessTokenScopes = append(accessTokenScopes, downscopedNonOidc...)
+	}
+
+	// The code snapshots the authorization decision, so a scope revoked since it was issued is not minted.
+	accessTokenScopes, errResp := excludeRevokedScopes(ctx, h.enforcementService, revocation.RevocationIdentity{
+		EstablishedAt: authCode.TimeCreated,
+		Criteria: []revocation.Criterion{
+			{Type: revocation.CriterionTypeTokenFamily, Value: authCode.TokenFamilyID},
+			{Type: revocation.CriterionTypeSubject, Value: authCode.AuthorizedUserID},
+			{Type: revocation.CriterionTypeApplicationKey, Value: authCode.ClientID},
+		},
+	}, authCode.AuthorizedUserID, accessTokenAudiences, oidcScopes, permissionScopes)
+	if errResp != nil {
+		return nil, errResp
 	}
 
 	// Generate access token using tokenBuilder (attributes will be filtered in BuildAccessToken)

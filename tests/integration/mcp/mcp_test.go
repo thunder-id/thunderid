@@ -5,6 +5,7 @@ package mcp
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
@@ -166,22 +168,29 @@ func (ts *MCPTestSuite) mcpScopedAdminToken() string {
 // bare GET or an empty body here would fail at the MCP transport layer regardless of token
 // validity, proving nothing about authentication.
 func (ts *MCPTestSuite) initializeMCPSession(token string) *http.Response {
+	resp, err := ts.tryInitializeMCPSession(token)
+	ts.Require().NoError(err)
+	return resp
+}
+
+// tryInitializeMCPSession is initializeMCPSession without failing the test, for polling callbacks.
+func (ts *MCPTestSuite) tryInitializeMCPSession(token string) (*http.Response, error) {
 	body := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{` +
 		`"protocolVersion":"` + mcpProtocolVersion + `",` +
 		`"capabilities":{},` +
 		`"clientInfo":{"name":"thunderid-integration-test","version":"1.0.0"}}}`
 
 	req, err := http.NewRequest(http.MethodPost, mcpEndpoint, bytes.NewBufferString(body))
-	ts.Require().NoError(err)
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
-	resp, err := ts.client.Do(req)
-	ts.Require().NoError(err)
-	return resp
+	return ts.client.Do(req)
 }
 
 func (ts *MCPTestSuite) revoke(token string) {
@@ -309,6 +318,65 @@ func (ts *MCPTestSuite) TestInitialize_RevokedToken_Rejected() {
 		"a revoked token must be rejected once the revocation cache has synced")
 }
 
+// A suspended operator's MCP token is rejected once the revocation copy syncs: suspension revokes by
+// entity ID, which the MCP gate checks as the REST gate does. The operator is this test's own, so the
+// shared admin is never suspended.
+func (ts *MCPTestSuite) TestInitialize_SuspendedOperatorToken_Rejected() {
+	const (
+		typeHandle = "mcp-suspend-operator"
+		username   = "mcp-suspend-operator"
+		password   = "McpSuspend@123"
+	)
+	typeID, err := testutils.CreateUserType(testutils.UserType{
+		Handle: typeHandle, DisplayName: typeHandle, OUID: ts.ouID,
+		Schema: map[string]interface{}{
+			"username": map[string]interface{}{"type": "string"},
+			"password": map[string]interface{}{"type": "string", "credential": true},
+		},
+	})
+	ts.Require().NoError(err, "failed to create the operator user type")
+	defer func() { _ = testutils.DeleteUserType(typeID) }()
+	userID, err := testutils.CreateUser(testutils.User{
+		Type: typeHandle, OUID: ts.ouID,
+		Attributes: []byte(`{"username": "` + username + `", "password": "` + password + `"}`),
+	})
+	ts.Require().NoError(err, "failed to create the operator")
+	defer func() { _ = testutils.DeleteUser(userID) }()
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name: "MCP Suspended Operator Role", OUID: ts.ouID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: ts.resourceServerID, Permissions: []string{systemActionHandle}},
+		},
+		Assignments: []testutils.Assignment{{ID: userID, Type: "user"}},
+	})
+	ts.Require().NoError(err, "failed to grant the operator the system permission")
+	defer func() { _ = testutils.DeleteRole(roleID) }()
+
+	tokenResp, err := testutils.ObtainAccessTokenWithPassword("CONSOLE", testServerURL+"/console", "system",
+		username, password, true, "", mcpResourceIdentifier)
+	ts.Require().NoError(err, "the operator must sign in")
+	resp := ts.initializeMCPSession(tokenResp.AccessToken)
+	resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, "the token must work before the suspension")
+
+	suspendFlowID, err := testutils.GetFlowIDByHandle("default-user-suspend-flow", "ADMINISTRATION")
+	ts.Require().NoError(err, "the suspend flow must ship")
+	result, err := common.ExecuteAdministrationFlow(suspendFlowID, map[string]string{"subject": userID}, true)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, result.StatusCode, "the suspend flow was refused: %+v", result.Error)
+	ts.Require().Equal("COMPLETE", result.Step.FlowStatus, "the suspension must be placed")
+
+	ts.Require().Eventually(func() bool {
+		resp, err := ts.tryInitializeMCPSession(tokenResp.AccessToken)
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusUnauthorized
+	}, 10*time.Second, 250*time.Millisecond,
+		"a suspended operator's token must be rejected once the revocation cache has synced")
+}
+
 // A token that is valid and carries the required scope, but was minted for a different — still
 // real, registered — resource (testutils.SystemResourceIdentifier, the product's generic
 // bootstrapped default, distinct from this harness's actual mcpResourceIdentifier), is rejected.
@@ -343,4 +411,257 @@ func (ts *MCPTestSuite) TestInitialize_NoToken_Rejected() {
 	defer resp.Body.Close()
 
 	ts.Assert().Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
+const (
+	appRevocationClientID    = "mcp-app-revocation-client"
+	appRevocationRedirectURI = "https://localhost:3000/mcp-app-revocation/callback"
+
+	applicationDeletionFlowHandle = "default-application-deletion-flow"
+	administrationFlowType        = "ADMINISTRATION"
+)
+
+// A token issued through an application is rejected at /mcp once that application is deleted, as it is
+// at the REST gate. Deletion revokes the application's OAuth client, so the token's subject is still
+// valid and only the client check refuses it.
+func (ts *MCPTestSuite) TestInitialize_DeletedApplicationToken_Rejected() {
+	appID, err := testutils.CreateApplication(testutils.Application{
+		Name:        "MCP App Revocation Test App",
+		Description: "Application whose token is used at /mcp before and after deletion",
+		OUID:        ts.ouID,
+		Type:        "fullstack",
+		InboundAuthConfig: []map[string]interface{}{
+			{
+				"type": "oauth2",
+				"config": map[string]interface{}{
+					"clientId":                appRevocationClientID,
+					"redirectUris":            []string{appRevocationRedirectURI},
+					"grantTypes":              []string{"authorization_code"},
+					"responseTypes":           []string{"code"},
+					"tokenEndpointAuthMethod": "none",
+					"publicClient":            true,
+					"pkceRequired":            true,
+				},
+			},
+		},
+	})
+	ts.Require().NoError(err, "failed to create application")
+	deleted := false
+	defer func() {
+		if !deleted {
+			_ = testutils.DeleteApplication(appID)
+		}
+	}()
+
+	tokenResp, err := testutils.ObtainAccessTokenWithPassword(appRevocationClientID, appRevocationRedirectURI,
+		"system", testutils.AdminUsername, testutils.AdminPassword, true, "", mcpResourceIdentifier)
+	ts.Require().NoError(err, "failed to obtain a token through the application")
+	token := tokenResp.AccessToken
+
+	resp := ts.initializeMCPSession(token)
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	ts.Require().Equalf(http.StatusOK, resp.StatusCode, "the token must work before deletion: %s", string(body))
+	ts.Require().Equal(http.StatusOK, ts.restStatus(token), "the token must work at REST before deletion")
+
+	ts.runApplicationDeletionFlow(appID)
+	deleted = true
+
+	ts.Require().Eventually(func() bool {
+		resp := ts.initializeMCPSession(token)
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusUnauthorized
+	}, 5*time.Second, 250*time.Millisecond,
+		"a token of a deleted application must be rejected at /mcp once the revocation cache has synced")
+	ts.Equal(http.StatusUnauthorized, ts.restStatus(token),
+		"the REST gate must reject the same token")
+}
+
+// restStatus calls a REST endpoint the "system" scope permits with the token.
+func (ts *MCPTestSuite) restStatus(token string) int {
+	req, err := http.NewRequest(http.MethodGet, testServerURL+"/organization-units/"+ts.ouID, nil)
+	ts.Require().NoError(err)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := ts.client.Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return resp.StatusCode
+}
+
+// runApplicationDeletionFlow deletes the application through the shipped deletion flow, which revokes
+// its OAuth client before removing the record.
+func (ts *MCPTestSuite) runApplicationDeletionFlow(appID string) {
+	flowID, err := testutils.GetFlowIDByHandle(applicationDeletionFlowHandle, administrationFlowType)
+	ts.Require().NoError(err, "failed to resolve the application deletion flow")
+
+	adminToken, err := testutils.GetAccessToken()
+	ts.Require().NoError(err, "failed to obtain the admin token")
+
+	reqBody := `{"flowId":"` + flowID + `","inputs":{"targetApplicationId":"` + appID + `"}}`
+	req, err := http.NewRequest(http.MethodPost, testServerURL+"/flow/execute", bytes.NewBufferString(reqBody))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+
+	resp, err := ts.client.Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	ts.Require().Equalf(http.StatusOK, resp.StatusCode, "deletion flow failed: %s", string(body))
+	ts.Require().Containsf(string(body), `"COMPLETE"`, "deletion flow must complete: %s", string(body))
+}
+
+// mcpToolResult is the part of a tools/call response the HTTP connection tool test reads.
+type mcpToolResult struct {
+	Result struct {
+		IsError           bool           `json:"isError"`
+		StructuredContent map[string]any `json:"structuredContent"`
+	} `json:"result"`
+}
+
+// callMCPTool sends a stateless 2026-07-28 tools/call request and returns the decoded result with
+// the raw response body, which an SSE response carries on its data line.
+func (ts *MCPTestSuite) callMCPTool(token, name string, args map[string]any) (mcpToolResult, string) {
+	payload, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+		"params": map[string]any{
+			"name": name, "arguments": args,
+			"_meta": map[string]any{
+				"io.modelcontextprotocol/protocolVersion":    mcpProtocolVersion20260728,
+				"io.modelcontextprotocol/clientCapabilities": map[string]any{},
+				"io.modelcontextprotocol/clientInfo": map[string]any{
+					"name": "thunderid-integration-test", "version": "1.0.0"},
+			},
+		},
+	})
+	ts.Require().NoError(err)
+
+	req, err := http.NewRequest(http.MethodPost, mcpEndpoint, bytes.NewReader(payload))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("MCP-Protocol-Version", mcpProtocolVersion20260728)
+	req.Header.Set("Mcp-Method", "tools/call")
+	req.Header.Set("Mcp-Name", name)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := ts.client.Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	ts.Require().Equalf(http.StatusOK, resp.StatusCode, "%s failed: %s", name, string(body))
+
+	message := string(body)
+	for _, line := range strings.Split(message, "\n") {
+		if data, ok := strings.CutPrefix(line, "data: "); ok {
+			message = data
+		}
+	}
+	var result mcpToolResult
+	ts.Require().NoErrorf(json.Unmarshal([]byte(message), &result), "%s returned: %s", name, string(body))
+	return result, string(body)
+}
+
+// The HTTP connection tools run the /connections/http path end to end: the password is never
+// returned, is kept on an update that omits it while the URL origin is unchanged, and is required
+// again once the origin changes.
+func (ts *MCPTestSuite) TestHTTPConnectionTools_MaskAndRetainPassword() {
+	const password = "mcp-http-connection-secret"
+	token := ts.mcpScopedAdminToken()
+
+	created, raw := ts.callMCPTool(token, "thunderid_create_http_connection", map[string]any{
+		"name": "MCP Tools HTTP Connection", "url": "https://risk.example.com/evaluate",
+		"authentication": map[string]any{"type": "basic",
+			"properties": map[string]any{"username": "svc-user", "password": password}},
+	})
+	ts.Require().Falsef(created.Result.IsError, "create failed: %s", raw)
+	ts.NotContains(raw, password)
+	id, _ := created.Result.StructuredContent["id"].(string)
+	ts.Require().NotEmpty(id)
+	ts.T().Cleanup(func() { ts.deleteHTTPConnection(id) })
+
+	got, raw := ts.callMCPTool(token, "thunderid_get_http_connection_by_id", map[string]any{"id": id})
+	ts.Require().Falsef(got.Result.IsError, "get failed: %s", raw)
+	ts.NotContains(raw, password)
+	ts.Contains(raw, `"password":"******"`)
+
+	listed, raw := ts.callMCPTool(token, "thunderid_list_http_connections", map[string]any{})
+	ts.Require().Falsef(listed.Result.IsError, "list failed: %s", raw)
+	ts.Contains(raw, id)
+	ts.NotContains(raw, password)
+
+	sameOrigin, raw := ts.callMCPTool(token, "thunderid_update_http_connection", map[string]any{
+		"id": id, "name": "MCP Tools HTTP Connection", "url": "https://risk.example.com/v2/evaluate",
+		"authentication": map[string]any{"type": "basic", "properties": map[string]any{"username": "svc-user"}},
+	})
+	ts.Falsef(sameOrigin.Result.IsError, "an update keeping the origin must keep the stored password: %s", raw)
+	ts.NotContains(raw, password)
+
+	otherOrigin, raw := ts.callMCPTool(token, "thunderid_update_http_connection", map[string]any{
+		"id": id, "name": "MCP Tools HTTP Connection", "url": "https://elsewhere.example.net/evaluate",
+		"authentication": map[string]any{"type": "basic", "properties": map[string]any{"username": "svc-user"}},
+	})
+	ts.Truef(otherOrigin.Result.IsError, "an update moving the origin must require the password again: %s", raw)
+	ts.Contains(raw, "failed to update HTTP connection")
+	ts.Contains(raw, "must give every field its method requires")
+}
+
+// The reviewer's case (AC11.3): an agent reads a connection through the get tool and sends the whole
+// object back through the update tool, so the password arrives as the mask. The update is refused,
+// and the stored password is unchanged: a later update that omits it, at the same origin, still
+// succeeds, which it could not if the password had been dropped or replaced by the mask.
+func (ts *MCPTestSuite) TestHTTPConnectionTools_MaskedPasswordReadBackIsRefused() {
+	const password = "mcp-http-connection-readback-secret"
+	const name = "MCP Tools HTTP Connection Read Back"
+	token := ts.mcpScopedAdminToken()
+
+	created, raw := ts.callMCPTool(token, "thunderid_create_http_connection", map[string]any{
+		"name": name, "url": "https://risk.example.com/evaluate",
+		"authentication": map[string]any{"type": "basic",
+			"properties": map[string]any{"username": "svc-user", "password": password}},
+	})
+	ts.Require().Falsef(created.Result.IsError, "create failed: %s", raw)
+	id, _ := created.Result.StructuredContent["id"].(string)
+	ts.Require().NotEmpty(id)
+	ts.T().Cleanup(func() { ts.deleteHTTPConnection(id) })
+
+	got, raw := ts.callMCPTool(token, "thunderid_get_http_connection_by_id", map[string]any{"id": id})
+	ts.Require().Falsef(got.Result.IsError, "get failed: %s", raw)
+	readBack := got.Result.StructuredContent
+	// type is part of the output only; the update workflow tells the agent to leave it out.
+	delete(readBack, "type")
+	readBack["description"] = "changed by the read-back update"
+
+	refused, raw := ts.callMCPTool(token, "thunderid_update_http_connection", readBack)
+	ts.Truef(refused.Result.IsError, "a password sent as the mask must be refused: %s", raw)
+	ts.Contains(raw, "failed to update HTTP connection")
+	ts.Contains(raw, "a password or token cannot be ******")
+	ts.NotContains(raw, password)
+
+	got, raw = ts.callMCPTool(token, "thunderid_get_http_connection_by_id", map[string]any{"id": id})
+	ts.Require().Falsef(got.Result.IsError, "get failed: %s", raw)
+	ts.Nil(got.Result.StructuredContent["description"], "the refused update must not be applied")
+	ts.Contains(raw, `"password":"******"`)
+
+	kept, raw := ts.callMCPTool(token, "thunderid_update_http_connection", map[string]any{
+		"id": id, "name": name, "url": "https://risk.example.com/v2/evaluate",
+		"authentication": map[string]any{"type": "basic", "properties": map[string]any{"username": "svc-user"}},
+	})
+	ts.Falsef(kept.Result.IsError, "the stored password must survive the refused update: %s", raw)
+	ts.NotContains(raw, password)
+}
+
+func (ts *MCPTestSuite) deleteHTTPConnection(id string) {
+	adminToken, err := testutils.GetAccessToken()
+	ts.Require().NoError(err, "failed to obtain the admin token")
+	req, err := http.NewRequest(http.MethodDelete, testServerURL+"/connections/http/"+id, nil)
+	ts.Require().NoError(err)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+
+	resp, err := ts.client.Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Equal(http.StatusNoContent, resp.StatusCode)
 }

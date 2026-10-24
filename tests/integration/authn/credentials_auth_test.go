@@ -687,6 +687,30 @@ func (suite *CredentialsAuthTestSuite) TestAuthenticateWithSkipAssertionFalse() 
 	suite.NotEmpty(response.Assertion, "Response should contain assertion token when skip_assertion is false")
 }
 
+// TestAuthenticateAssertionUserTypeClaims tests that the assertion carries the user type handle and display name.
+func (suite *CredentialsAuthTestSuite) TestAuthenticateAssertionUserTypeClaims() {
+	authRequest := map[string]interface{}{
+		"identifiers": map[string]interface{}{
+			"username": "credtest_user1",
+		},
+		"credentials": map[string]interface{}{
+			"password": "TestPassword123!",
+		},
+	}
+
+	response, statusCode, err := suite.sendAuthRequest(authRequest)
+	suite.Require().NoError(err, "Failed to send authenticate request")
+	suite.Require().Equal(http.StatusOK, statusCode, "Expected status 200 for successful authentication")
+	suite.Require().NotEmpty(response.Assertion, "Response should contain assertion token by default")
+
+	claims, err := testutils.DecodeJWT(response.Assertion)
+	suite.Require().NoError(err, "Failed to decode assertion")
+
+	userType := credentialEntityTypes["username_password"]
+	suite.Equal(userType.Handle, claims.UserTypeHandle, "userTypeHandle should carry the user type's handle")
+	suite.Equal(userType.DisplayName, claims.UserTypeName, "userTypeName should carry the user type's display name")
+}
+
 // TestAuthenticateWithSkipAssertionTrue tests authentication with skip_assertion set to true
 func (suite *CredentialsAuthTestSuite) TestAuthenticateWithSkipAssertionTrue() {
 	authRequest := map[string]interface{}{

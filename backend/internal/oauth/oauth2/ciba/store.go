@@ -78,8 +78,9 @@ func (s *cibaStore) GetByID(ctx context.Context, authReqID string) (*CIBAAuthReq
 }
 
 // MarkAuthenticated transitions a pending request to authenticated and records the user ID (from
-// the assertion sub claim), authorized scopes, attribute cache ID, completed ACR, SSO session id, and
-// authentication time. The compare-and-swap on the State field prevents a double-callback race condition.
+// the assertion sub claim), authorized scopes, attribute cache ID, completed ACR, SSO session id,
+// authentication time, and the time of this transition. The compare-and-swap on the State field prevents
+// a double-callback race condition.
 func (s *cibaStore) MarkAuthenticated(ctx context.Context, authReqID, userID,
 	authorizedScopes, attributeCacheID, completedACR, sessionID string, authTime time.Time) error {
 	record, err := s.GetByID(ctx, authReqID)
@@ -97,6 +98,7 @@ func (s *cibaStore) MarkAuthenticated(ctx context.Context, authReqID, userID,
 	record.CompletedACR = completedACR
 	record.SessionID = sessionID
 	record.AuthTime = authTime
+	record.AuthorizedAt = time.Now()
 
 	data, err := json.Marshal(record)
 	if err != nil {

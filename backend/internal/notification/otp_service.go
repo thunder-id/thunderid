@@ -15,6 +15,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/internal/notification/common"
+	notificationconfig "github.com/thunder-id/thunderid/internal/notification/config"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
@@ -50,18 +51,20 @@ type OTPServiceInterface interface {
 type otpService struct {
 	logger     *log.Logger
 	jwtService jwt.JWTServiceInterface
+	cfg        notificationconfig.Config
 }
 
 // newOTPService returns a new instance of OTPServiceInterface.
-func newOTPService(jwtSvc jwt.JWTServiceInterface) OTPServiceInterface {
+func newOTPService(jwtSvc jwt.JWTServiceInterface, cfg notificationconfig.Config) OTPServiceInterface {
 	return &otpService{
 		logger:     log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OTPService")),
 		jwtService: jwtSvc,
+		cfg:        cfg,
 	}
 }
 
 // GenerateOTP generates an OTP and session token for the recipient without delivering it.
-// An optional otpCfg override can override the global OTP configuration (pass nil to use defaults).
+// An optional otpCfg overrides the configured OTP defaults (pass nil to use defaults).
 func (s *otpService) GenerateOTP(ctx context.Context, recipient, recipientAttr string, otpCfg *common.OTPConfig) (
 	string, string, int64, *tidcommon.ServiceError) {
 	logger := s.logger
@@ -113,7 +116,7 @@ func (s *otpService) VerifyOTP(
 	if time.Now().UnixMilli() > sessionData.ExpiryTime {
 		logger.Debug(ctx, "OTP has expired")
 		return &common.VerifyOTPResultDTO{
-			Status:        common.OTPVerifyStatusInvalid,
+			Status:        common.OTPVerifyStatusExpired,
 			Recipient:     sessionData.Recipient,
 			RecipientAttr: sessionData.RecipientAttr,
 		}, nil
@@ -178,7 +181,7 @@ func (s *otpService) createSessionToken(ctx context.Context, sessionData otpSess
 		"aud":      otpSessionAudience,
 	}
 	validitySeconds := (sessionData.ExpiryTime - time.Now().UnixMilli()) / 1000
-	jwtConfig := config.GetServerRuntime().Config.JWT
+	jwtConfig := s.cfg.JWT
 
 	token, _, err := s.jwtService.GenerateJWT(
 		ctx, otpSessionAudience, jwtConfig.Issuer, validitySeconds, claims, jwt.TokenTypeJWT, "")
@@ -191,7 +194,7 @@ func (s *otpService) createSessionToken(ctx context.Context, sessionData otpSess
 // verifyAndDecodeSessionToken verifies the JWT signature and decodes the embedded OTP session data.
 func (s *otpService) verifyAndDecodeSessionToken(ctx context.Context, token string,
 	logger *log.Logger) (*otpSessionData, *tidcommon.ServiceError) {
-	jwtConfig := config.GetServerRuntime().Config.JWT
+	jwtConfig := s.cfg.JWT
 	if svcErr := s.jwtService.VerifyJWT(ctx, token, otpSessionAudience, jwtConfig.Issuer); svcErr != nil {
 		logger.Debug(ctx, "Invalid OTP session token", log.String("error", svcErr.Error.DefaultValue))
 		return nil, &ErrorInvalidSessionToken
@@ -221,9 +224,9 @@ func (s *otpService) verifyAndDecodeSessionToken(ctx context.Context, token stri
 }
 
 // resolveOTPConfig returns the effective OTP configuration for this otpService.
-// An optional override can override specific fields from the global config (pass nil to use defaults).
+// An optional override replaces specific configured fields (pass nil to use defaults).
 func (s *otpService) resolveOTPConfig(otpCfg *common.OTPConfig) config.OTPConfig {
-	cfg := config.GetServerRuntime().Config.Notification.OTP
+	cfg := s.cfg.OTP
 
 	if otpCfg == nil {
 		return cfg

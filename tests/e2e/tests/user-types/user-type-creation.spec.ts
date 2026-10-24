@@ -70,7 +70,7 @@ test.describe("User Types - Create User Type", () => {
 
       // The list endpoint omits `schema`, so read the type by id to assert on it.
       const userType = await userTypesApi.get(listed!.id);
-      expect(userType.schema?.email).toMatchObject({ type: "string", required: true });
+      expect(userType.schema?.email).toMatchObject({ type: "email", required: true });
     });
   });
 });

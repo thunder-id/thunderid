@@ -342,7 +342,7 @@ var (
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
 		AllowedUserTypes:          []string{dynamicEntityType.Handle},
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+			"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 		},
 	}
 
@@ -355,7 +355,7 @@ var (
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
 		AllowedUserTypes:          []string{dynamicEntityType.Handle},
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+			"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 		},
 	}
 
@@ -565,6 +565,13 @@ func (ts *OURegistrationFlowTestSuite) TearDownSuite() {
 		}
 	}
 
+	// delete user type
+	if ts.entityTypeID != "" {
+		if err := testutils.DeleteUserType(ts.entityTypeID); err != nil {
+			ts.T().Logf("Failed to delete dynamic user type during teardown: %v", err)
+		}
+	}
+
 	// Delete test organization units
 	if ts.smsFlowTestOUID != "" {
 		if err := testutils.DeleteOrganizationUnit(ts.smsFlowTestOUID); err != nil {
@@ -574,13 +581,6 @@ func (ts *OURegistrationFlowTestSuite) TearDownSuite() {
 	if ts.basicFlowTestOUID != "" {
 		if err := testutils.DeleteOrganizationUnit(ts.basicFlowTestOUID); err != nil {
 			ts.T().Logf("Failed to delete test organization unit during teardown: %v", err)
-		}
-	}
-
-	// delete user type
-	if ts.entityTypeID != "" {
-		if err := testutils.DeleteUserType(ts.entityTypeID); err != nil {
-			ts.T().Logf("Failed to delete dynamic user type during teardown: %v", err)
 		}
 	}
 }
@@ -627,7 +627,7 @@ func (ts *OURegistrationFlowTestSuite) TestBasicRegistrationFlowWithOU() {
 
 			jwtClaims, err := testutils.DecodeJWT(flowStep.Assertion)
 			ts.Require().NoError(err)
-			ts.Require().Equal(dynamicEntityType.Handle, jwtClaims.UserType)
+			ts.Require().Equal(dynamicEntityType.Handle, jwtClaims.UserTypeHandle)
 			ts.Require().NotEmpty(jwtClaims.OUID)
 
 			user, err := testutils.FindUserByAttribute("username", username)
@@ -808,7 +808,7 @@ func (ts *OURegistrationFlowTestSuite) TestSMSRegistrationFlowWithOUCreation() {
 
 			jwtClaims, err := testutils.DecodeJWT(flowStep.Assertion)
 			ts.Require().NoError(err)
-			ts.Require().Equal(dynamicEntityType.Handle, jwtClaims.UserType)
+			ts.Require().Equal(dynamicEntityType.Handle, jwtClaims.UserTypeHandle)
 			ts.Require().NotEmpty(jwtClaims.OUID)
 
 			user, err := testutils.FindUserByAttribute("mobile_number", mobileNumber)

@@ -17,10 +17,19 @@ func NewTxInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *TxInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &TxInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -84,7 +93,7 @@ func (_c *TxInterfaceMock_Commit_Call) RunAndReturn(run func() error) *TxInterfa
 
 // Exec provides a mock function for the type TxInterfaceMock
 func (_mock *TxInterfaceMock) Exec(query model.DBQuery, args ...any) (sql.Result, error) {
-	var _ca []interface{}
+	var _ca []any
 	_ca = append(_ca, query)
 	_ca = append(_ca, args...)
 	ret := _mock.Called(_ca...)
@@ -121,9 +130,9 @@ type TxInterfaceMock_Exec_Call struct {
 // Exec is a helper method to define mock.On call
 //   - query model.DBQuery
 //   - args ...any
-func (_e *TxInterfaceMock_Expecter) Exec(query interface{}, args ...interface{}) *TxInterfaceMock_Exec_Call {
+func (_e *TxInterfaceMock_Expecter) Exec(query any, args ...any) *TxInterfaceMock_Exec_Call {
 	return &TxInterfaceMock_Exec_Call{Call: _e.mock.On("Exec",
-		append([]interface{}{query}, args...)...)}
+		append([]any{query}, args...)...)}
 }
 
 func (_c *TxInterfaceMock_Exec_Call) Run(run func(query model.DBQuery, args ...any)) *TxInterfaceMock_Exec_Call {
@@ -160,7 +169,7 @@ func (_c *TxInterfaceMock_Exec_Call) RunAndReturn(run func(query model.DBQuery, 
 
 // Query provides a mock function for the type TxInterfaceMock
 func (_mock *TxInterfaceMock) Query(query model.DBQuery, args ...any) (*sql.Rows, error) {
-	var _ca []interface{}
+	var _ca []any
 	_ca = append(_ca, query)
 	_ca = append(_ca, args...)
 	ret := _mock.Called(_ca...)
@@ -197,9 +206,9 @@ type TxInterfaceMock_Query_Call struct {
 // Query is a helper method to define mock.On call
 //   - query model.DBQuery
 //   - args ...any
-func (_e *TxInterfaceMock_Expecter) Query(query interface{}, args ...interface{}) *TxInterfaceMock_Query_Call {
+func (_e *TxInterfaceMock_Expecter) Query(query any, args ...any) *TxInterfaceMock_Query_Call {
 	return &TxInterfaceMock_Query_Call{Call: _e.mock.On("Query",
-		append([]interface{}{query}, args...)...)}
+		append([]any{query}, args...)...)}
 }
 
 func (_c *TxInterfaceMock_Query_Call) Run(run func(query model.DBQuery, args ...any)) *TxInterfaceMock_Query_Call {

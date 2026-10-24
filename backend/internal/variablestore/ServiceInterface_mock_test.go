@@ -17,10 +17,19 @@ func NewServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -76,7 +85,7 @@ type ServiceInterfaceMock_CreateSecret_Call struct {
 // CreateSecret is a helper method to define mock.On call
 //   - ctx context.Context
 //   - request SecretRequest
-func (_e *ServiceInterfaceMock_Expecter) CreateSecret(ctx interface{}, request interface{}) *ServiceInterfaceMock_CreateSecret_Call {
+func (_e *ServiceInterfaceMock_Expecter) CreateSecret(ctx any, request any) *ServiceInterfaceMock_CreateSecret_Call {
 	return &ServiceInterfaceMock_CreateSecret_Call{Call: _e.mock.On("CreateSecret", ctx, request)}
 }
 
@@ -146,7 +155,7 @@ type ServiceInterfaceMock_CreateVariable_Call struct {
 // CreateVariable is a helper method to define mock.On call
 //   - ctx context.Context
 //   - request VariableRequest
-func (_e *ServiceInterfaceMock_Expecter) CreateVariable(ctx interface{}, request interface{}) *ServiceInterfaceMock_CreateVariable_Call {
+func (_e *ServiceInterfaceMock_Expecter) CreateVariable(ctx any, request any) *ServiceInterfaceMock_CreateVariable_Call {
 	return &ServiceInterfaceMock_CreateVariable_Call{Call: _e.mock.On("CreateVariable", ctx, request)}
 }
 
@@ -205,7 +214,7 @@ type ServiceInterfaceMock_DeleteSecret_Call struct {
 // DeleteSecret is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *ServiceInterfaceMock_Expecter) DeleteSecret(ctx interface{}, name interface{}) *ServiceInterfaceMock_DeleteSecret_Call {
+func (_e *ServiceInterfaceMock_Expecter) DeleteSecret(ctx any, name any) *ServiceInterfaceMock_DeleteSecret_Call {
 	return &ServiceInterfaceMock_DeleteSecret_Call{Call: _e.mock.On("DeleteSecret", ctx, name)}
 }
 
@@ -264,7 +273,7 @@ type ServiceInterfaceMock_DeleteVariable_Call struct {
 // DeleteVariable is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *ServiceInterfaceMock_Expecter) DeleteVariable(ctx interface{}, name interface{}) *ServiceInterfaceMock_DeleteVariable_Call {
+func (_e *ServiceInterfaceMock_Expecter) DeleteVariable(ctx any, name any) *ServiceInterfaceMock_DeleteVariable_Call {
 	return &ServiceInterfaceMock_DeleteVariable_Call{Call: _e.mock.On("DeleteVariable", ctx, name)}
 }
 
@@ -334,7 +343,7 @@ type ServiceInterfaceMock_GetSecret_Call struct {
 // GetSecret is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *ServiceInterfaceMock_Expecter) GetSecret(ctx interface{}, name interface{}) *ServiceInterfaceMock_GetSecret_Call {
+func (_e *ServiceInterfaceMock_Expecter) GetSecret(ctx any, name any) *ServiceInterfaceMock_GetSecret_Call {
 	return &ServiceInterfaceMock_GetSecret_Call{Call: _e.mock.On("GetSecret", ctx, name)}
 }
 
@@ -404,7 +413,7 @@ type ServiceInterfaceMock_GetVariable_Call struct {
 // GetVariable is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *ServiceInterfaceMock_Expecter) GetVariable(ctx interface{}, name interface{}) *ServiceInterfaceMock_GetVariable_Call {
+func (_e *ServiceInterfaceMock_Expecter) GetVariable(ctx any, name any) *ServiceInterfaceMock_GetVariable_Call {
 	return &ServiceInterfaceMock_GetVariable_Call{Call: _e.mock.On("GetVariable", ctx, name)}
 }
 
@@ -474,7 +483,7 @@ type ServiceInterfaceMock_ListSecrets_Call struct {
 // ListSecrets is a helper method to define mock.On call
 //   - ctx context.Context
 //   - q listQuery
-func (_e *ServiceInterfaceMock_Expecter) ListSecrets(ctx interface{}, q interface{}) *ServiceInterfaceMock_ListSecrets_Call {
+func (_e *ServiceInterfaceMock_Expecter) ListSecrets(ctx any, q any) *ServiceInterfaceMock_ListSecrets_Call {
 	return &ServiceInterfaceMock_ListSecrets_Call{Call: _e.mock.On("ListSecrets", ctx, q)}
 }
 
@@ -544,7 +553,7 @@ type ServiceInterfaceMock_ListVariables_Call struct {
 // ListVariables is a helper method to define mock.On call
 //   - ctx context.Context
 //   - q listQuery
-func (_e *ServiceInterfaceMock_Expecter) ListVariables(ctx interface{}, q interface{}) *ServiceInterfaceMock_ListVariables_Call {
+func (_e *ServiceInterfaceMock_Expecter) ListVariables(ctx any, q any) *ServiceInterfaceMock_ListVariables_Call {
 	return &ServiceInterfaceMock_ListVariables_Call{Call: _e.mock.On("ListVariables", ctx, q)}
 }
 
@@ -621,7 +630,7 @@ type ServiceInterfaceMock_UpdateSecret_Call struct {
 //   - ctx context.Context
 //   - name string
 //   - request SecretUpdateRequest
-func (_e *ServiceInterfaceMock_Expecter) UpdateSecret(ctx interface{}, name interface{}, request interface{}) *ServiceInterfaceMock_UpdateSecret_Call {
+func (_e *ServiceInterfaceMock_Expecter) UpdateSecret(ctx any, name any, request any) *ServiceInterfaceMock_UpdateSecret_Call {
 	return &ServiceInterfaceMock_UpdateSecret_Call{Call: _e.mock.On("UpdateSecret", ctx, name, request)}
 }
 
@@ -703,7 +712,7 @@ type ServiceInterfaceMock_UpdateVariable_Call struct {
 //   - ctx context.Context
 //   - name string
 //   - request VariableUpdateRequest
-func (_e *ServiceInterfaceMock_Expecter) UpdateVariable(ctx interface{}, name interface{}, request interface{}) *ServiceInterfaceMock_UpdateVariable_Call {
+func (_e *ServiceInterfaceMock_Expecter) UpdateVariable(ctx any, name any, request any) *ServiceInterfaceMock_UpdateVariable_Call {
 	return &ServiceInterfaceMock_UpdateVariable_Call{Call: _e.mock.On("UpdateVariable", ctx, name, request)}
 }
 

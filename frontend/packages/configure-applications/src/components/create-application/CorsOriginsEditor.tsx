@@ -76,7 +76,7 @@ export default function CorsOriginsEditor({rows, onRowsChange}: CorsOriginsEdito
 
   return (
     <FormControl fullWidth>
-      <FormLabel>{t('applications:onboarding.configure.details.corsOrigins.title', 'CORS Allowed Origins')}</FormLabel>
+      <FormLabel>{t('applications:onboarding.configure.details.corsOrigins.title', 'CORS allowed origins')}</FormLabel>
       <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 2}}>
         {t(
           'applications:onboarding.configure.details.corsOrigins.description',
@@ -104,7 +104,7 @@ export default function CorsOriginsEditor({rows, onRowsChange}: CorsOriginsEdito
             typeLabel={t('settings:cors.type.label', 'Entry type')}
             originOptionLabel={t('settings:cors.type.origin', 'Origin')}
             regexOptionLabel={t('settings:cors.type.regex', 'Regex')}
-            removeLabel={t('applications:onboarding.configure.details.corsOrigins.removeOrigin', 'Remove Origin')}
+            removeLabel={t('applications:onboarding.configure.details.corsOrigins.removeOrigin', 'Remove origin')}
             onTypeChange={(type) => {
               setTouched((prev) => ({...prev, [row.id]: true}));
               updateRow(row.id, {type});
@@ -123,7 +123,7 @@ export default function CorsOriginsEditor({rows, onRowsChange}: CorsOriginsEdito
             startIcon={<Plus />}
             onClick={() => onRowsChange([...displayRows, createRow(AllowedOriginTypes.ORIGIN)])}
           >
-            {t('applications:onboarding.configure.details.corsOrigins.addOrigin', 'Add Origin')}
+            {t('applications:onboarding.configure.details.corsOrigins.addOrigin', 'Add origin')}
           </Button>
         </Box>
       </Stack>

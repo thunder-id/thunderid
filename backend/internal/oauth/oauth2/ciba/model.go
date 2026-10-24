@@ -43,6 +43,8 @@ type CIBAAuthRequest struct {
 	SessionID        string
 	LastPolledAt     time.Time
 	ExpiryTime       time.Time
+	// AuthorizedAt is when the request was marked authenticated, which a reused session's AuthTime predates.
+	AuthorizedAt time.Time
 }
 
 // BackchannelAuthResponse represents the response body for a successful backchannel authentication request.

@@ -138,3 +138,17 @@ func (suite *HierarchyEnumeratorTestSuite) TestAllOUIDsCoversEveryTree() {
 	assert.ElementsMatch(suite.T(), []string{"root-a", "root-b", "child"}, got,
 		"every root and everything beneath it belongs to the deployment")
 }
+
+// RootOUIDs lists the top unit of every tree and walks nothing beneath them.
+func (suite *HierarchyEnumeratorTestSuite) TestRootOUIDsListsOnlyTheRoots() {
+	mockStore := newOrganizationUnitStoreInterfaceMock(suite.T())
+	mockStore.On("GetOrganizationUnitList", mock.Anything, hierarchyPageSize, 0, mock.Anything).
+		Return(basics("root-a", "root-b"), nil).Once()
+
+	got, svcErr := newOUHierarchyEnumerator(mockStore).RootOUIDs(context.Background())
+
+	require.Nil(suite.T(), svcErr)
+	assert.ElementsMatch(suite.T(), []string{"root-a", "root-b"}, got)
+	mockStore.AssertNotCalled(suite.T(), "GetOrganizationUnitChildrenList",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}

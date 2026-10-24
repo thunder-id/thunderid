@@ -124,3 +124,44 @@ inboundAuthConfig:
 		})
 	}
 }
+
+// A control plane exports an address list as a list of one reference. The variable it names holds this
+// deployment's addresses as a JSON list, and import writes them as the application's items.
+func (s *ApplicationImportExportSuite) TestImportExpandsAListVariableIntoRedirectURIs() {
+	prefix := "APP_LIST_REF_" + s.handleSuffix
+	defer s.storeValue("variables", prefix+"_CLIENT_ID", "app-list-ref-client-"+s.handleSuffix)()
+	defer s.storeValue("secrets", prefix+"_CLIENT_SECRET", "app-list-ref-secret-"+s.handleSuffix)()
+	defer s.storeValue("variables", prefix+"_REDIRECT_URIS",
+		`["https://one.list-ref.test/callback","https://two.list-ref.test/callback"]`)()
+
+	importResp, err := s.importApps(appImportRequest{
+		Content: fmt.Sprintf(`resource_type: application
+name: App List Ref %s
+type: fullstack
+ouId: %s
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: var:%s_CLIENT_ID
+      clientSecret: sec:%s_CLIENT_SECRET
+      redirectUris:
+        - var:%s_REDIRECT_URIS
+      grantTypes:
+        - authorization_code
+      responseTypes:
+        - code
+      tokenEndpointAuthMethod: client_secret_basic
+`, s.handleSuffix, s.ouID, prefix, prefix, prefix),
+		Options: appImportOptions{Upsert: true, ContinueOnError: false, Target: "runtime"},
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(1, importResp.Summary.Imported, "import results: %+v", importResp.Results)
+	defer func() { _ = deleteApplication(importResp.Results[0].ResourceID) }()
+
+	app, err := getApplicationByID(importResp.Results[0].ResourceID)
+	s.Require().NoError(err)
+	s.Require().Len(app.InboundAuthConfig, 1)
+	s.Require().NotNil(app.InboundAuthConfig[0].OAuthAppConfig)
+	s.Equal([]string{"https://one.list-ref.test/callback", "https://two.list-ref.test/callback"},
+		app.InboundAuthConfig[0].OAuthAppConfig.RedirectURIs)
+}

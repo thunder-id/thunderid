@@ -45,7 +45,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/contexts')>();
   return {
     ...actual,
-    useConfig: () => ({getServerUrl: () => 'http://localhost:8090'}),
+    useConfig: () => ({getServerUrl: () => 'http://localhost:8090', config: {brand: {product_name: 'ThunderID'}}}),
     useToast: () => ({showToast: vi.fn()}),
   };
 });
@@ -283,6 +283,12 @@ describe('ResourceServerEditPage', () => {
     expect(screen.getByText('Dark Dodos Smash')).toBeInTheDocument();
   });
 
+  it('sets the document title to the resource server name', async () => {
+    renderWithProviders(<ResourceServerEditPage />);
+
+    await waitFor(() => expect(document.title).toBe('Dark Dodos Smash | ThunderID'));
+  });
+
   it('does not render a resource server handle chip', () => {
     renderWithProviders(<ResourceServerEditPage />);
 
@@ -316,7 +322,7 @@ describe('ResourceServerEditPage', () => {
 
     fireEvent.click(screen.getByRole('tab', {name: 'Advanced'}));
 
-    expect(screen.getByText('Danger Zone')).toBeInTheDocument();
+    expect(screen.getByText('Danger zone')).toBeInTheDocument();
   });
 
   it('renders the delete button inside the Danger Zone', () => {
@@ -339,7 +345,7 @@ describe('ResourceServerEditPage', () => {
 
     fireEvent.click(screen.getByRole('tab', {name: 'Advanced'}));
 
-    expect(screen.queryByText('Danger Zone')).not.toBeInTheDocument();
+    expect(screen.queryByText('Danger zone')).not.toBeInTheDocument();
   });
 
   it('renders the read-only info alert for a read-only server', () => {

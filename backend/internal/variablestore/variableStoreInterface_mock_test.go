@@ -16,10 +16,19 @@ func newVariableStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *variableStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &variableStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -62,7 +71,7 @@ type variableStoreInterfaceMock_DeleteVariable_Call struct {
 // DeleteVariable is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *variableStoreInterfaceMock_Expecter) DeleteVariable(ctx interface{}, name interface{}) *variableStoreInterfaceMock_DeleteVariable_Call {
+func (_e *variableStoreInterfaceMock_Expecter) DeleteVariable(ctx any, name any) *variableStoreInterfaceMock_DeleteVariable_Call {
 	return &variableStoreInterfaceMock_DeleteVariable_Call{Call: _e.mock.On("DeleteVariable", ctx, name)}
 }
 
@@ -130,7 +139,7 @@ type variableStoreInterfaceMock_GetVariable_Call struct {
 // GetVariable is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *variableStoreInterfaceMock_Expecter) GetVariable(ctx interface{}, name interface{}) *variableStoreInterfaceMock_GetVariable_Call {
+func (_e *variableStoreInterfaceMock_Expecter) GetVariable(ctx any, name any) *variableStoreInterfaceMock_GetVariable_Call {
 	return &variableStoreInterfaceMock_GetVariable_Call{Call: _e.mock.On("GetVariable", ctx, name)}
 }
 
@@ -196,7 +205,7 @@ type variableStoreInterfaceMock_InsertVariable_Call struct {
 // InsertVariable is a helper method to define mock.On call
 //   - ctx context.Context
 //   - v Variable
-func (_e *variableStoreInterfaceMock_Expecter) InsertVariable(ctx interface{}, v interface{}) *variableStoreInterfaceMock_InsertVariable_Call {
+func (_e *variableStoreInterfaceMock_Expecter) InsertVariable(ctx any, v any) *variableStoreInterfaceMock_InsertVariable_Call {
 	return &variableStoreInterfaceMock_InsertVariable_Call{Call: _e.mock.On("InsertVariable", ctx, v)}
 }
 
@@ -270,7 +279,7 @@ type variableStoreInterfaceMock_ListVariables_Call struct {
 // ListVariables is a helper method to define mock.On call
 //   - ctx context.Context
 //   - q listQuery
-func (_e *variableStoreInterfaceMock_Expecter) ListVariables(ctx interface{}, q interface{}) *variableStoreInterfaceMock_ListVariables_Call {
+func (_e *variableStoreInterfaceMock_Expecter) ListVariables(ctx any, q any) *variableStoreInterfaceMock_ListVariables_Call {
 	return &variableStoreInterfaceMock_ListVariables_Call{Call: _e.mock.On("ListVariables", ctx, q)}
 }
 
@@ -336,7 +345,7 @@ type variableStoreInterfaceMock_UpsertVariable_Call struct {
 // UpsertVariable is a helper method to define mock.On call
 //   - ctx context.Context
 //   - v Variable
-func (_e *variableStoreInterfaceMock_Expecter) UpsertVariable(ctx interface{}, v interface{}) *variableStoreInterfaceMock_UpsertVariable_Call {
+func (_e *variableStoreInterfaceMock_Expecter) UpsertVariable(ctx any, v any) *variableStoreInterfaceMock_UpsertVariable_Call {
 	return &variableStoreInterfaceMock_UpsertVariable_Call{Call: _e.mock.On("UpsertVariable", ctx, v)}
 }
 

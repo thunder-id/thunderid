@@ -98,15 +98,14 @@ type ActorProvider interface {
 // AgentMgtProvider provisions agents on behalf of runtime capabilities. The rules and semantics of an
 // agent remain owned by the agent management service; this exposes only what the runtime needs.
 type AgentMgtProvider interface {
-	// CreateAgent provisions the supplied agent, deriving its inbound auth profile and OAuth client
-	// configuration. Redirect URIs are the one OAuth value a caller may supply; any other
-	// authentication field left unset is the provider's to fill. Delegated is separate because it
-	// selects the authentication shape rather than describing the agent.
+	// CreateAgent provisions the supplied agent through the agent management service, which applies
+	// its OAuth defaults and validates the agent. Agent.Delegated selects the grant types the agent
+	// is given and allowed.
 	//
 	// The returned agent carries the generated identifier and, on InboundAuthConfig, the generated
 	// client credentials. Fields the agent service does not echo come back zero, so the result is
 	// not a full round-trip. Owner falls back to the authenticated caller when unset.
-	CreateAgent(ctx context.Context, agent *Agent, delegated bool) (*Agent, *common.ServiceError)
+	CreateAgent(ctx context.Context, agent *Agent) (*Agent, *common.ServiceError)
 }
 
 // UserMgtProvider provisions users on behalf of runtime capabilities. The rules and semantics of a
@@ -332,4 +331,38 @@ type RuntimeCryptoProvider interface {
 
 	// GetSupportedEncryptionAlgorithms returns the list of algorithms supported by Encrypt and Decrypt.
 	GetSupportedEncryptionAlgorithms() []string
+}
+
+// IdentityGovernanceProvider checks access, records granted activity, and applies lifecycle operations.
+type IdentityGovernanceProvider interface {
+	// EvaluateAccess reports whether the identity may be used at the plane and authentication method;
+	// a refusal names its hold in the decision. An empty or unknown entityID is admitted. An error
+	// means the provider could not decide, and the caller must refuse.
+	EvaluateAccess(ctx context.Context, entityID string, plane AccessPlane,
+		method AuthenticationMethod) (AccessDecision, *common.ServiceError)
+
+	// AdmitSignIn is EvaluateAccess at AccessPlaneSession for a completing sign-in. When it admits, it
+	// also clears a lapsed entity-wide failure record.
+	AdmitSignIn(ctx context.Context, entityID string) (AccessDecision, *common.ServiceError)
+
+	// RecordLogin stamps when the identity was last granted access. Callers do not fail the grant on
+	// its error.
+	RecordLogin(ctx context.Context, entityID string) *common.ServiceError
+
+	// Unlock releases every automatic lock. It does not release a suspension.
+	Unlock(ctx context.Context, entityID string) *common.ServiceError
+
+	// Suspend places an administrative hold. It writes state only, so the caller composes revocation,
+	// and writes nothing for an identity already suspended. operatorNote is optional, at most 100
+	// characters, and never disclosed.
+	Suspend(ctx context.Context, entityID, operatorNote string) *common.ServiceError
+
+	// ValidateSuspend checks that the caller may suspend the identity with operatorNote, and writes
+	// nothing. An identity already suspended passes.
+	ValidateSuspend(ctx context.Context, entityID, operatorNote string) *common.ServiceError
+
+	// Unsuspend releases the hold. A user is left with a non-expiring entity-wide lock, which a
+	// recovery or an unlock clears; an agent keeps any automatic lock still in force, and an
+	// application becomes active.
+	Unsuspend(ctx context.Context, entityID string) *common.ServiceError
 }

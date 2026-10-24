@@ -48,17 +48,6 @@ func newTestAgent() *providers.Agent {
 	}
 }
 
-// withRedirectURIs attaches the one OAuth value a caller may supply, the way the flow executor does.
-func withRedirectURIs(agent *providers.Agent, uris ...string) *providers.Agent {
-	agent.InboundAuthConfig = []providers.InboundAuthConfigWithSecret{
-		{
-			Type:        providers.OAuthInboundAuthType,
-			OAuthConfig: &providers.OAuthConfigWithSecret{RedirectURIs: uris},
-		},
-	}
-	return agent
-}
-
 // captureCreatedAgent stubs the agent service and returns a pointer to the agent it was handed, so a
 // test can assert on the configuration the provider derived.
 func (suite *DefaultAgentMgtProviderTestSuite) captureCreatedAgent() **providers.Agent {
@@ -71,114 +60,6 @@ func (suite *DefaultAgentMgtProviderTestSuite) captureCreatedAgent() **providers
 	return captured
 }
 
-// oauthConfigOf returns the single OAuth config the provider is expected to attach.
-func (suite *DefaultAgentMgtProviderTestSuite) oauthConfigOf(a *providers.Agent) *providers.OAuthConfigWithSecret {
-	suite.Require().NotNil(a)
-	suite.Require().Len(a.InboundAuthConfig, 1)
-	suite.Equal(providers.OAuthInboundAuthType, a.InboundAuthConfig[0].Type)
-	suite.Require().NotNil(a.InboundAuthConfig[0].OAuthConfig)
-	return a.InboundAuthConfig[0].OAuthConfig
-}
-
-// An agent acting on its own behalf authenticates with client credentials only. The inbound client
-// service rejects response types on a client-credentials-only client, so this shape is the only
-// legal one for a non-delegated agent.
-func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentDerivesOwnBehalfOAuthConfig() {
-	captured := suite.captureCreatedAgent()
-
-	_, svcErr := suite.provider.CreateAgent(context.Background(), newTestAgent(), false)
-
-	suite.Nil(svcErr)
-	config := suite.oauthConfigOf(*captured)
-	suite.Equal([]providers.GrantType{providers.GrantTypeClientCredentials}, config.GrantTypes)
-	suite.Empty(config.ResponseTypes)
-	suite.Empty(config.RedirectURIs)
-	suite.False(config.PKCERequired)
-	suite.False(config.PublicClient)
-	suite.Equal(providers.TokenEndpointAuthMethodClientSecretBasic, config.TokenEndpointAuthMethod)
-	suite.Empty((*captured).AllowedUserTypes)
-}
-
-// An agent with no logo would draw as nothing in a listing, so one is supplied. The console's
-// create wizard set the same avatar before this moved to the provider.
-func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentSuppliesALogoWhenNoneIsGiven() {
-	captured := suite.captureCreatedAgent()
-
-	_, svcErr := suite.provider.CreateAgent(context.Background(), newTestAgent(), false)
-
-	suite.Nil(svcErr)
-	suite.Equal(defaultAgentLogoURL, (*captured).LogoURL)
-}
-
-// A caller that chose a logo keeps it.
-func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentKeepsACallerSuppliedLogo() {
-	captured := suite.captureCreatedAgent()
-	agent := newTestAgent()
-	agent.LogoURL = "https://example.com/logo.png"
-
-	_, svcErr := suite.provider.CreateAgent(context.Background(), agent, false)
-
-	suite.Nil(svcErr)
-	suite.Equal("https://example.com/logo.png", (*captured).LogoURL)
-}
-
-// A delegated agent signs a user in, which the inbound client service only accepts with the
-// authorization code grant, the code response type and at least one redirect URI.
-func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentDerivesDelegatedOAuthConfig() {
-	req := withRedirectURIs(newTestAgent(), "https://app.example.com/callback")
-	req.AllowedUserTypes = []string{"customer"}
-
-	captured := suite.captureCreatedAgent()
-
-	_, svcErr := suite.provider.CreateAgent(context.Background(), req, true)
-
-	suite.Nil(svcErr)
-	config := suite.oauthConfigOf(*captured)
-	suite.Equal([]providers.GrantType{
-		providers.GrantTypeClientCredentials,
-		providers.GrantTypeAuthorizationCode,
-		providers.GrantTypeRefreshToken,
-	}, config.GrantTypes)
-	suite.Equal([]providers.ResponseType{providers.ResponseTypeCode}, config.ResponseTypes)
-	suite.Equal([]string{"https://app.example.com/callback"}, config.RedirectURIs)
-	suite.True(config.PKCERequired)
-	suite.False(config.PublicClient)
-	suite.Equal(providers.TokenEndpointAuthMethodClientSecretBasic, config.TokenEndpointAuthMethod)
-	suite.Equal(req.AllowedUserTypes, (*captured).AllowedUserTypes)
-}
-
-// Token settings and flow identifiers are left unset so the inbound client service applies the
-// organization unit and server defaults. Sending them would pin a new agent to whatever the
-// provider happened to hardcode.
-func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentLeavesTokenAndFlowDefaultsToTheService() {
-	captured := suite.captureCreatedAgent()
-
-	_, svcErr := suite.provider.CreateAgent(context.Background(), newTestAgent(), false)
-
-	suite.Nil(svcErr)
-	suite.Nil(suite.oauthConfigOf(*captured).Token)
-	suite.Empty((*captured).AuthFlowID)
-	suite.Empty((*captured).RegistrationFlowID)
-	suite.Empty((*captured).RecoveryFlowID)
-	suite.Empty((*captured).SignOutFlowID)
-}
-
-// Allowed user types describe who an agent may act for, which is meaningless without delegation.
-// Honoring them anyway would give a client-credentials-only agent user-facing configuration.
-func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentIgnoresAllowedUserTypesWhenNotDelegated() {
-	req := newTestAgent()
-	req.AllowedUserTypes = []string{"customer"}
-
-	captured := suite.captureCreatedAgent()
-
-	_, svcErr := suite.provider.CreateAgent(context.Background(), req, false)
-
-	suite.Nil(svcErr)
-	suite.Empty((*captured).AllowedUserTypes)
-}
-
-// The entity data the caller collected must reach the agent service untouched; only the
-// authentication configuration is the provider's to decide.
 func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentPassesEntityDataThrough() {
 	req := &providers.Agent{
 		OUID:        "ou-id-abc",
@@ -191,7 +72,7 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentPassesEntityDataTh
 
 	captured := suite.captureCreatedAgent()
 
-	_, svcErr := suite.provider.CreateAgent(context.Background(), req, false)
+	_, svcErr := suite.provider.CreateAgent(context.Background(), req)
 
 	suite.Nil(svcErr)
 	suite.Equal(req.OUID, (*captured).OUID)
@@ -202,77 +83,33 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentPassesEntityDataTh
 	suite.Equal(req.Attributes, (*captured).Attributes)
 }
 
-// A delegated agent that names no redirect URI is forwarded with none. The provider substitutes
-// nothing and reports no error; supplying one is the caller's business.
-func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentDelegatedWithoutRedirectURIsGetsNone() {
-	captured := suite.captureCreatedAgent()
-
-	_, svcErr := suite.provider.CreateAgent(context.Background(), newTestAgent(), true)
-
-	suite.Nil(svcErr)
-	suite.Empty(suite.oauthConfigOf(*captured).RedirectURIs)
-}
-
-// Likewise the allowed user types: an unnamed list stays empty rather than being filled in.
-func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentDelegatedWithoutUserTypesGetsNone() {
-	captured := suite.captureCreatedAgent()
-
-	_, svcErr := suite.provider.CreateAgent(context.Background(), newTestAgent(), true)
-
-	suite.Nil(svcErr)
-	suite.Empty((*captured).AllowedUserTypes)
-}
-
-// A non-delegated agent has no authorization code grant, so it gets no redirect URI at all.
-func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentNotDelegatedGetsNoRedirectURI() {
-	captured := suite.captureCreatedAgent()
-
-	_, svcErr := suite.provider.CreateAgent(context.Background(), newTestAgent(), false)
-
-	suite.Nil(svcErr)
-	suite.Empty(suite.oauthConfigOf(*captured).RedirectURIs)
-}
-
-// Redirect URIs are the one OAuth value a caller may supply. Everything else it left on the inbound
-// auth config is discarded, because the shape the inbound client service accepts is not the
-// caller's to choose.
-func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentKeepsOnlyCallerRedirectURIs() {
+func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentForwardsTheAgentUnchanged() {
 	req := newTestAgent()
+	req.Delegated = true
+	req.AuthFlowID = "login-flow-1"
+	req.AllowedUserTypes = []string{"employee"}
 	req.InboundAuthConfig = []providers.InboundAuthConfigWithSecret{
 		{
 			Type: providers.OAuthInboundAuthType,
 			OAuthConfig: &providers.OAuthConfigWithSecret{
-				RedirectURIs:            []string{"https://app.example.com/cb"},
-				GrantTypes:              []providers.GrantType{providers.GrantTypeTokenExchange},
-				TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodNone,
-				PKCERequired:            false,
+				RedirectURIs: []string{"https://app.example.com/callback"},
+				GrantTypes:   []providers.GrantType{providers.GrantTypeAuthorizationCode},
 			},
 		},
 	}
-
 	captured := suite.captureCreatedAgent()
 
-	_, svcErr := suite.provider.CreateAgent(context.Background(), req, true)
+	_, svcErr := suite.provider.CreateAgent(context.Background(), req)
 
 	suite.Nil(svcErr)
-	config := suite.oauthConfigOf(*captured)
-	suite.Equal([]string{"https://app.example.com/cb"}, config.RedirectURIs, "the caller's URIs are kept")
-	suite.NotContains(config.GrantTypes, providers.GrantTypeTokenExchange,
-		"a grant type the caller asked for is discarded")
-	suite.Equal(providers.TokenEndpointAuthMethodClientSecretBasic, config.TokenEndpointAuthMethod)
-	suite.True(config.PKCERequired)
-}
-
-// The caller's value must not be altered underneath it, so the provider derives onto a copy.
-func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentDoesNotMutateTheCallersAgent() {
-	req := newTestAgent()
-	suite.captureCreatedAgent()
-
-	_, svcErr := suite.provider.CreateAgent(context.Background(), req, true)
-
-	suite.Nil(svcErr)
-	suite.Empty(req.InboundAuthConfig, "the caller's agent still carries no derived configuration")
-	suite.Empty(req.AllowedUserTypes)
+	suite.Same(req, *captured, "defaults and grant rules belong to the agent service")
+	suite.True((*captured).Delegated)
+	suite.Equal("login-flow-1", (*captured).AuthFlowID)
+	suite.Equal([]string{"employee"}, (*captured).AllowedUserTypes)
+	suite.Empty((*captured).LogoURL, "the provider supplies no default logo")
+	suite.Len((*captured).InboundAuthConfig, 1)
+	suite.Equal([]providers.GrantType{providers.GrantTypeAuthorizationCode},
+		(*captured).InboundAuthConfig[0].OAuthConfig.GrantTypes)
 }
 
 // With neither an explicit owner nor an authenticated subject there is nothing to own the agent.
@@ -286,7 +123,7 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentWithoutOwnerIsForw
 
 	captured := suite.captureCreatedAgent()
 
-	_, svcErr := suite.provider.CreateAgent(context.Background(), req, false)
+	_, svcErr := suite.provider.CreateAgent(context.Background(), req)
 
 	suite.Nil(svcErr)
 	suite.Empty((*captured).Owner)
@@ -297,14 +134,14 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentWithoutOwnerIsForw
 func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentPassesOwnerExplicitly() {
 	captured := suite.captureCreatedAgent()
 
-	_, svcErr := suite.provider.CreateAgent(context.Background(), newTestAgent(), false)
+	_, svcErr := suite.provider.CreateAgent(context.Background(), newTestAgent())
 
 	suite.Nil(svcErr)
 	suite.Equal(testAgentOwner, (*captured).Owner)
 }
 
 func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentWithNilRequestIsRejectedBeforeDelegation() {
-	resp, svcErr := suite.provider.CreateAgent(context.Background(), nil, false)
+	resp, svcErr := suite.provider.CreateAgent(context.Background(), nil)
 
 	suite.Nil(resp)
 	suite.NotNil(svcErr)
@@ -317,7 +154,7 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentWithNilRequestIsRe
 func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentBeforeAgentServiceIsInjected() {
 	provider := newDefaultAgentMgtProvider()
 
-	resp, svcErr := provider.CreateAgent(context.Background(), newTestAgent(), false)
+	resp, svcErr := provider.CreateAgent(context.Background(), newTestAgent())
 
 	suite.Nil(resp)
 	suite.NotNil(svcErr)
@@ -373,7 +210,7 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentPreservesServiceEr
 			mockService.On("CreateAgent", mock.Anything, mock.Anything).
 				Return(nil, tt.svcErr).Once()
 
-			resp, svcErr := provider.CreateAgent(context.Background(), newTestAgent(), false)
+			resp, svcErr := provider.CreateAgent(context.Background(), newTestAgent())
 
 			suite.Nil(resp)
 			suite.NotNil(svcErr, tt.scenario)
@@ -389,7 +226,7 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentPreservesServerErr
 	suite.mockService.On("CreateAgent", mock.Anything, mock.Anything).
 		Return(nil, &tidcommon.InternalServerError).Once()
 
-	resp, svcErr := suite.provider.CreateAgent(context.Background(), newTestAgent(), false)
+	resp, svcErr := suite.provider.CreateAgent(context.Background(), newTestAgent())
 
 	suite.Nil(resp)
 	suite.NotNil(svcErr)
@@ -412,7 +249,7 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentElevatesCallerCont
 		}).
 		Return(&model.AgentCompleteResponse{ID: testAgentID}, nil).Once()
 
-	_, svcErr := suite.provider.CreateAgent(callerCtx, newTestAgent(), false)
+	_, svcErr := suite.provider.CreateAgent(callerCtx, newTestAgent())
 
 	suite.Nil(svcErr)
 	suite.True(security.IsRuntimeContext(observed))
@@ -434,7 +271,7 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentReturnsGeneratedCl
 			}},
 		}, nil).Once()
 
-	resp, svcErr := suite.provider.CreateAgent(context.Background(), newTestAgent(), false)
+	resp, svcErr := suite.provider.CreateAgent(context.Background(), newTestAgent())
 
 	suite.Nil(svcErr)
 	suite.Require().Len(resp.InboundAuthConfig, 1)
@@ -449,7 +286,7 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentHandlesEmptyServic
 	suite.mockService.On("CreateAgent", mock.Anything, mock.Anything).
 		Return(nil, nil).Once()
 
-	resp, svcErr := suite.provider.CreateAgent(context.Background(), newTestAgent(), false)
+	resp, svcErr := suite.provider.CreateAgent(context.Background(), newTestAgent())
 
 	suite.Nil(svcErr)
 	suite.Nil(resp)
@@ -494,7 +331,7 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentMapsEveryResponseF
 
 	suite.mockService.On("CreateAgent", mock.Anything, mock.Anything).Return(full, nil).Once()
 
-	resp, svcErr := suite.provider.CreateAgent(context.Background(), newTestAgent(), false)
+	resp, svcErr := suite.provider.CreateAgent(context.Background(), newTestAgent())
 
 	suite.Nil(svcErr)
 	suite.Equal(full.ID, resp.ID)

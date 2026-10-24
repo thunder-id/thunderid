@@ -160,7 +160,7 @@ describe('StackAdapter', () => {
     });
 
     it('should not show a slot placeholder when items is 1 and there are no children', () => {
-      // A flex stack has no slot structure to convey, and the "Add Component" button
+      // A flex stack has no slot structure to convey, and the "Add component" button
       // already fills the empty state.
       const resource = createMockElement({items: 1, direction: 'row', components: []});
 
@@ -316,8 +316,8 @@ describe('StackAdapter', () => {
       render(<StackAdapter resource={resource} stepId="step-1" />);
 
       const firstActions = screen.getByTestId('extra-actions-child-1');
-      expect(firstActions.querySelector('[data-testid="handle-Move Right"]')).toBeInTheDocument();
-      expect(firstActions.querySelector('[data-testid="handle-Move Left"]')).not.toBeInTheDocument();
+      expect(firstActions.querySelector('[data-testid="handle-Move right"]')).toBeInTheDocument();
+      expect(firstActions.querySelector('[data-testid="handle-Move left"]')).not.toBeInTheDocument();
     });
 
     it('should show Move Left but not Move Right for last element', () => {
@@ -329,8 +329,8 @@ describe('StackAdapter', () => {
       render(<StackAdapter resource={resource} stepId="step-1" />);
 
       const lastActions = screen.getByTestId('extra-actions-child-2');
-      expect(lastActions.querySelector('[data-testid="handle-Move Left"]')).toBeInTheDocument();
-      expect(lastActions.querySelector('[data-testid="handle-Move Right"]')).not.toBeInTheDocument();
+      expect(lastActions.querySelector('[data-testid="handle-Move left"]')).toBeInTheDocument();
+      expect(lastActions.querySelector('[data-testid="handle-Move right"]')).not.toBeInTheDocument();
     });
 
     it('should show both Move Left and Move Right for middle element', () => {
@@ -342,8 +342,8 @@ describe('StackAdapter', () => {
       render(<StackAdapter resource={resource} stepId="step-1" />);
 
       const middleActions = screen.getByTestId('extra-actions-child-2');
-      expect(middleActions.querySelector('[data-testid="handle-Move Left"]')).toBeInTheDocument();
-      expect(middleActions.querySelector('[data-testid="handle-Move Right"]')).toBeInTheDocument();
+      expect(middleActions.querySelector('[data-testid="handle-Move left"]')).toBeInTheDocument();
+      expect(middleActions.querySelector('[data-testid="handle-Move right"]')).toBeInTheDocument();
     });
   });
 
@@ -357,8 +357,8 @@ describe('StackAdapter', () => {
       render(<StackAdapter resource={resource} stepId="step-1" />);
 
       const firstActions = screen.getByTestId('extra-actions-child-1');
-      expect(firstActions.querySelector('[data-testid="handle-Move Down"]')).toBeInTheDocument();
-      expect(firstActions.querySelector('[data-testid="handle-Move Up"]')).not.toBeInTheDocument();
+      expect(firstActions.querySelector('[data-testid="handle-Move down"]')).toBeInTheDocument();
+      expect(firstActions.querySelector('[data-testid="handle-Move up"]')).not.toBeInTheDocument();
     });
 
     it('should show Move Up but not Move Down for last element', () => {
@@ -370,8 +370,8 @@ describe('StackAdapter', () => {
       render(<StackAdapter resource={resource} stepId="step-1" />);
 
       const lastActions = screen.getByTestId('extra-actions-child-2');
-      expect(lastActions.querySelector('[data-testid="handle-Move Up"]')).toBeInTheDocument();
-      expect(lastActions.querySelector('[data-testid="handle-Move Down"]')).not.toBeInTheDocument();
+      expect(lastActions.querySelector('[data-testid="handle-Move up"]')).toBeInTheDocument();
+      expect(lastActions.querySelector('[data-testid="handle-Move down"]')).not.toBeInTheDocument();
     });
   });
 
@@ -384,7 +384,7 @@ describe('StackAdapter', () => {
 
       render(<StackAdapter resource={resource} stepId="step-1" />);
 
-      const moveRightButton = screen.getByTestId('handle-Move Right');
+      const moveRightButton = screen.getByTestId('handle-Move right');
       fireEvent.click(moveRightButton);
 
       expect(mockUpdateNodeData).toHaveBeenCalledWith('step-1', expect.any(Function));
@@ -398,7 +398,7 @@ describe('StackAdapter', () => {
 
       render(<StackAdapter resource={resource} stepId="step-1" />);
 
-      const moveLeftButton = screen.getByTestId('handle-Move Left');
+      const moveLeftButton = screen.getByTestId('handle-Move left');
       fireEvent.click(moveLeftButton);
 
       expect(mockUpdateNodeData).toHaveBeenCalledWith('step-1', expect.any(Function));
@@ -416,7 +416,7 @@ describe('StackAdapter', () => {
       render(<StackAdapter resource={resource} stepId="step-1" />);
 
       // Click Move Right on first child
-      fireEvent.click(screen.getByTestId('handle-Move Right'));
+      fireEvent.click(screen.getByTestId('handle-Move right'));
 
       expect(mockUpdateNodeData).toHaveBeenCalledWith('step-1', expect.any(Function));
 
@@ -449,7 +449,7 @@ describe('StackAdapter', () => {
 
       render(<StackAdapter resource={resource} stepId="step-1" />);
 
-      fireEvent.click(screen.getByTestId('handle-Move Right'));
+      fireEvent.click(screen.getByTestId('handle-Move right'));
 
       const updateFn = mockUpdateNodeData.mock.calls[0][1] as (node: {data: unknown}) => unknown;
       // Pass node data where the stack has different children
@@ -481,7 +481,7 @@ describe('StackAdapter', () => {
 
       render(<StackAdapter resource={resource} stepId="step-1" />);
 
-      fireEvent.click(screen.getByTestId('handle-Move Right'));
+      fireEvent.click(screen.getByTestId('handle-Move right'));
 
       const updateFn = mockUpdateNodeData.mock.calls[0][1] as (node: {data: unknown}) => unknown;
       // Stack is nested inside a parent element
@@ -532,8 +532,8 @@ describe('StackAdapter', () => {
       render(<StackAdapter resource={resource} stepId="step-1" />);
 
       // Should use row direction by default — Move Right for first, Move Left for last
-      expect(screen.getByTestId('handle-Move Right')).toBeInTheDocument();
-      expect(screen.getByTestId('handle-Move Left')).toBeInTheDocument();
+      expect(screen.getByTestId('handle-Move right')).toBeInTheDocument();
+      expect(screen.getByTestId('handle-Move left')).toBeInTheDocument();
     });
   });
 

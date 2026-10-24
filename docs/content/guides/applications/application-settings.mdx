@@ -12,24 +12,24 @@ This guide explains how to configure an application from the <ProductName /> Con
 
 ## Find Your Client ID
 
-The **Application ID** and **Client ID** are shown on the application's General tab under **Quick Copy**. Use the copy button to grab them quickly.
+The **Application ID** and **Client ID** are shown on the application's General tab under **Quick copy**. Use the copy button to grab them quickly.
 
 - **Application ID** - the internal <ProductName /> identifier for this application.
 - **Client ID** - the OAuth 2.0 identifier your SDK or client configuration needs.
 
 ## Control Who Can Register
 
-Under **Access** on the General tab, you can configure which users can register with this application and provide the application's URL and redirect URIs. The **Allowed User Types**, **Agent Sign-In**, and **Authorized Redirect URIs** settings apply to applications that let users sign in and are hidden for applications that use only the `client_credentials` grant.
+Under **Access** on the General tab, you can configure which users can register with this application and provide the application's URL and redirect URIs. The **Allowed user types**, **Agent sign-in**, and **Authorized redirect URIs** settings apply to applications that let users sign in and are hidden for applications that use only the `client_credentials` grant.
 
 | Setting | Description |
 |---------|-------------|
-| **Allowed User Types** | Restricts self-service registration to users of the selected types. If none are selected, self-service registration is unavailable for this application. This setting does not block existing users from signing in. |
-| **Agent Sign-In** | Controls whether agents can sign in to this application. Turn it on to let agents sign in, and leave it off to block every agent. This setting does not affect users. |
+| **Allowed user types** | Restricts self-service registration to users of the selected types. If none are selected, self-service registration is unavailable for this application. This setting does not block existing users from signing in. |
+| **Agent sign-in** | Controls whether agents can sign in to this application. Turn it on to let agents sign in, and leave it off to block every agent. This setting does not affect users. |
 | **Application URL** | The homepage URL of your application. |
-| **Authorized Redirect URIs** | The URLs <ProductName /> sends users back to after authentication. Register every URI your application uses.
+| **Authorized redirect URIs** | The URLs <ProductName /> sends users back to after authentication. Register every URI your application uses.
 
 :::note
-When first-time users sign in with a social identity provider, your application must allow exactly one user type with **Allow Self Registration** enabled. Sign-in fails if none or more than one of the allowed user types has this setting enabled. Existing users are unaffected. See [Connect an IdP to an Application](../../identity-providers/connect-idp-to-application).
+When first-time users sign in with a social identity provider, your application must allow exactly one user type with **Allow self registration** enabled. Sign-in fails if none or more than one of the allowed user types has this setting enabled. Existing users are unaffected. See [Connect an IdP to an Application](../../identity-providers/connect-idp-to-application).
 :::
 
 ## Use Wildcard Redirect URIs
@@ -55,7 +55,7 @@ On the **Flows** tab, choose the flows that drive sign-in, sign-up, and password
 
 **Registration Flow** - toggle the switch to enable or disable self-registration. When enabled, select a flow that defines what information users must provide to create an account.
 
-**Recovery Flow** - toggle the switch to enable or disable password recovery. When enabled, select a flow that guides users through the password reset process.
+**Recovery flow** - toggle the switch to enable or disable password recovery. When enabled, select a flow that guides users through the password reset process.
 
 ## Customize the Appearance
 
@@ -63,9 +63,9 @@ On the **Customization** tab, control how your application looks and what legal 
 
 | Setting | Description |
 |---------|-------------|
-| **Theme** | The visual theme applied to authentication pages. Select **Default Theme** to use the shared deployment theme, or pick an application-specific theme. |
-| **Terms of Service URI** | Displayed to users during consent, sign-in, sign-up, or recovery flows. When set, it must be a valid URI; otherwise the update is rejected with `Invalid Terms of Service URI` (`APP-1040`). |
-| **Privacy Policy URI** | Displayed to users during consent, sign-in, sign-up, or recovery flows. When set, it must be a valid URI; otherwise the update is rejected with `Invalid Privacy Policy URI` (`APP-1041`). |
+| **Theme** | The visual theme applied to authentication pages. Select **Default theme** to use the shared deployment theme, or pick an application-specific theme. |
+| **Terms of service URI** | Displayed to users during consent, sign-in, sign-up, or recovery flows. When set, it must be a valid URI; otherwise the update is rejected with `Invalid Terms of Service URI` (`APP-1040`). |
+| **Privacy policy URI** | Displayed to users during consent, sign-in, sign-up, or recovery flows. When set, it must be a valid URI; otherwise the update is rejected with `Invalid Privacy Policy URI` (`APP-1041`). |
 | **Contacts** | Administrator email addresses for this application. Separate multiple addresses with commas. |
 
 ## Configure What Goes Into Tokens
@@ -85,26 +85,26 @@ Each sub-tab stays read-only until its grant type is enabled on the Advanced tab
 
 On the **User** sub-tab, choose which user attributes each token carries, how long tokens stay valid, and the response format for ID tokens and userinfo.
 
-**Access Token**: select the user attributes to include in the access token payload. Default attributes (`sub`, `iss`, `exp`, and others) are always included and cannot be removed. Set **Token Validity** in seconds (for example, `3600` for one hour).
+**Access token**: select the user attributes to include in the access token payload. Default attributes (`sub`, `iss`, `exp`, and others) are always included and cannot be removed. Set **Token validity** in seconds (for example, `3600` for one hour).
 
-**ID Token**: select the user attributes to include. Only attributes covered by the requested scopes are returned. Set **Token Validity** in seconds.
+**ID token**: select the user attributes to include. Only attributes covered by the requested scopes are returned. Set **Token validity** in seconds.
 
 You can also configure the ID token response format via the API. These settings are not available in the Console.
 
 | Setting | Description |
 |---------|-------------|
-| **Response Type** | `JWT` (signed only, default), `JWE` (encrypted), or `NESTED_JWT` (signed then encrypted). |
-| **Encryption Algorithm** | Key-management algorithm. Required for `JWE` and `NESTED_JWT`. Options: `RSA-OAEP`, `RSA-OAEP-256`. Requires an OAuth client certificate. |
+| **Response type** | `JWT` (signed only, default), `JWE` (encrypted), or `NESTED_JWT` (signed then encrypted). |
+| **Encryption algorithm** | Key-management algorithm. Required for `JWE` and `NESTED_JWT`. Options: `RSA-OAEP`, `RSA-OAEP-256`. Requires an OAuth client certificate. |
 | **Encryption Encoding** | Content-encryption algorithm. Required when Encryption Algorithm is set. Options: `A128CBC-HS256`, `A256GCM`. |
 
 **User Info**: configure what the `/userinfo` endpoint returns. User attributes are configurable from the Console. Response format settings are available via the API only.
 
 | Setting | Description |
 |---------|-------------|
-| **User Attributes** | Attributes returned by the `/userinfo` endpoint. Enable **Use same attributes as ID Token** to mirror your ID token selection, or define a separate set. |
-| **Response Type** | `JSON` (default), `JWS` (signed), `JWE` (encrypted), or `NESTED_JWT` (signed then encrypted). |
+| **User attributes** | Attributes returned by the `/userinfo` endpoint. Enable **Use same attributes as ID token** to mirror your ID token selection, or define a separate set. |
+| **Response type** | `JSON` (default), `JWS` (signed), `JWE` (encrypted), or `NESTED_JWT` (signed then encrypted). |
 | **Signing Algorithm** | Required for `JWS` and `NESTED_JWT`. Options: `RS256`, `RS512`, `PS256`, `ES256`, `ES384`, `ES512`, `EdDSA`. Requires an OAuth client certificate. |
-| **Encryption Algorithm** | Required for `JWE` and `NESTED_JWT`. Options: `RSA-OAEP`, `RSA-OAEP-256`. Requires an OAuth client certificate. |
+| **Encryption algorithm** | Required for `JWE` and `NESTED_JWT`. Options: `RSA-OAEP`, `RSA-OAEP-256`. Requires an OAuth client certificate. |
 | **Encryption Encoding** | Required when Encryption Algorithm is set. Options: `A128CBC-HS256`, `A256GCM`. |
 
 ### Application Token
@@ -113,7 +113,7 @@ On the **Application** sub-tab, configure the access token the application recei
 
 **Claims**: add the application's own claims to the token. The available claims are `groups`, `roles`, and the organization unit claims `ouHandle`, `ouId`, and `ouName`. Default claims (`sub`, `iss`, `exp`, and others) are always included and cannot be removed.
 
-**Token Validity**: set how long this token stays valid, in seconds, independently of the user access token.
+**Token validity**: set how long this token stays valid, in seconds, independently of the user access token.
 
 ## Rotate the Client Secret
 
@@ -121,7 +121,7 @@ On the **Application** sub-tab, configure the access token the application recei
 Client secrets are only present on confidential clients: Full-stack App and Backend Service application types, and MCP Client or Custom App applications configured as confidential. This section does not apply to public clients such as Browser App, Mobile App, or an MCP Client or Custom App configured as public.
 :::
 
-If you need to invalidate the current client secret, open the General tab and click **Regenerate Client Secret** in the **Danger Zone**.
+If you need to invalidate the current client secret, open the General tab and click **Regenerate client secret** in the **Danger zone**.
 
 :::warning
 The current client secret is immediately invalidated. Any running clients using the old secret will lose access. Refresh tokens issued before the rotation are rejected, so their users must sign in again. Update your application configuration right away.
@@ -136,11 +136,11 @@ This section applies to OAuth 2.0 / OIDC applications only.
 The **Advanced** tab shows the OAuth 2.0 settings configured at creation.
 | Setting | Description |
 |---------|-------------|
-| **Grant Types** | The OAuth 2.0 flows this application can use. Supported values: `authorization_code`, `refresh_token`, `client_credentials`, `urn:ietf:params:oauth:grant-type:token-exchange`, `urn:ietf:params:oauth:grant-type:jwt-bearer`. Whether this application can initiate flows directly via `POST /flow/execute` depends on its [application type](../manage-applications#application-types) and, for Full-stack, Custom, and MCP Client applications, its grant configuration. See [Direct Initiation Restriction](../../key-concepts/authentication/integration-models.mdx#app-native) for the full rule. |
-| **Response Types** | The response types the application can request (for example, `code`). |
-| **Client Authentication Method** | How the application authenticates at <ProductName />'s client-authenticated endpoints (token, introspection, revocation, PAR, and CIBA): `client_secret_basic` (default), `client_secret_post`, `private_key_jwt`, or `none` (public clients). See [Client Authentication Methods](../../protocols/oauth-oidc/client-authentication-methods). |
-| **Public Client** | Whether this is a public client that cannot securely store a client secret. |
-| **PKCE Required** | Whether the application must send a `code_challenge` in every authorization request. Always `Yes` for public clients. |
+| **Grant types** | The OAuth 2.0 flows this application can use. Supported values: `authorization_code`, `refresh_token`, `client_credentials`, `urn:ietf:params:oauth:grant-type:token-exchange`, `urn:ietf:params:oauth:grant-type:jwt-bearer`. Whether this application can initiate flows directly via `POST /flow/execute` depends on its [application type](../manage-applications#application-types) and, for Full-stack, Custom, and MCP Client applications, its grant configuration. See [Direct Initiation Restriction](../../key-concepts/authentication/integration-models.mdx#app-native) for the full rule. |
+| **Response types** | The response types the application can request (for example, `code`). |
+| **Client authentication method** | How the application authenticates at <ProductName />'s client-authenticated endpoints (token, introspection, revocation, PAR, and CIBA): `client_secret_basic` (default), `client_secret_post`, `private_key_jwt`, or `none` (public clients). See [Client Authentication Methods](../../protocols/oauth-oidc/client-authentication-methods). |
+| **Public client** | Whether this is a public client that cannot securely store a client secret. |
+| **PKCE required** | Whether the application must send a `code_challenge` in every authorization request. Always `Yes` for public clients. |
 
 You can also attach a **Certificate** for client authentication (`private_key_jwt`) or token/userinfo encryption.
 
@@ -162,9 +162,9 @@ Configure the Android platform under the `attestation.android` block:
 
 | Setting | Description |
 |---------|-------------|
-| **Package Name** | The Android application package name (for example, `com.example.myapp`) that must match the attested app. |
-| **Signing Certificate SHA-256 Digests** | One or more allowed signing certificate digests, in the URL-safe base64 form reported by Play Integrity. The attested app must match one of these. |
-| **Service Account Credentials** | The Google Cloud service account JSON used to call the Play Integrity API. It is **write-only**: <ProductName /> never returns it in responses, and leaving it blank when editing keeps the stored value. |
+| **Package name** | The Android application package name (for example, `com.example.myapp`) that must match the attested app. |
+| **Signing certificate SHA-256 digests** | One or more allowed signing certificate digests, in the URL-safe base64 form reported by Play Integrity. The attested app must match one of these. |
+| **Service account credentials** | The Google Cloud service account JSON used to call the Play Integrity API. It is **write-only**: <ProductName /> never returns it in responses, and leaving it blank when editing keeps the stored value. |
 
 :::note
 The service account credentials are stored encrypted and never returned. For an app managed declaratively, set the `serviceAccountCredentials` field in the `attestation.android` block. On update, omit it to preserve the previously stored value.
@@ -196,10 +196,10 @@ attestation:
 
 ### Dev Mode
 
-Configuring `attestation.android` or `attestation.apple` requires a signed build with the exact package name, signing certificate, or bundle identifier registered above. A sample application or a local development build usually cannot produce a valid attestation. **Dev Mode** lets a Mobile application initiate a flow directly without presenting an attestation token, regardless of whether an Android or iOS platform is configured. Enable it from the toggle in the **Platform Attestation** card header, or set `attestation.devMode` to `true` in a declarative resource. **Dev Mode** is disabled by default.
+Configuring `attestation.android` or `attestation.apple` requires a signed build with the exact package name, signing certificate, or bundle identifier registered above. A sample application or a local development build usually cannot produce a valid attestation. **Dev mode** lets a Mobile application initiate a flow directly without presenting an attestation token, regardless of whether an Android or iOS platform is configured. Enable it from the toggle in the **Platform attestation** card header, or set `attestation.devMode` to `true` in a declarative resource. **Dev mode** is disabled by default.
 
 :::warning
-**Dev Mode** skips the platform-attestation check only when this application initiates a flow directly. It does not affect any other application operation. Use it only for testing, or to try out a sample or development client. Disable it before the application goes to production.
+**Dev mode** skips the platform-attestation check only when this application initiates a flow directly. It does not affect any other application operation. Use it only for testing, or to try out a sample or development client. Disable it before the application goes to production.
 :::
 
 ## Related Guides

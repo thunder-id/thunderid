@@ -19,10 +19,19 @@ func NewGraphBuilderInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *GraphBuilderInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &GraphBuilderInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +87,7 @@ type GraphBuilderInterfaceMock_GetGraph_Call struct {
 // GetGraph is a helper method to define mock.On call
 //   - ctx context.Context
 //   - flow *providers.CompleteFlowDefinition
-func (_e *GraphBuilderInterfaceMock_Expecter) GetGraph(ctx interface{}, flow interface{}) *GraphBuilderInterfaceMock_GetGraph_Call {
+func (_e *GraphBuilderInterfaceMock_Expecter) GetGraph(ctx any, flow any) *GraphBuilderInterfaceMock_GetGraph_Call {
 	return &GraphBuilderInterfaceMock_GetGraph_Call{Call: _e.mock.On("GetGraph", ctx, flow)}
 }
 
@@ -124,7 +133,7 @@ type GraphBuilderInterfaceMock_InvalidateCache_Call struct {
 // InvalidateCache is a helper method to define mock.On call
 //   - ctx context.Context
 //   - flowID string
-func (_e *GraphBuilderInterfaceMock_Expecter) InvalidateCache(ctx interface{}, flowID interface{}) *GraphBuilderInterfaceMock_InvalidateCache_Call {
+func (_e *GraphBuilderInterfaceMock_Expecter) InvalidateCache(ctx any, flowID any) *GraphBuilderInterfaceMock_InvalidateCache_Call {
 	return &GraphBuilderInterfaceMock_InvalidateCache_Call{Call: _e.mock.On("InvalidateCache", ctx, flowID)}
 }
 
@@ -183,7 +192,7 @@ type GraphBuilderInterfaceMock_ValidateGraph_Call struct {
 // ValidateGraph is a helper method to define mock.On call
 //   - ctx context.Context
 //   - flow *providers.CompleteFlowDefinition
-func (_e *GraphBuilderInterfaceMock_Expecter) ValidateGraph(ctx interface{}, flow interface{}) *GraphBuilderInterfaceMock_ValidateGraph_Call {
+func (_e *GraphBuilderInterfaceMock_Expecter) ValidateGraph(ctx any, flow any) *GraphBuilderInterfaceMock_ValidateGraph_Call {
 	return &GraphBuilderInterfaceMock_ValidateGraph_Call{Call: _e.mock.On("ValidateGraph", ctx, flow)}
 }
 

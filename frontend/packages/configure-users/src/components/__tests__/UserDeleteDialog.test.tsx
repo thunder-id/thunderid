@@ -15,7 +15,6 @@ vi.mock('react-i18next', () => ({
         'delete.message': 'Are you sure you want to delete this user?',
         'delete.disclaimer': 'All associated data will be permanently removed.',
         'delete.usages.loading': 'Checking affected resources…',
-        'delete.usages.none': 'No agents currently list this user as their owner.',
         'delete.usages.title': 'The following agents list this user as their owner:',
         'common:actions.cancel': 'Cancel',
         'common:actions.delete': 'Delete',
@@ -146,7 +145,7 @@ describe('UserDeleteDialog', () => {
       expect(screen.getByText('+2 more')).toBeInTheDocument();
     });
 
-    it('should show a "no usages" alert when there are none', () => {
+    it('should omit the usages alert and allow deletion when there are no associated agents', () => {
       getUsagesMock.mockReturnValue({
         data: {totalResults: 0, count: 0, summary: {}, usages: []},
         isLoading: false,
@@ -154,7 +153,8 @@ describe('UserDeleteDialog', () => {
 
       render(<UserDeleteDialog open userId="user-123" onClose={mockOnClose} />);
 
-      expect(screen.getByText('No agents currently list this user as their owner.')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Delete'})).toBeEnabled();
     });
 
     it('should fall back to the disclaimer when usage data is unknown', () => {

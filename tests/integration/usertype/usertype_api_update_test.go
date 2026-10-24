@@ -564,3 +564,50 @@ func (ts *UpdateUserTypeTestSuite) sendJSON(method, path string, body interface{
 	}
 	return resp.StatusCode, respBody
 }
+
+// TestUpdateUserTypePrimaryContact tests changing the primary email to another email attribute.
+func (ts *UpdateUserTypeTestSuite) TestUpdateUserTypePrimaryContact() {
+	schema := json.RawMessage(`{"workEmail": {"type": "email"}, "recoveryEmail": {"type": "email"}}`)
+	schemaID := ts.createTestSchema(CreateUserTypeRequest{
+		Handle:           "update-primary-contact",
+		DisplayName:      "Update Primary Contact",
+		SystemAttributes: &SystemAttributes{PrimaryEmail: "workEmail"},
+		Schema:           schema,
+	})
+	defer ts.deleteTestSchema(schemaID)
+
+	status, body := ts.sendJSON(http.MethodPut, "/user-types/"+schemaID, UpdateUserTypeRequest{
+		DisplayName:      "Update Primary Contact",
+		OUID:             ts.oUID,
+		SystemAttributes: &SystemAttributes{PrimaryEmail: "recoveryEmail"},
+		Schema:           schema,
+	})
+	ts.Require().Equal(http.StatusOK, status, string(body))
+
+	var updated UserType
+	ts.Require().NoError(json.Unmarshal(body, &updated))
+	ts.Equal(&SystemAttributes{PrimaryEmail: "recoveryEmail"}, updated.SystemAttributes)
+}
+
+// TestUpdateUserTypeContactTypeChangeInvalidatesPrimary tests that changing the primary
+// attribute's type away from email is rejected.
+func (ts *UpdateUserTypeTestSuite) TestUpdateUserTypeContactTypeChangeInvalidatesPrimary() {
+	schemaID := ts.createTestSchema(CreateUserTypeRequest{
+		Handle:      "update-primary-type-change",
+		DisplayName: "Update Primary Type Change",
+		Schema:      json.RawMessage(`{"workEmail": {"type": "email"}}`),
+	})
+	defer ts.deleteTestSchema(schemaID)
+
+	status, body := ts.sendJSON(http.MethodPut, "/user-types/"+schemaID, UpdateUserTypeRequest{
+		DisplayName:      "Update Primary Type Change",
+		OUID:             ts.oUID,
+		SystemAttributes: &SystemAttributes{PrimaryEmail: "workEmail"},
+		Schema:           json.RawMessage(`{"workEmail": {"type": "string"}}`),
+	})
+	ts.Require().Equal(http.StatusBadRequest, status, string(body))
+
+	var errResp ErrorResponse
+	ts.Require().NoError(json.Unmarshal(body, &errResp))
+	ts.Equal("USRS-1019", errResp.Code)
+}

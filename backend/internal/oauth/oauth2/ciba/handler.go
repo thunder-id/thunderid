@@ -89,7 +89,7 @@ func (h *cibaHandler) HandleBackchannelAuthRequest(w http.ResponseWriter, r *htt
 		BindingMessage:  r.FormValue(oauth2const.RequestParamBindingMessage),
 		RequestedExpiry: r.FormValue(oauth2const.RequestParamRequestedExpiry),
 		ACRValues:       r.FormValue(oauth2const.RequestParamAcrValues),
-		Headers:         utils.SanitizeRawMultiValueStringMap(r.Header),
+		Headers:         utils.SanitizeRawMultiValueStringMap(utils.HeadersWithHost(r)),
 		QueryParams:     utils.SanitizeRawMultiValueStringMap(r.URL.Query()),
 	}
 

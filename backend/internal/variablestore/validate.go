@@ -4,12 +4,14 @@
 package variablestore
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/system/filter"
+	"github.com/thunder-id/thunderid/internal/system/valueref"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -39,6 +41,9 @@ func validateValue(value string) *common.ServiceError {
 	if len(value) > maxValueLength {
 		return &ErrorInvalidValue
 	}
+	if isReference(value) {
+		return &ErrorReferenceValue
+	}
 	return nil
 }
 
@@ -48,7 +53,39 @@ func validateSecretValue(value string) *common.ServiceError {
 	if value == "" || len(value) > maxValueLength {
 		return &ErrorInvalidValue
 	}
+	if isReference(value) {
+		return &ErrorReferenceValue
+	}
 	return nil
+}
+
+// isReference reports whether a value is a reference rather than a value: `var:NAME` or `sec:NAME`
+// itself, or a list of strings, as a list's variable holds one, with such an item in it. A list
+// holding anything but strings is not a list's value and is left as any other text is.
+//
+// The store holds what a reference stands for, so a reference stored as a value can only come from a
+// caller that copied a placeholder where the value should have been. Resolving it would hand the
+// placeholder to a resource, or, when it names the variable it is stored under, resolve without end.
+func isReference(value string) bool {
+	if valueref.IsWellFormedReference(value) {
+		return true
+	}
+	if !strings.HasPrefix(strings.TrimSpace(value), "[") {
+		return false
+	}
+	var items []interface{}
+	if err := json.Unmarshal([]byte(value), &items); err != nil {
+		return false
+	}
+	found := false
+	for _, item := range items {
+		text, isText := item.(string)
+		if !isText {
+			return false
+		}
+		found = found || valueref.IsWellFormedReference(text)
+	}
+	return found
 }
 
 func validateDescription(description string) *common.ServiceError {

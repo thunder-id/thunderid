@@ -63,6 +63,12 @@ describe('RolesListPage', () => {
     expect(screen.getByTestId('roles-list')).toBeInTheDocument();
   });
 
+  it('should set the document title', async () => {
+    render(<RolesListPage />);
+
+    await waitFor(() => expect(document.title).toBe('Roles | ThunderID'));
+  });
+
   it('should render the Add Role button', () => {
     render(<RolesListPage />);
 

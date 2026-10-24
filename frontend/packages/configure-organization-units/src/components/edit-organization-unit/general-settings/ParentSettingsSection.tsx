@@ -94,7 +94,7 @@ export default function ParentSettingsSection({organizationUnit}: ParentSettings
         id="parent-ou-input"
         value={organizationUnit.parent}
         inputProps={{
-          'aria-label': t('organizationUnits:edit.general.ou.parent.label', 'Parent Organization Unit'),
+          'aria-label': t('organizationUnits:edit.general.ou.parent.label', 'Parent organization unit'),
         }}
         InputProps={{
           readOnly: true,
@@ -111,7 +111,7 @@ export default function ParentSettingsSection({organizationUnit}: ParentSettings
 
   return (
     <SettingsCard
-      title={t('organizationUnits:edit.general.sections.parentOUSettings.title', 'Parent Organization Unit')}
+      title={t('organizationUnits:edit.general.sections.parentOUSettings.title', 'Parent organization unit')}
       description={t(
         'organizationUnits:edit.general.sections.parentOUSettings.description',
         'The parent organization unit in the hierarchy.',

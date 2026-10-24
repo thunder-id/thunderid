@@ -31,6 +31,7 @@ import ApplicationConstants from '../../../constants/application-constants';
 import type {Application} from '../../../models/application';
 import {InboundAuthTypes} from '../../../models/inbound-auth';
 import type {OAuth2Config} from '../../../models/oauth';
+import {OAuth2GrantTypes} from '../../../models/oauth';
 import validateMcpRedirectUri from '../../../utils/validateMcpRedirectUri';
 
 /**
@@ -129,7 +130,7 @@ export default function McpAccessSection({
     onFieldChange('allowedAgentTypes', enabled ? [ApplicationConstants.DEFAULT_AGENT_TYPE_HANDLE] : []);
   };
 
-  const agentSignInLabel = t('applications:edit.access.agentSignIn.toggle.label', 'Enable Agent Sign-In');
+  const agentSignInLabel = t('applications:edit.access.agentSignIn.toggle.label', 'Enable agent sign-in');
 
   const clientUriSchema = z.object({
     url: z
@@ -154,6 +155,9 @@ export default function McpAccessSection({
 
   const [redirectUris, setRedirectUris] = useState<string[]>(() => oauth2Config?.redirectUris ?? []);
   const [uriErrors, setUriErrors] = useState<Record<number, string>>({});
+  // Redirect URIs only serve the authorization code flow, so a client without that grant (e.g. one
+  // that only redeems assertions with the JWT bearer grant) can be saved without one.
+  const isRedirectUriRequired = (oauth2Config?.grantTypes ?? []).includes(OAuth2GrantTypes.AUTHORIZATION_CODE);
 
   // An empty list renders as a bare "Add" button with no field to type into, which reads as
   // broken rather than "nothing added yet". Show one empty row by default instead; typing into it
@@ -191,8 +195,9 @@ export default function McpAccessSection({
   const handleUriBlur = (index: number): void => {
     const uri = redirectUris[index];
     const result = validateMcpRedirectUri(uri);
+    const isOptionalBlank = !isRedirectUriRequired && !uri?.trim();
 
-    if (result.valid) {
+    if (result.valid || isOptionalBlank) {
       setUriErrors((prev) => {
         const newErrors = {...prev};
         delete newErrors[index];
@@ -238,10 +243,12 @@ export default function McpAccessSection({
 
   useEffect(() => {
     const nonEmptyUris = redirectUris.filter((uri) => uri.trim() !== '');
-    const redirectUrisValid = nonEmptyUris.length > 0 && nonEmptyUris.every((uri) => validateMcpRedirectUri(uri).valid);
+    const redirectUrisValid =
+      (!isRedirectUriRequired || nonEmptyUris.length > 0) &&
+      nonEmptyUris.every((uri) => validateMcpRedirectUri(uri).valid);
     const clientUriValid = !errors.url;
     onValidationChange?.(!(redirectUrisValid && clientUriValid));
-  }, [redirectUris, errors.url, onValidationChange]);
+  }, [redirectUris, isRedirectUriRequired, errors.url, onValidationChange]);
 
   return (
     <SettingsCard
@@ -254,7 +261,7 @@ export default function McpAccessSection({
       <Stack spacing={3}>
         <FormControl fullWidth>
           <FormLabel htmlFor="mcp-allowed-user-types-autocomplete">
-            {t('applications:edit.general.labels.allowedUserTypes', 'Allowed User Types')}
+            {t('applications:edit.general.labels.allowedUserTypes', 'Allowed user types')}
           </FormLabel>
           <Autocomplete
             multiple
@@ -338,15 +345,20 @@ export default function McpAccessSection({
           />
         </FormControl>
 
-        <FormControl fullWidth required>
+        <FormControl fullWidth required={isRedirectUriRequired}>
           <FormLabel htmlFor="mcp-redirect-uris-section">
             {t('applications:edit.general.redirectUris.title', 'Authorized redirect URIs')}
           </FormLabel>
           <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 2}}>
-            {t(
-              'applications:onboarding.mcp.connection.redirectUris.hint',
-              'Each URI must be a loopback address (http://localhost or http://127.0.0.1) or use HTTPS. At least one is required.',
-            )}
+            {isRedirectUriRequired
+              ? t(
+                  'applications:onboarding.mcp.connection.redirectUris.hint',
+                  'Each URI must be a loopback address (http://localhost or http://127.0.0.1) or use HTTPS. At least one is required.',
+                )
+              : t(
+                  'applications:edit.mcp.connect.redirectUris.optionalHint',
+                  'Each URI must be a loopback address (http://localhost or http://127.0.0.1) or use HTTPS. Needed only for the authorization code grant.',
+                )}
           </Typography>
 
           <Stack spacing={2} id="mcp-redirect-uris-section">
@@ -354,7 +366,7 @@ export default function McpAccessSection({
               // IMPORTANT: Do not remove the suppression since it affects functionality.
               // eslint-disable-next-line react/no-array-index-key
               <Stack key={index} direction="row" spacing={1} alignItems="flex-start">
-                <FormControl fullWidth required sx={{flex: 1}}>
+                <FormControl fullWidth required={isRedirectUriRequired} sx={{flex: 1}}>
                   <TextField
                     fullWidth
                     id={`mcp-redirect-uri-${index}-input`}

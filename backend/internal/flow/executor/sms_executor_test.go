@@ -309,6 +309,31 @@ func (suite *SMSExecutorTestSuite) TestExecute_SendMode_InvalidPhoneNumber() {
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
+func (suite *SMSExecutorTestSuite) TestExecute_SendMode_SkipDelivery() {
+	ctx := &providers.NodeContext{
+		ExecutionID:  "test-flow-id",
+		ExecutorMode: ExecutorModeSend,
+		UserInputs: map[string]string{
+			common.AttributeMobileNumber: "+94714627887",
+		},
+		RuntimeData: map[string]string{
+			common.RuntimeKeySkipDelivery: dataValueTrue,
+		},
+		NodeProperties: map[string]interface{}{
+			propertyKeyNotificationSenderID: "sender-uuid-001",
+			propertyKeySMSTemplate:          smsSelfRegistrationProperty,
+		},
+	}
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal(dataValueTrue, resp.AdditionalData[common.DataSMSSent])
+	suite.mockSMSSenderSvc.AssertNotCalled(suite.T(), "SendMessage",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
 func (suite *SMSExecutorTestSuite) TestExecute_SendMode_NilSMSSenderService_ReturnsError() {
 	mockBaseExecutor := coremock.NewExecutorInterfaceMock(suite.T())
 	mockFactory := coremock.NewFlowFactoryInterfaceMock(suite.T())

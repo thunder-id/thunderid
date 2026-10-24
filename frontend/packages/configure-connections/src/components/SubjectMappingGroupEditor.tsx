@@ -141,7 +141,7 @@ export default function SubjectMappingGroupEditor({
       <Stack direction="column" spacing={1.5}>
         <Stack direction="row" spacing={1.5}>
           <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{flex: 1}}>
-            {t('subjectMapping.mappings.thunderIdAttribute', 'ThunderID Attribute')}
+            {t('subjectMapping.mappings.thunderIdAttribute', 'ThunderID attribute')}
           </Typography>
           <Box sx={{width: 40}} />
         </Stack>
@@ -177,7 +177,7 @@ export default function SubjectMappingGroupEditor({
                       placeholder={t('subjectMapping.mappings.thunderIdPlaceholder', 'e.g. email')}
                       inputProps={{
                         ...params.inputProps,
-                        'aria-label': t('subjectMapping.mappings.thunderIdAttribute', 'ThunderID Attribute'),
+                        'aria-label': t('subjectMapping.mappings.thunderIdAttribute', 'ThunderID attribute'),
                       }}
                       error={duplicateAttribute}
                       helperText={
@@ -196,7 +196,7 @@ export default function SubjectMappingGroupEditor({
                     fullWidth
                     sx={{width: 'calc(50% - 20px)'}}
                     id={`subject-mapping-pdp-attribute-${group.key}-${index + 1}`}
-                    label={t('subjectMapping.mappings.pdpAttribute', 'PDP Attribute')}
+                    label={t('subjectMapping.mappings.pdpAttribute', 'PDP attribute')}
                     value={row.pdpAttribute}
                     onChange={(event) => onUpdateRow(row.key, 'pdpAttribute', event.target.value)}
                   />
@@ -236,7 +236,7 @@ export default function SubjectMappingGroupEditor({
             disabled={lastRowIsEmpty}
             data-testid={`subject-mapping-add-${group.key}`}
           >
-            {t('subjectMapping.mappings.add', 'Add Mapping')}
+            {t('subjectMapping.mappings.add', 'Add mapping')}
           </Button>
         </Box>
       </Stack>

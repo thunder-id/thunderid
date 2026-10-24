@@ -44,7 +44,7 @@ describe('EditGeneralSettings', () => {
   it('should render organization unit section', () => {
     renderWithProviders(<EditGeneralSettings {...defaultProps} />);
 
-    expect(screen.getAllByText('Organization Unit').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Organization unit').length).toBeGreaterThan(0);
     expect(screen.getByDisplayValue('ou-123')).toBeInTheDocument();
   });
 

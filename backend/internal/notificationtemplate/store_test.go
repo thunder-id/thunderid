@@ -23,6 +23,7 @@ func (s *StoreTestSuite) TestBuildTemplateFromRow_EmailWithDesign() {
 		"id":           "1",
 		"channel":      string(ChannelTypeEmail),
 		"handle":       "otp-verification",
+		"ou_id":        "ou-1",
 		"display_name": "OTP Verification",
 		"description":  "desc",
 		"content":      `{"subject":"s.key","body":"<p>{{ctx(otp)}}</p>"}`,
@@ -34,6 +35,7 @@ func (s *StoreTestSuite) TestBuildTemplateFromRow_EmailWithDesign() {
 	s.Require().Equal("1", dao.ID)
 	s.Require().Equal(ChannelTypeEmail, dao.Channel)
 	s.Require().Equal("otp-verification", dao.Handle)
+	s.Require().Equal("ou-1", dao.OUID)
 	s.Require().Equal("OTP Verification", dao.DisplayName)
 	s.Require().Equal("desc", dao.Description)
 	s.Require().Equal("s.key", dao.Content.Subject)
@@ -48,6 +50,7 @@ func (s *StoreTestSuite) TestBuildTemplateFromRow_NoDesign_ByteContent() {
 		"id":           "2",
 		"channel":      string(ChannelTypeSMS),
 		"handle":       "otp",
+		"ou_id":        "ou-1",
 		"display_name": "OTP",
 		"description":  nil,
 		"content":      []byte(`{"body":"{{ctx(otp)}}"}`),
@@ -68,6 +71,7 @@ func (s *StoreTestSuite) TestBuildTemplateFromRow_Errors() {
 			"id":           "1",
 			"channel":      string(ChannelTypeEmail),
 			"handle":       "h",
+			"ou_id":        "ou-1",
 			"display_name": "D",
 			"content":      `{"body":"b"}`,
 		}
@@ -78,6 +82,7 @@ func (s *StoreTestSuite) TestBuildTemplateFromRow_Errors() {
 		"id wrong type":          func(r map[string]interface{}) { r["id"] = 123 },
 		"missing channel":        func(r map[string]interface{}) { delete(r, "channel") },
 		"missing handle":         func(r map[string]interface{}) { delete(r, "handle") },
+		"missing ou_id":          func(r map[string]interface{}) { delete(r, "ou_id") },
 		"missing display_name":   func(r map[string]interface{}) { delete(r, "display_name") },
 		"malformed content json": func(r map[string]interface{}) { r["content"] = `{not-json` },
 	}

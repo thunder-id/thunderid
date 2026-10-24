@@ -16,10 +16,19 @@ func newDefinitionStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *definitionStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &definitionStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -62,7 +71,7 @@ type definitionStoreInterfaceMock_CreatePresentationDefinition_Call struct {
 // CreatePresentationDefinition is a helper method to define mock.On call
 //   - ctx context.Context
 //   - dto PresentationDefinitionDTO
-func (_e *definitionStoreInterfaceMock_Expecter) CreatePresentationDefinition(ctx interface{}, dto interface{}) *definitionStoreInterfaceMock_CreatePresentationDefinition_Call {
+func (_e *definitionStoreInterfaceMock_Expecter) CreatePresentationDefinition(ctx any, dto any) *definitionStoreInterfaceMock_CreatePresentationDefinition_Call {
 	return &definitionStoreInterfaceMock_CreatePresentationDefinition_Call{Call: _e.mock.On("CreatePresentationDefinition", ctx, dto)}
 }
 
@@ -119,7 +128,7 @@ type definitionStoreInterfaceMock_DeletePresentationDefinition_Call struct {
 // DeletePresentationDefinition is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *definitionStoreInterfaceMock_Expecter) DeletePresentationDefinition(ctx interface{}, id interface{}) *definitionStoreInterfaceMock_DeletePresentationDefinition_Call {
+func (_e *definitionStoreInterfaceMock_Expecter) DeletePresentationDefinition(ctx any, id any) *definitionStoreInterfaceMock_DeletePresentationDefinition_Call {
 	return &definitionStoreInterfaceMock_DeletePresentationDefinition_Call{Call: _e.mock.On("DeletePresentationDefinition", ctx, id)}
 }
 
@@ -187,7 +196,7 @@ type definitionStoreInterfaceMock_GetPresentationDefinitionByHandle_Call struct 
 // GetPresentationDefinitionByHandle is a helper method to define mock.On call
 //   - ctx context.Context
 //   - handle string
-func (_e *definitionStoreInterfaceMock_Expecter) GetPresentationDefinitionByHandle(ctx interface{}, handle interface{}) *definitionStoreInterfaceMock_GetPresentationDefinitionByHandle_Call {
+func (_e *definitionStoreInterfaceMock_Expecter) GetPresentationDefinitionByHandle(ctx any, handle any) *definitionStoreInterfaceMock_GetPresentationDefinitionByHandle_Call {
 	return &definitionStoreInterfaceMock_GetPresentationDefinitionByHandle_Call{Call: _e.mock.On("GetPresentationDefinitionByHandle", ctx, handle)}
 }
 
@@ -255,7 +264,7 @@ type definitionStoreInterfaceMock_GetPresentationDefinitionByID_Call struct {
 // GetPresentationDefinitionByID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *definitionStoreInterfaceMock_Expecter) GetPresentationDefinitionByID(ctx interface{}, id interface{}) *definitionStoreInterfaceMock_GetPresentationDefinitionByID_Call {
+func (_e *definitionStoreInterfaceMock_Expecter) GetPresentationDefinitionByID(ctx any, id any) *definitionStoreInterfaceMock_GetPresentationDefinitionByID_Call {
 	return &definitionStoreInterfaceMock_GetPresentationDefinitionByID_Call{Call: _e.mock.On("GetPresentationDefinitionByID", ctx, id)}
 }
 
@@ -321,7 +330,7 @@ type definitionStoreInterfaceMock_IsPresentationDefinitionDeclarative_Call struc
 // IsPresentationDefinitionDeclarative is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *definitionStoreInterfaceMock_Expecter) IsPresentationDefinitionDeclarative(ctx interface{}, id interface{}) *definitionStoreInterfaceMock_IsPresentationDefinitionDeclarative_Call {
+func (_e *definitionStoreInterfaceMock_Expecter) IsPresentationDefinitionDeclarative(ctx any, id any) *definitionStoreInterfaceMock_IsPresentationDefinitionDeclarative_Call {
 	return &definitionStoreInterfaceMock_IsPresentationDefinitionDeclarative_Call{Call: _e.mock.On("IsPresentationDefinitionDeclarative", ctx, id)}
 }
 
@@ -388,7 +397,7 @@ type definitionStoreInterfaceMock_ListPresentationDefinitionSummaries_Call struc
 
 // ListPresentationDefinitionSummaries is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *definitionStoreInterfaceMock_Expecter) ListPresentationDefinitionSummaries(ctx interface{}) *definitionStoreInterfaceMock_ListPresentationDefinitionSummaries_Call {
+func (_e *definitionStoreInterfaceMock_Expecter) ListPresentationDefinitionSummaries(ctx any) *definitionStoreInterfaceMock_ListPresentationDefinitionSummaries_Call {
 	return &definitionStoreInterfaceMock_ListPresentationDefinitionSummaries_Call{Call: _e.mock.On("ListPresentationDefinitionSummaries", ctx)}
 }
 
@@ -450,7 +459,7 @@ type definitionStoreInterfaceMock_ListPresentationDefinitions_Call struct {
 
 // ListPresentationDefinitions is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *definitionStoreInterfaceMock_Expecter) ListPresentationDefinitions(ctx interface{}) *definitionStoreInterfaceMock_ListPresentationDefinitions_Call {
+func (_e *definitionStoreInterfaceMock_Expecter) ListPresentationDefinitions(ctx any) *definitionStoreInterfaceMock_ListPresentationDefinitions_Call {
 	return &definitionStoreInterfaceMock_ListPresentationDefinitions_Call{Call: _e.mock.On("ListPresentationDefinitions", ctx)}
 }
 
@@ -502,7 +511,7 @@ type definitionStoreInterfaceMock_UpdatePresentationDefinition_Call struct {
 // UpdatePresentationDefinition is a helper method to define mock.On call
 //   - ctx context.Context
 //   - dto PresentationDefinitionDTO
-func (_e *definitionStoreInterfaceMock_Expecter) UpdatePresentationDefinition(ctx interface{}, dto interface{}) *definitionStoreInterfaceMock_UpdatePresentationDefinition_Call {
+func (_e *definitionStoreInterfaceMock_Expecter) UpdatePresentationDefinition(ctx any, dto any) *definitionStoreInterfaceMock_UpdatePresentationDefinition_Call {
 	return &definitionStoreInterfaceMock_UpdatePresentationDefinition_Call{Call: _e.mock.On("UpdatePresentationDefinition", ctx, dto)}
 }
 

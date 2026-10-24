@@ -14,6 +14,12 @@ import (
 // maps onto ErrorInvalidAuthenticationType rather than a server fault.
 var errUnsupportedAuthenticationType = errors.New("unsupported authentication type")
 
+var errInvalidSMSGatewayAuthentication = errors.New("invalid SMS gateway authentication")
+
+// errInvalidHTTPAuthentication reports an HTTP connection payload whose authentication the request
+// mapping refuses, such as a password sent as the mask.
+var errInvalidHTTPAuthentication = errors.New("invalid HTTP connection authentication")
+
 // Client errors for connection operations.
 var (
 	// ErrorInvalidConnectionCategory is the error returned when the category query parameter
@@ -28,7 +34,7 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.connectionservice.invalid_category_description",
 			DefaultValue: "The category must be one of: identity-provider, sms-provider, " +
-				"authorization-pdp, email-provider",
+				"authorization-pdp, email-provider, http",
 		},
 	}
 	// ErrorInvalidLimit is the error returned when an invalid limit query parameter is provided.

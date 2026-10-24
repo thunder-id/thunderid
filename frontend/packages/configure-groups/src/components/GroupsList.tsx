@@ -78,7 +78,7 @@ export default function GroupsList(): JSX.Element {
       },
       {
         field: 'ouHandle',
-        headerName: t('groups:listing.columns.organizationUnit', 'Organization Unit'),
+        headerName: t('groups:listing.columns.organizationUnit', 'Organization unit'),
         flex: 1,
         minWidth: 200,
         renderCell: (params: DataGrid.GridRenderCellParams<GroupBasic>) => (
@@ -99,7 +99,7 @@ export default function GroupsList(): JSX.Element {
         renderCell: (params: DataGrid.GridRenderCellParams<GroupBasic>): JSX.Element => (
           <ListingTable.RowActions>
             {params.row.isReadOnly ? (
-              <Tooltip title={t('common:status.readOnly', 'Read Only')}>
+              <Tooltip title={t('common:status.readOnly', 'Read only')}>
                 <IconButton size="small" disableRipple sx={{cursor: 'default'}}>
                   <Eye size={16} />
                 </IconButton>

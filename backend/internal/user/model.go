@@ -33,6 +33,31 @@ type UserListResponse struct {
 	Links        []utils.Link     `json:"links"`
 }
 
+// accessibleOUScopeSiblings narrows the organization units a user can access to the current one and
+// those sharing its parent.
+const accessibleOUScopeSiblings = "siblings"
+
+// AccessibleOrganizationUnit is one organization unit the signed-in user can access.
+type AccessibleOrganizationUnit struct {
+	ID      string `json:"id"`
+	Handle  string `json:"handle"`
+	Name    string `json:"name"`
+	LogoURL string `json:"logoUrl,omitempty"`
+}
+
+// AccessibleOrganizationUnitListResponse is one page of the organization units the signed-in user
+// can access.
+type AccessibleOrganizationUnitListResponse struct {
+	// Current is the organization unit the list is relative to: the one the caller's token was
+	// issued for, or the user's own.
+	Current           string                       `json:"current"`
+	TotalResults      int                          `json:"totalResults"`
+	StartIndex        int                          `json:"startIndex"`
+	Count             int                          `json:"count"`
+	OrganizationUnits []AccessibleOrganizationUnit `json:"organizationUnits"`
+	Links             []utils.Link                 `json:"links"`
+}
+
 // UserGroup represents a group with basic information for user endpoints.
 type UserGroup struct {
 	ID   string `json:"id"`
@@ -82,7 +107,7 @@ type CreateUserByPathRequest struct {
 	Attributes json.RawMessage `json:"attributes,omitempty"`
 }
 
-// entityToUser converts an Entity to a User.
+// entityToUser converts an Entity to a User, without its access status.
 func entityToUser(e *providers.Entity) providers.User {
 	return providers.User{
 		ID:         e.ID,

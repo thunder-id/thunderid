@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen} from '@thunderid/test-utils';
+import {render, screen, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi} from 'vitest';
 import AcceptInvitePage from '../AcceptInvitePage';
 
@@ -25,5 +25,10 @@ describe('AcceptInvitePage', () => {
     render(<AcceptInvitePage />);
     const main = screen.getByRole('main');
     expect(main).toBeInTheDocument();
+  });
+
+  it('sets the document title', async () => {
+    render(<AcceptInvitePage />);
+    await waitFor(() => expect(document.title).toBe('Accept invite | ThunderID'));
   });
 });

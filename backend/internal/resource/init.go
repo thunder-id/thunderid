@@ -17,10 +17,14 @@ import (
 
 // Initialize initializes the resource service and registers its routes.
 // Returns the service interface and resource server exporter for declarative resource export functionality.
+//
+// valueCapturer is optional. Given one, the service hands it every resource server it creates or
+// changes, so the values the resource server's export refers to are kept where a reference finds them.
 func Initialize(
 	mux *http.ServeMux,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
+	valueCapturer declarativeresource.ValueCapturer,
 ) (ResourceServiceInterface, declarativeresource.ResourceExporter, error) {
 	// Initialize store and transactioner based on store mode
 	resourceStore, transactioner, err := initializeStore()
@@ -28,7 +32,8 @@ func Initialize(
 		return nil, nil, fmt.Errorf("failed to initialize resource store: %w", err)
 	}
 
-	resourceService, err := newResourceService(ouService, resourceStore, transactioner, authZENPDPService)
+	resourceService, err := newResourceService(ouService, resourceStore, transactioner, authZENPDPService,
+		valueCapturer)
 	if err != nil {
 		return nil, nil, err
 	}

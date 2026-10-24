@@ -18,6 +18,9 @@ docs:
 links:
   github: https://github.com/thunder-id/javascript-sdks
   package: https://www.npmjs.com/package/@thunderid/vue
+  samples: https://github.com/thunder-id/samples/tree/main/quickstarts/vue
+# Offers the quickstart's released zip at the top of the page, from the samples repo releases.
+sample: quickstarts/vue
 apiReference:
   source: typedoc
 
@@ -453,10 +456,13 @@ sections:
         type: string
         tag: optional
         description: Platform type. Use `'ThunderIDV2'` to enable V2 embedded flow features.
-      - name: syncSession
-        type: boolean
+      - name: session
+        type: SessionConfig
         tag: optional
-        description: Whether to sync sessions across tabs.
+        description: Behaviour around the {{ProductName}} session. Set `session.silentSignIn.beforeRedirect` to `true`
+          to try a silent sign-in before `signIn()` redirects. The silent attempt is skipped when the sign-in options
+          set their own `prompt`. `session.silentSignIn.timeout` (milliseconds, default `10000`) bounds how long a silent
+          sign-in waits.
       example: |-
         <template>
           <ThunderIDProvider

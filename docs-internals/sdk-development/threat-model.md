@@ -32,6 +32,8 @@ This model covers:
 - The redirect authorization request the SDK builds and the callback it processes.
 - The authorization code exchange and the storage of the resulting tokens.
 - Credential and factor submission in embedded mode.
+- A federated redirect step inside an embedded flow, and the callback the SDK resubmits to the
+  flow.
 - Attachment of access tokens to outbound application requests.
 - Sign-out, revocation, and clearing of local state.
 - Receipt of a back-channel logout token by an SDK that runs on a server, and the ending of the
@@ -458,6 +460,65 @@ sequenceDiagram
 | 10 | [Security Risk] | The SDK's session ends, but an access token already handed to a browser or another service keeps working until it expires | [Yes] | Ending the local session cannot recall a token in circulation. The server revokes the refresh token, so the window is the access token lifetime. Recorded as a residual |
 | 11 | [Security Risk] | A client configured for ID token encryption is sent an encrypted logout token the SDK cannot read, so its sessions are never ended | [Yes] | An SDK that cannot decrypt must document that back-channel logout is unsupported for such a client. Recorded as a residual |
 
+#### 07: Federated redirect inside an embedded flow
+
+**Description**
+
+An embedded flow can hand the user to an external identity provider. The flow execution
+endpoint returns a `REDIRECTION` step whose `redirectURL` carries a `state` the server issued.
+The SDK opens that URL in a browser session (`ASWebAuthenticationSession` on iOS, Custom Tabs
+on Android, a popup in a browser), captures the provider's callback, and resubmits its `code`
+and `state` to the flow with the step's `executionId` and challenge token. The response can be
+another `REDIRECTION`, for example when a federated sign-up leads into an account-linking
+verification that signs in at a provider again. The server always issues a `state`, and checks
+it only when the client sends one.
+
+**Assets involved**
+
+| Initiator | Intermediate | Target |
+| --- | --- | --- |
+| Flow execution endpoint | SDK flow driver, platform browser session, external identity provider | Flow execution endpoint |
+
+**Data flow**
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant S as SDK
+  participant F as Flow execution endpoint
+  participant B as Browser session
+  participant P as Identity provider
+  F->>S: REDIRECTION step, redirectURL with state
+  S->>B: open redirectURL
+  B->>P: authorize
+  P->>B: redirect to callback with code and state
+  B->>S: callback
+  S->>S: require code and state, compare with redirectURL state
+  S->>F: executionId, challenge token, code, state
+  F->>S: next step, another REDIRECTION, completion, or failure
+```
+
+**Security considerations**
+
+| Area | Response | Comments |
+| --- | --- | --- |
+| Data confidentiality | [C-High] | The provider's code is exchangeable by the server for the user's federated identity |
+| Communication medium | [M-NT] | |
+| Transport security | [TLS] | |
+| Authentication | The flow itself, and the provider's own sign-in | |
+| Accessibility | [Public] | On mobile, any installed app can open the callback scheme |
+| Authorization and Access Control | Server-side flow state machine and `state` validation | |
+
+**Threat assessment**
+
+| ID | Category | Threat | Materializable | Mitigation / comment |
+| --- | --- | --- | --- | --- |
+| 1 | [Spoofing] | Another app on the device opens the callback scheme with an authorization code for the attacker's provider account, so the flow continues as, or links the victim's account to, the attacker's identity | [No] | A mobile SDK compares the callback's `state` with the `state` in `redirectURL` and rejects a mismatch with `invalidGrant` before submitting anything (AC4.14). A browser SDK needs no comparison: it accepts a callback only from the popup it opened, either posted with the app's origin or read from the popup's same-origin URL |
+| 2 | [Spoofing] | A callback without a `state` is submitted. The server checks the state only when the client sends one, so the injected code is checked nowhere | [No] | No SDK submits a callback that lacks a `code` or a `state`, and a mobile SDK rejects every callback to a `redirectURL` that has no `state` or an empty one. The server always issues a state, so no genuine callback is rejected (AC4.13, AC4.14) |
+| 3 | [Tampering] | The SDK sends back the `state` from the callback rather than the one it compared, so a later change to the comparison silently lets a forged value through | [No] | A mobile SDK resubmits the `state` taken from `redirectURL` once the callback matched it |
+| 4 | [Denial of Service] | A `REDIRECTION` returned for a submitted callback is rendered as an empty step, so a federated sign-up that leads into account-linking verification cannot finish | [No] | The SDK follows every `REDIRECTION` step, including one returned for a callback it submitted, in sign-in and sign-up alike (AC4.15) |
+| 5 | [Information Disclosure] | The provider's authorization code, or the callback URL that carries it, reaches a log or a crash report, where a reader can redeem it before the flow does | [No] | Authorization codes and the callback URLs that carry them are never logged, at any level, and the rule applies before any caller-supplied logger. The same values are kept out of the error messages and crash reports the SDK produces |
+
 ## Security Review Checklist
 
 ### Security considerations
@@ -567,3 +628,4 @@ identifiers a user supplies during authentication and recovery.
 |---|---|---|
 | 0.1 | 2026-09-10 | Initial threat model. |
 | 0.2 | 2026-10-06 | Interaction 06 added for receiving a back-channel logout token in SDKs with a server runtime. |
+| 0.3 | 2026-10-12 | Interaction 07 added for a federated redirect inside an embedded flow. A callback without a `state` is never submitted, and mobile SDKs reject one that does not echo the request's `state`. Authorization codes, and callback URLs that carry one, are never logged. |

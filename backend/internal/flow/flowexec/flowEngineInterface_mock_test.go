@@ -15,10 +15,19 @@ func newFlowEngineInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *flowEngineInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &flowEngineInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -71,7 +80,7 @@ type flowEngineInterfaceMock_Execute_Call struct {
 
 // Execute is a helper method to define mock.On call
 //   - ctx *EngineContext
-func (_e *flowEngineInterfaceMock_Expecter) Execute(ctx interface{}) *flowEngineInterfaceMock_Execute_Call {
+func (_e *flowEngineInterfaceMock_Expecter) Execute(ctx any) *flowEngineInterfaceMock_Execute_Call {
 	return &flowEngineInterfaceMock_Execute_Call{Call: _e.mock.On("Execute", ctx)}
 }
 

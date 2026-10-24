@@ -31,8 +31,20 @@ func (suite *DisabledEntityProviderTestSuite) TestIdentifyEntity() {
 	suite.Equal(errNotImplemented, err)
 }
 
+func (suite *DisabledEntityProviderTestSuite) TestGetLinkedEntities() {
+	entities, err := suite.provider.GetLinkedEntities("idp-a", "sub-1")
+	suite.Nil(entities)
+	suite.Equal(errNotImplemented, err)
+}
+
 func (suite *DisabledEntityProviderTestSuite) TestGetEntity() {
 	e, err := suite.provider.GetEntity("entity-id")
+	suite.Nil(e)
+	suite.Equal(errNotImplemented, err)
+}
+
+func (suite *DisabledEntityProviderTestSuite) TestGetEntityProfile() {
+	e, err := suite.provider.GetEntityProfile("entity-id")
 	suite.Nil(e)
 	suite.Equal(errNotImplemented, err)
 }

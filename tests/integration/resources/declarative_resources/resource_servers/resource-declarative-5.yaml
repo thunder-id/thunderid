@@ -1,0 +1,28 @@
+resource_type: resource_server
+id: decl-rs-5
+name: Declarative Repeated Action Resource Server
+description: A declarative test resource server that repeats a resource handle and an action handle under different parents
+identifier: https://localhost:8090/decl-rs-5
+ouId: decl-ou-1
+delimiter: "."
+resources:
+  - name: App
+    handle: app
+  - name: Project
+    handle: project
+    parent: app
+  - name: Project Member
+    handle: member
+    parent: app.project
+    actions:
+      - name: Read
+        handle: read
+  - name: Team
+    handle: team
+    parent: app
+  - name: Team Member
+    handle: member
+    parent: app.team
+    actions:
+      - name: Read
+        handle: read

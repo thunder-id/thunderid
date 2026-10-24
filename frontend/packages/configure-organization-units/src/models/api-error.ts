@@ -57,7 +57,7 @@ export interface I18nMessage {
 
   /**
    * Human-readable fallback used when no translation is available
-   * @example 'Cannot delete organization unit with children or users/groups'
+   * @example 'Cannot delete an organization unit that has child organization units, users, groups, or sharing policies it issued'
    */
   defaultValue: string;
 

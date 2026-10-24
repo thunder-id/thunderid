@@ -17,10 +17,19 @@ func newFlowStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *flowStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &flowStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -63,7 +72,7 @@ type flowStoreInterfaceMock_DeleteFlowContext_Call struct {
 // DeleteFlowContext is a helper method to define mock.On call
 //   - ctx context.Context
 //   - executionID string
-func (_e *flowStoreInterfaceMock_Expecter) DeleteFlowContext(ctx interface{}, executionID interface{}) *flowStoreInterfaceMock_DeleteFlowContext_Call {
+func (_e *flowStoreInterfaceMock_Expecter) DeleteFlowContext(ctx any, executionID any) *flowStoreInterfaceMock_DeleteFlowContext_Call {
 	return &flowStoreInterfaceMock_DeleteFlowContext_Call{Call: _e.mock.On("DeleteFlowContext", ctx, executionID)}
 }
 
@@ -131,7 +140,7 @@ type flowStoreInterfaceMock_GetFlowContext_Call struct {
 // GetFlowContext is a helper method to define mock.On call
 //   - ctx context.Context
 //   - executionID string
-func (_e *flowStoreInterfaceMock_Expecter) GetFlowContext(ctx interface{}, executionID interface{}) *flowStoreInterfaceMock_GetFlowContext_Call {
+func (_e *flowStoreInterfaceMock_Expecter) GetFlowContext(ctx any, executionID any) *flowStoreInterfaceMock_GetFlowContext_Call {
 	return &flowStoreInterfaceMock_GetFlowContext_Call{Call: _e.mock.On("GetFlowContext", ctx, executionID)}
 }
 
@@ -189,7 +198,7 @@ type flowStoreInterfaceMock_StoreFlowContext_Call struct {
 //   - ctx context.Context
 //   - dbModel flowexec.FlowContextDB
 //   - expirySeconds int64
-func (_e *flowStoreInterfaceMock_Expecter) StoreFlowContext(ctx interface{}, dbModel interface{}, expirySeconds interface{}) *flowStoreInterfaceMock_StoreFlowContext_Call {
+func (_e *flowStoreInterfaceMock_Expecter) StoreFlowContext(ctx any, dbModel any, expirySeconds any) *flowStoreInterfaceMock_StoreFlowContext_Call {
 	return &flowStoreInterfaceMock_StoreFlowContext_Call{Call: _e.mock.On("StoreFlowContext", ctx, dbModel, expirySeconds)}
 }
 
@@ -251,7 +260,7 @@ type flowStoreInterfaceMock_UpdateFlowContext_Call struct {
 // UpdateFlowContext is a helper method to define mock.On call
 //   - ctx context.Context
 //   - dbModel flowexec.FlowContextDB
-func (_e *flowStoreInterfaceMock_Expecter) UpdateFlowContext(ctx interface{}, dbModel interface{}) *flowStoreInterfaceMock_UpdateFlowContext_Call {
+func (_e *flowStoreInterfaceMock_Expecter) UpdateFlowContext(ctx any, dbModel any) *flowStoreInterfaceMock_UpdateFlowContext_Call {
 	return &flowStoreInterfaceMock_UpdateFlowContext_Call{Call: _e.mock.On("UpdateFlowContext", ctx, dbModel)}
 }
 

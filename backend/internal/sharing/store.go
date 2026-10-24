@@ -18,7 +18,7 @@ var getDBProvider = provider.GetDBProvider
 
 // sharingPolicyStoreInterface is the only place SQL lives. Every method is scoped to one deployment.
 type sharingPolicyStoreInterface interface {
-	// CreatePolicy inserts a policy with its targets, exclusions and rules.
+	// CreatePolicy inserts a policy with its sections, named units and rules.
 	CreatePolicy(ctx context.Context, p Policy) error
 	// GetPolicy returns one policy by id, fully hydrated.
 	GetPolicy(ctx context.Context, id string) (Policy, error)
@@ -45,7 +45,9 @@ type sharingPolicyStoreInterface interface {
 	ListPoliciesRelevantToChain(
 		ctx context.Context, rt ResourceType, resourceID string, chainOUIDs []string,
 	) ([]Policy, error)
-	// ReplacePolicyContents rewrites a policy's targets, exclusions and rules, bumping its version
+	// ListPoliciesIssuedBy returns every policy one organization unit issued, for any resource.
+	ListPoliciesIssuedBy(ctx context.Context, ouID string) ([]Policy, error)
+	// ReplacePolicyContents rewrites a policy's sections, named units and rules, bumping its version
 	// only when expectedVersion still matches.
 	ReplacePolicyContents(ctx context.Context, p Policy, expectedVersion int) error
 	// DeletePolicy removes a policy and everything hanging off it.
@@ -94,15 +96,19 @@ func (s *sharingStore) client() (provider.DBClientInterface, error) {
 	return dbClient, nil
 }
 
-// CreatePolicy inserts a policy with its targets, exclusions and rules.
+// CreatePolicy inserts a policy with its sections, named units and rules.
 func (s *sharingStore) CreatePolicy(ctx context.Context, p Policy) error {
 	dbClient, err := s.client()
 	if err != nil {
 		return err
 	}
+	sections, err := encodeSections(p)
+	if err != nil {
+		return err
+	}
 	_, err = dbClient.ExecuteContext(ctx, queryCreatePolicy,
 		p.ID, string(p.ResourceType), p.ResourceID, p.OwningOUID, p.InitiatingOUID,
-		string(p.Stage), nullableString(p.ParentPolicyID), max(p.Version, 1),
+		string(p.Stage), nullableString(p.ParentPolicyID), sections, max(p.Version, 1),
 		s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to create sharing policy: %w", err)
@@ -110,19 +116,98 @@ func (s *sharingStore) CreatePolicy(ctx context.Context, p Policy) error {
 	return s.writeContents(ctx, dbClient, p)
 }
 
-// writeContents inserts the targets, exclusions and rules belonging to a policy.
-func (s *sharingStore) writeContents(ctx context.Context, dbClient provider.DBClientInterface, p Policy) error {
-	for _, t := range p.Targets {
-		if _, err := dbClient.ExecuteContext(ctx, queryInsertTarget,
-			t.ID, p.ID, string(t.Scope), nullableString(t.OUID), s.scope(ctx)); err != nil {
-			return fmt.Errorf("failed to create sharing policy target: %w", err)
+// storedSection is how one section is recorded in a policy's SECTIONS document.
+type storedSection struct {
+	// Mode is all or selected. The section reaching every organization unit has none.
+	Mode string `json:"mode,omitempty"`
+	// ExcludedOUIDs is what a section reaching a whole group withholds from it.
+	ExcludedOUIDs []string `json:"excludedOuIds,omitempty"`
+}
+
+// encodeSections renders which sections a policy states, in which mode, and what they exclude, as
+// one document keyed by section. A section the policy does not state has no entry.
+//
+// The units a section names are rows of their own, because lookups search by them. Everything else
+// about a section is this document on the policy row: it is loaded with the policy, so a new
+// section needs no column of its own.
+func encodeSections(p Policy) (string, error) {
+	document := make(map[Section]storedSection)
+	if p.AllUnits != nil {
+		document[SectionAllUnits] = storedSection{
+			ExcludedOUIDs: utils.UniqueStrings(p.AllUnits.ExcludedOUIDs),
 		}
 	}
-	for _, t := range p.Targets {
-		for _, ouID := range utils.UniqueStrings(t.ExcludedOUIDs) {
-			if _, err := dbClient.ExecuteContext(ctx, queryInsertExclusion,
-				p.ID, t.ID, ouID, s.scope(ctx)); err != nil {
-				return fmt.Errorf("failed to create sharing policy exclusion: %w", err)
+	if p.ChildUnits != nil {
+		document[SectionChildUnits] = storedSection{
+			Mode:          string(p.ChildUnits.Mode),
+			ExcludedOUIDs: utils.UniqueStrings(p.ChildUnits.ExcludedOUIDs),
+		}
+	}
+	if p.OtherTreeRoots != nil {
+		document[SectionOtherTreeRoots] = storedSection{
+			Mode:          string(p.OtherTreeRoots.Mode),
+			ExcludedOUIDs: utils.UniqueStrings(p.OtherTreeRoots.ExcludedOUIDs),
+		}
+	}
+	encoded, err := json.Marshal(document)
+	if err != nil {
+		return "", fmt.Errorf("failed to encode sharing policy sections: %w", err)
+	}
+	return string(encoded), nil
+}
+
+// decodeSections reads the SECTIONS document back into the policy. An exclusion list on a section
+// whose mode carries none is left out: only a section reaching a whole group withholds anything.
+func decodeSections(p *Policy, column interface{}) error {
+	raw := utils.ConvertInterfaceValueToString(column)
+	if raw == "" {
+		return nil
+	}
+	var document map[Section]storedSection
+	if err := json.Unmarshal([]byte(raw), &document); err != nil {
+		return fmt.Errorf("failed to decode sharing policy sections: %w", err)
+	}
+	if stored, stated := document[SectionAllUnits]; stated {
+		p.AllUnits = &AllUnits{ExcludedOUIDs: stored.ExcludedOUIDs}
+	}
+	if stored, stated := document[SectionChildUnits]; stated {
+		p.ChildUnits = &ChildUnits{Mode: ChildUnitsMode(stored.Mode)}
+		if p.ChildUnits.Mode == ChildUnitsAll {
+			p.ChildUnits.ExcludedOUIDs = stored.ExcludedOUIDs
+		}
+	}
+	if stored, stated := document[SectionOtherTreeRoots]; stated {
+		p.OtherTreeRoots = &OtherTreeRoots{Mode: OtherTreeRootsMode(stored.Mode)}
+		if p.OtherTreeRoots.Mode == OtherTreeRootsAll {
+			p.OtherTreeRoots.ExcludedOUIDs = stored.ExcludedOUIDs
+		}
+	}
+	return nil
+}
+
+// writeContents inserts the named units and rules belonging to a policy. Which sections the policy
+// states, in which mode, and what they exclude is on the policy row itself.
+func (s *sharingStore) writeContents(ctx context.Context, dbClient provider.DBClientInterface, p Policy) error {
+	writeUnit := func(section Section, ouID string, reach UnitReach) error {
+		if _, err := dbClient.ExecuteContext(ctx, queryInsertUnit,
+			p.ID, string(section), ouID, string(reach), s.scope(ctx)); err != nil {
+			return fmt.Errorf("failed to create sharing policy unit: %w", err)
+		}
+		return nil
+	}
+
+	if p.ChildUnits != nil {
+		for _, u := range p.ChildUnits.Units {
+			if err := writeUnit(SectionChildUnits, u.OUID, u.Reach); err != nil {
+				return err
+			}
+		}
+	}
+	if p.OtherTreeRoots != nil {
+		// A tree is reached at its root and no deeper, which is the reach a row records.
+		for _, ouID := range p.OtherTreeRoots.Units {
+			if err := writeUnit(SectionOtherTreeRoots, ouID, ReachUnit); err != nil {
+				return err
 			}
 		}
 	}
@@ -155,7 +240,7 @@ func (s *sharingStore) writeRule(
 		return fmt.Errorf("failed to generate an overlay rule identifier: %w", err)
 	}
 	if _, err := dbClient.ExecuteContext(ctx, queryInsertRule,
-		ruleID, policyID, r.TargetID, r.FieldKey,
+		ruleID, policyID, string(r.Grant.Section), nullableString(r.Grant.OUID), r.FieldKey,
 		string(resolved), string(requested), s.scope(ctx)); err != nil {
 		return fmt.Errorf("failed to create overlay rule: %w", err)
 	}
@@ -175,7 +260,7 @@ func (s *sharingStore) GetPolicy(ctx context.Context, id string) (Policy, error)
 	if len(rows) == 0 {
 		return Policy{}, errPolicyNotFound
 	}
-	return s.hydrate(ctx, dbClient, policyFromRow(rows[0]))
+	return s.hydrate(ctx, dbClient, rows[0])
 }
 
 // GetPolicyByInitiator returns the one policy an organization unit holds for a resource.
@@ -194,7 +279,7 @@ func (s *sharingStore) GetPolicyByInitiator(
 	if len(rows) == 0 {
 		return Policy{}, errPolicyNotFound
 	}
-	return s.hydrate(ctx, dbClient, policyFromRow(rows[0]))
+	return s.hydrate(ctx, dbClient, rows[0])
 }
 
 // ListPoliciesForResource returns one page of the policies recorded for one resource.
@@ -209,6 +294,19 @@ func (s *sharingStore) ListPoliciesForResource(
 		string(rt), resourceID, s.scope(ctx), limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list sharing policies: %w", err)
+	}
+	return s.hydrateAll(ctx, dbClient, rows)
+}
+
+// ListPoliciesIssuedBy returns every policy one organization unit issued, for any resource.
+func (s *sharingStore) ListPoliciesIssuedBy(ctx context.Context, ouID string) ([]Policy, error) {
+	dbClient, err := s.client()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := dbClient.QueryContext(ctx, queryListPoliciesIssuedBy, ouID, s.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list sharing policies issued by an organization unit: %w", err)
 	}
 	return s.hydrateAll(ctx, dbClient, rows)
 }
@@ -278,9 +376,14 @@ func (s *sharingStore) ReplacePolicyContents(ctx context.Context, p Policy, expe
 	if err != nil {
 		return err
 	}
-	affected, err := dbClient.ExecuteContext(ctx, queryBumpPolicyVersion, p.ID, expectedVersion, s.scope(ctx))
+	sections, err := encodeSections(p)
 	if err != nil {
-		return fmt.Errorf("failed to update sharing policy version: %w", err)
+		return err
+	}
+	affected, err := dbClient.ExecuteContext(ctx, queryReplacePolicySections,
+		sections, p.ID, expectedVersion, s.scope(ctx))
+	if err != nil {
+		return fmt.Errorf("failed to update sharing policy: %w", err)
 	}
 	if affected == 0 {
 		return errPolicyNotFound
@@ -289,16 +392,13 @@ func (s *sharingStore) ReplacePolicyContents(ctx context.Context, p Policy, expe
 	if _, err := dbClient.ExecuteContext(ctx, queryDeleteRules, p.ID, s.scope(ctx)); err != nil {
 		return fmt.Errorf("failed to clear overlay rules: %w", err)
 	}
-	if _, err := dbClient.ExecuteContext(ctx, queryDeleteExclusions, p.ID, s.scope(ctx)); err != nil {
-		return fmt.Errorf("failed to clear sharing policy exclusions: %w", err)
-	}
-	if _, err := dbClient.ExecuteContext(ctx, queryDeleteTargets, p.ID, s.scope(ctx)); err != nil {
-		return fmt.Errorf("failed to clear sharing policy targets: %w", err)
+	if _, err := dbClient.ExecuteContext(ctx, queryDeleteUnits, p.ID, s.scope(ctx)); err != nil {
+		return fmt.Errorf("failed to clear sharing policy units: %w", err)
 	}
 	return s.writeContents(ctx, dbClient, p)
 }
 
-// DeletePolicy removes a policy; its targets, exclusions, rules and members cascade with it.
+// DeletePolicy removes a policy; its named units and rules cascade with it.
 func (s *sharingStore) DeletePolicy(ctx context.Context, id string) error {
 	dbClient, err := s.client()
 	if err != nil {
@@ -383,13 +483,13 @@ func (s *sharingStore) DeleteOverlayValuesForOU(
 	return nil
 }
 
-// hydrateAll loads the targets, exclusions and rules for every policy row.
+// hydrateAll builds a policy from every row, loading the named units and rules each one has.
 func (s *sharingStore) hydrateAll(
 	ctx context.Context, dbClient provider.DBClientInterface, rows []map[string]interface{},
 ) ([]Policy, error) {
 	out := make([]Policy, 0, len(rows))
 	for _, row := range rows {
-		p, err := s.hydrate(ctx, dbClient, policyFromRow(row))
+		p, err := s.hydrate(ctx, dbClient, row)
 		if err != nil {
 			return nil, err
 		}
@@ -398,35 +498,36 @@ func (s *sharingStore) hydrateAll(
 	return out, nil
 }
 
-// hydrate loads the targets, exclusions and rules belonging to one policy.
+// hydrate builds one policy from its row and loads the named units and rules belonging to it. A
+// unit row for a section the policy row does not state, or for a mode that names none, is left
+// out: the policy row is what says which decisions were made.
 func (s *sharingStore) hydrate(
-	ctx context.Context, dbClient provider.DBClientInterface, p Policy,
+	ctx context.Context, dbClient provider.DBClientInterface, row map[string]interface{},
 ) (Policy, error) {
-	targetRows, err := dbClient.QueryContext(ctx, queryListTargets, p.ID, s.scope(ctx))
-	if err != nil {
-		return Policy{}, fmt.Errorf("failed to list sharing policy targets: %w", err)
-	}
-	byID := make(map[string]int, len(targetRows))
-	for _, row := range targetRows {
-		byID[utils.ConvertInterfaceValueToString(row["id"])] = len(p.Targets)
-		p.Targets = append(p.Targets, Target{
-			ID:    utils.ConvertInterfaceValueToString(row["id"]),
-			Scope: TargetScope(utils.ConvertInterfaceValueToString(row["target_scope"])),
-			OUID:  utils.ConvertInterfaceValueToString(row["target_ou_id"]),
-		})
+	p := policyFromRow(row)
+	if err := decodeSections(&p, row["sections"]); err != nil {
+		return Policy{}, err
 	}
 
-	exclusionRows, err := dbClient.QueryContext(ctx, queryListExclusions, p.ID, s.scope(ctx))
+	unitRows, err := dbClient.QueryContext(ctx, queryListUnits, p.ID, s.scope(ctx))
 	if err != nil {
-		return Policy{}, fmt.Errorf("failed to list sharing policy exclusions: %w", err)
+		return Policy{}, fmt.Errorf("failed to list sharing policy units: %w", err)
 	}
-	for _, row := range exclusionRows {
-		i, ok := byID[utils.ConvertInterfaceValueToString(row["target_id"])]
-		if !ok {
-			continue
+	for _, row := range unitRows {
+		ouID := utils.ConvertInterfaceValueToString(row["ou_id"])
+		switch Section(utils.ConvertInterfaceValueToString(row["section"])) {
+		case SectionChildUnits:
+			if p.ChildUnits != nil && p.ChildUnits.Mode == ChildUnitsSelected {
+				p.ChildUnits.Units = append(p.ChildUnits.Units, ChildUnit{
+					OUID:  ouID,
+					Reach: UnitReach(utils.ConvertInterfaceValueToString(row["reach"])),
+				})
+			}
+		case SectionOtherTreeRoots:
+			if p.OtherTreeRoots != nil && p.OtherTreeRoots.Mode == OtherTreeRootsSelected {
+				p.OtherTreeRoots.Units = append(p.OtherTreeRoots.Units, ouID)
+			}
 		}
-		p.Targets[i].ExcludedOUIDs = append(p.Targets[i].ExcludedOUIDs,
-			utils.ConvertInterfaceValueToString(row["excluded_ou_id"]))
 	}
 
 	ruleRows, err := dbClient.QueryContext(ctx, queryListRules, p.ID, s.scope(ctx))
@@ -448,7 +549,10 @@ func (s *sharingStore) hydrate(
 func hydrateRule(row map[string]interface{}) (StoredRule, error) {
 	out := StoredRule{
 		FieldKey: utils.ConvertInterfaceValueToString(row["field_key"]),
-		TargetID: utils.ConvertInterfaceValueToString(row["target_id"]),
+		Grant: GrantRef{
+			Section: Section(utils.ConvertInterfaceValueToString(row["section"])),
+			OUID:    utils.ConvertInterfaceValueToString(row["ou_id"]),
+		},
 	}
 	resolved := utils.ConvertInterfaceValueToString(row["resolved"])
 	if err := json.Unmarshal([]byte(resolved), &out.Resolved); err != nil {
@@ -461,7 +565,8 @@ func hydrateRule(row map[string]interface{}) (StoredRule, error) {
 	return out, nil
 }
 
-// policyFromRow builds the policy row itself, leaving its contents to hydrate.
+// policyFromRow builds the policy from the plain columns of its row, leaving its sections to
+// hydrate.
 func policyFromRow(row map[string]interface{}) Policy {
 	// A driver hands a numeric column back as whatever width it decoded, so the version is read
 	// through the converter that accepts them all. An unreadable one is zero, which is what a row

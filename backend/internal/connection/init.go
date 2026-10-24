@@ -6,7 +6,10 @@ package connection
 import (
 	"net/http"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
@@ -18,20 +21,26 @@ import (
 
 // Initialize wires the connection service over the identity-provider and notification-sender
 // services, registers the /connections routes, loads declarative connection resources, and
-// returns the connection exporter for the export API.
+// returns the connection exporter for the export API. Given an MCP server, it also registers the
+// HTTP endpoint connection tools.
 //
 // valueCapturer is optional. Given one, the service hands it every connection it creates or changes,
 // so the values the connection's export refers to are kept where a reference finds them.
-func Initialize(mux *http.ServeMux, idpService idp.IDPServiceInterface,
+func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, idpService idp.IDPServiceInterface,
 	notificationService notification.NotificationSenderMgtSvcInterface,
 	resourceService resource.ResourceServiceInterface,
 	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
+	httpService httpconnection.HTTPConnectionServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer) (
 	declarativeresource.ResourceExporter, error) {
-	svc := newService(idpService, notificationService, resourceService, authZENPDPService)
+	svc := newService(idpService, notificationService, resourceService, authZENPDPService, httpService)
 	svc.valueCapturer = valueCapturer
 	h := newHandler(svc)
 	registerRoutes(mux, h)
+
+	if mcpServer != nil {
+		registerMCPTools(mcpServer, svc)
+	}
 
 	if err := loadDeclarativeResources(idpService); err != nil {
 		return nil, err
@@ -110,7 +119,7 @@ func registerRoutes(mux *http.ServeMux, h *handler) {
 		createSenderHandler(h, smsGatewayToSenderDTO, smsGatewayFromSenderDTO),
 		getSenderHandler(h, message, ncommon.NotificationProviderTypeCustom, smsGatewayFromSenderDTO),
 		updateSenderHandler(h, message, ncommon.NotificationProviderTypeCustom,
-			smsGatewayToSenderDTO, smsGatewayFromSenderDTO),
+			smsGatewayUpdateToSenderDTO, smsGatewayFromSenderDTO),
 		collectionOpts, itemOpts)
 
 	// Email-backed vendors.
@@ -119,10 +128,11 @@ func registerRoutes(mux *http.ServeMux, h *handler) {
 		createSenderHandler(h, emailSMTPToSenderDTO, emailSMTPFromSenderDTO),
 		getSenderHandler(h, email, ncommon.NotificationProviderTypeSMTP, emailSMTPFromSenderDTO),
 		updateSenderHandler(h, email, ncommon.NotificationProviderTypeSMTP,
-			emailSMTPToSenderDTO, emailSMTPFromSenderDTO),
+			emailSMTPUpdateToSenderDTO, emailSMTPFromSenderDTO),
 		collectionOpts, itemOpts)
 
 	registerAuthZENPDPVendorRoutes(mux, h, "/connections/authzen-pdp", collectionOpts, itemOpts)
+	registerHTTPConnectionRoutes(mux, h, "/connections/"+httpVendorName, collectionOpts, itemOpts)
 
 	// Vendor metadata. A single route taking the vendor as a query parameter, rather than
 	// /connections/{vendor}/meta, which would have to be registered per vendor and would shadow
@@ -211,4 +221,17 @@ func registerAuthZENPDPVendorRoutes(
 	}
 	mux.HandleFunc(middleware.WithCORS("GET "+base+"/{id}/usages", h.usagesAuthZENPDPConnection, usagesOpts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS "+base+"/{id}/usages", noContent, usagesOpts))
+}
+
+// registerHTTPConnectionRoutes registers CRUD and CORS routes for HTTP endpoint connections.
+func registerHTTPConnectionRoutes(mux *http.ServeMux, h *handler, base string,
+	collectionOpts, itemOpts middleware.CORSOptions) {
+	mux.HandleFunc(middleware.WithCORS("GET "+base, h.listHTTPConnections, collectionOpts))
+	mux.HandleFunc(middleware.WithCORS("POST "+base, h.createHTTPConnection, collectionOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS "+base, noContent, collectionOpts))
+
+	mux.HandleFunc(middleware.WithCORS("GET "+base+"/{id}", h.getHTTPConnection, itemOpts))
+	mux.HandleFunc(middleware.WithCORS("PUT "+base+"/{id}", h.updateHTTPConnection, itemOpts))
+	mux.HandleFunc(middleware.WithCORS("DELETE "+base+"/{id}", h.deleteHTTPConnection, itemOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS "+base+"/{id}", noContent, itemOpts))
 }

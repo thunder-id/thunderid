@@ -17,10 +17,19 @@ func NewOURoleResolverMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *OURoleResolverMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &OURoleResolverMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -72,7 +81,7 @@ type OURoleResolverMock_GetRoleCountByOUID_Call struct {
 // GetRoleCountByOUID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - ouID string
-func (_e *OURoleResolverMock_Expecter) GetRoleCountByOUID(ctx interface{}, ouID interface{}) *OURoleResolverMock_GetRoleCountByOUID_Call {
+func (_e *OURoleResolverMock_Expecter) GetRoleCountByOUID(ctx any, ouID any) *OURoleResolverMock_GetRoleCountByOUID_Call {
 	return &OURoleResolverMock_GetRoleCountByOUID_Call{Call: _e.mock.On("GetRoleCountByOUID", ctx, ouID)}
 }
 
@@ -142,7 +151,7 @@ type OURoleResolverMock_GetRoleListByOUID_Call struct {
 //   - ouID string
 //   - limit int
 //   - offset int
-func (_e *OURoleResolverMock_Expecter) GetRoleListByOUID(ctx interface{}, ouID interface{}, limit interface{}, offset interface{}) *OURoleResolverMock_GetRoleListByOUID_Call {
+func (_e *OURoleResolverMock_Expecter) GetRoleListByOUID(ctx any, ouID any, limit any, offset any) *OURoleResolverMock_GetRoleListByOUID_Call {
 	return &OURoleResolverMock_GetRoleListByOUID_Call{Call: _e.mock.On("GetRoleListByOUID", ctx, ouID, limit, offset)}
 }
 

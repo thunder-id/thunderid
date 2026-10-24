@@ -10,7 +10,7 @@ import {
   type AvatarShape,
   type AvatarVariant,
 } from '@thunderid/react';
-import {Box, Button, Stack, TextField, Typography} from '@wso2/oxygen-ui';
+import {Box, Button, FormControl, FormLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {Shuffle} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -60,7 +60,7 @@ export default function AvatarPicker({value, onChange}: AvatarPickerProps): JSX.
   const isBlank: boolean = value.variant === 'blank';
   const isLetterVariant: boolean = value.variant === 'one_letter' || value.variant === 'two_letter';
   const contentTypeLabel: string = isLetterVariant
-    ? t('avatar_picker.content_type.text_avatar', 'Text Avatar')
+    ? t('avatar_picker.content_type.text_avatar', 'Text avatar')
     : t('avatar_picker.content_type.avatar', 'Avatar');
 
   const handleSeedChange = useCallback(
@@ -196,14 +196,17 @@ export default function AvatarPicker({value, onChange}: AvatarPickerProps): JSX.
       ) : (
         <>
           {!isBlank && (
-            <TextField
-              fullWidth
-              size="small"
-              label={t('avatar_picker.seed_text.label', 'Seed text')}
-              placeholder={t('avatar_picker.seed_text.placeholder', 'e.g. your app name')}
-              value={seedText}
-              onChange={(e) => handleSeedChange(e.target.value)}
-            />
+            <FormControl fullWidth>
+              <FormLabel htmlFor="avatar-picker-seed-text">{t('avatar_picker.seed_text.label', 'Seed text')}</FormLabel>
+              <TextField
+                fullWidth
+                size="small"
+                id="avatar-picker-seed-text"
+                placeholder={t('avatar_picker.seed_text.placeholder', 'e.g. your app name')}
+                value={seedText}
+                onChange={(e) => handleSeedChange(e.target.value)}
+              />
+            </FormControl>
           )}
           <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
             <Box

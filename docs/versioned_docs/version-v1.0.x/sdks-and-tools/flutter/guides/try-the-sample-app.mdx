@@ -6,12 +6,12 @@ description: Run the {{ProductName}} Flutter sample app to see the full authenti
 
 # Try the Flutter Sample App
 
-The SDK repository ships a sample app in
-[`samples/quickstart`](https://github.com/thunder-id/flutter-sdks/tree/main/samples/quickstart)
+The [samples repository](https://github.com/thunder-id/samples) ships a sample app in
+[`quickstarts/flutter`](https://github.com/thunder-id/samples/tree/main/quickstarts/flutter)
 that exercises the full authentication lifecycle end to end: sign-in, sign-up, and sign-out via
 the SDK's app-native Flow Execution, on both iOS and Android.
 
-<SdkQuickstartDownload packageId="flutter" icon={<FlutterLogo size={22} />} />
+<SdkQuickstartDownload packageId="flutter" sample="quickstarts/flutter" icon={<FlutterLogo size={22} />} />
 
 ## Prerequisites
 
@@ -22,7 +22,8 @@ the SDK's app-native Flow Execution, on both iOS and Android.
 ## Prepare the Flutter Sample
 
 ```bash
-cd samples/quickstart
+git clone https://github.com/thunder-id/samples.git
+cd samples/quickstarts/flutter
 
 # 1. Copy and fill in your environment
 cp .env.example .env

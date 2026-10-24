@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 // Package resource implements the resource management service.
@@ -15,8 +15,10 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -91,6 +93,9 @@ type ResourceServiceInterface interface {
 	) (*providers.Action, *tidcommon.ServiceError)
 	DeleteAction(ctx context.Context, resourceServerID string, resourceID *string,
 		id string) *tidcommon.ServiceError
+	// ValidateDeleteAction reports whether the action may be deleted and returns the scope it retires.
+	ValidateDeleteAction(ctx context.Context, resourceServerID string, resourceID *string,
+		id string) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	ValidatePermissions(
 		ctx context.Context, resourceServerID string, permissions []string,
 	) ([]string, *tidcommon.ServiceError)
@@ -116,6 +121,7 @@ type resourceService struct {
 	defaultDelimiter   string
 	transactioner      providers.Transactioner
 	dependencyRegistry resourcedependency.Registry
+	valueCapturer      declarativeresource.ValueCapturer
 }
 
 // authZENPDPConnectionLookup retrieves AuthZEN PDP connections for resource-server validation.
@@ -218,6 +224,7 @@ func newResourceService(
 	resourceStore resourceStoreInterface,
 	transactionerInstance providers.Transactioner,
 	authZENPDPService authZENPDPConnectionLookup,
+	valueCapturer declarativeresource.ValueCapturer,
 ) (ResourceServiceInterface, error) {
 	// Load default delimiter from config
 	defaultDelimiter := getDefaultDelimiter()
@@ -232,6 +239,7 @@ func newResourceService(
 		authZENPDPService: authZENPDPService,
 		defaultDelimiter:  defaultDelimiter,
 		transactioner:     transactionerInstance,
+		valueCapturer:     valueCapturer,
 	}, nil
 }
 
@@ -341,6 +349,7 @@ func (rs *resourceService) CreateResourceServer(
 	}
 
 	rs.logger.Debug(ctx, "Successfully created resource server", log.String("id", id))
+	rs.captureValues(ctx, createdRS)
 	return createdRS, nil
 }
 
@@ -528,6 +537,7 @@ func (rs *resourceService) UpdateResourceServer(
 		return nil, &tidcommon.InternalServerError
 	}
 
+	rs.captureValues(ctx, updatedRS)
 	return updatedRS, nil
 }
 
@@ -1209,21 +1219,8 @@ func (rs *resourceService) DeleteAction(
 	ctx context.Context,
 	resourceServerID string, resourceID *string, id string,
 ) *tidcommon.ServiceError {
-	if id == "" || resourceServerID == "" {
-		return &ErrorMissingID
-	}
-
-	if resourceID != nil && *resourceID == "" {
-		return &ErrorMissingID
-	}
-
-	// Check if resource server is declarative (immutable)
-	if rs.IsResourceServerDeclarative(resourceServerID) {
-		rs.logger.Debug(ctx,
-			"Cannot delete action in declarative resource server",
-			log.String("resource_server_id", resourceServerID),
-		)
-		return ErrorImmutableAction.WithParams(map[string]string{"id": id})
+	if svcErr := rs.validateActionDelete(ctx, resourceServerID, resourceID, id); svcErr != nil {
+		return svcErr
 	}
 
 	// Validate resource server exists
@@ -1270,6 +1267,33 @@ func (rs *resourceService) DeleteAction(
 	}
 
 	return nil
+}
+
+// ValidateDeleteAction runs DeleteAction's checks and returns the action's scope, revoked deployment-wide.
+func (rs *resourceService) ValidateDeleteAction(
+	ctx context.Context,
+	resourceServerID string, resourceID *string, id string,
+) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
+	if svcErr := rs.validateActionDelete(ctx, resourceServerID, resourceID, id); svcErr != nil {
+		return nil, svcErr
+	}
+
+	resourceServer, svcErr := rs.GetResourceServer(ctx, resourceServerID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	action, svcErr := rs.GetAction(ctx, resourceServerID, resourceID, id)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	// Without an audience no token can carry the scope, so there is nothing to revoke.
+	if resourceServer == nil || resourceServer.Identifier == "" || action == nil || action.Permission == "" {
+		return &revocation.AccessRevocationTarget{}, nil
+	}
+	return &revocation.AccessRevocationTarget{
+		Scopes: []revocation.AudienceScope{{Audience: resourceServer.Identifier, Scope: action.Permission}},
+	}, nil
 }
 
 // ValidatePermissions checks if permissions exist for a given resource server.
@@ -1504,6 +1528,29 @@ func (rs *resourceService) validateActionKind(kind providers.ActionKind) *tidcom
 	return nil
 }
 
+// validateActionDelete runs the request checks DeleteAction and ValidateDeleteAction share.
+func (rs *resourceService) validateActionDelete(
+	ctx context.Context, resourceServerID string, resourceID *string, id string,
+) *tidcommon.ServiceError {
+	if id == "" || resourceServerID == "" {
+		return &ErrorMissingID
+	}
+
+	if resourceID != nil && *resourceID == "" {
+		return &ErrorMissingID
+	}
+
+	// Check if resource server is declarative (immutable)
+	if rs.IsResourceServerDeclarative(resourceServerID) {
+		rs.logger.Debug(ctx,
+			"Cannot delete action in declarative resource server",
+			log.String("resource_server_id", resourceServerID),
+		)
+		return ErrorImmutableAction.WithParams(map[string]string{"id": id})
+	}
+	return nil
+}
+
 // validatePaginationParams validates pagination parameters.
 func validatePaginationParams(limit, offset int) *tidcommon.ServiceError {
 	if limit < 1 || limit > serverconst.MaxPageSize {
@@ -1590,6 +1637,9 @@ func validateHandle(handle string, delimiter string) *tidcommon.ServiceError {
 
 // getDefaultDelimiter returns the default delimiter from configuration.
 func getDefaultDelimiter() string {
+	if !config.IsServerRuntimeInitialized() {
+		return ":"
+	}
 	delimiter := config.GetServerRuntime().Config.Resource.DefaultDelimiter
 	if delimiter == "" {
 		return ":" // Fallback default if not configured

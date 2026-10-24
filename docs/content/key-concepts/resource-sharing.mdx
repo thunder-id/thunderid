@@ -1,0 +1,271 @@
+---
+title: Resource Sharing Across Organization Units
+docType: concept
+sidebar_position: 6
+description: Understand how a resource owned by one organization unit is shared with other organization units through a sharing policy, and how a policy is written in YAML.
+---
+
+# Resource Sharing Across Organization Units
+
+Resource sharing lets a resource that one organization unit owns be used by other organization units, without a separate copy in each of them. A sharing policy on the resource states which organization units it reaches.
+
+## How It Works
+
+Every resource belongs to one organization unit, its owner. The owner can always use the resource and needs no policy. A resource with no sharing policy is not shared with any other organization unit.
+
+A sharing policy extends the resource to other organization units. It states up to three sections, and each section covers one group of organization units:
+
+| Section | Reaches |
+|---|---|
+| `allUnits` | Every organization unit in the deployment, including organization units created later. |
+| `childUnits` | Organization units beneath the organization unit that defines the policy, either all of them or the ones the policy names. |
+| `otherTreeRoots` | Root organization units of other trees, either all of them or the ones the policy names. |
+
+The policy reaches everything its sections reach. These rules keep that reach unambiguous:
+
+- `allUnits` stands alone. A policy that states it cannot state `childUnits` or `otherTreeRoots`. Those two can be stated together.
+- A named organization unit sits directly beneath the organization unit that defines the policy. The policy says whether the resource stops at that organization unit or carries on to everything below it.
+- Another tree is reached at its root only, never at an organization unit below the root. The root of the owner's own tree is not another tree and cannot be reached.
+- A policy lists an organization unit only once.
+- A section that reaches a whole group can withhold organization units from it. An excluded organization unit takes everything beneath it out of reach as well.
+
+The owner defines a policy by default. An organization unit the resource is shared with can define one too, sharing the resource onward to the organization units directly beneath itself. See [Resharing](#resharing).
+
+## When to Use This
+
+Sharing fits when several organization units need the same resource and one owner maintains it:
+
+- One definition serves many customer or partner organization units, so a change is made once.
+- The owner decides which organization units use the resource and can withdraw it from one of them without affecting the others.
+- A section that reaches a whole group also covers organization units created later.
+
+A separate resource in each organization unit fits when each one needs its own independent configuration and ownership.
+
+## Sharing Policy in YAML
+
+A sharing policy is declared in the `sharingPolicies` list of the resource's declarative file. This policy shares the resource with every organization unit beneath its owner:
+
+```yaml
+sharingPolicies:
+  - id: all-customers
+    childUnits:
+      mode: all
+```
+
+### Policy Fields
+
+| Field | Required | Description |
+|---|---|---|
+| `id` | Yes | Identifier of the policy. It stays the same across changes to the file. |
+| `initiatingOuId` | No | Organization unit that defines the policy. Defaults to the resource owner. See [Resharing](#resharing). |
+| `allUnits` | No | Reaches every organization unit in the deployment. |
+| `childUnits` | No | Reaches organization units beneath the organization unit that defines the policy, which is the owner by default. |
+| `otherTreeRoots` | No | Reaches the root organization units of other trees. |
+
+A policy states at least one of the three sections.
+
+### All Organization Units
+
+`allUnits` reaches every organization unit in the deployment, at any depth.
+
+| Field | Required | Description |
+|---|---|---|
+| `excludedOuIds` | No | Organization units to withhold. See [Exclusions](#exclusions). |
+| `overlayRules` | No | Terms every organization unit reached holds the resource on. See [Overlay Rules](#overlay-rules). |
+
+```yaml
+sharingPolicies:
+  - id: everyone
+    allUnits: {}
+```
+
+### Child Organization Units
+
+`childUnits` reaches organization units beneath the organization unit that defines the policy. That is the owner, unless the policy sets `initiatingOuId` to reshare the resource onward.
+
+| Field | Required | Description |
+|---|---|---|
+| `mode` | Yes | `all` or `selected`. |
+| `excludedOuIds` | No | Organization units to withhold. Valid with `mode: all` only. See [Exclusions](#exclusions). |
+| `units` | With `mode: selected` | Organization units to reach. Valid with `mode: selected` only. |
+| `overlayRules` | No | Terms every organization unit reached holds the resource on. Valid with `mode: all` only. See [Overlay Rules](#overlay-rules). |
+
+| `mode` | Reaches |
+|---|---|
+| `all` | Everything beneath that organization unit, at any depth, including organization units created later. |
+| `selected` | The organization units listed under `units`. |
+
+Each entry under `units` takes these fields:
+
+| Field | Required | Description |
+|---|---|---|
+| `ouId` | Yes | An organization unit directly beneath the organization unit that defines the policy. It is not resolved against the owner when the policy sets `initiatingOuId`. |
+| `reach` | Yes | `unit` reaches the named organization unit and nothing below it. `subtree` reaches the named organization unit and everything below it at any depth. |
+| `overlayRules` | No | Terms this organization unit holds the resource on. See [Overlay Rules](#overlay-rules). |
+
+```yaml
+sharingPolicies:
+  - id: named-customers
+    childUnits:
+      mode: selected
+      units:
+        - ouId: acme-customer-a
+          reach: unit
+        - ouId: acme-customer-b
+          reach: subtree
+```
+
+### Roots of Other Trees
+
+`otherTreeRoots` reaches the root organization units of other trees.
+
+| Field | Required | Description |
+|---|---|---|
+| `mode` | Yes | `all` or `selected`. |
+| `excludedOuIds` | No | Root organization units to withhold. Valid with `mode: all` only. See [Exclusions](#exclusions). |
+| `units` | With `mode: selected` | Root organization units to reach. Valid with `mode: selected` only. |
+| `overlayRules` | No | Terms every root organization unit reached holds the resource on. Valid with `mode: all` only. See [Overlay Rules](#overlay-rules). |
+
+| `mode` | Reaches |
+|---|---|
+| `all` | The root organization unit of every other tree, including trees created later. |
+| `selected` | The root organization units listed under `units`. |
+
+Each entry under `units` takes these fields:
+
+| Field | Required | Description |
+|---|---|---|
+| `ouId` | Yes | The root organization unit of another tree. |
+| `overlayRules` | No | Terms this root organization unit holds the resource on. See [Overlay Rules](#overlay-rules). |
+
+This policy states both sections, so it reaches every organization unit beneath the owner and one root in another tree:
+
+```yaml
+sharingPolicies:
+  - id: customers-and-partners
+    childUnits:
+      mode: all
+    otherTreeRoots:
+      mode: selected
+      units:
+        - ouId: partner-root
+```
+
+### Overlay Rules
+
+Sharing says which organization units reach a resource. Overlay rules say on what terms. A rule governs one field of the resource and decides whether the organization unit that reaches it may write that field, and which values it may choose.
+
+Which fields a resource exposes depends on the resource type. A resource server exposes `resources`, the permission tree a reached organization unit may use. A resource type that exposes no field takes no overlay rules.
+
+Each rule takes these fields:
+
+| Field | Required | Description |
+|---|---|---|
+| `editable` | Yes | Whether the organization unit may write the field. |
+| `value` | No | What the organization unit starts with, or is pinned to when the field is not editable. |
+| `allowedValues` | No | Bounds what the organization unit may choose from. Omitted means the field's whole range. |
+| `excludedValues` | No | Subtracted from both `value` and `allowedValues`, last. |
+
+Rules sit beside the organization units they apply to, so one policy can state different terms for different organization units:
+
+| Placement | Applies to |
+|---|---|
+| On `allUnits` | Every organization unit reached. |
+| On `childUnits` with `mode: all` | Every organization unit reached. |
+| On an entry under `childUnits.units` | That organization unit alone. |
+| On `otherTreeRoots` with `mode: all` | Every root organization unit reached. |
+| On an entry under `otherTreeRoots.units` | That root organization unit alone. |
+
+A section with `mode: selected` states its rules per entry, not on the section.
+
+Here a resource server reaches every organization unit beneath its owner on fixed terms, and one named customer gets terms of its own:
+
+```yaml
+sharingPolicies:
+  - id: all-customers
+    childUnits:
+      mode: all
+      overlayRules:
+        resources:
+          editable: false
+          excludedValues:
+            - billing:approve
+  - id: acme-customer-a
+    childUnits:
+      mode: selected
+      units:
+        - ouId: acme-customer-a
+          reach: unit
+          overlayRules:
+            resources:
+              editable: true
+              allowedValues:
+                - bookings:read
+                - bookings:write
+```
+
+An organization unit that reshares the resource can only narrow the terms it was given. It cannot widen them for the organization units beneath it. See [Resharing](#resharing).
+
+### Exclusions
+
+`excludedOuIds` withholds organization units, and everything beneath them, from a section that reaches a whole group.
+
+| Section | Can exclude |
+|---|---|
+| `allUnits` | Any organization unit. |
+| `childUnits` with `mode: all` | Organization units directly beneath the organization unit that defines the policy. |
+| `otherTreeRoots` with `mode: all` | Root organization units. |
+
+A section with `mode: selected` takes no `excludedOuIds`. An organization unit is withheld there by leaving it out of `units`.
+
+```yaml
+sharingPolicies:
+  - id: all-but-trials
+    childUnits:
+      mode: all
+      excludedOuIds:
+        - acme-trial-customers
+```
+
+### Resharing
+
+An organization unit that receives a shared resource can share it onward, to the organization units beneath itself. This is resharing, and it is how a resource travels down a tree one step at a time: the owner decides who receives it, and each of those organization units decides who receives it next.
+
+Set `initiatingOuId` to define a policy on behalf of an organization unit other than the owner. The resource then reaches the organization units beneath that one.
+
+| Rule | Description |
+|---|---|
+| Who can reshare | An organization unit the resource reaches on its own, without anything beneath it being reached: a child named with `reach: unit`, or a root reached through `otherTreeRoots`. An organization unit reached through `mode: all`, `reach: subtree`, or `allUnits` has nothing left to reshare, because the resource already reaches everything below it. |
+| What the policy can state | `childUnits` only. `allUnits` and `otherTreeRoots` stay with the owner. |
+| What `childUnits` reaches | Organization units beneath the organization unit that reshares, not beneath the owner. A named organization unit sits directly beneath it. |
+| How many policies | One for each organization unit on a resource. |
+| Order in the file | The file is read in order, so the policy that brings the resource to an organization unit comes before the policy that organization unit defines. |
+
+Here the owner shares the resource with `acme-customer-a` alone, and `acme-customer-a` reshares it to its own child:
+
+```yaml
+sharingPolicies:
+  - id: owner-policy
+    childUnits:
+      mode: selected
+      units:
+        - ouId: acme-customer-a
+          reach: unit
+  - id: customer-a-policy
+    initiatingOuId: acme-customer-a
+    childUnits:
+      mode: selected
+      units:
+        - ouId: acme-customer-a-emea
+          reach: unit
+```
+
+### Sharing Outside the Owner's Tree
+
+`allUnits` and `otherTreeRoots` reach outside the owner's own tree. An owner that is a root organization unit can always state them. An owner that has a parent can state them only when `resource_sharing.allow_child_ou_cross_tree_sharing` is `true`. See [Resource Sharing Configuration](../deployment/configuration.mdx#resource-sharing-configuration).
+
+## Related
+
+- [Machine-to-Machine (M2M) Access for Organization Units](../guides/organization-units/machine-to-machine-access.mdx)
+- [Manage Organization Units](../guides/organization-units/manage-organization-units.mdx)
+- [What Is Import and Export?](../guides/declarative-configurations/what-is-import-and-export.mdx)

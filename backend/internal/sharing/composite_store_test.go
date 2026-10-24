@@ -346,3 +346,29 @@ func (s *CompositeStoreTestSuite) TestEitherHalfFailingFailsTheWholeSetRead() {
 
 	s.ErrorIs(err, unreachable)
 }
+
+// Both halves answer the issued-by lookup: a unit is depended on if either a stored or a declared
+// policy stands on it.
+func (s *CompositeStoreTestSuite) TestIssuedByReadsBothHalves() {
+	ctx := context.Background()
+	s.file.seed(declaredPolicy("declared", testResource, rootOU))
+	s.db.EXPECT().ListPoliciesIssuedBy(ctx, rootOU).Return([]Policy{storedPolicy(rootOU)}, nil).Once()
+
+	got, err := s.store.ListPoliciesIssuedBy(ctx, rootOU)
+
+	s.Require().NoError(err)
+	s.Require().Len(got, 2)
+	s.Equal("stored", got[0].ID)
+	s.Equal("declared", got[1].ID)
+}
+
+// A database that could not be read has not said the unit issued nothing.
+func (s *CompositeStoreTestSuite) TestIssuedByReportsADatabaseFailure() {
+	ctx := context.Background()
+	unreachable := errors.New("connection refused")
+	s.db.EXPECT().ListPoliciesIssuedBy(ctx, rootOU).Return(nil, unreachable).Once()
+
+	_, err := s.store.ListPoliciesIssuedBy(ctx, rootOU)
+
+	s.ErrorIs(err, unreachable)
+}

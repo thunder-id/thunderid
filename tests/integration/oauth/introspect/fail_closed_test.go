@@ -23,13 +23,13 @@ const (
 	failClosedClientSecret = "introspect_fail_closed_secret"
 	failClosedResourceID   = "https://introspect-fail-closed.example.com"
 
-	// unreadableDenyListPath points database.runtime_persistent at a SQLite file that does not exist
-	// yet. The driver creates it on connect, so the server boots normally, but the file carries none
-	// of the runtime-persistent schema: every deny-list read fails at query time. Pointing at a
-	// genuinely unopenable target instead is not usable here, because the SSO session service aborts
-	// startup when it cannot get a runtime-persistent transactioner. The path has no directory
-	// component so it resolves against the server home, which exists under every database profile.
-	unreadableDenyListPath = "introspect_fail_closed_no_schema.db"
+	// unreadableDenyListPath points database.runtime_persistent at a SQLite file holding only the
+	// ENTITY_RUNTIME_DATA table, which client authentication reads, so sign-in works while every
+	// deny-list read fails at query time. Pointing at a genuinely unopenable target instead is not
+	// usable here, because the SSO session service aborts startup when it cannot get a
+	// runtime-persistent transactioner. The path has no directory component so it resolves against
+	// the server home, which exists under every database profile.
+	unreadableDenyListPath = "introspect_fail_closed_no_deny_list.db"
 )
 
 // IntrospectFailClosedTestSuite verifies that token introspection fails closed when the
@@ -39,10 +39,10 @@ const (
 // revocation status is unknown). It has to surface a server error instead.
 //
 // The fail-closed test deliberately breaks the shared deployment: it repoints
-// database.runtime_persistent at a database with no schema and restarts the server. While that
-// config is in place /oauth2/revoke, the refresh and token-exchange grants, and /oauth2/userinfo are
-// broken too, so the test restores the original database section, restarts, and re-obtains the admin
-// token from a deferred block that runs even if an assertion aborts the test.
+// database.runtime_persistent at a database holding only ENTITY_RUNTIME_DATA and restarts the server.
+// While that config is in place /oauth2/revoke, the refresh and token-exchange grants, and
+// /oauth2/userinfo are broken too, so the test restores the original database section, restarts, and
+// re-obtains the admin token from a deferred block that runs even if an assertion aborts the test.
 type IntrospectFailClosedTestSuite struct {
 	suite.Suite
 	client           *http.Client
@@ -120,8 +120,8 @@ func (ts *IntrospectFailClosedTestSuite) TearDownSuite() {
 	}
 }
 
-// breakRuntimePersistentDB repoints database.runtime_persistent at a schema-less SQLite database and
-// restarts the server. Every other database section is preserved verbatim, so the change behaves the
+// breakRuntimePersistentDB repoints database.runtime_persistent at a SQLite database holding only
+// ENTITY_RUNTIME_DATA and restarts the server. Every other database section is preserved verbatim, so the change behaves the
 // same under the SQLite and the PostgreSQL integration profiles.
 func (ts *IntrospectFailClosedTestSuite) breakRuntimePersistentDB() {
 	original, err := testutils.ReadDeploymentConfigKey("database")
@@ -134,6 +134,8 @@ func (ts *IntrospectFailClosedTestSuite) breakRuntimePersistentDB() {
 	for key, value := range originalMap {
 		broken[key] = value
 	}
+	ts.Require().NoError(testutils.CreateEntityRuntimeOnlyDB(unreadableDenyListPath),
+		"failed to create the database without a deny list")
 	broken["runtime_persistent"] = map[string]interface{}{
 		"type": "sqlite",
 		"sqlite": map[string]interface{}{
@@ -143,9 +145,9 @@ func (ts *IntrospectFailClosedTestSuite) breakRuntimePersistentDB() {
 
 	ts.configBroken = true
 	ts.Require().NoError(testutils.PatchDeploymentConfig(map[string]interface{}{"database": broken}),
-		"failed to point runtime_persistent at a schema-less database")
+		"failed to point runtime_persistent at a database holding only ENTITY_RUNTIME_DATA")
 	ts.Require().NoError(testutils.RestartServer(),
-		"the server must still boot when the runtime-persistent schema is missing")
+		"the server must still boot when the deny-list tables are missing")
 }
 
 // restoreRuntimePersistentDB puts the captured database section back, restarts, and re-obtains the

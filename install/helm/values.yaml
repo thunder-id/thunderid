@@ -178,6 +178,24 @@ configuration:
     #     requiredClaims:
     #       - claim: "ouId"
     #         value: "<tenant-ou-id>"
+    #     # The claim a caller's id is recorded from where a control plane records who captured or
+    #     # applied a configuration version. Defaults to sub.
+    #     userIdClaim: "sub"
+    #     # Names for the users a control plane records, read from the issuer's user endpoint with a
+    #     # client credentials token and never stored. Omit to leave recorded users out of responses.
+    #     # The client secret comes from an existing Kubernetes Secret, named by clientSecretRef, which
+    #     # is mounted into the pods and read by the server at load time; it is never a chart value.
+    #     #   kubectl create secret generic thunderid-user-lookup --from-literal=client-secret=<secret>
+    #     userLookup:
+    #       url: "https://cp.example.com/users/{id}"
+    #       tokenUrl: "https://cp.example.com/oauth2/token"
+    #       clientId: "<lookup-client-id>"
+    #       clientSecretRef:
+    #         name: "thunderid-user-lookup"
+    #         key: "client-secret"
+    #       scopes: ["internal_user_mgt_view"]
+    #       nameAttribute: "username"
+    #       cacheTtl: 300
 
   # Gate client configuration.
   # hostname/port/scheme default to server.publicUrl. Required only when Gate is hosted separately.
@@ -447,6 +465,10 @@ configuration:
     # MCP clients should register through Dynamic Client Registration instead.
     cimd:
       enabled: true
+    # Maximum revocation entries one role, group or scope change may record; a larger change is refused.
+    revocation:
+      criteria:
+        maxEntriesPerChange: 10000
     # Report an authentication flow failure that maps to the OAuth server_error code to the client.
     sendServerErrorsToClient: false
     # Client token endpoint auth methods allowed during registration.
@@ -543,6 +565,51 @@ configuration:
     # URN prefix of the per-user-type SCIM extension schemas. A trailing colon is added if missing.
     urnPrefix: "urn:thunderid:params:scim:schemas:"
 
+  # Account access (automatic lock) policy for the user and agent categories, the deployment base of
+  # the accountAccess server-config section. The values are the product defaults; a key removed here
+  # is not rendered, so the product default applies.
+  accountAccess:
+    user:
+      # "authentication_method" locks only the sign-in method that failed; "entity" locks every method.
+      lockGranularity: "authentication_method"
+      # Record when the user last signed in, at most once per lastLoginResolutionSeconds.
+      recordLastLogin: false
+      lastLoginResolutionSeconds: 3600
+      default:
+        enabled: true
+        # Failed attempts that form a lock. A failure more than failureWindowSeconds after the previous
+        # one restarts the count.
+        threshold: 5
+        failureWindowSeconds: 3600
+        # Durations of consecutive locks; the last one repeats.
+        lockDurationsSeconds: [300, 900, 1800, 3600]
+        # Time after a lock ends before the escalation resets.
+        lockDecaySeconds: 86400
+        # Counted failures since the last clear that form a lock that does not expire. 0 sets no limit.
+        maxConsecutiveFailures: 50
+      notifications:
+        onLock:
+          email:
+            enabled: true
+    agent:
+      lockGranularity: "authentication_method"
+      recordLastLogin: false
+      lastLoginResolutionSeconds: 3600
+      default:
+        enabled: true
+        threshold: 5
+        failureWindowSeconds: 900
+        lockDurationsSeconds: [60, 300, 900]
+        lockDecaySeconds: 3600
+        maxConsecutiveFailures: 50
+
+  # Identity governance provider. "disabled" turns off the governance checks of the flow engine and
+  # the unlock flows. With "disabled", also set accountAccess.<category>.default.enabled to false for
+  # user and agent; otherwise locks still form and cannot be released early. Leave empty to keep the
+  # default provider.
+  identityGovernanceProvider:
+    type: ""
+
   # Logging configuration. Logs go to the console (stdout) so a log collector can pick
   # them up from the pod, which is the expected setup on Kubernetes. Everything below
   # console output is optional; omitted keys keep the server defaults.
@@ -587,7 +654,8 @@ configuration:
   #   application: composite
   #   identity_provider: declarative
   # Supported keys: user, group, role, theme, layout, translation, agent, user_type,
-  # organization_unit, identity_provider, application, server_config, resource.
+  # organization_unit, identity_provider, application, server_config, resource,
+  # notification_template.
   stores: {}
 
 

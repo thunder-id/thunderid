@@ -9,8 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -28,8 +26,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
-	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/system/log/rollingfile"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
@@ -38,6 +34,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/httpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 	"github.com/thunder-id/thunderid/tests/mocks/observabilityprovidermock"
+	"github.com/thunder-id/thunderid/tests/testhelpers"
 )
 
 type DispatcherTestSuite struct {
@@ -179,23 +176,6 @@ func (s *DispatcherTestSuite) hangingServer() (*httptest.Server, *atomic.Int32) 
 	s.T().Cleanup(srv.Close)
 	s.T().Cleanup(func() { close(release) })
 	return srv, &calls
-}
-
-// captureLogs sends the shared logger's output to a file while fn runs and returns what it wrote.
-func (s *DispatcherTestSuite) captureLogs(level string, fn func()) string {
-	path := filepath.Join(s.T().TempDir(), "dispatcher.log")
-	logger := log.GetLogger()
-	s.Require().NoError(logger.Configure(log.OutputOptions{FileEnabled: true, File: rollingfile.Config{Path: path}}))
-	s.Require().NoError(logger.SetLevel(level))
-	defer func() {
-		s.Require().NoError(logger.SetLevel("INFO"))
-		s.Require().NoError(logger.Configure(log.OutputOptions{ConsoleEnabled: true}))
-	}()
-	fn()
-	// #nosec G304 -- path is in the test's temp directory
-	out, err := os.ReadFile(path)
-	s.Require().NoError(err)
-	return string(out)
 }
 
 // endlessBody is a response body that never ends; it counts what was read and whether it was closed.
@@ -422,7 +402,7 @@ func (s *DispatcherTestSuite) TestClientReadFailureExhaustsAttempts() {
 	s.start()
 
 	var evt *providers.Event
-	out := s.captureLogs("INFO", func() {
+	out := testhelpers.CaptureLogs(s.T(), "INFO", func() {
 		s.d.OnEvent(context.Background(), terminated("app-1"))
 		evt = s.waitFor(1)[0]
 	})
@@ -513,7 +493,7 @@ func (s *DispatcherTestSuite) TestQueueFullLogsOncePerTermination() {
 	defer s.d.cancel()
 	s.d.OnEvent(context.Background(), terminated("app-1"))
 
-	out := s.captureLogs("INFO", func() {
+	out := testhelpers.CaptureLogs(s.T(), "INFO", func() {
 		s.d.OnEvent(context.Background(), terminated("app-2", "app-3", "app-4"))
 	})
 
@@ -756,7 +736,7 @@ func (s *DispatcherTestSuite) TestLogsOneWarningPerFailure() {
 	s.withClient("app-2", accepting.URL)
 	s.start()
 
-	out := s.captureLogs("INFO", func() {
+	out := testhelpers.CaptureLogs(s.T(), "INFO", func() {
 		s.d.OnEvent(context.Background(), terminated("app-1", "app-2"))
 		s.waitFor(2)
 	})
@@ -785,7 +765,7 @@ func (s *DispatcherTestSuite) TestRecordsCarryNoSecrets() {
 	s.withClient("app-1", srv.URL+"/bcl?k=query-secret")
 	s.start()
 
-	out := s.captureLogs("DEBUG", func() {
+	out := testhelpers.CaptureLogs(s.T(), "DEBUG", func() {
 		s.d.OnEvent(context.Background(), terminated("app-1"))
 		s.waitFor(1)
 	})
@@ -807,7 +787,7 @@ func (s *DispatcherTestSuite) TestConnectionErrorLogsNoURI() {
 	s.d.retryDelay = time.Millisecond
 	s.start()
 
-	out := s.captureLogs("DEBUG", func() {
+	out := testhelpers.CaptureLogs(s.T(), "DEBUG", func() {
 		s.d.OnEvent(context.Background(), terminated("app-1"))
 		s.waitFor(1)
 	})

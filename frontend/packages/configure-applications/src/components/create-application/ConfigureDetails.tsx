@@ -830,7 +830,7 @@ export default function ConfigureDetails({
           </Typography>
           <FormControl fullWidth required>
             <FormLabel htmlFor="relying-party-id-input">
-              {t('applications:onboarding.configure.details.relyingPartyId.label') || 'Relying Party ID'}
+              {t('applications:onboarding.configure.details.relyingPartyId.label') || 'Relying party ID'}
             </FormLabel>
             <Controller
               name="relyingPartyId"
@@ -854,7 +854,7 @@ export default function ConfigureDetails({
           </FormControl>
           <FormControl fullWidth required>
             <FormLabel htmlFor="relying-party-name-input">
-              {t('applications:onboarding.configure.details.relyingPartyName.label') || 'Relying Party Name'}
+              {t('applications:onboarding.configure.details.relyingPartyName.label') || 'Relying party name'}
             </FormLabel>
             <Controller
               name="relyingPartyName"

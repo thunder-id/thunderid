@@ -66,7 +66,8 @@ await client.initialize({
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `storage` | `T` | Platform default | Storage backend for session and config data. The accepted values depend on the platform SDK |
-| `syncSession` | `boolean` | `false` | Sync the application session with the IdP using OIDC iframe session management (RFC). May not work in browsers with third-party cookie restrictions |
+| `session.silentSignIn.beforeRedirect` | `boolean` | `false` | Browser SDKs only. Before `signIn()` redirects, try a silent `prompt=none` sign-in from the existing <ProductName /> session. When the session exists, the user is signed in without leaving the app. Otherwise the redirect continues. Skipped when the sign-in options set their own `prompt` |
+| `session.silentSignIn.timeout` | `number` | `10000` | How long, in milliseconds, a silent sign-in waits for a response before treating the user as signed out. Also applies to `signInSilently()` |
 | `instanceId` | `number` | `0` | Instance identifier for namespacing storage. Use when running multiple SDK instances |
 
 ### Discovery and Endpoint Parameters

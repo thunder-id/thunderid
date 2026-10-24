@@ -17,10 +17,19 @@ func NewExecutorBackedNodeInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ExecutorBackedNodeInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ExecutorBackedNodeInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -51,7 +60,7 @@ type ExecutorBackedNodeInterfaceMock_AddNextNode_Call struct {
 
 // AddNextNode is a helper method to define mock.On call
 //   - nextNodeID string
-func (_e *ExecutorBackedNodeInterfaceMock_Expecter) AddNextNode(nextNodeID interface{}) *ExecutorBackedNodeInterfaceMock_AddNextNode_Call {
+func (_e *ExecutorBackedNodeInterfaceMock_Expecter) AddNextNode(nextNodeID any) *ExecutorBackedNodeInterfaceMock_AddNextNode_Call {
 	return &ExecutorBackedNodeInterfaceMock_AddNextNode_Call{Call: _e.mock.On("AddNextNode", nextNodeID)}
 }
 
@@ -91,7 +100,7 @@ type ExecutorBackedNodeInterfaceMock_AddPreviousNode_Call struct {
 
 // AddPreviousNode is a helper method to define mock.On call
 //   - previousNodeID string
-func (_e *ExecutorBackedNodeInterfaceMock_Expecter) AddPreviousNode(previousNodeID interface{}) *ExecutorBackedNodeInterfaceMock_AddPreviousNode_Call {
+func (_e *ExecutorBackedNodeInterfaceMock_Expecter) AddPreviousNode(previousNodeID any) *ExecutorBackedNodeInterfaceMock_AddPreviousNode_Call {
 	return &ExecutorBackedNodeInterfaceMock_AddPreviousNode_Call{Call: _e.mock.On("AddPreviousNode", previousNodeID)}
 }
 
@@ -155,7 +164,7 @@ type ExecutorBackedNodeInterfaceMock_Execute_Call struct {
 
 // Execute is a helper method to define mock.On call
 //   - ctx *providers.NodeContext
-func (_e *ExecutorBackedNodeInterfaceMock_Expecter) Execute(ctx interface{}) *ExecutorBackedNodeInterfaceMock_Execute_Call {
+func (_e *ExecutorBackedNodeInterfaceMock_Expecter) Execute(ctx any) *ExecutorBackedNodeInterfaceMock_Execute_Call {
 	return &ExecutorBackedNodeInterfaceMock_Execute_Call{Call: _e.mock.On("Execute", ctx)}
 }
 
@@ -913,7 +922,7 @@ type ExecutorBackedNodeInterfaceMock_RemoveNextNode_Call struct {
 
 // RemoveNextNode is a helper method to define mock.On call
 //   - nextNodeID string
-func (_e *ExecutorBackedNodeInterfaceMock_Expecter) RemoveNextNode(nextNodeID interface{}) *ExecutorBackedNodeInterfaceMock_RemoveNextNode_Call {
+func (_e *ExecutorBackedNodeInterfaceMock_Expecter) RemoveNextNode(nextNodeID any) *ExecutorBackedNodeInterfaceMock_RemoveNextNode_Call {
 	return &ExecutorBackedNodeInterfaceMock_RemoveNextNode_Call{Call: _e.mock.On("RemoveNextNode", nextNodeID)}
 }
 
@@ -953,7 +962,7 @@ type ExecutorBackedNodeInterfaceMock_RemovePreviousNode_Call struct {
 
 // RemovePreviousNode is a helper method to define mock.On call
 //   - previousNodeID string
-func (_e *ExecutorBackedNodeInterfaceMock_Expecter) RemovePreviousNode(previousNodeID interface{}) *ExecutorBackedNodeInterfaceMock_RemovePreviousNode_Call {
+func (_e *ExecutorBackedNodeInterfaceMock_Expecter) RemovePreviousNode(previousNodeID any) *ExecutorBackedNodeInterfaceMock_RemovePreviousNode_Call {
 	return &ExecutorBackedNodeInterfaceMock_RemovePreviousNode_Call{Call: _e.mock.On("RemovePreviousNode", previousNodeID)}
 }
 
@@ -1059,7 +1068,7 @@ type ExecutorBackedNodeInterfaceMock_SetCondition_Call struct {
 
 // SetCondition is a helper method to define mock.On call
 //   - condition *NodeCondition
-func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetCondition(condition interface{}) *ExecutorBackedNodeInterfaceMock_SetCondition_Call {
+func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetCondition(condition any) *ExecutorBackedNodeInterfaceMock_SetCondition_Call {
 	return &ExecutorBackedNodeInterfaceMock_SetCondition_Call{Call: _e.mock.On("SetCondition", condition)}
 }
 
@@ -1099,7 +1108,7 @@ type ExecutorBackedNodeInterfaceMock_SetExecutor_Call struct {
 
 // SetExecutor is a helper method to define mock.On call
 //   - executor providers.Executor
-func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetExecutor(executor interface{}) *ExecutorBackedNodeInterfaceMock_SetExecutor_Call {
+func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetExecutor(executor any) *ExecutorBackedNodeInterfaceMock_SetExecutor_Call {
 	return &ExecutorBackedNodeInterfaceMock_SetExecutor_Call{Call: _e.mock.On("SetExecutor", executor)}
 }
 
@@ -1139,7 +1148,7 @@ type ExecutorBackedNodeInterfaceMock_SetExecutorName_Call struct {
 
 // SetExecutorName is a helper method to define mock.On call
 //   - name string
-func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetExecutorName(name interface{}) *ExecutorBackedNodeInterfaceMock_SetExecutorName_Call {
+func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetExecutorName(name any) *ExecutorBackedNodeInterfaceMock_SetExecutorName_Call {
 	return &ExecutorBackedNodeInterfaceMock_SetExecutorName_Call{Call: _e.mock.On("SetExecutorName", name)}
 }
 
@@ -1179,7 +1188,7 @@ type ExecutorBackedNodeInterfaceMock_SetInputs_Call struct {
 
 // SetInputs is a helper method to define mock.On call
 //   - inputs []providers.Input
-func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetInputs(inputs interface{}) *ExecutorBackedNodeInterfaceMock_SetInputs_Call {
+func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetInputs(inputs any) *ExecutorBackedNodeInterfaceMock_SetInputs_Call {
 	return &ExecutorBackedNodeInterfaceMock_SetInputs_Call{Call: _e.mock.On("SetInputs", inputs)}
 }
 
@@ -1219,7 +1228,7 @@ type ExecutorBackedNodeInterfaceMock_SetMode_Call struct {
 
 // SetMode is a helper method to define mock.On call
 //   - mode string
-func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetMode(mode interface{}) *ExecutorBackedNodeInterfaceMock_SetMode_Call {
+func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetMode(mode any) *ExecutorBackedNodeInterfaceMock_SetMode_Call {
 	return &ExecutorBackedNodeInterfaceMock_SetMode_Call{Call: _e.mock.On("SetMode", mode)}
 }
 
@@ -1259,7 +1268,7 @@ type ExecutorBackedNodeInterfaceMock_SetNextNodeList_Call struct {
 
 // SetNextNodeList is a helper method to define mock.On call
 //   - nextNodeIDList []string
-func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetNextNodeList(nextNodeIDList interface{}) *ExecutorBackedNodeInterfaceMock_SetNextNodeList_Call {
+func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetNextNodeList(nextNodeIDList any) *ExecutorBackedNodeInterfaceMock_SetNextNodeList_Call {
 	return &ExecutorBackedNodeInterfaceMock_SetNextNodeList_Call{Call: _e.mock.On("SetNextNodeList", nextNodeIDList)}
 }
 
@@ -1299,7 +1308,7 @@ type ExecutorBackedNodeInterfaceMock_SetOnFailure_Call struct {
 
 // SetOnFailure is a helper method to define mock.On call
 //   - nodeID string
-func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetOnFailure(nodeID interface{}) *ExecutorBackedNodeInterfaceMock_SetOnFailure_Call {
+func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetOnFailure(nodeID any) *ExecutorBackedNodeInterfaceMock_SetOnFailure_Call {
 	return &ExecutorBackedNodeInterfaceMock_SetOnFailure_Call{Call: _e.mock.On("SetOnFailure", nodeID)}
 }
 
@@ -1339,7 +1348,7 @@ type ExecutorBackedNodeInterfaceMock_SetOnIncomplete_Call struct {
 
 // SetOnIncomplete is a helper method to define mock.On call
 //   - nodeID string
-func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetOnIncomplete(nodeID interface{}) *ExecutorBackedNodeInterfaceMock_SetOnIncomplete_Call {
+func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetOnIncomplete(nodeID any) *ExecutorBackedNodeInterfaceMock_SetOnIncomplete_Call {
 	return &ExecutorBackedNodeInterfaceMock_SetOnIncomplete_Call{Call: _e.mock.On("SetOnIncomplete", nodeID)}
 }
 
@@ -1379,7 +1388,7 @@ type ExecutorBackedNodeInterfaceMock_SetOnSuccess_Call struct {
 
 // SetOnSuccess is a helper method to define mock.On call
 //   - nodeID string
-func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetOnSuccess(nodeID interface{}) *ExecutorBackedNodeInterfaceMock_SetOnSuccess_Call {
+func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetOnSuccess(nodeID any) *ExecutorBackedNodeInterfaceMock_SetOnSuccess_Call {
 	return &ExecutorBackedNodeInterfaceMock_SetOnSuccess_Call{Call: _e.mock.On("SetOnSuccess", nodeID)}
 }
 
@@ -1419,7 +1428,7 @@ type ExecutorBackedNodeInterfaceMock_SetPreviousNodeList_Call struct {
 
 // SetPreviousNodeList is a helper method to define mock.On call
 //   - previousNodeIDList []string
-func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetPreviousNodeList(previousNodeIDList interface{}) *ExecutorBackedNodeInterfaceMock_SetPreviousNodeList_Call {
+func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetPreviousNodeList(previousNodeIDList any) *ExecutorBackedNodeInterfaceMock_SetPreviousNodeList_Call {
 	return &ExecutorBackedNodeInterfaceMock_SetPreviousNodeList_Call{Call: _e.mock.On("SetPreviousNodeList", previousNodeIDList)}
 }
 
@@ -1470,7 +1479,7 @@ type ExecutorBackedNodeInterfaceMock_ShouldExecute_Call struct {
 
 // ShouldExecute is a helper method to define mock.On call
 //   - ctx *providers.NodeContext
-func (_e *ExecutorBackedNodeInterfaceMock_Expecter) ShouldExecute(ctx interface{}) *ExecutorBackedNodeInterfaceMock_ShouldExecute_Call {
+func (_e *ExecutorBackedNodeInterfaceMock_Expecter) ShouldExecute(ctx any) *ExecutorBackedNodeInterfaceMock_ShouldExecute_Call {
 	return &ExecutorBackedNodeInterfaceMock_ShouldExecute_Call{Call: _e.mock.On("ShouldExecute", ctx)}
 }
 

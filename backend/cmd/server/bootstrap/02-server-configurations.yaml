@@ -22,3 +22,45 @@ value:
     defaultHandle: default-secret-regeneration-flow
   agentOnboardingFlow:
     defaultHandle: default-agent-onboarding-flow
+  roleAssignmentRemovalFlow:
+    defaultHandle: default-role-assignment-removal-flow
+  roleDeletionFlow:
+    defaultHandle: default-role-deletion-flow
+  rolePermissionRemovalFlow:
+    defaultHandle: default-role-permission-removal-flow
+  groupDeletionFlow:
+    defaultHandle: default-group-deletion-flow
+  groupMembershipRemovalFlow:
+    defaultHandle: default-group-membership-removal-flow
+  actionDeletionFlow:
+    defaultHandle: default-action-deletion-flow
+  userUnlockFlow:
+    defaultHandle: default-user-unlock-flow
+  userSuspendFlow:
+    defaultHandle: default-user-suspend-flow
+  userUnsuspendFlow:
+    defaultHandle: default-user-unsuspend-flow
+  agentUnlockFlow:
+    defaultHandle: default-agent-unlock-flow
+  agentSuspendFlow:
+    defaultHandle: default-agent-suspend-flow
+  agentUnsuspendFlow:
+    defaultHandle: default-agent-unsuspend-flow
+  applicationSuspendFlow:
+    defaultHandle: default-application-suspend-flow
+  applicationUnsuspendFlow:
+    defaultHandle: default-application-unsuspend-flow
+---
+resource_type: server_config
+name: accountAccess
+value:
+  user:
+    notifications:
+      onLock:
+        email:
+          templates:
+            temporary: authentication-method-locked
+            permanent: authentication-method-locked-permanent
+            account:
+              temporary: account-locked
+              permanent: account-locked-permanent

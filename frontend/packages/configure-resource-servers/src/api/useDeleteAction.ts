@@ -2,10 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
-import {useConfig} from '@thunderid/contexts';
+import {AdministrationModes, useAdministrationOperation, useConfig} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import ResourceServerQueryKeys from '../constants/resource-server-query-keys';
+import {deleteActionNatively, deleteActionViaFlow, type HttpLike} from '../utils/actionAdministrationFlow';
 
+/**
+ * Custom React hook to delete an action of a resource server or one of its resources.
+ *
+ * @returns TanStack Query mutation object for deleting actions
+ */
 export default function useDeleteAction(
   resourceServerId: string,
   resourceId?: string,
@@ -13,18 +19,24 @@ export default function useDeleteAction(
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient = useQueryClient();
+  const mode = useAdministrationOperation<[string, string, string | undefined], void>(
+    'resourceServers',
+    'deleteAction',
+  );
 
   return useMutation<void, Error, string>({
     mutationFn: async (actionId: string): Promise<void> => {
-      const serverUrl = getServerUrl();
-      const url = resourceId
-        ? `${serverUrl}/resource-servers/${resourceServerId}/resources/${resourceId}/actions/${actionId}`
-        : `${serverUrl}/resource-servers/${resourceServerId}/actions/${actionId}`;
+      const client = http as unknown as HttpLike;
 
-      await http.request({
-        url,
-        method: 'DELETE',
-      } as unknown as Parameters<typeof http.request>[0]);
+      if (typeof mode === 'function') {
+        await mode(resourceServerId, actionId, resourceId);
+        return;
+      }
+      if (mode === AdministrationModes.NATIVE) {
+        await deleteActionNatively(client, getServerUrl(), resourceServerId, actionId, resourceId);
+        return;
+      }
+      await deleteActionViaFlow(client, getServerUrl(), resourceServerId, actionId, resourceId);
     },
     onSuccess: () => {
       if (resourceId) {

@@ -31,7 +31,7 @@ type builder struct {
 	t          *testing.T
 	issuerKey  *ecdsa.PrivateKey
 	holderKey  *ecdsa.PrivateKey
-	saltSeq    int
+	saltSeq    byte
 	audience   string
 	nonce      string
 	kbIssuedAt int64
@@ -55,7 +55,7 @@ func newBuilder(t *testing.T) *builder {
 
 func (b *builder) nextSalt() string {
 	b.saltSeq++
-	return base64.RawURLEncoding.EncodeToString([]byte{byte(b.saltSeq), 0x11, 0x22, 0x33})
+	return base64.RawURLEncoding.EncodeToString([]byte{b.saltSeq, 0x11, 0x22, 0x33})
 }
 
 // disclosure builds an object-property disclosure and returns its raw form and digest.

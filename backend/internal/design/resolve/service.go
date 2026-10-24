@@ -159,9 +159,8 @@ func (drs *designResolveService) ResolveDesign(
 // from the theme's color scheme. Unknown placeholders are left as-is; content with no placeholder is
 // returned unchanged without loading the theme.
 //
-// As shallow defense in depth, a value with angle brackets or control characters is left unresolved
-// (see substituteDesignTokens) and logged. Values are NOT encoded — the caller MUST encode the result
-// for its output context to avoid injection.
+// Each resolved value is HTML-escaped (see substituteDesignTokens) so it is safe inside the HTML the
+// email body places it in.
 func (drs *designResolveService) ResolveDesignContent(
 	ctx context.Context, themeID, colorScheme, content string,
 ) (string, *tidcommon.ServiceError) {
@@ -174,12 +173,7 @@ func (drs *designResolveService) ResolveDesignContent(
 		return "", svcErr
 	}
 
-	resolved, dropped := substituteDesignTokens(content, tokens)
-	for _, token := range dropped {
-		drs.logger.Warn(ctx, "Dropped design token with unsafe value; left its placeholder unresolved",
-			log.String("themeId", themeID), log.String("token", token))
-	}
-	return resolved, nil
+	return substituteDesignTokens(content, tokens), nil
 }
 
 // resolveDesignTokens resolves a theme into a dot-path token map (e.g. "palette.primary.main" ->

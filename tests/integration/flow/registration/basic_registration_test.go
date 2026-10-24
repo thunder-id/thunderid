@@ -208,7 +208,7 @@ func (ts *BasicRegistrationFlowTestSuite) SetupSuite() {
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
 		AllowedUserTypes:          []string{testUserType.Handle},
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+			"userAttributes": []string{"userTypeHandle", "userTypeName", "ouId", "ouName", "ouHandle"},
 		},
 	}
 
@@ -246,16 +246,16 @@ func (ts *BasicRegistrationFlowTestSuite) TearDownSuite() {
 		}
 	}
 
+	if ts.entityTypeID != "" {
+		if err := testutils.DeleteUserType(ts.entityTypeID); err != nil {
+			ts.T().Logf("Failed to delete test user type during teardown: %v", err)
+		}
+	}
+
 	// Delete test organization unit
 	if ts.testOUID != "" {
 		if err := testutils.DeleteOrganizationUnit(ts.testOUID); err != nil {
 			ts.T().Logf("Failed to delete test organization unit during teardown: %v", err)
-		}
-	}
-
-	if ts.entityTypeID != "" {
-		if err := testutils.DeleteUserType(ts.entityTypeID); err != nil {
-			ts.T().Logf("Failed to delete test user type during teardown: %v", err)
 		}
 	}
 }
@@ -326,7 +326,9 @@ func (ts *BasicRegistrationFlowTestSuite) TestBasicRegistrationFlowSuccess() {
 	ts.Require().NotNil(jwtClaims, "JWT claims should not be nil")
 
 	// Validate JWT contains expected user type and OU ID
-	ts.Require().Equal(testUserType.Handle, jwtClaims.UserType, "Expected userType to match created schema")
+	ts.Require().Equal(testUserType.Handle, jwtClaims.UserTypeHandle, "Expected userTypeHandle to match created schema")
+	ts.Require().Equal(testUserType.DisplayName, jwtClaims.UserTypeName,
+		"Expected userTypeName to match the user type's display name")
 	ts.Require().Equal(ts.testOUID, jwtClaims.OUID, "Expected ouId to match the created organization unit")
 	ts.Require().Equal(ts.testAppID, jwtClaims.Aud, "Expected aud to match the application ID")
 	ts.Require().NotEmpty(jwtClaims.Sub, "JWT subject should not be empty")
@@ -457,7 +459,7 @@ func (ts *BasicRegistrationFlowTestSuite) TestBasicRegistrationFlowInitialInvali
 	ts.Require().NotNil(jwtClaims, "JWT claims should not be nil")
 
 	// Validate JWT contains expected user type and OU ID
-	ts.Require().Equal(testUserType.Handle, jwtClaims.UserType, "Expected userType to match created schema")
+	ts.Require().Equal(testUserType.Handle, jwtClaims.UserTypeHandle, "Expected userTypeHandle to match created schema")
 	ts.Require().Equal(ts.testOUID, jwtClaims.OUID, "Expected ouId to match the created organization unit")
 	ts.Require().Equal(ts.testAppID, jwtClaims.Aud, "Expected aud to match the application ID")
 	ts.Require().NotEmpty(jwtClaims.Sub, "JWT subject should not be empty")
@@ -505,7 +507,7 @@ func (ts *BasicRegistrationFlowTestSuite) TestBasicRegistrationFlowSingleRequest
 	ts.Require().NotNil(jwtClaims, "JWT claims should not be nil")
 
 	// Validate JWT contains expected user type and OU ID
-	ts.Require().Equal(testUserType.Handle, jwtClaims.UserType, "Expected userType to match created schema")
+	ts.Require().Equal(testUserType.Handle, jwtClaims.UserTypeHandle, "Expected userTypeHandle to match created schema")
 	ts.Require().Equal(ts.testOUID, jwtClaims.OUID, "Expected ouId to match the created organization unit")
 	ts.Require().Equal(ts.testAppID, jwtClaims.Aud, "Expected aud to match the application ID")
 	ts.Require().NotEmpty(jwtClaims.Sub, "JWT subject should not be empty")
@@ -586,7 +588,7 @@ func (ts *BasicRegistrationFlowTestSuite) TestBasicRegistrationFlow_WithoutToken
 	ts.Require().NotEmpty(jwtClaims.Sub, "JWT subject should not be empty")
 
 	// Verify userType and OU attributes are NOT present (since TokenConfig is not specified)
-	ts.Require().Empty(jwtClaims.UserType, "userType should NOT be present when TokenConfig is not specified")
+	ts.Require().Empty(jwtClaims.UserTypeHandle, "userTypeHandle should NOT be present when TokenConfig is not specified")
 	ts.Require().Empty(jwtClaims.OUID, "ouId should NOT be present when TokenConfig is not specified")
 	ts.Require().Empty(jwtClaims.OuName, "ouName should NOT be present when TokenConfig is not specified")
 	ts.Require().Empty(jwtClaims.OuHandle, "ouHandle should NOT be present when TokenConfig is not specified")
@@ -657,7 +659,7 @@ func (ts *BasicRegistrationFlowTestSuite) TestBasicRegistrationFlow_WithEmptyUse
 	ts.Require().NotEmpty(jwtClaims.Sub, "JWT subject should not be empty")
 
 	// Verify userType and OU attributes are NOT present (since user_attributes is empty)
-	ts.Require().Empty(jwtClaims.UserType, "userType should NOT be present when user_attributes is empty")
+	ts.Require().Empty(jwtClaims.UserTypeHandle, "userTypeHandle should NOT be present when user_attributes is empty")
 	ts.Require().Empty(jwtClaims.OUID, "ouId should NOT be present when user_attributes is empty")
 	ts.Require().Empty(jwtClaims.OuName, "ouName should NOT be present when user_attributes is empty")
 	ts.Require().Empty(jwtClaims.OuHandle, "ouHandle should NOT be present when user_attributes is empty")

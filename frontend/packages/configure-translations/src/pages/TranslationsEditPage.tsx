@@ -1,9 +1,15 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice, UnsavedChangesBar} from '@thunderid/components';
+import {DocumentTitle, QueryErrorNotice, UnsavedChangesBar} from '@thunderid/components';
 import {useToast} from '@thunderid/contexts';
-import {useGetTranslations, useUpdateTranslation, NamespaceConstants, I18nDefaultConstants} from '@thunderid/i18n';
+import {
+  getDisplayNameForCode,
+  useGetTranslations,
+  useUpdateTranslation,
+  NamespaceConstants,
+  I18nDefaultConstants,
+} from '@thunderid/i18n';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Box, PageContent, useColorScheme} from '@wso2/oxygen-ui';
@@ -250,6 +256,9 @@ export default function TranslationsEditPage(): JSX.Element {
 
   return (
     <PageContent sx={{display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0}}>
+      <DocumentTitle
+        title={(selectedLanguage ? getDisplayNameForCode(selectedLanguage) : null) ?? t('page.title', 'Translations')}
+      />
       <TranslationEditorHeader
         selectedLanguage={selectedLanguage}
         isSaving={isSaving}
@@ -311,8 +320,8 @@ export default function TranslationsEditPage(): JSX.Element {
           {hasDirtyChanges && (
             <UnsavedChangesBar
               message={t('editor.unsavedCount', {count: dirtyKeys.length, defaultValue: '{{count}} unsaved change'})}
-              resetLabel={t('actions.discardChanges', 'Discard Changes')}
-              saveLabel={t('actions.saveChanges', 'Save Changes')}
+              resetLabel={t('actions.discardChanges', 'Discard changes')}
+              saveLabel={t('actions.saveChanges', 'Save changes')}
               savingLabel={t('common:status.saving', {ns: 'common', defaultValue: 'Saving...'})}
               isSaving={isSaving}
               onReset={handleDiscard}

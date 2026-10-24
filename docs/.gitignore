@@ -12,7 +12,7 @@
 static/api/next/combined.yaml
 static/api/next/postman/
 static/data/releases.json
-static/data/sdk-releases.json
+static/data/ecosystem-releases.json
 static/data/contributors.json
 static/docs/
 

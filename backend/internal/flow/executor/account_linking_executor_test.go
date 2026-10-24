@@ -197,6 +197,23 @@ func (suite *AccountLinkingExecutorTestSuite) TestExecute_PendingFederatedIdenti
 	assert.NotContains(suite.T(), resp.RuntimeData, common.RuntimeKeyEntityState)
 }
 
+// Several users already hold the identity's link, so there is nothing to link and nothing is looked
+// up. The unstubbed GetEntityReference and ResolveLinkCandidates assert that on their own.
+func (suite *AccountLinkingExecutorTestSuite) TestExecute_AmbiguousIdentityCompletesWithoutMatching() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-1",
+		FlowType:    providers.FlowTypeAuthentication,
+		AuthUser:    authenticatedAuthUser(),
+		RuntimeData: map[string]string{common.RuntimeKeyEntityState: entityStateAmbiguous},
+	}
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	assert.NotContains(suite.T(), resp.RuntimeData, common.RuntimeKeyLinkingVerificationRequested)
+}
+
 // Nothing matched: a brand new federated user, for provisioning to create.
 func (suite *AccountLinkingExecutorTestSuite) TestExecute_NoCandidateCompletesAsNewUser() {
 	ctx := &providers.NodeContext{ExecutionID: "flow-1", FlowType: providers.FlowTypeAuthentication}

@@ -3,7 +3,7 @@
 
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import userEvent from '@testing-library/user-event';
-import {render, screen} from '@thunderid/test-utils';
+import {render, screen, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import AgentsListPage from '../AgentsListPage';
 
@@ -64,6 +64,12 @@ describe('AgentsListPage', () => {
 
     expect(screen.getByRole('heading', {level: 1, name: 'Agents'})).toBeInTheDocument();
     expect(screen.getByText('Manage service identities and machine clients')).toBeInTheDocument();
+  });
+
+  it('sets the browser tab title', async () => {
+    render(<AgentsListPage />);
+
+    await waitFor(() => expect(document.title).toBe('Agents | ThunderID'));
   });
 
   it('renders the Schema and Add agent buttons', () => {

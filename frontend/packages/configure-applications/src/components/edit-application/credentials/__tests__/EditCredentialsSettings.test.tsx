@@ -154,7 +154,7 @@ describe('EditCredentialsSettings', () => {
     });
   });
 
-  describe('Secret section — redirect-based (Client Secret)', () => {
+  describe('Secret section — redirect-based (Client secret)', () => {
     it('shows the masked secret field and a Regenerate button for a confidential client', () => {
       render(
         <EditCredentialsSettings
@@ -165,7 +165,7 @@ describe('EditCredentialsSettings', () => {
         />,
       );
 
-      expect(screen.getByLabelText('Client Secret')).toHaveDisplayValue('••••••••••••••••');
+      expect(screen.getByLabelText('Client secret')).toHaveDisplayValue('••••••••••••••••');
       expect(screen.getByRole('button', {name: /regenerate/i})).toBeInTheDocument();
     });
 
@@ -240,7 +240,7 @@ describe('EditCredentialsSettings', () => {
     });
   });
 
-  describe('Secret section — flow-native (Flow Secret)', () => {
+  describe('Secret section — flow-native (Flow secret)', () => {
     it('shows the Flow Secret label and a Regenerate button for a flow-native app', () => {
       render(
         <EditCredentialsSettings
@@ -251,7 +251,7 @@ describe('EditCredentialsSettings', () => {
         />,
       );
 
-      expect(screen.getByLabelText('Flow Secret')).toHaveDisplayValue('••••••••••••••••');
+      expect(screen.getByLabelText('Flow secret')).toHaveDisplayValue('••••••••••••••••');
       expect(screen.getByRole('button', {name: /regenerate/i})).toBeInTheDocument();
     });
 
@@ -306,6 +306,88 @@ describe('EditCredentialsSettings', () => {
       expect(screen.queryByDisplayValue('••••••••••••••••')).not.toBeInTheDocument();
     });
 
+    it('does not offer a Flow Secret to a JWT bearer-only mcp app', () => {
+      const jwtBearerOnlyConfig: OAuth2Config = {
+        clientId: 'jwt-bearer-123',
+        tokenEndpointAuthMethod: 'private_key_jwt',
+        publicClient: false,
+        grantTypes: ['urn:ietf:params:oauth:grant-type:jwt-bearer'],
+      } as OAuth2Config;
+
+      render(
+        <EditCredentialsSettings
+          application={buildApplication({type: 'mcp'})}
+          editedApp={{}}
+          oauth2Config={jwtBearerOnlyConfig}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.queryByLabelText('Flow secret')).not.toBeInTheDocument();
+      expect(screen.queryByDisplayValue('••••••••••••••••')).not.toBeInTheDocument();
+    });
+
+    it('does not offer a Flow Secret to a client_credentials and JWT bearer mcp app', () => {
+      const directTokenConfig: OAuth2Config = {
+        clientId: 'jwt-bearer-123',
+        tokenEndpointAuthMethod: 'private_key_jwt',
+        publicClient: false,
+        grantTypes: ['client_credentials', 'urn:ietf:params:oauth:grant-type:jwt-bearer'],
+      } as OAuth2Config;
+
+      render(
+        <EditCredentialsSettings
+          application={buildApplication({type: 'mcp'})}
+          editedApp={{}}
+          oauth2Config={directTokenConfig}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.queryByLabelText('Flow secret')).not.toBeInTheDocument();
+    });
+
+    it('offers a Flow Secret to a JWT bearer and token exchange mcp app', () => {
+      const exchangeConfig: OAuth2Config = {
+        clientId: 'jwt-bearer-123',
+        tokenEndpointAuthMethod: 'private_key_jwt',
+        publicClient: false,
+        grantTypes: ['urn:ietf:params:oauth:grant-type:jwt-bearer', 'urn:ietf:params:oauth:grant-type:token-exchange'],
+      } as OAuth2Config;
+
+      render(
+        <EditCredentialsSettings
+          application={buildApplication({type: 'mcp'})}
+          editedApp={{}}
+          oauth2Config={exchangeConfig}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.getByLabelText('Flow secret')).toBeInTheDocument();
+    });
+
+    it('shows the client secret, not a Flow Secret, for a confidential JWT bearer-only mcp app', () => {
+      const jwtBearerSecretConfig: OAuth2Config = {
+        clientId: 'jwt-bearer-123',
+        tokenEndpointAuthMethod: 'client_secret_basic',
+        publicClient: false,
+        grantTypes: ['urn:ietf:params:oauth:grant-type:jwt-bearer'],
+      } as OAuth2Config;
+
+      render(
+        <EditCredentialsSettings
+          application={buildApplication({type: 'mcp'})}
+          editedApp={{}}
+          oauth2Config={jwtBearerSecretConfig}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.getByLabelText('Client secret')).toHaveDisplayValue('••••••••••••••••');
+      expect(screen.queryByLabelText('Flow secret')).not.toBeInTheDocument();
+    });
+
     it('does not show a secret section for a redirect (authorization_code) app', () => {
       const redirectConfig: OAuth2Config = {
         clientId: 'redirect-123',
@@ -353,7 +435,7 @@ describe('EditCredentialsSettings', () => {
         />,
       );
 
-      expect(screen.queryByText('Platform Attestation')).not.toBeInTheDocument();
+      expect(screen.queryByText('Platform attestation')).not.toBeInTheDocument();
     });
 
     it('renders the attestation section when showAttestation is true', () => {
@@ -367,7 +449,7 @@ describe('EditCredentialsSettings', () => {
         />,
       );
 
-      expect(screen.getByText('Platform Attestation')).toBeInTheDocument();
+      expect(screen.getByText('Platform attestation')).toBeInTheDocument();
     });
   });
 });

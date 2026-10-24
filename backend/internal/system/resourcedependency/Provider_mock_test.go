@@ -16,10 +16,19 @@ func NewProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -74,7 +83,7 @@ type ProviderMock_GetResourceDependencies_Call struct {
 //   - ctx context.Context
 //   - resourceType string
 //   - id string
-func (_e *ProviderMock_Expecter) GetResourceDependencies(ctx interface{}, resourceType interface{}, id interface{}) *ProviderMock_GetResourceDependencies_Call {
+func (_e *ProviderMock_Expecter) GetResourceDependencies(ctx any, resourceType any, id any) *ProviderMock_GetResourceDependencies_Call {
 	return &ProviderMock_GetResourceDependencies_Call{Call: _e.mock.On("GetResourceDependencies", ctx, resourceType, id)}
 }
 

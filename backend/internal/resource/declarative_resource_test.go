@@ -9,8 +9,10 @@ import (
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 
@@ -288,6 +290,47 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_MCPExportImportRou
 	assert.Equal(s.T(), providers.ActionKindTool, imported.Resources[0].Actions[0].Kind)
 }
 
+// TestGetResourceByID_ExportsParentPath verifies that a parent is exported as its full path.
+func (s *ResourceServerExporterTestSuite) TestGetResourceByID_ExportsParentPath() {
+	ctx := context.Background()
+	serverID := "rs1"
+	parent := func(id string) *string { return &id }
+
+	server := &providers.ResourceServer{
+		ID: serverID, Name: "Test Server", Identifier: "test-server", OUID: "ou1", Delimiter: ":",
+	}
+	resources := []providers.Resource{
+		{ID: "app", Name: "App", Handle: "app", Permission: "app"},
+		{ID: "project", Name: "Project", Handle: "project", Parent: parent("app"), Permission: "app:project"},
+		{ID: "pm", Name: "Member", Handle: "member", Parent: parent("project"), Permission: "app:project:member"},
+		{ID: "team", Name: "Team", Handle: "team", Parent: parent("app"), Permission: "app:team"},
+		{ID: "tm", Name: "Member", Handle: "member", Parent: parent("team"), Permission: "app:team:member"},
+		{ID: "lead", Name: "Lead", Handle: "lead", Parent: parent("tm"), Permission: "app:team:member:lead"},
+	}
+
+	s.mockService.EXPECT().GetResourceServer(ctx, serverID).Return(server, nil)
+	s.mockService.EXPECT().GetAllResourceList(ctx, serverID).Return(resources, nil)
+	s.mockService.EXPECT().
+		GetActionList(ctx, serverID, mock.Anything, providers.ActionKind(""), serverconst.MaxPageSize, 0).
+		Return(&ActionList{}, nil)
+
+	result, _, err := s.exporter.GetResourceByID(ctx, serverID)
+
+	assert.Nil(s.T(), err)
+	dto, ok := result.(*providers.ResourceServer)
+	assert.True(s.T(), ok)
+	parents := make([]string, len(dto.Resources))
+	for i, res := range dto.Resources {
+		parents[i] = res.ParentHandle
+	}
+	assert.Equal(s.T(), []string{"", "app", "app:project", "app", "app:team", "app:team:member"}, parents)
+
+	assert.NoError(s.T(), ProcessResourceServer(dto))
+	for i, res := range dto.Resources {
+		assert.Equal(s.T(), resources[i].Permission, res.Permission)
+	}
+}
+
 func (s *ResourceServerExporterTestSuite) TestGetResourceByID_ServerNotFound() {
 	ctx := context.Background()
 	serverID := "rs-nonexistent"
@@ -342,7 +385,11 @@ func (s *ResourceServerExporterTestSuite) TestValidateResource_EmptyName() {
 func (s *ResourceServerExporterTestSuite) TestGetResourceRules() {
 	rules := s.exporter.GetResourceRules()
 
-	assert.Nil(s.T(), rules)
+	s.Require().NotNil(rules)
+	assert.Equal(s.T(), []string{"Identifier"}, rules.Variables)
+	assert.Empty(s.T(), rules.SecretVariables)
+	assert.Empty(s.T(), rules.ArrayVariables)
+	assert.Empty(s.T(), rules.DynamicPropertyFields)
 }
 
 func TestParseToResourceServer(t *testing.T) {
@@ -594,53 +641,257 @@ ouId: "ou1"
 	assert.Contains(t, err.Error(), "invalid type")
 }
 
-func TestBuildPermissionString(t *testing.T) {
-	resourceHandleMap := map[string]*providers.Resource{
-		"users": {
-			Handle:       "users",
-			Parent:       nil,
-			ParentHandle: "",
-		},
-		"profile": {
-			Handle:       "profile",
-			Parent:       nil,
-			ParentHandle: "users",
-		},
+// processResourceServerYAML parses and processes a resource server with the given resources.
+func processResourceServerYAML(t *testing.T, delimiter, resources string) (*providers.ResourceServer, error) {
+	t.Helper()
+	data := "id: rs1\nname: Test Server\nidentifier: api\nouId: ou1\n"
+	if delimiter != "" {
+		data += "delimiter: \"" + delimiter + "\"\n"
 	}
+	rs, err := parseToResourceServer([]byte(data + "resources:\n" + resources))
+	if err != nil {
+		t.Fatalf("failed to parse resource server: %v", err)
+	}
+	return rs, ProcessResourceServer(rs)
+}
 
+// TestProcessResourceServer_ResolvesParents verifies parent resolution by bare handle and by full path.
+func TestProcessResourceServer_ResolvesParents(t *testing.T) {
 	tests := []struct {
-		name      string
-		resource  *providers.Resource
-		delimiter string
-		expected  string
+		name        string
+		delimiter   string
+		resources   string
+		permissions []string
+		parents     []string
 	}{
 		{
-			name: "root resource",
-			resource: &providers.Resource{
-				Handle:       "users",
-				ParentHandle: "",
-			},
-			delimiter: ":",
-			expected:  "users",
+			name: "handle repeated under different parents",
+			resources: `
+  - { name: App, handle: app }
+  - { name: Project, handle: project, parent: app }
+  - { name: Member, handle: member, parent: project, actions: [{ name: Read, handle: read }] }
+  - { name: Team, handle: team, parent: app }
+  - { name: Member, handle: member, parent: team, actions: [{ name: Read, handle: read }] }
+`,
+			permissions: []string{"app", "app:project", "app:project:member", "app:team", "app:team:member"},
+			parents:     []string{"", "app", "app:project", "app", "app:team"},
 		},
 		{
-			name: "nested resource",
-			resource: &providers.Resource{
-				Handle:       "profile",
-				ParentHandle: "users",
-			},
-			delimiter: ":",
-			expected:  "users:profile",
+			name: "full path names a parent whose handle repeats",
+			resources: `
+  - { name: Product A, handle: product-a }
+  - { name: Org A, handle: org, parent: product-a }
+  - { name: Product B, handle: product-b }
+  - { name: Org B, handle: org, parent: product-b }
+  - { name: Billing, handle: billing, parent: "product-b:org" }
+`,
+			permissions: []string{"product-a", "product-a:org", "product-b", "product-b:org", "product-b:org:billing"},
+			parents:     []string{"", "product-a", "", "product-b", "product-b:org"},
+		},
+		{
+			name: "children declared before their parents",
+			resources: `
+  - { name: Lead, handle: lead, parent: "app:team:member" }
+  - { name: Member, handle: member, parent: "app:team" }
+  - { name: Team, handle: team, parent: app }
+  - { name: App, handle: app }
+`,
+			permissions: []string{"app:team:member:lead", "app:team:member", "app:team", "app"},
+			parents:     []string{"app:team:member", "app:team", "app", ""},
+		},
+		{
+			name:      "path uses the resource server delimiter",
+			delimiter: "/",
+			resources: `
+  - { name: App, handle: app }
+  - { name: Team, handle: team, parent: app }
+  - { name: Member, handle: member, parent: "app/team" }
+`,
+			permissions: []string{"app", "app/team", "app/team/member"},
+			parents:     []string{"", "app", "app/team"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := buildPermissionString(tt.resource, resourceHandleMap, tt.delimiter)
+			rs, err := processResourceServerYAML(t, tt.delimiter, tt.resources)
+
 			assert.NoError(t, err)
-			assert.Equal(t, tt.expected, result)
+			for i, res := range rs.Resources {
+				assert.Equal(t, tt.permissions[i], res.Permission)
+				assert.Equal(t, tt.parents[i], res.ParentHandle)
+				for _, action := range res.Actions {
+					assert.Equal(t, res.Permission+rs.Delimiter+action.Handle, action.Permission)
+				}
+			}
 		})
 	}
+}
+
+// TestProcessResourceServer_RejectsInvalidParents verifies that unresolvable parents are rejected.
+func TestProcessResourceServer_RejectsInvalidParents(t *testing.T) {
+	tests := []struct {
+		name      string
+		resources string
+		errSubstr string
+	}{
+		{
+			name: "bare handle shared at different depths",
+			resources: `
+  - { name: Product A, handle: product-a }
+  - { name: Org A, handle: org, parent: product-a }
+  - { name: Product B, handle: product-b }
+  - { name: X, handle: x, parent: product-b }
+  - { name: Org B, handle: org, parent: "product-b:x" }
+  - { name: Billing, handle: billing, parent: org }
+`,
+			errSubstr: "parent resource handle 'org' is ambiguous for resource 'billing'",
+		},
+		{
+			name: "bare handle shared by a top-level and a nested resource",
+			resources: `
+  - { name: Member, handle: member }
+  - { name: App, handle: app }
+  - { name: App Member, handle: member, parent: app }
+  - { name: Child, handle: child, parent: member }
+`,
+			errSubstr: "parent resource handle 'member' is ambiguous for resource 'child'",
+		},
+		{
+			name: "same handle under the same parent",
+			resources: `
+  - { name: App, handle: app }
+  - { name: Member, handle: member, parent: app }
+  - { name: Member Again, handle: member, parent: app }
+`,
+			errSubstr: "duplicate resource handle 'member' found under parent 'app'",
+		},
+		{
+			name: "duplicate handle also used as a parent",
+			resources: `
+  - { name: A, handle: a }
+  - { name: A Again, handle: a }
+  - { name: C, handle: c, parent: a }
+`,
+			errSubstr: "duplicate resource handle 'a' found at the top level",
+		},
+		{
+			name: "duplicate handle under one parent named in different forms",
+			resources: `
+  - { name: X, handle: x }
+  - { name: A, handle: a, parent: x }
+  - { name: A Again, handle: a, parent: "x" }
+  - { name: C, handle: c, parent: a }
+`,
+			errSubstr: "duplicate resource handle 'a' found under parent 'x'",
+		},
+		{
+			name: "missing bare parent",
+			resources: `
+  - { name: Child, handle: child, parent: missing }
+`,
+			errSubstr: "parent resource handle 'missing' not found for resource 'child'",
+		},
+		{
+			name: "path naming no resource",
+			resources: `
+  - { name: App, handle: app }
+  - { name: X, handle: x }
+  - { name: Project, handle: project, parent: app }
+  - { name: Member, handle: member, parent: "x:project" }
+`,
+			errSubstr: "parent resource path 'x:project' not found for resource 'member'",
+		},
+		{
+			name: "cycle",
+			resources: `
+  - { name: A, handle: a, parent: b }
+  - { name: B, handle: b, parent: a }
+`,
+			errSubstr: "circular parent reference detected",
+		},
+		{
+			name: "path into a cycle reports the cycle",
+			resources: `
+  - { name: C, handle: c, parent: "a:b" }
+  - { name: A, handle: a, parent: b }
+  - { name: B, handle: b, parent: a }
+`,
+			errSubstr: "circular parent reference detected",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := processResourceServerYAML(t, "", tt.resources)
+
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), tt.errSubstr)
+		})
+	}
+}
+
+// TestProcessResourceServer_ValidatesHandlesAndDelimiter verifies the REST API's delimiter and handle
+// rules.
+func TestProcessResourceServer_ValidatesHandlesAndDelimiter(t *testing.T) {
+	tests := []struct {
+		name      string
+		delimiter string
+		resources string
+		errSubstr string
+	}{
+		{
+			name:      "resource handle holding the delimiter",
+			resources: "  - { name: AB, handle: \"a:b\" }\n",
+			errSubstr: "invalid handle 'a:b' for resource 'AB'",
+		},
+		{
+			name:      "action handle holding the delimiter",
+			delimiter: "/",
+			resources: "  - { name: App, handle: app, actions: [{ name: Read, handle: \"read/all\" }] }\n",
+			errSubstr: "invalid handle 'read/all' for action 'Read'",
+		},
+		{
+			name:      "handle with an invalid character",
+			resources: "  - { name: App, handle: \"my app\" }\n",
+			errSubstr: "invalid handle 'my app' for resource 'App'",
+		},
+		{
+			name:      "invalid delimiter",
+			delimiter: "::",
+			resources: "  - { name: App, handle: app }\n",
+			errSubstr: "invalid delimiter '::'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := processResourceServerYAML(t, tt.delimiter, tt.resources)
+
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), tt.errSubstr)
+		})
+	}
+}
+
+// TestProcessResourceServer_DefaultsToConfiguredDelimiter verifies that a missing delimiter takes the
+// configured default.
+func TestProcessResourceServer_DefaultsToConfiguredDelimiter(t *testing.T) {
+	config.ResetServerRuntime()
+	err := config.InitializeServerRuntime("/tmp/test", &config.Config{
+		Resource: engineconfig.ResourceConfig{DefaultDelimiter: "/"},
+	})
+	assert.NoError(t, err)
+	defer config.ResetServerRuntime()
+
+	rs, err := processResourceServerYAML(t, "", `
+  - { name: App, handle: app }
+  - { name: Team, handle: team, parent: app }
+`)
+
+	assert.NoError(t, err)
+	assert.Equal(t, "/", rs.Delimiter)
+	assert.Equal(t, "app/team", rs.Resources[1].Permission)
 }
 
 func TestProcessResourceServer_SetsPermissionsAndDelimiter(t *testing.T) {
@@ -814,37 +1065,6 @@ func TestProcessResourceServer_NonMCPSkipsPermissionCollisionCheck(t *testing.T)
 	err := ProcessResourceServer(rs)
 
 	assert.NoError(t, err)
-}
-
-func TestProcessResource_SetsPermissions(t *testing.T) {
-	root := &providers.Resource{Handle: "root"}
-	resource := &providers.Resource{
-		Handle:       "child",
-		ParentHandle: "root",
-		Actions: []providers.Action{
-			{Name: "Read", Handle: "read"},
-		},
-	}
-	resourceHandleMap := map[string]*providers.Resource{
-		"root":  root,
-		"child": resource,
-	}
-
-	err := processResource(resource, resourceHandleMap, ":")
-
-	assert.NoError(t, err)
-	assert.Equal(t, "root:child", resource.Permission)
-	assert.Equal(t, "root:child:read", resource.Actions[0].Permission)
-}
-
-func TestProcessResource_MissingParent(t *testing.T) {
-	resource := &providers.Resource{Handle: "child", ParentHandle: "missing"}
-	resourceHandleMap := map[string]*providers.Resource{}
-
-	err := processResource(resource, resourceHandleMap, ":")
-
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "parent resource handle")
 }
 
 func TestParseAndValidateResourceServerWrapper_Success(t *testing.T) {

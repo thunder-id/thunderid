@@ -17,10 +17,19 @@ func NewMessageClientInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *MessageClientInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &MessageClientInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -106,7 +115,7 @@ type MessageClientInterfaceMock_IsChannelSupported_Call struct {
 
 // IsChannelSupported is a helper method to define mock.On call
 //   - channel common.ChannelType
-func (_e *MessageClientInterfaceMock_Expecter) IsChannelSupported(channel interface{}) *MessageClientInterfaceMock_IsChannelSupported_Call {
+func (_e *MessageClientInterfaceMock_Expecter) IsChannelSupported(channel any) *MessageClientInterfaceMock_IsChannelSupported_Call {
 	return &MessageClientInterfaceMock_IsChannelSupported_Call{Call: _e.mock.On("IsChannelSupported", channel)}
 }
 
@@ -159,7 +168,7 @@ type MessageClientInterfaceMock_Send_Call struct {
 //   - ctx context.Context
 //   - channel common.ChannelType
 //   - data common.MessageData
-func (_e *MessageClientInterfaceMock_Expecter) Send(ctx interface{}, channel interface{}, data interface{}) *MessageClientInterfaceMock_Send_Call {
+func (_e *MessageClientInterfaceMock_Expecter) Send(ctx any, channel any, data any) *MessageClientInterfaceMock_Send_Call {
 	return &MessageClientInterfaceMock_Send_Call{Call: _e.mock.On("Send", ctx, channel, data)}
 }
 

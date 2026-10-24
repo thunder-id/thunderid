@@ -5,10 +5,10 @@ import {describe, it, expect} from 'vitest';
 import getApplicationErrorMessage from '../getApplicationErrorMessage';
 
 const LABELS: Record<string, string> = {
-  'edit.flows.labels.authFlow': 'Sign-in Flow',
-  'edit.flows.labels.registrationFlow': 'Sign-up Flow',
-  'edit.flows.labels.recoveryFlow': 'Recovery Flow',
-  'edit.flows.labels.signOutFlow': 'Sign Out Flow',
+  'edit.flows.labels.authFlow': 'Sign-in flow',
+  'edit.flows.labels.registrationFlow': 'Sign-up flow',
+  'edit.flows.labels.recoveryFlow': 'Recovery flow',
+  'edit.flows.labels.signOutFlow': 'Sign out flow',
   'errors.APP-1039':
     "The {{sourceFlowType}} references a different {{flowType}} than the one configured for this application. Update the {{sourceFlowType}} so it calls the same {{flowType}}, or change the application's {{flowType}} configuration.",
   'update.error': 'Failed to update the application.',
@@ -91,7 +91,7 @@ describe('getApplicationErrorMessage', () => {
     const error = apiErrorFor('APP-1039', {sourceFlowType: 'registration', flowType: 'authentication'});
 
     expect(getApplicationErrorMessage(error, t, 'update.error')).toBe(
-      "The Sign-up Flow references a different Sign-in Flow than the one configured for this application. Update the Sign-up Flow so it calls the same Sign-in Flow, or change the application's Sign-in Flow configuration.",
+      "The Sign-up flow references a different Sign-in flow than the one configured for this application. Update the Sign-up flow so it calls the same Sign-in flow, or change the application's Sign-in flow configuration.",
     );
   });
 
@@ -99,7 +99,7 @@ describe('getApplicationErrorMessage', () => {
     const error = apiErrorFor('APP-1039', {sourceFlowType: 'recovery', flowType: 'signout'});
 
     expect(getApplicationErrorMessage(error, t, 'update.error')).toBe(
-      "The Recovery Flow references a different Sign Out Flow than the one configured for this application. Update the Recovery Flow so it calls the same Sign Out Flow, or change the application's Sign Out Flow configuration.",
+      "The Recovery flow references a different Sign out flow than the one configured for this application. Update the Recovery flow so it calls the same Sign out flow, or change the application's Sign out flow configuration.",
     );
   });
 
@@ -152,7 +152,7 @@ describe('getApplicationErrorMessage', () => {
     const error = apiErrorFor('APP-1039', {sourceFlowType: 'registration', flowType: 'authentication'});
 
     expect(getApplicationErrorMessage(error, makeT(withoutLabels), 'update.error')).toBe(
-      "The Sign-up Flow references a different Sign-in Flow than the one configured for this application. Update the Sign-up Flow so it calls the same Sign-in Flow, or change the application's Sign-in Flow configuration.",
+      "The Sign-up flow references a different Sign-in flow than the one configured for this application. Update the Sign-up flow so it calls the same Sign-in flow, or change the application's Sign-in flow configuration.",
     );
   });
 

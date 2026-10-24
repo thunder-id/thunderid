@@ -67,7 +67,7 @@ func (s *notificationTemplateStore) CreateTemplate(ctx context.Context, t templa
 	}
 
 	if _, err := dbClient.ExecuteContext(ctx, queryCreateTemplate,
-		t.ID, string(t.Channel), t.Handle, t.DisplayName, t.Description, string(contentJSON),
+		t.ID, string(t.Channel), t.Handle, t.OUID, t.DisplayName, t.Description, string(contentJSON),
 		designJSON, s.scope(ctx)); err != nil {
 		return fmt.Errorf("failed to execute create query: %w", err)
 	}
@@ -270,10 +270,16 @@ func buildTemplateFromRow(row map[string]interface{}) (templateDAO, error) {
 		return templateDAO{}, fmt.Errorf("display_name not found or invalid type")
 	}
 
+	ouID, ok := row["ou_id"].(string)
+	if !ok {
+		return templateDAO{}, fmt.Errorf("ou_id not found or invalid type")
+	}
+
 	dao := templateDAO{
 		ID:          id,
 		Channel:     ChannelType(channel),
 		Handle:      handle,
+		OUID:        ouID,
 		DisplayName: displayName,
 		Description: stringOrEmpty(row["description"]),
 	}

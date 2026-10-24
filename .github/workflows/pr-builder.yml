@@ -887,7 +887,7 @@ jobs:
     needs: [build, build_samples]
     if: ${{ always() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     permissions:
       id-token: write
       contents: read

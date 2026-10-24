@@ -246,7 +246,10 @@ func accessLogExcludePaths(configured []string) []string {
 // createHTTPServer creates and configures an HTTP server with common settings.
 func createHTTPServer(ctx context.Context, logger *log.Logger, cfg *config.Config, mux *http.ServeMux,
 	jwtService jwt.JWTServiceInterface, revocationEnforcer revocationcache.EnforcerInterface) *http.Server {
-	securityMiddleware := createSecurityMiddleware(ctx, logger, cfg, mux, jwtService, revocationEnforcer)
+	// A successful change to the configuration is captured as the current version once it is answered,
+	// for the user the security middleware authenticated.
+	securityMiddleware := createSecurityMiddleware(ctx, logger, cfg, changeCapture.Middleware(mux), jwtService,
+		revocationEnforcer)
 
 	// Build the middleware chain with proper execution order.
 	// Request flow: CorrelationID (outermost) -> SecurityHeaders -> AccessLog -> Security -> Route Handler (innermost)
@@ -292,7 +295,7 @@ func createTLSListener(ctx context.Context, logger *log.Logger, server *http.Ser
 }
 
 func createSecurityMiddleware(ctx context.Context, logger *log.Logger, cfg *config.Config,
-	mux *http.ServeMux, jwtService jwt.JWTServiceInterface,
+	mux http.Handler, jwtService jwt.JWTServiceInterface,
 	revocationEnforcer revocationcache.EnforcerInterface) http.Handler {
 	// Record which posture is in force, so it is not inferred from a missing config key. Info, not
 	// Warn: leaving the audience unchecked is the documented default, and config validation already
@@ -330,6 +333,10 @@ func gracefulShutdown(
 	} else {
 		logger.Debug(ctx, "HTTP server shutdown completed")
 	}
+
+	// A change made just before the stop is still waiting for its capture; capture it while the
+	// stores are still open.
+	changeCapture.Flush(ctx)
 
 	// Stop the token-revocation cache syncer.
 	revocationSyncer.Stop()

@@ -30,6 +30,7 @@ vi.mock('@/components/edit-template/TemplatePreviewPanel', () => ({
 
 const emailTemplate: EmailTemplate = {
   id: 'tmpl-1',
+  ouId: 'ou-default',
   handle: 'otp-verification',
   displayName: 'OTP Verification',
   description: 'Sent to verify a login',
@@ -39,6 +40,7 @@ const emailTemplate: EmailTemplate = {
 
 const smsTemplate: SmsTemplate = {
   id: 'sms-1',
+  ouId: 'ou-default',
   handle: 'otp-sms',
   displayName: 'OTP SMS',
   content: {body: 'Your code is {{ctx(otp.code)}}'},

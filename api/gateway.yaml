@@ -83,7 +83,11 @@ paths:
         this response. Configure the gateway with it: nothing reads it back.
 
         The gateway is not contacted. An unreachable `baseUrl` is found when something first
-        calls that gateway, not here.
+        calls that gateway, not here. A `baseUrl` must be an absolute `https` URL without
+        credentials in it (`400`, `GTW-1009`), and may not name a loopback, link-local or private
+        address unless the deployment sets `gateway.allow_private_addresses` (`400`, `GTW-1027`).
+        A `name` is at most 64 letters, digits, spaces, hyphens, underscores and dots (`400`,
+        `GTW-1028`).
 
         How many gateways a deployment may hold is bounded by `gateway.max_gateways`, which is one
         unless a deployment changes it. Setting it to zero refuses every registration, for a
@@ -149,7 +153,11 @@ paths:
         address can be moved without restating the certificate.
 
         `baseUrl` is what says which gateway this is, so moving it is how a gateway that moved
-        is followed, and it is refused if another gateway already answers at that address.
+        is followed, and it is refused if another gateway already answers at that address. A new
+        `baseUrl` is held to the rules of a registration: an absolute `https` URL without
+        credentials (`400`, `GTW-1009`), not a loopback, link-local or private address unless the
+        deployment sets `gateway.allow_private_addresses` (`400`, `GTW-1027`). A new `name` is at
+        most 64 letters, digits, spaces, hyphens, underscores and dots (`400`, `GTW-1028`).
 
         A key the body carries replaces the stored one, which is how a gateway's credential is
         rotated: send the new value here and give the same value to the gateway.
@@ -221,6 +229,40 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/NotFound'
+  /gateways/{id}/applied-configuration:
+    parameters:
+      - $ref: '#/components/parameters/GatewayID'
+    get:
+      tags: [Gateways]
+      summary: Get the configuration a gateway runs
+      description: |
+        Returns every resource of the version last applied to the gateway, each in the shape the
+        resource's own read returns, for example what `GET /applications/{id}` returns for an
+        application. A console shows the configuration as the gateway runs it from this, rather than
+        as this deployment holds it now, which may have moved on since the apply.
+
+        A value the version refers to, such as `var:APPLICATION_ORDERS_CLIENT_ID`, is returned as the
+        reference: the version does not hold the value. A secret the resource's own read masks is
+        masked the same way, and user credentials are never returned. A gateway nothing was applied to
+        runs nothing: `resources` is empty and there is no `version`.
+
+        This is the version recorded as applied, whole. An apply is recorded even when the gateway
+        refused to write some of its resources, since every later apply sends the version whole and
+        tries them again (see `ApplyResult.recorded`), so a resource the gateway refused on the last
+        apply is listed here all the same. The apply's own result names what the gateway refused.
+      responses:
+        "200":
+          description: The version recorded as applied to the gateway
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppliedConfiguration'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
   /gateways/{id}/diff:
     parameters:
       - $ref: '#/components/parameters/GatewayID'
@@ -281,6 +323,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApplyResult'
+        "202":
+          description: |
+            Another apply to the gateway is running, and this one asked for `latest` with nothing
+            selected and nothing confirmed, so it was queued rather than done: the latest version at
+            that time is applied once the running apply finishes, for the user who asked. A version
+            named by its hash, or a confirmed apply, waits instead. A burst of applies queues at most
+            one. An apply the queued run would refuse for its removals is refused now with `409`. The
+            queued run is best effort: it is not kept across a restart of the node running it, and
+            its failure is logged rather than answered, so read the gateway's applied version to see
+            what it holds.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplyResult'
         "400":
           description: The request was malformed, or the selection names a resource the diff does not report
           content:
@@ -312,9 +368,26 @@ paths:
         "404":
           $ref: '#/components/responses/NotFound'
         "409":
-          $ref: '#/components/responses/MissingValues'
+          description: |
+            The gateway does not hold every value the version refers to (`GTW-1017`); the apply would
+            remove more resources than `gateway.removal_confirmation_threshold` and was not confirmed
+            (`GTW-1030`); another apply or revert to the gateway was still running after this one had
+            waited as long as an import may take (`GTW-1029`); a capture removed the version before
+            the apply could record it (`GTW-1018`); or another apply finished first (`GTW-1019`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "502":
           description: The gateway could not be reached, or refused the request.
+        "503":
+          description: |
+            The apply took longer to prepare than its lease allows for an import, and sent nothing to
+            the gateway (`GTW-5003`). Apply again.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /gateways/{id}/revert:
     parameters:
       - $ref: '#/components/parameters/GatewayID'
@@ -323,9 +396,9 @@ paths:
       summary: Revert a gateway to the version it held before
       description: |
         Applies the version the gateway held before the one it holds now, removing what that version
-        does not have. The version reverted from takes its place as the revert target, so a revert can
-        itself be undone. Like an apply, it is refused while the gateway lacks a value that version
-        refers to.
+        does not have. It goes back one step only: afterwards the gateway has no earlier version to
+        revert to, and another revert is refused (`GTW-1016`) until a later apply. Like an apply, it is
+        refused while the gateway lacks a value that version refers to.
       requestBody:
         required: false
         content:
@@ -352,9 +425,25 @@ paths:
         "404":
           $ref: '#/components/responses/NotFound'
         "409":
-          $ref: '#/components/responses/MissingValues'
+          description: |
+            The gateway does not hold every value the version refers to (`GTW-1017`); the revert
+            would remove more resources than `gateway.removal_confirmation_threshold` and was not
+            confirmed (`GTW-1030`); or another apply or revert to the gateway was still running
+            after this one had waited as long as an import may take (`GTW-1029`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "502":
           description: The gateway could not be reached, or refused the request.
+        "503":
+          description: |
+            The apply took longer to prepare than its lease allows for an import, and sent nothing to
+            the gateway (`GTW-5003`). Apply again.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /gateways/{id}/variables:
     parameters:
       - $ref: '#/components/parameters/GatewayID'
@@ -740,6 +829,77 @@ components:
         updatedAt:
           type: string
           format: date-time
+    AppliedConfiguration:
+      type: object
+      required: [gatewayId, resources]
+      properties:
+        gatewayId:
+          type: string
+        version:
+          type: string
+          description: The hash of the version the gateway applied. Absent when nothing was applied.
+        appliedAt:
+          type: string
+          format: date-time
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/AppliedResource'
+        skipped:
+          type: array
+          description: The version's documents that cannot be shown as their resource.
+          items:
+            $ref: '#/components/schemas/SkippedResource'
+    AppliedResource:
+      type: object
+      required: [resourceType, id, resource]
+      properties:
+        resourceType:
+          type: string
+          description: The resource type, as a version's document names it in `resource_type`.
+          example: group
+        id:
+          type: string
+          description: The resource's id, or its name for a resource exported without one.
+        resource:
+          type: object
+          additionalProperties: true
+          description: What the resource's own read returns.
+        parts:
+          type: object
+          additionalProperties: true
+          description: |
+            The collections the resource's own API serves apart from it, keyed by the path below the
+            resource they are served at, each in the shape that path returns, as one page holding
+            every item:
+
+            | Resource type | Parts |
+            |---|---|
+            | `group` | `members` |
+            | `role` | `assignments` |
+            | `resource_server` | `resources` (top level), `actions`, and for each resource `resources/{resourceId}`, `resources/{resourceId}/resources` (its children) and `resources/{resourceId}/actions` |
+            | `translation` | `ns/{namespace}` for each namespace |
+
+            A version names a resource server's resources `{resourceServerId}_{handle}`, since an
+            export does not carry the ids this deployment gave them. Server-level actions are not
+            exported, so `actions` is empty.
+    SkippedResource:
+      type: object
+      required: [resourceType, code, reason]
+      properties:
+        resourceType:
+          type: string
+        id:
+          type: string
+        code:
+          type: string
+          description: |
+            `GTW-1021` the resource type cannot be shown from a version; `GTW-1022` the document does
+            not read as its resource: it is not YAML as it stands, as a document captured with a
+            template range is not until its values are filled in, or it does not read as the resource
+            its type names.
+        reason:
+          type: string
     AppliedVersion:
       type: object
       properties:
@@ -750,10 +910,33 @@ components:
           description: The hash of the version the gateway holds. Omitted when nothing was applied.
         previousVersion:
           type: string
-          description: The hash of the version a revert returns it to. Omitted when there is none.
+          description: |
+            The hash of the version a revert returns it to. Omitted when there is none: before a second
+            apply, and after a revert.
         appliedAt:
           type: string
           format: date-time
+        appliedBy:
+          description: The user who applied the version, or reverted the gateway to it. Left out when the user's name cannot be read.
+          allOf:
+            - $ref: '#/components/schemas/Actor'
+    Actor:
+      type: object
+      description: |
+        A user, by id and name. Given out only when the control plane is configured to look names up at
+        its trusted issuer (`server.security.trusted_issuer.user_lookup`) and the issuer knows the user;
+        otherwise the field holding the user is left out, since the id alone is an identifier of the
+        issuer's that says nothing to a viewer. The id is recorded either way.
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          description: The token's `sub` claim, or the claim `server.security.trusted_issuer.user_id_claim` names.
+        name:
+          type: string
+          description: The user's name as the trusted issuer's user API reports it, read when the record is read and never stored.
     ApplyRequest:
       type: object
       properties:
@@ -763,6 +946,12 @@ components:
         dryRun:
           type: boolean
           description: Send the import as a dry run and record nothing.
+        confirmRemovals:
+          type: boolean
+          description: |
+            Lets the apply remove more resources from the gateway than `gateway.removal_confirmation_threshold`
+            allows unconfirmed. Without it such an apply is refused with `409` (`GTW-1030`); a dry run
+            shows the removals first.
         selection:
           type: array
           items:
@@ -775,9 +964,23 @@ components:
             apply; empty, every change on offer is left alone. A key that names no resource in the
             diff is refused with `400` (`GTW-1025`), as is leaving out a resource whose key is longer
             than 512 characters or whose id or name is longer than 255.
+        skip:
+          type: array
+          items:
+            type: string
+          description: |
+            The keys of changes to leave alone in this apply only: neither written nor removed, and
+            the gateway's standing choice for them kept as it is. A skipped change stays owed to the
+            gateway: the next diff offers it again, marked `skipped`, as `updated` or `deleted`, until an
+            apply writes or removes it or a selection leaves it alone for good. A selection decides the
+            other changes. A key that names no change in the diff, or one the selection also names, is
+            refused with `400` (`GTW-1025`); one naming a change that changes nothing skips nothing.
     RevertRequest:
       type: object
       properties:
+        confirmRemovals:
+          type: boolean
+          description: As on an apply. A revert to a much smaller version is the usual case.
         dryRun:
           type: boolean
     Change:
@@ -792,6 +995,12 @@ components:
             The gateway is set to leave this resource alone. Such a change stays on offer, whatever the
             versions say of it, until a selection includes it again: one whose removal was held back is
             offered as `deleted` once no version names it.
+        skipped:
+          type: boolean
+          description: |
+            An earlier apply skipped this change, so it is offered again whatever the versions say of
+            it: as `updated` while the version carries the resource, since what the gateway holds of it
+            is not known, and as `deleted` once no version names it. Cleared by the apply that takes it.
         resourceType:
           type: string
         id:
@@ -841,6 +1050,14 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Change'
+        misplacedSecrets:
+          type: array
+          description: |
+            Where the version refers to a secret from a field that holds no credential. A gateway
+            refuses such a resource on import, so put the field right and capture again. A capture
+            refuses the configuration outright; this names what an earlier version still holds.
+          items:
+            $ref: '#/components/schemas/ValueReference'
     ApplyResult:
       type: object
       properties:
@@ -880,6 +1097,37 @@ components:
               description: Where the version refers to each missing value.
               items:
                 $ref: '#/components/schemas/ValueReference'
+        changed:
+          type: object
+          description: |
+            The variables and secrets the version refers to whose values were set on the gateway
+            again since the version it holds was applied, so a value changed outside any version is
+            seen as it takes effect. It compares the time the gateway's store gives for each value
+            with the time it gave at that apply, never with the control plane's clock. A value the
+            control plane sent itself, such as one captured from a resource, is reported too. Names
+            only, never values. Omitted when none changed or the gateway holds no version yet.
+          properties:
+            variables:
+              type: array
+              items:
+                type: string
+            secrets:
+              type: array
+              items:
+                type: string
+            references:
+              type: array
+              description: Where the version refers to each changed value.
+              items:
+                $ref: '#/components/schemas/ValueReference'
+        queued:
+          type: boolean
+          description: |
+            Only with `202`: another apply to the gateway was running, so the latest version was not
+            applied now and will be applied once it finishes, by whichever node finishes it.
+        queuedVersion:
+          type: string
+          description: With `queued`, the version that will be applied.
     ValueReference:
       type: object
       description: |

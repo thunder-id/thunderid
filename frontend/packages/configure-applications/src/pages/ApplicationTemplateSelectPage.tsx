@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {PageLoader, ResourceAvatar} from '@thunderid/components';
+import {DocumentTitle, PageLoader, ResourceAvatar} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {
   Box,
@@ -146,12 +146,20 @@ export default function ApplicationTemplateSelectPage(): JSX.Element {
   // The gallery is only passed through on a deep link, so rendering it would flash the full
   // template grid for a frame before the effect above navigates on. Hold the loader the lazy
   // wizard chunk shows anyway, so the hand-off reads as one continuous load.
+  const pageTitle = t('applications:onboarding.configure.stack.title', 'Choose a type');
+
   if (preselectedTemplate) {
-    return <PageLoader />;
+    return (
+      <>
+        <DocumentTitle title={pageTitle} />
+        <PageLoader />
+      </>
+    );
   }
 
   return (
     <PageContent>
+      <DocumentTitle title={pageTitle} />
       <PageTitle>
         <PageTitle.BackButton component={<Link to={isWelcomeFlow ? '/welcome/get-started' : '/applications'} />}>
           {isWelcomeFlow ? t('common:welcome.getStarted.breadcrumb') : t('applications:edit.page.back')}

@@ -378,12 +378,7 @@ func newStatefulStore(t *testing.T) *openID4VCIStoreInterfaceMock {
 // audience/nonce/iat in the payload, signed ES256 in JWS P1363 form.
 func signProofJWT(t *testing.T, key *ecdsa.PrivateKey, aud, nonce string, iat time.Time) string {
 	t.Helper()
-	jwk := map[string]interface{}{
-		"kty": "EC",
-		"crv": "P-256",
-		"x":   base64.RawURLEncoding.EncodeToString(key.PublicKey.X.FillBytes(make([]byte, 32))),
-		"y":   base64.RawURLEncoding.EncodeToString(key.PublicKey.Y.FillBytes(make([]byte, 32))),
-	}
+	jwk := validJWK(key)
 	header := map[string]interface{}{"alg": "ES256", "typ": proofType, "jwk": jwk}
 	payload := map[string]interface{}{"aud": aud, "nonce": nonce, "iat": iat.Unix()}
 
@@ -471,11 +466,13 @@ func encodeJWT(t *testing.T, header, payload map[string]interface{}, sig string)
 }
 
 func validJWK(key *ecdsa.PrivateKey) map[string]interface{} {
+	// Uncompressed P-256 point: 0x04 || X (32 bytes) || Y (32 bytes).
+	pub, _ := key.PublicKey.Bytes()
 	return map[string]interface{}{
 		"kty": "EC",
 		"crv": "P-256",
-		"x":   base64.RawURLEncoding.EncodeToString(key.PublicKey.X.FillBytes(make([]byte, 32))),
-		"y":   base64.RawURLEncoding.EncodeToString(key.PublicKey.Y.FillBytes(make([]byte, 32))),
+		"x":   base64.RawURLEncoding.EncodeToString(pub[1:33]),
+		"y":   base64.RawURLEncoding.EncodeToString(pub[33:]),
 	}
 }
 

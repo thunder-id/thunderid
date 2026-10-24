@@ -15,6 +15,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const (
@@ -140,6 +141,43 @@ func (e *groupExporter) getAllGroupMembers(
 	}
 
 	return members, nil
+}
+
+// groupMembersPart names the collection a group's API serves at /groups/{id}/members.
+const groupMembersPart = "members"
+
+// ViewResource shows an exported group as a read of it returns it. A group read carries no members,
+// which its part shows instead.
+func (e *groupExporter) ViewResource(_ context.Context, document *yaml.Node) (interface{}, error) {
+	return declarativeresource.DecodeView(document, func(exported *groupDeclarativeResource) (
+		interface{}, error) {
+		return &Group{
+			ID:          exported.ID,
+			Name:        exported.Name,
+			Description: exported.Description,
+			OUID:        exported.OUID,
+		}, nil
+	})
+}
+
+// ViewResourceParts shows a group's one part, "members", as a single page holding every member the
+// export carries.
+func (e *groupExporter) ViewResourceParts(_ context.Context, document *yaml.Node) (
+	map[string]interface{}, error) {
+	return declarativeresource.DecodeView(document, func(exported *groupDeclarativeResource) (
+		map[string]interface{}, error) {
+		members := exported.Members
+		if members == nil {
+			members = []Member{}
+		}
+		return map[string]interface{}{groupMembersPart: &MemberListResponse{
+			TotalResults: len(members),
+			StartIndex:   1,
+			Count:        len(members),
+			Members:      members,
+			Links:        []utils.Link{},
+		}}, nil
+	})
 }
 
 // GetResourceRules returns the parameterization rules for groups.

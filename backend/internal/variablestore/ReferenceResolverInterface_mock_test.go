@@ -17,10 +17,19 @@ func NewReferenceResolverInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ReferenceResolverInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ReferenceResolverInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -80,7 +89,7 @@ type ReferenceResolverInterfaceMock_ResolveSecret_Call struct {
 // ResolveSecret is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *ReferenceResolverInterfaceMock_Expecter) ResolveSecret(ctx interface{}, name interface{}) *ReferenceResolverInterfaceMock_ResolveSecret_Call {
+func (_e *ReferenceResolverInterfaceMock_Expecter) ResolveSecret(ctx any, name any) *ReferenceResolverInterfaceMock_ResolveSecret_Call {
 	return &ReferenceResolverInterfaceMock_ResolveSecret_Call{Call: _e.mock.On("ResolveSecret", ctx, name)}
 }
 
@@ -154,7 +163,7 @@ type ReferenceResolverInterfaceMock_ResolveVariable_Call struct {
 // ResolveVariable is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *ReferenceResolverInterfaceMock_Expecter) ResolveVariable(ctx interface{}, name interface{}) *ReferenceResolverInterfaceMock_ResolveVariable_Call {
+func (_e *ReferenceResolverInterfaceMock_Expecter) ResolveVariable(ctx any, name any) *ReferenceResolverInterfaceMock_ResolveVariable_Call {
 	return &ReferenceResolverInterfaceMock_ResolveVariable_Call{Call: _e.mock.On("ResolveVariable", ctx, name)}
 }
 

@@ -67,7 +67,7 @@ export default function EditGeneralSettings({
 
       {/* Organization Unit */}
       <SettingsCard
-        title={t('userTypes:edit.general.organizationUnit.title', 'Organization Unit')}
+        title={t('userTypes:edit.general.organizationUnit.title', 'Organization unit')}
         description={t(
           'userTypes:edit.general.organizationUnit.description',
           'The organization unit this user type belongs to.',
@@ -82,7 +82,7 @@ export default function EditGeneralSettings({
 
       {/* Self Registration */}
       <SettingsCard
-        title={t('userTypes:edit.general.selfRegistration.title', 'Self Registration')}
+        title={t('userTypes:edit.general.selfRegistration.title', 'Self registration')}
         description={t(
           'userTypes:edit.general.selfRegistration.description',
           'Allow users to self-register with this user type.',
@@ -97,7 +97,7 @@ export default function EditGeneralSettings({
 
       {/* Display Attribute */}
       <SettingsCard
-        title={t('userTypes:edit.general.displayAttribute.title', 'Display Attribute')}
+        title={t('userTypes:edit.general.displayAttribute.title', 'Display attribute')}
         description={t(
           'userTypes:edit.general.displayAttribute.description',
           'The attribute used to display user identity.',

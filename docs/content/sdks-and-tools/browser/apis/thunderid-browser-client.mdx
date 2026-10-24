@@ -97,13 +97,20 @@ await auth.signIn({ fidp: 'GoogleOIDCAuthenticator' })
 
 #### `signInSilently(additionalParams?)`
 
-Perform a background token refresh without user interaction using a hidden iframe.
+Sign the user in from an existing <ProductName /> session without user interaction. The SDK sends a `prompt=none` authorization request from a hidden iframe and exchanges the returned code for tokens.
 
 ```javascript
 const user = await auth.signInSilently()
+
+if (!user) {
+  // No session to reuse: fall back to an interactive sign-in.
+  await auth.signIn()
+}
 ```
 
-**Returns:** `Promise<User | undefined>`
+**Returns:** `Promise<User | boolean | undefined>`, the authenticated user, or `false` when there's no session to reuse or the request times out (see `session.silentSignIn.timeout` in [Configuration](../configuration)).
+
+The session can only be found when the app runs on the same site as <ProductName /> and the application's authentication flow maintains an SSO session. To try a silent sign-in automatically before every `signIn()` redirect, set `session.silentSignIn.beforeRedirect`.
 
 #### `signOut()`
 

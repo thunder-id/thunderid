@@ -14,7 +14,7 @@ An agent can hand a sub-task to another agent. It exchanges a token for a new on
 
 The agent that requests the exchanged token needs the token exchange grant, because the grant is checked against the client authenticating at the token endpoint. In the hand-off below that is the worker. The grant is available in either operating mode, so an agent does not have to be extended to act for a user to take part.
 
-- **Console:** on the requesting agent's **Advanced** tab, add the **Token Exchange** grant.
+- **Console:** on the requesting agent's **Advanced** tab, add the **Token exchange** grant.
 - **API:** add `urn:ietf:params:oauth:grant-type:token-exchange` to that agent's `grantTypes`.
 
 Grant each worker only the scopes its sub-task needs, through its roles. See [Groups and roles](../../manage-agents#groups-and-roles).
@@ -45,24 +45,26 @@ The issued token keeps the subject and records the agent passed as `actor_token`
 
 ## The nested act claim
 
-Each exchange builds `act` only from the `actor_token` presented in the request. It does not merge an actor already inside the `subject_token`. So if a worker delegates further and presents only its own token as the actor, the new token records just that most recent agent, and the earlier agent drops out:
-
-```json
-{ "sub": "<subject-id>", "act": { "sub": "<second-worker-id>" } }
-```
-
-To keep the whole path, present an `actor_token` that already carries the earlier agent as a nested `act`. <ProductName /> preserves that nesting, so the outermost `act` is the most recent actor and each inner `act` is the one before it, down to the original subject in `sub`:
+When the issued token records an actor and the `subject_token` already records one, the earlier actor moves one level down, beneath the new outermost `act`. Suppose the first worker in the example above delegates part of its task to a second worker. The second worker presents the token the first worker received as the `subject_token` and the first worker's own token as the `actor_token`. The new token records both agents:
 
 ```json
 {
   "sub": "<subject-id>",
   "act": {
-    "sub": "<second-worker-id>",
-    "act": { "sub": "<primary-agent-id>" }
+    "sub": "<first-worker-id>",
+    "iss": "<issuer>",
+    "act": { "sub": "<primary-agent-id>", "iss": "<issuer>" }
   }
 }
 ```
 
-That layered `actor_token` is built with an earlier exchange: exchange the worker's own token as `subject_token` against the primary's token as `actor_token`, which yields a token whose `sub` is the worker and whose `act` is the primary. Then pass that token as the `actor_token` in the final exchange. Preserving a multi-hop chain is therefore something the delegating code does deliberately, not an automatic result of every exchange.
+The new actor is the subject of the `actor_token`. Without an `actor_token`, the client that authenticates at the token endpoint is recorded as the actor when it is an agent, or an application that enables `includeActClaim`. The earlier actors nested beneath it follow these rules:
 
-A resource reads `sub` to apply the subject's permissions and walks the `act` chain to see every agent that handled the request.
+- When both tokens carry an `act` claim, <ProductName /> keeps the chain from the `subject_token` and drops the one from the `actor_token`.
+- When only the `actor_token` carries an `act` claim, that chain is kept beneath the new actor.
+- When the new actor is already the outermost actor of the `subject_token`, the issued token records it once at the head.
+- A `subject_token` from an external issuer contributes no earlier actors, because that issuer names its actors in its own namespace.
+
+An application that is not an agent and does not enable `includeActClaim` records no actor when it exchanges a token without an `actor_token`. The issued token then has no `act` claim, and the actors in the `subject_token` are not carried forward. To keep them, pass the calling party's token as the `actor_token`.
+
+A resource reads `sub` to apply the subject's permissions and the outermost `act` to identify the agent making the call. The nested `act` claims record each earlier agent. RFC 8693 treats them as informational only and excludes them from access control decisions.

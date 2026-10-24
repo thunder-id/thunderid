@@ -17,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // requestURIPrefix is the URN prefix used for PAR request URIs per RFC 9126.
@@ -26,15 +27,6 @@ const requestURIPrefix = "urn:ietf:params:oauth:request_uri:"
 // opposed to a client-supplied request object by reference (RFC 9101), which is not supported.
 func IsPARRequestURI(requestURI string) bool {
 	return strings.HasPrefix(requestURI, requestURIPrefix)
-}
-
-// sensitiveParParams is the deny-list of PAR body parameters that must not be persisted into
-// InitiatorRequest.QueryParams, since they carry client credentials and the PAR store is a
-// plaintext runtime cache.
-var sensitiveParParams = map[string]bool{
-	oauth2const.RequestParamClientSecret:        true,
-	oauth2const.RequestParamClientAssertion:     true,
-	oauth2const.RequestParamClientAssertionType: true,
 }
 
 // PARServiceInterface defines the interface for the PAR service.
@@ -157,9 +149,11 @@ func (s *parService) HandlePushedAuthorizationRequest(
 		IDTokenHint:         params[oauth2const.RequestParamIDTokenHint],
 	}
 
+	// Drop client-credential params before persisting: the PAR store is a plaintext cache. Uses the
+	// shared deny-list so it cannot drift from the authorize/CIBA capture paths.
 	initiatorQueryParams := make(map[string][]string, len(params)+1)
 	for k, v := range params {
-		if sensitiveParParams[k] {
+		if sysutils.IsSensitiveQueryParam(k) {
 			continue
 		}
 		initiatorQueryParams[k] = []string{v}

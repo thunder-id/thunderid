@@ -107,7 +107,7 @@ export default function ShowClientSecret({
 
           <Box>
             <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 1}}>
-              {t('agents:clientSecret.clientSecretLabel', 'Client Secret')}
+              {t('agents:clientSecret.clientSecretLabel', 'Client secret')}
             </Typography>
             <TextField
               fullWidth

@@ -29,6 +29,10 @@ const (
 	noConfigAppName      = "IDJAGNoConfigApp"
 	publicClientID       = "idjag_public_client"
 	publicAppName        = "IDJAGPublicApp"
+	noExchangeClientID   = "idjag_no_exchange_client"
+	noExchangeAppName    = "IDJAGNoTokenExchangeApp"
+	noAudienceClientID   = "idjag_no_audience_client"
+	noAudienceAppName    = "IDJAGNoAudienceApp"
 	issuanceTestUser     = "idjag_issuance_user"
 	issuanceTestPassword = "IDJAGTest123!"
 	issuanceTestEmail    = "idjag_issuance@example.com"
@@ -543,6 +547,70 @@ func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_PublicClientConfigRejectedAt
 	ts.Equal(http.StatusBadRequest, statusCode)
 	ts.Equal(appErrorInvalidOAuthConfiguration, errResp.Code)
 	ts.Contains(errResp.Description.DefaultValue, "ID-JAG")
+}
+
+// TestIDJAGIssuance_ConfigWithoutTokenExchangeRejectedAtCreate verifies that enabling ID-JAG without
+// the token-exchange grant, through which ID-JAGs are issued, is rejected at creation time.
+func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_ConfigWithoutTokenExchangeRejectedAtCreate() {
+	statusCode, errResp := ts.createApplicationExpectError(map[string]any{
+		"name": noExchangeAppName, "description": "ID-JAG issuance test app without token exchange",
+		"ouId": ts.ouID, "type": "fullstack", "authFlowId": ts.authFlowID,
+		"isRegistrationFlowEnabled": false,
+		"allowedUserTypes":          []string{"idjag-issuance-person"},
+		"inboundAuthConfig": []map[string]any{{
+			"type": "oauth2",
+			"config": map[string]any{
+				"clientId": noExchangeClientID, "clientSecret": issuanceClientSecret,
+				"redirectUris":            []string{issuanceRedirectURI},
+				"grantTypes":              []string{"authorization_code"},
+				"responseTypes":           []string{"code"},
+				"tokenEndpointAuthMethod": "client_secret_basic",
+				"scopes":                  []string{"openid", "profile", "email", "read", "write"},
+				"token": map[string]any{
+					"idJag": map[string]any{
+						"enabled":          true,
+						"allowedAudiences": []string{allowedAudience},
+					},
+				},
+			},
+		}},
+	})
+
+	ts.Equal(http.StatusBadRequest, statusCode)
+	ts.Equal(appErrorInvalidOAuthConfiguration, errResp.Code)
+	ts.Equal("error.applicationservice.idjag_requires_token_exchange_description", errResp.Description.Key)
+}
+
+// TestIDJAGIssuance_ConfigWithoutAllowedAudienceRejectedAtCreate verifies that enabling ID-JAG without an
+// allowed audience, which would refuse every ID-JAG request, is rejected at creation time.
+func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_ConfigWithoutAllowedAudienceRejectedAtCreate() {
+	statusCode, errResp := ts.createApplicationExpectError(map[string]any{
+		"name": noAudienceAppName, "description": "ID-JAG issuance test app without allowed audiences",
+		"ouId": ts.ouID, "type": "fullstack", "authFlowId": ts.authFlowID,
+		"isRegistrationFlowEnabled": false,
+		"allowedUserTypes":          []string{"idjag-issuance-person"},
+		"inboundAuthConfig": []map[string]any{{
+			"type": "oauth2",
+			"config": map[string]any{
+				"clientId": noAudienceClientID, "clientSecret": issuanceClientSecret,
+				"redirectUris":            []string{issuanceRedirectURI},
+				"grantTypes":              []string{"authorization_code", "urn:ietf:params:oauth:grant-type:token-exchange"},
+				"responseTypes":           []string{"code"},
+				"tokenEndpointAuthMethod": "client_secret_basic",
+				"scopes":                  []string{"openid", "profile", "email", "read", "write"},
+				"token": map[string]any{
+					"idJag": map[string]any{
+						"enabled":          true,
+						"allowedAudiences": []string{},
+					},
+				},
+			},
+		}},
+	})
+
+	ts.Equal(http.StatusBadRequest, statusCode)
+	ts.Equal(appErrorInvalidOAuthConfiguration, errResp.Code)
+	ts.Equal("error.applicationservice.idjag_requires_allowed_audience_description", errResp.Description.Key)
 }
 
 func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_WrongSubjectTokenType() {

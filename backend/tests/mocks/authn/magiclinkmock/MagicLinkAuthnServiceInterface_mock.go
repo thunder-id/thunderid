@@ -18,10 +18,19 @@ func NewMagicLinkAuthnServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *MagicLinkAuthnServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &MagicLinkAuthnServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +87,7 @@ type MagicLinkAuthnServiceInterfaceMock_Authenticate_Call struct {
 //   - ctx context.Context
 //   - token string
 //   - subjectAttribute string
-func (_e *MagicLinkAuthnServiceInterfaceMock_Expecter) Authenticate(ctx interface{}, token interface{}, subjectAttribute interface{}) *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call {
+func (_e *MagicLinkAuthnServiceInterfaceMock_Expecter) Authenticate(ctx any, token any, subjectAttribute any) *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call {
 	return &MagicLinkAuthnServiceInterfaceMock_Authenticate_Call{Call: _e.mock.On("Authenticate", ctx, token, subjectAttribute)}
 }
 
@@ -155,7 +164,7 @@ type MagicLinkAuthnServiceInterfaceMock_GenerateMagicLink_Call struct {
 //   - queryParams map[string]string
 //   - additionalClaims map[string]interface{}
 //   - magicLinkURL string
-func (_e *MagicLinkAuthnServiceInterfaceMock_Expecter) GenerateMagicLink(ctx interface{}, subject interface{}, expirySeconds interface{}, queryParams interface{}, additionalClaims interface{}, magicLinkURL interface{}) *MagicLinkAuthnServiceInterfaceMock_GenerateMagicLink_Call {
+func (_e *MagicLinkAuthnServiceInterfaceMock_Expecter) GenerateMagicLink(ctx any, subject any, expirySeconds any, queryParams any, additionalClaims any, magicLinkURL any) *MagicLinkAuthnServiceInterfaceMock_GenerateMagicLink_Call {
 	return &MagicLinkAuthnServiceInterfaceMock_GenerateMagicLink_Call{Call: _e.mock.On("GenerateMagicLink", ctx, subject, expirySeconds, queryParams, additionalClaims, magicLinkURL)}
 }
 

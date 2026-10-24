@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package group
@@ -153,6 +153,20 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.groupservice.invalid_member_type_description",
 			DefaultValue: "The member type must be 'user', 'group', or 'app'",
+		},
+	}
+	// ErrorGroupNestingTooDeep is the error returned when group members are nested beyond the supported depth.
+	ErrorGroupNestingTooDeep = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GRP-1017",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.groupservice.group_nesting_too_deep",
+			DefaultValue: "Group nesting is too deep",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.groupservice.group_nesting_too_deep_description",
+			DefaultValue: "The group's members are nested more than {{param(max)}} levels deep, " +
+				"which cannot be expanded",
 		},
 	}
 )

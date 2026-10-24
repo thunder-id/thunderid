@@ -1,4 +1,4 @@
-# Copyright 2025 The ThunderID Authors
+# Copyright 2025-2026 The ThunderID Authors
 # SPDX-License-Identifier: Apache-2.0
 
 server:
@@ -25,6 +25,33 @@ server:
         {{- range .trustedIssuer.requiredClaims }}
         - claim: {{ .claim | quote }}
           value: {{ .value | quote }}
+        {{- end }}
+      {{- end }}
+      {{- if .trustedIssuer.userIdClaim }}
+      user_id_claim: {{ .trustedIssuer.userIdClaim | quote }}
+      {{- end }}
+      {{- with .trustedIssuer.userLookup }}
+      {{- if not (dig "clientSecretRef" "name" "" .) }}
+      {{- fail "configuration.server.security.trustedIssuer.userLookup.clientSecretRef.name is required: the client secret is read from a Kubernetes Secret, never from the chart values" }}
+      {{- end }}
+      user_lookup:
+        url: {{ .url | quote }}
+        token_url: {{ .tokenUrl | quote }}
+        client_id: {{ .clientId | quote }}
+        # The Secret clientSecretRef names is mounted under config/secrets/user-lookup; the server reads
+        # the file at load time, so the secret is in neither this ConfigMap nor the release values.
+        client_secret: "file://config/secrets/user-lookup/client_secret"
+        {{- if .scopes }}
+        scopes:
+          {{- range .scopes }}
+          - {{ . | quote }}
+          {{- end }}
+        {{- end }}
+        {{- if .nameAttribute }}
+        name_attribute: {{ .nameAttribute | quote }}
+        {{- end }}
+        {{- if .cacheTtl }}
+        cache_ttl: {{ .cacheTtl }}
         {{- end }}
       {{- end }}
     {{- end }}
@@ -265,6 +292,9 @@ oauth:
     max_iat_age: {{ .Values.configuration.oauth.clientAssertion.maxIatAge }}
   cimd:
     enabled: {{ .Values.configuration.oauth.cimd.enabled }}
+  revocation:
+    criteria:
+      max_entries_per_change: {{ .Values.configuration.oauth.revocation.criteria.maxEntriesPerChange }}
   send_server_errors_to_client: {{ .Values.configuration.oauth.sendServerErrorsToClient }}
   allowed_auth_methods:
   {{- range .Values.configuration.oauth.allowedAuthMethods }}
@@ -430,6 +460,75 @@ log:
 {{ $section }}:
   store: {{ include "thunderid.validateStoreMode" (dict "value" $mode "field" (printf "configuration.stores.%s" $section)) | quote }}
 {{- end }}
+{{- end }}
+{{- /* Account access policy: rendered only for the keys set, so the product defaults apply otherwise. */}}
+{{- $accountAccess := default dict .Values.configuration.accountAccess }}
+{{- if $accountAccess }}
+
+account_access:
+{{- range $category := list "user" "agent" }}
+{{- $c := index $accountAccess $category }}
+{{- if $c }}
+  {{ $category }}:
+{{- if hasKey $c "lockGranularity" }}
+    lock_granularity: {{ $c.lockGranularity | quote }}
+{{- end }}
+{{- if hasKey $c "recordLastLogin" }}
+    record_last_login: {{ $c.recordLastLogin }}
+{{- end }}
+{{- if hasKey $c "lastLoginResolutionSeconds" }}
+    last_login_resolution_seconds: {{ $c.lastLoginResolutionSeconds | int64 }}
+{{- end }}
+{{- $policy := index $c "default" }}
+{{- if $policy }}
+    default:
+{{- if hasKey $policy "enabled" }}
+      enabled: {{ $policy.enabled }}
+{{- end }}
+{{- if hasKey $policy "threshold" }}
+      threshold: {{ $policy.threshold | int64 }}
+{{- end }}
+{{- if hasKey $policy "failureWindowSeconds" }}
+      failure_window_seconds: {{ $policy.failureWindowSeconds | int64 }}
+{{- end }}
+{{- if hasKey $policy "lockDurationsSeconds" }}
+      lock_durations_seconds:
+{{- range $policy.lockDurationsSeconds }}
+        - {{ . | int64 }}
+{{- end }}
+{{- end }}
+{{- if hasKey $policy "lockDecaySeconds" }}
+      lock_decay_seconds: {{ $policy.lockDecaySeconds | int64 }}
+{{- end }}
+{{- if hasKey $policy "maxConsecutiveFailures" }}
+      max_consecutive_failures: {{ $policy.maxConsecutiveFailures | int64 }}
+{{- end }}
+{{- end }}
+{{- $email := (((default dict $c.notifications).onLock | default dict).email) | default dict }}
+{{- if $email }}
+    notifications:
+      on_lock:
+        email:
+{{- if hasKey $email "enabled" }}
+          enabled: {{ $email.enabled }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- /* Identity governance provider: rendered only when set, so the product default applies otherwise. */}}
+{{- $governanceProviderType := (default dict .Values.configuration.identityGovernanceProvider).type }}
+{{- if $governanceProviderType }}
+
+identity_governance_provider:
+  type: {{ $governanceProviderType | quote }}
+{{- end }}
+{{- /* Notification template store lives under the nested notification.template path. */}}
+{{- if $stores.notification_template }}
+
+notification:
+  template:
+    store: {{ include "thunderid.validateStoreMode" (dict "value" $stores.notification_template "field" "configuration.stores.notification_template") | quote }}
 {{- end }}
 
 declarative_resources:

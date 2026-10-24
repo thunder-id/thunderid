@@ -90,7 +90,7 @@ export default function ConfigureBasicInfo({
         <OrganizationUnitSummaryChip
           logoUrl={organizationUnitLogoUrl}
           icon={OrganizationUnitTreeConstants.DEFAULT_AVATAR}
-          label={t('roles:createWizard.organizationUnit.fieldLabel', 'Organization Unit')}
+          label={t('roles:createWizard.organizationUnit.fieldLabel', 'Organization unit')}
           value={isOrganizationUnitLoading ? t('common:status.loading', 'Loading...') : organizationUnitName}
           onChange={onChangeOu}
         />

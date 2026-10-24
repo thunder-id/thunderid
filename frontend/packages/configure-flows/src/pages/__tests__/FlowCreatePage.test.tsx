@@ -27,6 +27,11 @@ vi.mock('react-i18next', async (importOriginal) => ({
   }),
 }));
 
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useConfig: () => ({config: {brand: {product_name: 'ThunderID'}}}),
+}));
+
 // Mock useNavigate
 const mockNavigate = vi.fn().mockResolvedValue(undefined);
 
@@ -99,7 +104,7 @@ describe('FlowCreatePage', () => {
     it('should render the breadcrumb with Flow Type label', () => {
       render(<FlowCreatePage />);
 
-      expect(screen.getByText('Flow Type')).toBeInTheDocument();
+      expect(screen.getByText('Flow type')).toBeInTheDocument();
     });
 
     it('should render the Continue button', () => {
@@ -180,7 +185,7 @@ describe('FlowCreatePage', () => {
 
       navigateToTemplateStep();
 
-      expect(screen.getByText('Flow Type')).toBeInTheDocument();
+      expect(screen.getByText('Flow type')).toBeInTheDocument();
       expect(screen.getByText('Template')).toBeInTheDocument();
     });
 
@@ -189,8 +194,8 @@ describe('FlowCreatePage', () => {
 
       navigateToTemplateStep();
 
-      // "Flow Type" is the first (non-last) breadcrumb — clicking it calls setCurrentStep
-      fireEvent.click(screen.getByRole('button', {name: 'Flow Type'}));
+      // "Flow type" is the first (non-last) breadcrumb — clicking it calls setCurrentStep
+      fireEvent.click(screen.getByRole('button', {name: 'Flow type'}));
 
       expect(screen.getByTestId('select-flow-type')).toBeInTheDocument();
     });
@@ -332,7 +337,7 @@ describe('FlowCreatePage', () => {
 
       // Navigate back to the Type step and change the type: this feeds the create request, so it
       // should clear the stale error and reset the errored mutation.
-      fireEvent.click(screen.getByRole('button', {name: 'Flow Type'}));
+      fireEvent.click(screen.getByRole('button', {name: 'Flow type'}));
       act(() => {
         (capturedTypeProps['onTypeChange'] as (type: string) => void)('REGISTRATION');
       });

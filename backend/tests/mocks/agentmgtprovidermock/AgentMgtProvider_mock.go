@@ -18,10 +18,19 @@ func NewAgentMgtProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *AgentMgtProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &AgentMgtProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -40,8 +49,8 @@ func (_m *AgentMgtProviderMock) EXPECT() *AgentMgtProviderMock_Expecter {
 }
 
 // CreateAgent provides a mock function for the type AgentMgtProviderMock
-func (_mock *AgentMgtProviderMock) CreateAgent(ctx context.Context, agent *providers.Agent, delegated bool) (*providers.Agent, *common.ServiceError) {
-	ret := _mock.Called(ctx, agent, delegated)
+func (_mock *AgentMgtProviderMock) CreateAgent(ctx context.Context, agent *providers.Agent) (*providers.Agent, *common.ServiceError) {
+	ret := _mock.Called(ctx, agent)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateAgent")
@@ -49,18 +58,18 @@ func (_mock *AgentMgtProviderMock) CreateAgent(ctx context.Context, agent *provi
 
 	var r0 *providers.Agent
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.Agent, bool) (*providers.Agent, *common.ServiceError)); ok {
-		return returnFunc(ctx, agent, delegated)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.Agent) (*providers.Agent, *common.ServiceError)); ok {
+		return returnFunc(ctx, agent)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.Agent, bool) *providers.Agent); ok {
-		r0 = returnFunc(ctx, agent, delegated)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.Agent) *providers.Agent); ok {
+		r0 = returnFunc(ctx, agent)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*providers.Agent)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *providers.Agent, bool) *common.ServiceError); ok {
-		r1 = returnFunc(ctx, agent, delegated)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *providers.Agent) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, agent)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common.ServiceError)
@@ -77,12 +86,11 @@ type AgentMgtProviderMock_CreateAgent_Call struct {
 // CreateAgent is a helper method to define mock.On call
 //   - ctx context.Context
 //   - agent *providers.Agent
-//   - delegated bool
-func (_e *AgentMgtProviderMock_Expecter) CreateAgent(ctx interface{}, agent interface{}, delegated interface{}) *AgentMgtProviderMock_CreateAgent_Call {
-	return &AgentMgtProviderMock_CreateAgent_Call{Call: _e.mock.On("CreateAgent", ctx, agent, delegated)}
+func (_e *AgentMgtProviderMock_Expecter) CreateAgent(ctx any, agent any) *AgentMgtProviderMock_CreateAgent_Call {
+	return &AgentMgtProviderMock_CreateAgent_Call{Call: _e.mock.On("CreateAgent", ctx, agent)}
 }
 
-func (_c *AgentMgtProviderMock_CreateAgent_Call) Run(run func(ctx context.Context, agent *providers.Agent, delegated bool)) *AgentMgtProviderMock_CreateAgent_Call {
+func (_c *AgentMgtProviderMock_CreateAgent_Call) Run(run func(ctx context.Context, agent *providers.Agent)) *AgentMgtProviderMock_CreateAgent_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -92,14 +100,9 @@ func (_c *AgentMgtProviderMock_CreateAgent_Call) Run(run func(ctx context.Contex
 		if args[1] != nil {
 			arg1 = args[1].(*providers.Agent)
 		}
-		var arg2 bool
-		if args[2] != nil {
-			arg2 = args[2].(bool)
-		}
 		run(
 			arg0,
 			arg1,
-			arg2,
 		)
 	})
 	return _c
@@ -110,7 +113,7 @@ func (_c *AgentMgtProviderMock_CreateAgent_Call) Return(agent1 *providers.Agent,
 	return _c
 }
 
-func (_c *AgentMgtProviderMock_CreateAgent_Call) RunAndReturn(run func(ctx context.Context, agent *providers.Agent, delegated bool) (*providers.Agent, *common.ServiceError)) *AgentMgtProviderMock_CreateAgent_Call {
+func (_c *AgentMgtProviderMock_CreateAgent_Call) RunAndReturn(run func(ctx context.Context, agent *providers.Agent) (*providers.Agent, *common.ServiceError)) *AgentMgtProviderMock_CreateAgent_Call {
 	_c.Call.Return(run)
 	return _c
 }

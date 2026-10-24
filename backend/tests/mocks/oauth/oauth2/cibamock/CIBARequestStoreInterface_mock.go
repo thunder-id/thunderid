@@ -18,10 +18,19 @@ func NewCIBARequestStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *CIBARequestStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &CIBARequestStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -64,7 +73,7 @@ type CIBARequestStoreInterfaceMock_Add_Call struct {
 // Add is a helper method to define mock.On call
 //   - ctx context.Context
 //   - request *ciba.CIBAAuthRequest
-func (_e *CIBARequestStoreInterfaceMock_Expecter) Add(ctx interface{}, request interface{}) *CIBARequestStoreInterfaceMock_Add_Call {
+func (_e *CIBARequestStoreInterfaceMock_Expecter) Add(ctx any, request any) *CIBARequestStoreInterfaceMock_Add_Call {
 	return &CIBARequestStoreInterfaceMock_Add_Call{Call: _e.mock.On("Add", ctx, request)}
 }
 
@@ -132,7 +141,7 @@ type CIBARequestStoreInterfaceMock_GetByID_Call struct {
 // GetByID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - authReqID string
-func (_e *CIBARequestStoreInterfaceMock_Expecter) GetByID(ctx interface{}, authReqID interface{}) *CIBARequestStoreInterfaceMock_GetByID_Call {
+func (_e *CIBARequestStoreInterfaceMock_Expecter) GetByID(ctx any, authReqID any) *CIBARequestStoreInterfaceMock_GetByID_Call {
 	return &CIBARequestStoreInterfaceMock_GetByID_Call{Call: _e.mock.On("GetByID", ctx, authReqID)}
 }
 
@@ -195,7 +204,7 @@ type CIBARequestStoreInterfaceMock_MarkAuthenticated_Call struct {
 //   - completedACR string
 //   - sessionID string
 //   - authTime time.Time
-func (_e *CIBARequestStoreInterfaceMock_Expecter) MarkAuthenticated(ctx interface{}, authReqID interface{}, userID interface{}, authorizedScopes interface{}, attributeCacheID interface{}, completedACR interface{}, sessionID interface{}, authTime interface{}) *CIBARequestStoreInterfaceMock_MarkAuthenticated_Call {
+func (_e *CIBARequestStoreInterfaceMock_Expecter) MarkAuthenticated(ctx any, authReqID any, userID any, authorizedScopes any, attributeCacheID any, completedACR any, sessionID any, authTime any) *CIBARequestStoreInterfaceMock_MarkAuthenticated_Call {
 	return &CIBARequestStoreInterfaceMock_MarkAuthenticated_Call{Call: _e.mock.On("MarkAuthenticated", ctx, authReqID, userID, authorizedScopes, attributeCacheID, completedACR, sessionID, authTime)}
 }
 
@@ -291,7 +300,7 @@ type CIBARequestStoreInterfaceMock_MarkConsumed_Call struct {
 // MarkConsumed is a helper method to define mock.On call
 //   - ctx context.Context
 //   - authReqID string
-func (_e *CIBARequestStoreInterfaceMock_Expecter) MarkConsumed(ctx interface{}, authReqID interface{}) *CIBARequestStoreInterfaceMock_MarkConsumed_Call {
+func (_e *CIBARequestStoreInterfaceMock_Expecter) MarkConsumed(ctx any, authReqID any) *CIBARequestStoreInterfaceMock_MarkConsumed_Call {
 	return &CIBARequestStoreInterfaceMock_MarkConsumed_Call{Call: _e.mock.On("MarkConsumed", ctx, authReqID)}
 }
 
@@ -349,7 +358,7 @@ type CIBARequestStoreInterfaceMock_UpdateLastPolled_Call struct {
 //   - ctx context.Context
 //   - authReqID string
 //   - polledAt time.Time
-func (_e *CIBARequestStoreInterfaceMock_Expecter) UpdateLastPolled(ctx interface{}, authReqID interface{}, polledAt interface{}) *CIBARequestStoreInterfaceMock_UpdateLastPolled_Call {
+func (_e *CIBARequestStoreInterfaceMock_Expecter) UpdateLastPolled(ctx any, authReqID any, polledAt any) *CIBARequestStoreInterfaceMock_UpdateLastPolled_Call {
 	return &CIBARequestStoreInterfaceMock_UpdateLastPolled_Call{Call: _e.mock.On("UpdateLastPolled", ctx, authReqID, polledAt)}
 }
 
@@ -412,7 +421,7 @@ type CIBARequestStoreInterfaceMock_UpdateState_Call struct {
 //   - ctx context.Context
 //   - authReqID string
 //   - state ciba.CIBARequestState
-func (_e *CIBARequestStoreInterfaceMock_Expecter) UpdateState(ctx interface{}, authReqID interface{}, state interface{}) *CIBARequestStoreInterfaceMock_UpdateState_Call {
+func (_e *CIBARequestStoreInterfaceMock_Expecter) UpdateState(ctx any, authReqID any, state any) *CIBARequestStoreInterfaceMock_UpdateState_Call {
 	return &CIBARequestStoreInterfaceMock_UpdateState_Call{Call: _e.mock.On("UpdateState", ctx, authReqID, state)}
 }
 

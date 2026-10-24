@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"regexp"
 	"strconv"
@@ -94,40 +95,16 @@ func flattenTokensInto(out map[string]string, prefix string, m map[string]interf
 	}
 }
 
-// isSafeTokenValue reports whether a resolved token value is free of the crudest injection vector: angle
-// brackets and control characters. Legitimate values (colors, CSS functions, numbers, keywords, font
-// stacks) never contain these. This is shallow defense in depth only; see ResolveDesignContent for the
-// full contract and its limits.
-func isSafeTokenValue(val string) bool {
-	for _, r := range val {
-		if r == '<' || r == '>' || r < 0x20 || r == 0x7f {
-			return false
-		}
-	}
-	return true
-}
-
 // substituteDesignTokens replaces every {{design(<dot.path>)}} placeholder in content with its token
-// value verbatim, leaving a placeholder untouched when its key is absent or its value is unsafe (see
-// isSafeTokenValue). It returns the resolved content and the de-duplicated keys rejected as unsafe (for
-// logging). Values are NOT encoded; the caller owns output encoding (see ResolveDesignContent).
-func substituteDesignTokens(content string, tokens map[string]string) (string, []string) {
-	var dropped []string
-	seen := map[string]bool{}
-	resolved := designPlaceholderRegex.ReplaceAllStringFunc(content, func(match string) string {
+// value, leaving a placeholder untouched when its key is absent. Each resolved value is HTML-escaped so
+// it is safe inside the HTML attributes the email body places it in.
+func substituteDesignTokens(content string, tokens map[string]string) string {
+	return designPlaceholderRegex.ReplaceAllStringFunc(content, func(match string) string {
 		key := designPlaceholderRegex.FindStringSubmatch(match)[1]
 		val, ok := tokens[key]
 		if !ok {
 			return match
 		}
-		if !isSafeTokenValue(val) {
-			if !seen[key] {
-				seen[key] = true
-				dropped = append(dropped, key)
-			}
-			return match
-		}
-		return val
+		return html.EscapeString(val)
 	})
-	return resolved, dropped
 }

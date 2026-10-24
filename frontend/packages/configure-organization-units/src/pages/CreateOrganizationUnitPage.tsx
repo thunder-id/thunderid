@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {zodResolver} from '@hookform/resolvers/zod';
-import {FullScreenCreationWizardLayout, NameSuggestion, OrganizationUnitSummaryChip} from '@thunderid/components';
+import {
+  DocumentTitle,
+  FullScreenCreationWizardLayout,
+  NameSuggestion,
+  OrganizationUnitSummaryChip,
+} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {generateHandle, getErrorMessage} from '@thunderid/utils';
 import {Box, Stack, Typography, Button, TextField, Alert, FormControl, FormLabel} from '@wso2/oxygen-ui';
@@ -160,11 +165,13 @@ export default function CreateOrganizationUnitPage(): JSX.Element {
     });
   };
 
+  const pageTitle = t('organizationUnits:create.title', 'Create organization unit');
+
   return (
     <FullScreenCreationWizardLayout
       onClose={handleClose}
       progress={100}
-      breadcrumbItems={[{key: 'create', label: t('organizationUnits:create.title', 'Create Organization Unit')}]}
+      breadcrumbItems={[{key: 'create', label: pageTitle}]}
       footer={
         <Box sx={{display: 'flex', justifyContent: 'flex-end'}}>
           <Button
@@ -181,6 +188,7 @@ export default function CreateOrganizationUnitPage(): JSX.Element {
         </Box>
       }
     >
+      <DocumentTitle title={pageTitle} />
       {error && (
         <Alert severity="error" sx={{mb: 3}} onClose={() => setError(null)}>
           {error}
@@ -203,11 +211,11 @@ export default function CreateOrganizationUnitPage(): JSX.Element {
 
           <OrganizationUnitSummaryChip
             icon={OrganizationUnitTreeConstants.DEFAULT_AVATAR}
-            label={t('organizationUnits:edit.general.parent.label', 'Parent Organization Unit')}
+            label={t('organizationUnits:edit.general.parent.label', 'Parent organization unit')}
             value={
               parentDisplayName
                 ? `${parentDisplayName}${parentDisplayHandle ? ` (${parentDisplayHandle})` : ''}`
-                : t('organizationUnits:edit.general.ou.noParent.label', 'Root Organization Unit')
+                : t('organizationUnits:edit.general.ou.noParent.label', 'Root organization unit')
             }
           />
 
@@ -223,7 +231,7 @@ export default function CreateOrganizationUnitPage(): JSX.Element {
                   fullWidth
                   id="ou-name-input"
                   onChange={(e) => handleNameChange(e.target.value)}
-                  placeholder={t('organizationUnits:edit.general.name.placeholder', 'e.g., Engineering Department')}
+                  placeholder={t('organizationUnits:edit.general.name.placeholder', 'e.g., engineering department')}
                   error={!!errors.name}
                   helperText={errors.name?.message}
                 />

@@ -405,15 +405,15 @@ func (ts *OAuthAuthzScopeTestSuite) TearDownSuite() {
 		}
 	}
 
-	if scopeTestOUID != "" {
-		if err := testutils.DeleteOrganizationUnit(scopeTestOUID); err != nil {
-			ts.T().Logf("Failed to delete organization unit: %v", err)
-		}
-	}
-
 	if scopeEntityTypeID != "" {
 		if err := testutils.DeleteUserType(scopeEntityTypeID); err != nil {
 			ts.T().Logf("Failed to delete user type: %v", err)
+		}
+	}
+
+	if scopeTestOUID != "" {
+		if err := testutils.DeleteOrganizationUnit(scopeTestOUID); err != nil {
+			ts.T().Logf("Failed to delete organization unit: %v", err)
 		}
 	}
 }
@@ -735,6 +735,76 @@ func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_FiltersOIDCScopesByScopeC
 	ts.Require().NoError(err, "Failed to decode ID token")
 	ts.Require().NotContains(idTokenClaims.Additional, "email",
 		"email claims must not be issued for a scope the mapping does not define")
+}
+
+// TestOAuthAuthzFlow_LegacyUserTypeClaim tests that an app configured with the legacy userType attribute
+// keeps receiving the user type's display name in the access token and the ID token.
+func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_LegacyUserTypeClaim() {
+	const (
+		clientID     = "legacy_user_type_test_client"
+		clientSecret = "legacy_user_type_test_secret"
+	)
+
+	appConfig := map[string]interface{}{
+		"name":                      "LegacyUserTypeTestApp",
+		"description":               "OAuth application for legacy userType claim integration test",
+		"ouId":                      scopeTestOUID,
+		"authFlowId":                ts.flowID,
+		"isRegistrationFlowEnabled": false,
+		"allowedUserTypes":          []string{scopeTestEntityType.Handle},
+		"inboundAuthConfig": []map[string]interface{}{
+			{
+				"type": "oauth2",
+				"config": map[string]interface{}{
+					"clientId":                clientID,
+					"clientSecret":            clientSecret,
+					"redirectUris":            []string{scopeTestRedirectURI},
+					"grantTypes":              []string{"authorization_code"},
+					"responseTypes":           []string{"code"},
+					"tokenEndpointAuthMethod": "client_secret_post",
+					"token": map[string]interface{}{
+						"idToken": map[string]interface{}{
+							"userAttributes": []string{"userType"},
+						},
+						"accessToken": map[string]interface{}{
+							"userConfig": map[string]interface{}{
+								"attributes": []string{"userType"},
+							},
+						},
+					},
+					"scopeClaims": map[string][]string{
+						"profile": {"userType"},
+					},
+				},
+			},
+		},
+	}
+
+	appID, err := ts.createApplicationRaw(appConfig)
+	ts.Require().NoError(err, "Failed to create OAuth application")
+	defer func() {
+		_ = testutils.DeleteApplication(appID)
+	}()
+
+	tokenResp, err := ts.obtainTokenWithResource(clientID, clientSecret, "openid profile",
+		"oauth_authorized_user", scopeTestResourceServerIdentifier)
+	ts.Require().NoError(err, "Failed to obtain tokens")
+	ts.Require().NotNil(tokenResp, "Token response should not be nil")
+
+	accessTokenClaims, err := testutils.DecodeJWT(tokenResp.AccessToken)
+	ts.Require().NoError(err, "Failed to decode access token")
+	ts.Require().Equal(scopeTestEntityType.DisplayName, accessTokenClaims.UserType,
+		"Access token userType should carry the user type's display name")
+	ts.Require().Empty(accessTokenClaims.UserTypeHandle, "userTypeHandle should NOT be in the access token")
+	ts.Require().Empty(accessTokenClaims.UserTypeName, "userTypeName should NOT be in the access token")
+
+	ts.Require().NotEmpty(tokenResp.IDToken, "ID token should be issued for the openid scope")
+	idTokenClaims, err := testutils.DecodeJWT(tokenResp.IDToken)
+	ts.Require().NoError(err, "Failed to decode ID token")
+	ts.Require().Equal(scopeTestEntityType.DisplayName, idTokenClaims.UserType,
+		"ID token userType should carry the user type's display name")
+	ts.Require().Empty(idTokenClaims.UserTypeHandle, "userTypeHandle should NOT be in the ID token")
+	ts.Require().Empty(idTokenClaims.UserTypeName, "userTypeName should NOT be in the ID token")
 }
 
 // getApplicationMappedScopes returns the scopes the application's scope-to-claims mapping defines.

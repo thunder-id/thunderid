@@ -16,10 +16,19 @@ func newStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *storeInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &storeInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -62,7 +71,7 @@ type storeInterfaceMock_DeleteSecret_Call struct {
 // DeleteSecret is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *storeInterfaceMock_Expecter) DeleteSecret(ctx interface{}, name interface{}) *storeInterfaceMock_DeleteSecret_Call {
+func (_e *storeInterfaceMock_Expecter) DeleteSecret(ctx any, name any) *storeInterfaceMock_DeleteSecret_Call {
 	return &storeInterfaceMock_DeleteSecret_Call{Call: _e.mock.On("DeleteSecret", ctx, name)}
 }
 
@@ -119,7 +128,7 @@ type storeInterfaceMock_DeleteVariable_Call struct {
 // DeleteVariable is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *storeInterfaceMock_Expecter) DeleteVariable(ctx interface{}, name interface{}) *storeInterfaceMock_DeleteVariable_Call {
+func (_e *storeInterfaceMock_Expecter) DeleteVariable(ctx any, name any) *storeInterfaceMock_DeleteVariable_Call {
 	return &storeInterfaceMock_DeleteVariable_Call{Call: _e.mock.On("DeleteVariable", ctx, name)}
 }
 
@@ -187,7 +196,7 @@ type storeInterfaceMock_GetSecret_Call struct {
 // GetSecret is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *storeInterfaceMock_Expecter) GetSecret(ctx interface{}, name interface{}) *storeInterfaceMock_GetSecret_Call {
+func (_e *storeInterfaceMock_Expecter) GetSecret(ctx any, name any) *storeInterfaceMock_GetSecret_Call {
 	return &storeInterfaceMock_GetSecret_Call{Call: _e.mock.On("GetSecret", ctx, name)}
 }
 
@@ -259,7 +268,7 @@ type storeInterfaceMock_GetSecretValue_Call struct {
 // GetSecretValue is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *storeInterfaceMock_Expecter) GetSecretValue(ctx interface{}, name interface{}) *storeInterfaceMock_GetSecretValue_Call {
+func (_e *storeInterfaceMock_Expecter) GetSecretValue(ctx any, name any) *storeInterfaceMock_GetSecretValue_Call {
 	return &storeInterfaceMock_GetSecretValue_Call{Call: _e.mock.On("GetSecretValue", ctx, name)}
 }
 
@@ -327,7 +336,7 @@ type storeInterfaceMock_GetVariable_Call struct {
 // GetVariable is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *storeInterfaceMock_Expecter) GetVariable(ctx interface{}, name interface{}) *storeInterfaceMock_GetVariable_Call {
+func (_e *storeInterfaceMock_Expecter) GetVariable(ctx any, name any) *storeInterfaceMock_GetVariable_Call {
 	return &storeInterfaceMock_GetVariable_Call{Call: _e.mock.On("GetVariable", ctx, name)}
 }
 
@@ -395,7 +404,7 @@ type storeInterfaceMock_InsertSecret_Call struct {
 //   - name string
 //   - encrypted string
 //   - description string
-func (_e *storeInterfaceMock_Expecter) InsertSecret(ctx interface{}, name interface{}, encrypted interface{}, description interface{}) *storeInterfaceMock_InsertSecret_Call {
+func (_e *storeInterfaceMock_Expecter) InsertSecret(ctx any, name any, encrypted any, description any) *storeInterfaceMock_InsertSecret_Call {
 	return &storeInterfaceMock_InsertSecret_Call{Call: _e.mock.On("InsertSecret", ctx, name, encrypted, description)}
 }
 
@@ -471,7 +480,7 @@ type storeInterfaceMock_InsertVariable_Call struct {
 // InsertVariable is a helper method to define mock.On call
 //   - ctx context.Context
 //   - v Variable
-func (_e *storeInterfaceMock_Expecter) InsertVariable(ctx interface{}, v interface{}) *storeInterfaceMock_InsertVariable_Call {
+func (_e *storeInterfaceMock_Expecter) InsertVariable(ctx any, v any) *storeInterfaceMock_InsertVariable_Call {
 	return &storeInterfaceMock_InsertVariable_Call{Call: _e.mock.On("InsertVariable", ctx, v)}
 }
 
@@ -545,7 +554,7 @@ type storeInterfaceMock_ListSecrets_Call struct {
 // ListSecrets is a helper method to define mock.On call
 //   - ctx context.Context
 //   - q listQuery
-func (_e *storeInterfaceMock_Expecter) ListSecrets(ctx interface{}, q interface{}) *storeInterfaceMock_ListSecrets_Call {
+func (_e *storeInterfaceMock_Expecter) ListSecrets(ctx any, q any) *storeInterfaceMock_ListSecrets_Call {
 	return &storeInterfaceMock_ListSecrets_Call{Call: _e.mock.On("ListSecrets", ctx, q)}
 }
 
@@ -619,7 +628,7 @@ type storeInterfaceMock_ListVariables_Call struct {
 // ListVariables is a helper method to define mock.On call
 //   - ctx context.Context
 //   - q listQuery
-func (_e *storeInterfaceMock_Expecter) ListVariables(ctx interface{}, q interface{}) *storeInterfaceMock_ListVariables_Call {
+func (_e *storeInterfaceMock_Expecter) ListVariables(ctx any, q any) *storeInterfaceMock_ListVariables_Call {
 	return &storeInterfaceMock_ListVariables_Call{Call: _e.mock.On("ListVariables", ctx, q)}
 }
 
@@ -687,7 +696,7 @@ type storeInterfaceMock_UpsertSecret_Call struct {
 //   - name string
 //   - encrypted string
 //   - description string
-func (_e *storeInterfaceMock_Expecter) UpsertSecret(ctx interface{}, name interface{}, encrypted interface{}, description interface{}) *storeInterfaceMock_UpsertSecret_Call {
+func (_e *storeInterfaceMock_Expecter) UpsertSecret(ctx any, name any, encrypted any, description any) *storeInterfaceMock_UpsertSecret_Call {
 	return &storeInterfaceMock_UpsertSecret_Call{Call: _e.mock.On("UpsertSecret", ctx, name, encrypted, description)}
 }
 
@@ -763,7 +772,7 @@ type storeInterfaceMock_UpsertVariable_Call struct {
 // UpsertVariable is a helper method to define mock.On call
 //   - ctx context.Context
 //   - v Variable
-func (_e *storeInterfaceMock_Expecter) UpsertVariable(ctx interface{}, v interface{}) *storeInterfaceMock_UpsertVariable_Call {
+func (_e *storeInterfaceMock_Expecter) UpsertVariable(ctx any, v any) *storeInterfaceMock_UpsertVariable_Call {
 	return &storeInterfaceMock_UpsertVariable_Call{Call: _e.mock.On("UpsertVariable", ctx, v)}
 }
 

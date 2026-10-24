@@ -5,12 +5,12 @@ import userEvent from '@testing-library/user-event';
 import {render, screen, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import * as useAddRoleAssignmentsModule from '../../../../api/useAddRoleAssignments';
-import * as useRemoveRoleAssignmentsModule from '../../../../api/useRemoveRoleAssignments';
+import * as useRemoveRoleAssignmentModule from '../../../../api/useRemoveRoleAssignment';
 import type {RoleAssignment} from '../../../../models/role';
 import EditAssignmentsSettings from '../EditAssignmentsSettings';
 
 vi.mock('../../../../api/useAddRoleAssignments');
-vi.mock('../../../../api/useRemoveRoleAssignments');
+vi.mock('../../../../api/useRemoveRoleAssignment');
 
 vi.mock('../ManageAssignmentsSection', () => ({
   default: ({
@@ -98,10 +98,10 @@ describe('EditAssignmentsSettings', () => {
       mutate: mockAddMutate,
     } as unknown as ReturnType<typeof useAddRoleAssignmentsModule.default>);
 
-    vi.mocked(useRemoveRoleAssignmentsModule.default).mockReturnValue({
+    vi.mocked(useRemoveRoleAssignmentModule.default).mockReturnValue({
       ...baseMutationState,
       mutate: mockRemoveMutate,
-    } as unknown as ReturnType<typeof useRemoveRoleAssignmentsModule.default>);
+    } as unknown as ReturnType<typeof useRemoveRoleAssignmentModule.default>);
   });
 
   afterEach(() => {
@@ -242,7 +242,7 @@ describe('EditAssignmentsSettings', () => {
   });
 
   describe('Remove Assignment', () => {
-    it('should call removeRoleAssignments.mutate when remove is triggered', async () => {
+    it('should call removeRoleAssignment.mutate when remove is triggered', async () => {
       const user = userEvent.setup();
       renderComponent();
 
@@ -250,7 +250,7 @@ describe('EditAssignmentsSettings', () => {
 
       expect(mockRemoveMutate).toHaveBeenCalledTimes(1);
       expect(mockRemoveMutate).toHaveBeenCalledWith(
-        {roleId: 'role-1', assignments: [{id: 'user-1', type: 'user'}]},
+        {roleId: 'role-1', assignment: {id: 'user-1', type: 'user'}},
         expect.any(Object),
       );
     });

@@ -1379,6 +1379,25 @@ func (s *ValidatorTestSuite) TestValidateCompanionExecutors_SessionRevocationWit
 	s.Nil(s.v.validateCompanionExecutors(nodes))
 }
 
+func (s *ValidatorTestSuite) TestValidateCompanionExecutors_CriteriaRevocationInRevokeMode() {
+	nodes := companionNodes(
+		executor.ExecutorNameCriteriaRevocation, executor.ExecutorNameSessionRevocation)
+	nodes[1].Executor.Mode = executor.ExecutorModeRevoke
+
+	s.Nil(s.v.validateCompanionExecutors(nodes))
+}
+
+func (s *ValidatorTestSuite) TestValidateCompanionExecutors_CriteriaRevocationOnlyAdvancingTheCutoff() {
+	nodes := companionNodes(
+		executor.ExecutorNameCriteriaRevocation, executor.ExecutorNameSessionRevocation)
+	nodes[1].Executor.Mode = executor.ExecutorModeAdvanceCutoff
+
+	err := s.v.validateCompanionExecutors(nodes)
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+}
+
 // Criteria revocation stands on its own; only the session executor carries the dependency.
 func (s *ValidatorTestSuite) TestValidateCompanionExecutors_CriteriaRevocationAlone() {
 	s.Nil(s.v.validateCompanionExecutors(companionNodes(executor.ExecutorNameCriteriaRevocation)))

@@ -186,7 +186,7 @@ Each call then sends `-H "Authorization: Bearer $TOKEN"`.
 
 6. **Create the `Customer` user type.**
 
-   Navigate to **User Types** → **Add User Type**. Name it `Customer` and define the schema with the attributes the agent needs to issue claims for:
+   Navigate to **User types** → **Add user type**. Name it `Customer` and define the schema with the attributes the agent needs to issue claims for:
 
    | Attribute     | Type   | Required | Notes                                  |
    | ------------- | ------ | -------- | -------------------------------------- |
@@ -200,7 +200,7 @@ Each call then sends `-H "Authorization: Bearer $TOKEN"`.
 
 7. **Create the two demo users.**
 
-   Navigate to **Users** → **Add User**. Select the `Customer` user type and create:
+   Navigate to **Users** → **Add user**. Select the `Customer` user type and create:
 
    | Username     | Password     |
    | ------------ | ------------ |
@@ -211,12 +211,12 @@ Each call then sends `-H "Authorization: Bearer $TOKEN"`.
 
 8. **Assign user roles.**
 
-   - **Roles** → **Chat User** → **Assignments** tab → **Add Assignment**. Pick **User** and assign `john.doe`.
-   - **Roles** → **Booking User** → **Assignments** tab → **Add Assignment**. Pick **User** and assign both `john.doe` and `jane.smith`.
+   - **Roles** → **Chat User** → **Assignments** tab → **Add assignment**. Pick **User** and assign `john.doe`.
+   - **Roles** → **Booking User** → **Assignments** tab → **Add assignment**. Pick **User** and assign both `john.doe` and `jane.smith`.
 
 9. **Register the `WAYFINDER` application.**
 
-   Navigate to **Applications** → **Add Application** and choose **Browser App** as the type. Configure:
+   Navigate to **Applications** → **Add application** and choose **Browser app** as the type. Configure:
 
    | Setting             | Value                                          |
    | ------------------- | ---------------------------------------------- |
@@ -234,10 +234,10 @@ The Concierge runs as a first-class agent in <ProductName />. It needs its own c
 
 1. **Add the agent.**
 
-   Navigate to **Agents** → **Add Agent**. Name the agent `WAYFINDER-CONCIERGE`, then:
+   Navigate to **Agents** → **Add agent**. Name the agent `WAYFINDER-CONCIERGE`, then:
 
    - **Capture the client secret.** <ProductName /> prints it only once. You will use it in `ai-agent/.env`.
-   - On the **Advanced** tab, under **Operating Mode**, turn on **Delegated mode**. That adds the `authorization_code` grant the on-behalf-of flow needs. Client credentials stays on either way.
+   - On the **Advanced** tab, under **Operating mode**, turn on **Delegated mode**. That adds the `authorization_code` grant the on-behalf-of flow needs. Client credentials stays on either way.
    - Still on **Advanced**, add the redirect URI `{{WayFinderSampleUrl}}/agent-callback`.
 
    See [Create and Manage Your Agent](../../../guides/agents/manage-agents) and [Act on Behalf of a User](../../../guides/agents/authentication/on-behalf-of-user).
@@ -246,7 +246,7 @@ The Concierge runs as a first-class agent in <ProductName />. It needs its own c
 
    With the agent created, complete the role assignment:
 
-   - **Roles** → **Recommender** → **Assignments** tab → **Add Assignment**. Pick **Agent** and assign `WAYFINDER-CONCIERGE`.
+   - **Roles** → **Recommender** → **Assignments** tab → **Add assignment**. Pick **Agent** and assign `WAYFINDER-CONCIERGE`.
 
 ## Build the Agent Authentication Flow
 

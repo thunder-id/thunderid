@@ -62,7 +62,7 @@ Whether an application may initiate one of these flows directly depends on its [
 
 - **Browser** and **Backend Service (m2m)** applications can never initiate these flows directly. A browser application must sign users in through the [Authorization endpoint](../../../apis#tag/authorization) (`GET /oauth2/authorize`), which drives the flow internally. A Backend Service application authenticates itself with the `client_credentials` grant instead of signing in a user.
 - **Mobile** applications must present a valid platform attestation token. See [Attestation](#attestation).
-- **Full-stack**, **Custom**, and **MCP Client** applications are derived from their OAuth 2.0 configuration. An application with no OAuth 2.0 configuration, or one that is confidential, does not use the `authorization_code` grant, and is not configured with `client_credentials` as its only grant, authenticates with a Flow Secret. An application configured with the `authorization_code` grant, or with `client_credentials` as its only grant, cannot initiate the flow directly.
+- **Full-stack**, **Custom**, and **MCP Client** applications are derived from their OAuth 2.0 configuration. An application authenticates with a Flow Secret when it has no OAuth 2.0 configuration, or when it is confidential, has the `urn:ietf:params:oauth:grant-type:token-exchange` grant, and does not use the `authorization_code` grant. The application needs the token exchange grant to exchange the flow's assertion for tokens. <ProductName /> rejects direct initiation from any other OAuth 2.0 configuration with `403 Forbidden`, for example an application with the `authorization_code` grant, or one whose only grants are `client_credentials`, `urn:ietf:params:oauth:grant-type:jwt-bearer`, or `urn:openid:params:grant-type:ciba`.
 :::
 
 ### Key Features
@@ -90,7 +90,7 @@ Flow execution does not support going back to a previous step, either through a 
 
 ### Flow Secret
 
-A confidential server-side application (one with no OAuth 2.0 configuration, or one that is confidential and does not use the `authorization_code` grant) authenticates at flow initiation with a **Flow Secret**. <ProductName /> issues this secret once, when the application is created, and never returns it again; the [Console](../../guides/applications/application-settings.mdx) can regenerate it if it's lost. Keep it server-side only, since a browser SPA has nowhere safe to hold it, which is why the `browser` application type is never issued one (see [Direct Initiation Restriction](#direct-initiation-restriction) above).
+A confidential server-side application (one with no OAuth 2.0 configuration, or one that is confidential, has the token exchange grant, and does not use the `authorization_code` grant) authenticates at flow initiation with a **Flow Secret**. <ProductName /> issues this secret once, when the application is created, and never returns it again; the [Console](../../guides/applications/application-settings.mdx) can regenerate it if it's lost. Keep it server-side only, since a browser SPA has nowhere safe to hold it, which is why the `browser` application type is never issued one (see [Direct Initiation Restriction](#direct-initiation-restriction) above).
 
 To initiate a new authentication or sign-out flow, the application presents the secret in the `Flow-Secret` request header:
 
@@ -129,7 +129,7 @@ Attestation-Token: <attestation-token>
 A Mobile application that has not configured attestation is rejected with `400 Bad Request`. Once attestation is configured, an application that omits the token is rejected with `401 Unauthorized`, and an invalid or malformed token is also rejected with `401 Unauthorized`. Flow **continuation** requests (those carrying an `executionId`) do not require an attestation token.
 
 :::note
-A Mobile application with **Dev Mode** enabled is an exception to the rejections above. It can initiate a flow without presenting an attestation token, regardless of whether a platform is configured. **Dev Mode** is intended for testing and trying out sample or development clients, not production use. See [Dev Mode](../../guides/applications/application-settings.mdx#dev-mode).
+A Mobile application with **Dev mode** enabled is an exception to the rejections above. It can initiate a flow without presenting an attestation token, regardless of whether a platform is configured. **Dev mode** is intended for testing and trying out sample or development clients, not production use. See [Dev Mode](../../guides/applications/application-settings.mdx#dev-mode).
 :::
 
 ### Integration Modes
@@ -372,7 +372,9 @@ Deployments that don't use the Direct API can remove its endpoints from the serv
 
 ### Rate Limiting
 
-<ProductName /> does not apply rate limiting or brute-force protection to Direct API endpoints. It enforces no per-user lockout, no per-client request quota, and no throttling on repeated failures. An endpoint such as `POST /auth/credentials/authenticate` or `POST /auth/otp/sms/verify` accepts credential and OTP attempts at whatever rate the caller sends them.
+<ProductName /> does not apply rate limiting to Direct API endpoints. It enforces no per-client request quota and no throttling on repeated failures. An endpoint such as `POST /auth/credentials/authenticate` or `POST /auth/otp/sms/verify` accepts credential and OTP attempts at whatever rate the caller sends them.
+
+Automatic account lockout is enforced on these endpoints, per identity and, by default, per sign-in method. It stops repeated guessing against one account. It does not limit request volume, so it is not a replacement for a rate limiter in front of these endpoints.
 
 :::warning
 Front the Direct API endpoints with an API gateway and apply rate limiting there before exposing them outside a trusted network. Without it, these endpoints are open to password guessing, OTP enumeration, and messaging costs driven up by repeated `POST /auth/otp/sms/send` calls.

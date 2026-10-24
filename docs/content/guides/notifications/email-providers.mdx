@@ -1,0 +1,220 @@
+---
+title: Configure an Email Provider
+docType: guide
+sidebar_position: 1
+persona: iam
+description: Create an email provider connection, such as an SMTP server, in {{ProductName}} and select it on flow email steps to send magic links, invitations, and recovery emails.
+---
+
+# Configure an Email Provider
+
+Magic links, user invitations, password recovery links, and other emails from your flows reach users through an email provider. An email provider is a connection in the `email-provider` category. It tells <ProductName /> which service delivers your email and how to reach it.
+
+Each email step in a flow picks the provider it sends through, so you can run several providers side by side, such as one for customers and one for staff. There is no deployment-wide default, so a flow cannot send email until its email steps name a provider.
+
+<ProductName /> currently delivers email over [SMTP](#smtp), so you can use any service that accepts SMTP, such as Gmail, Amazon SES, SendGrid, or your own mail server. Create providers through the Connections API, or declare them as resources alongside the rest of your configuration. To see the email providers in a deployment, call `GET /connections` with the `email-provider` category.
+
+## Prerequisites
+
+- An account with an email delivery service, plus its credentials if the service requires authentication.
+- An access token with the `system` scope for the API calls.
+
+## SMTP
+
+An SMTP provider holds everything <ProductName /> needs to hand email to an SMTP server: the server address, the sender identity that recipients see, how the connection is secured, and the credentials to authenticate with. SMTP providers use the connection type `email-smtp`, and you manage them through `/connections/email-smtp`.
+
+### Connection Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Display name of the connection. |
+| `description` | No | Free-text description. |
+| `host` | Yes | Hostname of the SMTP server, such as `smtp.example.com`. |
+| `port` | Yes | Port of the SMTP server, from `1` to `65535`. Use `587` for STARTTLS or `465` for implicit TLS. |
+| `fromAddress` | Yes | Email address used in the **From** header and as the SMTP envelope sender. Must be a valid email address. |
+| `fromName` | No | Display name shown beside `fromAddress` in the **From** header, so a recipient sees `Acme Support <noreply@example.com>`. Without it, the header carries the bare address. Must not contain a line break. |
+| `tls` | No | How the connection to the SMTP server is secured: `starttls`, `implicit`, or `none`. Defaults to `starttls`. See [Transport Security](#transport-security). |
+| `authentication` | No | How <ProductName /> authenticates to the SMTP server. Omit it to send no credentials. See [Authentication](#authentication). |
+
+Mail always leaves with `fromAddress` as the envelope sender, even when you set `fromName`. Most relays accept mail only from an address or domain you have verified with them, so use a verified identity here.
+
+### Create an SMTP Provider
+
+1. Send a `POST` request to `/connections/email-smtp` with the server details:
+
+    ```bash
+    curl -k -X POST https://localhost:8090/connections/email-smtp \
+      -H "Authorization: Bearer $TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "name": "Corp SMTP",
+        "host": "smtp.example.com",
+        "port": 587,
+        "fromAddress": "noreply@example.com",
+        "fromName": "Acme Support",
+        "tls": "starttls",
+        "authentication": {
+          "type": "basic",
+          "properties": {
+            "username": "mailer",
+            "password": "<smtp-password>"
+          }
+        }
+      }'
+    ```
+
+2. Copy the `id` from the response. You use it as `senderId` when you select this provider on an email step.
+
+    ```json
+    {
+      "id": "<email-provider-id>",
+      "name": "Corp SMTP",
+      "type": "email-smtp",
+      "host": "smtp.example.com",
+      "port": 587,
+      "fromAddress": "noreply@example.com",
+      "fromName": "Acme Support",
+      "tls": "starttls",
+      "authentication": {
+        "type": "basic",
+        "properties": {
+          "username": "mailer",
+          "password": "******"
+        }
+      }
+    }
+    ```
+
+3. [Select the provider on each email step](#select-the-provider-on-an-email-step) of the flows that send email.
+
+To list the SMTP providers in a deployment, call `GET /connections/email-smtp`.
+
+### Transport Security
+
+The `tls` field controls how <ProductName /> secures its connection to the SMTP server:
+
+| Mode | Behavior |
+|------|----------|
+| `starttls` | Default. Connects over plain TCP, then upgrades to TLS with the STARTTLS command. If the server does not offer STARTTLS, the send fails instead of falling back to plaintext. Typically port `587`. |
+| `implicit` | Opens a TLS connection directly (SMTPS). Typically port `465`. |
+| `none` | Sends in plaintext. Use it only for a relay on a network you trust. |
+
+Both TLS modes require TLS 1.2 or later and check the server certificate against `host`.
+
+<ProductName /> opens a fresh SMTP connection for every email. It waits up to 30 seconds to connect, and up to 60 seconds for the whole exchange to finish.
+
+### Authentication
+
+Use the `authentication` object to tell <ProductName /> how to authenticate to the SMTP server. Set the method in `type` and its fields in `properties`. SMTP providers support two methods:
+
+| Type | Properties | Behavior |
+|------|------------|----------|
+| `none` | None | Sends no credentials. Omitting `authentication` has the same effect. |
+| `basic` | `username`, `password` (both required) | Authenticates with SMTP PLAIN using the username and password. |
+
+To fetch the supported methods and their fields from the server, call `GET /connections/meta?vendor=email-smtp`.
+
+Credentials must never travel in plaintext, so <ProductName /> rejects a connection that combines `tls: none` with any authentication method other than `none`.
+
+#### Credential Storage and Updates
+
+<ProductName /> encrypts the password at rest and never returns it. Responses always mask it as `******`.
+
+To update a connection, send the full connection to `PUT /connections/email-smtp/{id}`. You can leave out `password` to keep the stored one, as long as `host`, `port`, the authentication `type`, and `username` stay the same. If you change any of those, include the password again. Changing the authentication `type`, or setting it to `none`, discards the stored credentials.
+
+## Select the Provider on an Email Step
+
+Each **Send Email** step (`EmailExecutor`) sends through the provider named in its `senderId` node property. Set `senderId` to your provider's `id` on every email step:
+
+```json
+{
+  "id": "send_recovery_email",
+  "type": "TASK_EXECUTION",
+  "properties": {
+    "senderId": "<email-provider-id>",
+    "emailTemplate": "PASSWORD_RECOVERY"
+  },
+  "executor": {
+    "name": "EmailExecutor",
+    "mode": "send"
+  },
+  "onSuccess": "email_sent_status",
+  "onFailure": "email_sent_status"
+}
+```
+
+The flow designer does not have a sender field for email steps, so set `senderId` in the flow definition. Use the Flow Management API (`/flows`) or a declarative flow file.
+
+The executor schema lists `senderId` as optional, because the built-in flows include email steps before any provider exists. A step still needs it to send email:
+
+- If `senderId` is missing or empty, does not match a connection, or points to a connection that is not an email provider, the step fails with the flow error `FET-1038` (**Email provider is not configured**).
+- If the SMTP server is unreachable, rejects the credentials, or does not offer STARTTLS in `starttls` mode, the flow execution request fails with a server error.
+
+For the full executor reference, see [Send Email](../../flows/advanced-configurations#executor-details-and-configuration).
+
+## Declare an Email Provider as a Resource
+
+You can also define an email provider as a declarative resource, so that it is created with the rest of your configuration. Use `resource_type: connection` and `type: email-smtp`, with the same fields as the API request body plus a fixed `id` for flows to reference as `senderId`:
+
+```yaml
+resource_type: connection
+id: 3f2b6c1e-8d4a-4c1e-9b7a-2d5e6f7a8b90
+name: Corp SMTP
+description: Transactional mail relay
+type: email-smtp
+host: smtp.example.com
+port: 587
+fromAddress: noreply@example.com
+fromName: Acme Support
+tls: starttls
+authentication:
+  type: basic
+  properties:
+    username: mailer
+    password: "{{.CORP_SMTP_PASSWORD}}"
+```
+
+Use a template variable for the password to keep the secret out of the file, and supply its value in the environment file you load with the resources. Exports follow the same pattern: <ProductName /> writes each credential of an exported email provider as a template variable instead of its value.
+
+When it loads the resources, <ProductName /> checks a declarative email provider the same way the API does. If the provider is invalid, the server does not start, and the server log explains why.
+
+To learn how to load declarative resources, see [Declarative Resources](../../../deployment/configuration#declarative-resources).
+
+## Migrate From `email.smtp`
+
+Earlier releases used a single SMTP server for the whole deployment, set in the `email.smtp` block of `deployment.yaml` or under `configuration.email.smtp` in the Helm values. <ProductName /> no longer reads that configuration, and it does not convert it for you:
+
+- If `deployment.yaml` still has an `email` block, the server fails to start, because <ProductName /> rejects unknown configuration fields.
+- The Helm chart refuses to render while `configuration.email.smtp.host` is set, and asks you to create an email provider connection instead. Values files copied from an earlier chart, where the `email` block has an empty host, still render.
+
+You can only create the connection on the upgraded build, and that build does not start with the old block in place, so migrate in this order:
+
+1. Note your current values. Then remove the `email` block from `deployment.yaml`, or `configuration.email` from your Helm values.
+2. Upgrade and start <ProductName />. Until you finish step 4, email steps report that no email provider is configured, and no email is sent.
+3. Create an email provider connection from your previous values. The table below maps each old setting to its connection field.
+4. Set `senderId` to the new connection's `id` on every email step in every flow that sends email, including flows created from built-in templates.
+
+To avoid that gap in email delivery, [declare the provider as a resource](#declare-an-email-provider-as-a-resource) with a fixed `id` before you upgrade, instead of creating it in step 3. If your flows are declarative resources too, set their `senderId` to that `id` before you upgrade, and email keeps working from the first start. Flows stored in the database still need step 4 after the server starts.
+
+On Kubernetes, the chart no longer creates the `smtp-password` key or injects `SMTP_PASSWORD`. If you pointed `passwordRef` at your own Secret, put that password in the connection instead. You can delete the Secret once nothing else uses it.
+
+| `deployment.yaml` key | Helm value | Connection field |
+|-----------------------|------------|------------------|
+| `email.smtp.host` | `configuration.email.smtp.host` | `host` |
+| `email.smtp.port` | `configuration.email.smtp.port` | `port` |
+| `email.smtp.from_address` | `configuration.email.smtp.fromAddress` | `fromAddress` |
+| `email.smtp.username` | `configuration.email.smtp.username` | `authentication.properties.username` |
+| `email.smtp.password` | `configuration.email.smtp.password` or `passwordRef` | `authentication.properties.password` |
+| `email.smtp.enable_authentication: true` | `configuration.email.smtp.enableAuthentication: true` | `authentication.type: basic` |
+| `email.smtp.enable_authentication: false` | `configuration.email.smtp.enableAuthentication: false` | `authentication.type: none`, or omit `authentication` |
+| `email.smtp.enable_start_tls: true` | `configuration.email.smtp.enableStartTls: true` | `tls: starttls` |
+| `email.smtp.enable_start_tls: false` | `configuration.email.smtp.enableStartTls: false` | `tls: none` |
+
+The old configuration allowed authentication without STARTTLS, but a connection does not. Either set `tls` to `starttls` or `implicit`, or set the authentication `type` to `none` if your relay needs no credentials.
+
+Connections also add two settings the old block did not have: `fromName`, and `tls: implicit` for SMTPS on port `465`.
+
+## Next Steps
+
+- [Advanced Flow Configurations](../../flows/advanced-configurations#executor-details-and-configuration): Configure the Send Email executor and the other flow steps
+- [Notification Templates](../../notifications/templates): Customize the content of the emails a provider delivers

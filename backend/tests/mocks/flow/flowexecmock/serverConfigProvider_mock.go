@@ -17,10 +17,19 @@ func newServerConfigProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *serverConfigProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &serverConfigProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -76,7 +85,7 @@ type serverConfigProviderMock_GetMergedConfig_Call struct {
 // GetMergedConfig is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *serverConfigProviderMock_Expecter) GetMergedConfig(ctx interface{}, name interface{}) *serverConfigProviderMock_GetMergedConfig_Call {
+func (_e *serverConfigProviderMock_Expecter) GetMergedConfig(ctx any, name any) *serverConfigProviderMock_GetMergedConfig_Call {
 	return &serverConfigProviderMock_GetMergedConfig_Call{Call: _e.mock.On("GetMergedConfig", ctx, name)}
 }
 
@@ -98,8 +107,8 @@ func (_c *serverConfigProviderMock_GetMergedConfig_Call) Run(run func(ctx contex
 	return _c
 }
 
-func (_c *serverConfigProviderMock_GetMergedConfig_Call) Return(v any, serviceError *common.ServiceError) *serverConfigProviderMock_GetMergedConfig_Call {
-	_c.Call.Return(v, serviceError)
+func (_c *serverConfigProviderMock_GetMergedConfig_Call) Return(anyMoqParam any, serviceError *common.ServiceError) *serverConfigProviderMock_GetMergedConfig_Call {
+	_c.Call.Return(anyMoqParam, serviceError)
 	return _c
 }
 

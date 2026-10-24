@@ -6,8 +6,8 @@
 //
 //   - NewHTTPClient(HTTPClientConfig) - creates a client from a config struct
 //   - NewDefaultHTTPClient() - creates a client with the default 30s timeout that follows redirects
-//   - NewHTTPClientWithRootCAs(duration, rootCAs) - creates a client with a custom timeout that never follows
-//     redirects and trusts the given certificate authorities
+//   - NewHTTPClientWithRootCAs(duration, rootCAs, rejectPrivate) - creates a client with a custom timeout that never
+//     follows redirects and trusts the given certificate authorities, optionally with the SSRF dial guard
 //
 // Safety controls (timeout, redirect policy, SSRF dial guard, root CAs) are selected per caller through
 // HTTPClientConfig instead of being bundled into fixed constructor combinations.
@@ -131,12 +131,15 @@ func NewDefaultHTTPClient() HTTPClientInterface {
 
 // NewHTTPClientWithRootCAs creates an HTTPClient with the given timeout that trusts the given certificate
 // authorities and returns a 3xx response instead of following it. Use it to reach a server whose
-// certificate a private authority issued, with verification kept on.
-func NewHTTPClientWithRootCAs(timeout time.Duration, rootCAs *x509.CertPool) HTTPClientInterface {
+// certificate a private authority issued, with verification kept on. With rejectPrivate it dials
+// through the SSRF-safe dialer, refusing any host that resolves to a loopback, link-local, private
+// or unspecified address.
+func NewHTTPClientWithRootCAs(timeout time.Duration, rootCAs *x509.CertPool, rejectPrivate bool) HTTPClientInterface {
 	return NewHTTPClient(HTTPClientConfig{
 		Timeout:          timeout,
 		DisableRedirects: true,
 		RootCAs:          rootCAs,
+		GuardSSRF:        rejectPrivate,
 	})
 }
 

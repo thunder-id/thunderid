@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {IdentityProviderTypes, type IdentityProviderType} from '@thunderid/configure-connections';
@@ -64,6 +64,95 @@ export const REVOCATION_MODES = [
     value: 'revoke_all',
     translationKey: 'flows:core.executions.preDelete.mode.revokeAll',
     displayLabel: 'Validate and Plan Full Revocation',
+  },
+] as const;
+
+/**
+ * Available modes for the Access Change Validator executor. Must match its SupportedModes in the backend.
+ */
+export const ACCESS_CHANGE_VALIDATOR_MODES = [
+  {
+    value: 'role_assignment_removal',
+    translationKey: 'flows:core.executions.accessChangeValidator.mode.roleAssignmentRemoval',
+    displayLabel: 'Validate and Plan Assignment Removal',
+  },
+  {
+    value: 'role_deletion',
+    translationKey: 'flows:core.executions.accessChangeValidator.mode.roleDeletion',
+    displayLabel: 'Validate and Plan Role Deletion',
+  },
+  {
+    value: 'role_permission_removal',
+    translationKey: 'flows:core.executions.accessChangeValidator.mode.rolePermissionRemoval',
+    displayLabel: 'Validate and Plan Permission Change',
+  },
+  {
+    value: 'group_deletion',
+    translationKey: 'flows:core.executions.accessChangeValidator.mode.groupDeletion',
+    displayLabel: 'Validate and Plan Group Deletion',
+  },
+  {
+    value: 'group_membership_removal',
+    translationKey: 'flows:core.executions.accessChangeValidator.mode.groupMembershipRemoval',
+    displayLabel: 'Validate and Plan Membership Removal',
+  },
+  {
+    value: 'action_deletion',
+    translationKey: 'flows:core.executions.accessChangeValidator.mode.actionDeletion',
+    displayLabel: 'Validate and Plan Action Deletion',
+  },
+] as const;
+
+/**
+ * Available modes for the Role executor. Must match its SupportedModes in the backend.
+ */
+export const ROLE_EXECUTOR_MODES = [
+  {
+    value: 'role_assignment_removal',
+    translationKey: 'flows:core.executions.roleExecutor.mode.roleAssignmentRemoval',
+    displayLabel: 'Remove Role Assignment',
+  },
+  {
+    value: 'role_deletion',
+    translationKey: 'flows:core.executions.roleExecutor.mode.roleDeletion',
+    displayLabel: 'Delete Role',
+  },
+  {
+    value: 'role_permission_removal',
+    translationKey: 'flows:core.executions.roleExecutor.mode.rolePermissionRemoval',
+    displayLabel: 'Change Role Permissions',
+  },
+] as const;
+
+/**
+ * Available modes for the Group executor. Must match its SupportedModes in the backend.
+ */
+export const GROUP_EXECUTOR_MODES = [
+  {
+    value: 'group_deletion',
+    translationKey: 'flows:core.executions.groupExecutor.mode.groupDeletion',
+    displayLabel: 'Delete Group',
+  },
+  {
+    value: 'group_membership_removal',
+    translationKey: 'flows:core.executions.groupExecutor.mode.groupMembershipRemoval',
+    displayLabel: 'Remove Group Member',
+  },
+] as const;
+
+/**
+ * Available modes for the Criteria Revocation executor. Must match its SupportedModes in the backend.
+ */
+export const CRITERIA_REVOCATION_MODES = [
+  {
+    value: 'revoke',
+    translationKey: 'flows:core.executions.criteriaRevocation.mode.revoke',
+    displayLabel: 'Revoke Tokens',
+  },
+  {
+    value: 'advance_cutoff',
+    translationKey: 'flows:core.executions.criteriaRevocation.mode.advanceCutoff',
+    displayLabel: 'Advance Revocation Cutoff',
   },
 ] as const;
 
@@ -154,4 +243,9 @@ export const EXECUTORS_WITH_FIXED_INPUTS = new Set<string>([
   ExecutionTypes.Session,
   ExecutionTypes.SessionSignOut,
   ExecutionTypes.PreDelete,
+  ExecutionTypes.CriteriaRevocation,
+  ExecutionTypes.AccessChangeValidator,
+  ExecutionTypes.RoleExecutor,
+  ExecutionTypes.GroupExecutor,
+  ExecutionTypes.IdentityGovernance,
 ]);

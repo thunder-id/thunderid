@@ -15,10 +15,19 @@ func newOAuthExecutorInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *oAuthExecutorInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &oAuthExecutorInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -72,7 +81,7 @@ type oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call struct {
 // BuildAuthorizeFlow is a helper method to define mock.On call
 //   - ctx *providers.NodeContext
 //   - execResp *providers.ExecutorResponse
-func (_e *oAuthExecutorInterfaceMock_Expecter) BuildAuthorizeFlow(ctx interface{}, execResp interface{}) *oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call {
+func (_e *oAuthExecutorInterfaceMock_Expecter) BuildAuthorizeFlow(ctx any, execResp any) *oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call {
 	return &oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call{Call: _e.mock.On("BuildAuthorizeFlow", ctx, execResp)}
 }
 
@@ -139,7 +148,7 @@ type oAuthExecutorInterfaceMock_Execute_Call struct {
 
 // Execute is a helper method to define mock.On call
 //   - ctx *providers.NodeContext
-func (_e *oAuthExecutorInterfaceMock_Expecter) Execute(ctx interface{}) *oAuthExecutorInterfaceMock_Execute_Call {
+func (_e *oAuthExecutorInterfaceMock_Expecter) Execute(ctx any) *oAuthExecutorInterfaceMock_Execute_Call {
 	return &oAuthExecutorInterfaceMock_Execute_Call{Call: _e.mock.On("Execute", ctx)}
 }
 
@@ -238,7 +247,7 @@ type oAuthExecutorInterfaceMock_GetExecutionPolicy_Call struct {
 
 // GetExecutionPolicy is a helper method to define mock.On call
 //   - mode string
-func (_e *oAuthExecutorInterfaceMock_Expecter) GetExecutionPolicy(mode interface{}) *oAuthExecutorInterfaceMock_GetExecutionPolicy_Call {
+func (_e *oAuthExecutorInterfaceMock_Expecter) GetExecutionPolicy(mode any) *oAuthExecutorInterfaceMock_GetExecutionPolicy_Call {
 	return &oAuthExecutorInterfaceMock_GetExecutionPolicy_Call{Call: _e.mock.On("GetExecutionPolicy", mode)}
 }
 
@@ -298,7 +307,7 @@ type oAuthExecutorInterfaceMock_GetIdpID_Call struct {
 
 // GetIdpID is a helper method to define mock.On call
 //   - ctx *providers.NodeContext
-func (_e *oAuthExecutorInterfaceMock_Expecter) GetIdpID(ctx interface{}) *oAuthExecutorInterfaceMock_GetIdpID_Call {
+func (_e *oAuthExecutorInterfaceMock_Expecter) GetIdpID(ctx any) *oAuthExecutorInterfaceMock_GetIdpID_Call {
 	return &oAuthExecutorInterfaceMock_GetIdpID_Call{Call: _e.mock.On("GetIdpID", ctx)}
 }
 
@@ -487,7 +496,7 @@ type oAuthExecutorInterfaceMock_GetRequiredInputs_Call struct {
 
 // GetRequiredInputs is a helper method to define mock.On call
 //   - ctx *providers.NodeContext
-func (_e *oAuthExecutorInterfaceMock_Expecter) GetRequiredInputs(ctx interface{}) *oAuthExecutorInterfaceMock_GetRequiredInputs_Call {
+func (_e *oAuthExecutorInterfaceMock_Expecter) GetRequiredInputs(ctx any) *oAuthExecutorInterfaceMock_GetRequiredInputs_Call {
 	return &oAuthExecutorInterfaceMock_GetRequiredInputs_Call{Call: _e.mock.On("GetRequiredInputs", ctx)}
 }
 
@@ -584,7 +593,7 @@ type oAuthExecutorInterfaceMock_GetUserIDFromContext_Call struct {
 //   - ctx *providers.NodeContext
 //   - execResp *providers.ExecutorResponse
 //   - authnProvider providers.AuthnProviderManager
-func (_e *oAuthExecutorInterfaceMock_Expecter) GetUserIDFromContext(ctx interface{}, execResp interface{}, authnProvider interface{}) *oAuthExecutorInterfaceMock_GetUserIDFromContext_Call {
+func (_e *oAuthExecutorInterfaceMock_Expecter) GetUserIDFromContext(ctx any, execResp any, authnProvider any) *oAuthExecutorInterfaceMock_GetUserIDFromContext_Call {
 	return &oAuthExecutorInterfaceMock_GetUserIDFromContext_Call{Call: _e.mock.On("GetUserIDFromContext", ctx, execResp, authnProvider)}
 }
 
@@ -646,7 +655,7 @@ type oAuthExecutorInterfaceMock_HasRequiredInputs_Call struct {
 // HasRequiredInputs is a helper method to define mock.On call
 //   - ctx *providers.NodeContext
 //   - execResp *providers.ExecutorResponse
-func (_e *oAuthExecutorInterfaceMock_Expecter) HasRequiredInputs(ctx interface{}, execResp interface{}) *oAuthExecutorInterfaceMock_HasRequiredInputs_Call {
+func (_e *oAuthExecutorInterfaceMock_Expecter) HasRequiredInputs(ctx any, execResp any) *oAuthExecutorInterfaceMock_HasRequiredInputs_Call {
 	return &oAuthExecutorInterfaceMock_HasRequiredInputs_Call{Call: _e.mock.On("HasRequiredInputs", ctx, execResp)}
 }
 
@@ -703,7 +712,7 @@ type oAuthExecutorInterfaceMock_ProcessAuthFlowResponse_Call struct {
 // ProcessAuthFlowResponse is a helper method to define mock.On call
 //   - ctx *providers.NodeContext
 //   - execResp *providers.ExecutorResponse
-func (_e *oAuthExecutorInterfaceMock_Expecter) ProcessAuthFlowResponse(ctx interface{}, execResp interface{}) *oAuthExecutorInterfaceMock_ProcessAuthFlowResponse_Call {
+func (_e *oAuthExecutorInterfaceMock_Expecter) ProcessAuthFlowResponse(ctx any, execResp any) *oAuthExecutorInterfaceMock_ProcessAuthFlowResponse_Call {
 	return &oAuthExecutorInterfaceMock_ProcessAuthFlowResponse_Call{Call: _e.mock.On("ProcessAuthFlowResponse", ctx, execResp)}
 }
 
@@ -761,7 +770,7 @@ type oAuthExecutorInterfaceMock_ValidatePrerequisites_Call struct {
 //   - ctx *providers.NodeContext
 //   - execResp *providers.ExecutorResponse
 //   - authnProvider providers.AuthnProviderManager
-func (_e *oAuthExecutorInterfaceMock_Expecter) ValidatePrerequisites(ctx interface{}, execResp interface{}, authnProvider interface{}) *oAuthExecutorInterfaceMock_ValidatePrerequisites_Call {
+func (_e *oAuthExecutorInterfaceMock_Expecter) ValidatePrerequisites(ctx any, execResp any, authnProvider any) *oAuthExecutorInterfaceMock_ValidatePrerequisites_Call {
 	return &oAuthExecutorInterfaceMock_ValidatePrerequisites_Call{Call: _e.mock.On("ValidatePrerequisites", ctx, execResp, authnProvider)}
 }
 

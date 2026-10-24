@@ -18,7 +18,9 @@ links:
   github: https://github.com/thunder-id/javascript-sdks
   package: https://www.npmjs.com/package/@thunderid/better-auth
   external: https://better-auth.com/docs/plugins/generic-oauth
-  samples: https://github.com/thunder-id/javascript-sdks/tree/main/samples/integrations/better-auth/nextjs
+  samples: https://github.com/thunder-id/samples/tree/main/integrations/better-auth-nextjs
+# Offers the sample's released zip at the top of the page, from the samples repo releases.
+sample: integrations/better-auth-nextjs
 hero:
   description: '{{ProductName}} provider helper for the Better Auth Generic OAuth plugin. It returns a typed GenericOAuthConfig
     for a {{ProductName}} issuer, so there is no {{ProductName}} SDK dependency and no protocol logic to keep in sync.'

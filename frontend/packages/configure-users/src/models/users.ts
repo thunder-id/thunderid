@@ -100,7 +100,7 @@ export interface BasePropertyDefinition {
  * String property definition
  */
 export interface StringPropertyDefinition extends BasePropertyDefinition {
-  type: 'string';
+  type: 'string' | 'email' | 'mobile';
   credential?: boolean;
   unique?: boolean;
   enum?: string[];

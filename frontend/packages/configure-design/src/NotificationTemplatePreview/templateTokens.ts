@@ -19,7 +19,7 @@ export interface ParsedToken {
 /** A token the preview cannot render faithfully. */
 export interface TemplateWarning {
   severity: 'error' | 'warning';
-  code: 'unsupported' | 'designNotAllowed' | 'designUnresolved' | 'missingTranslation';
+  code: 'unsupported' | 'designNotAllowed' | 'designUnresolved' | 'missingTranslation' | 'unknownContext';
   token: string;
 }
 
@@ -89,11 +89,36 @@ export interface PreviewResolveOptions {
   translations: Record<string, string>;
   theme?: Record<string, unknown> | null;
   colorScheme?: 'light' | 'dark';
+  /**
+   * The ctx keys the runtime can actually inject (the catalog the editor offers, e.g.
+   * `CONTEXT_TOKENS`). When provided, a {{ctx(key)}} outside this set is flagged like a missing
+   * translation; when omitted, ctx tokens are left unchecked (callers that don't surface a catalog).
+   */
+  contextKeys?: ReadonlySet<string>;
+  /**
+   * The design token keys the editor offers (e.g. `DESIGN_TOKENS`). When provided, a {{design(key)}}
+   * outside this set is flagged as unrecognized, independent of the selected theme; when omitted,
+   * design tokens are left unchecked.
+   */
+  designKeys?: ReadonlySet<string>;
+}
+
+// escapeHtml mirrors the backend's html.EscapeString (Go) character for character, so a resolved design
+// value renders in the preview exactly as it does in the sent email.
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&#34;');
 }
 
 /**
  * Resolves a field for preview: substitutes {{t(key)}} with its translation and {{design(key)}}
- * with the theme value (email body only); leaves {{ctx}} and anything unresolvable literal.
+ * with the theme value (email body only, HTML-escaped to match delivery). A design token that does not
+ * resolve (no theme, or a token the theme does not define) becomes an empty string, matching delivery;
+ * {{ctx}} and any unresolvable {{t}} are left literal.
  */
 export function resolveForPreview(
   text: string | undefined,
@@ -115,7 +140,8 @@ export function resolveForPreview(
       return opts.translations[parts[2]] ?? raw;
     }
     if (parts[1] === 'design' && designAllowed) {
-      return resolveDesignToken(parts[2], opts.theme, scheme) ?? raw;
+      const value = resolveDesignToken(parts[2], opts.theme, scheme);
+      return value === undefined ? '' : escapeHtml(value);
     }
     return raw;
   });
@@ -132,7 +158,6 @@ function collectFieldWarnings(
   if (!text) {
     return [];
   }
-  const scheme = opts.colorScheme ?? 'light';
   const warnings: TemplateWarning[] = [];
   for (const token of parseTokens(text)) {
     if (token.kind === null) {
@@ -142,8 +167,19 @@ function collectFieldWarnings(
     if (token.kind === 'design') {
       if (field === 'subject' || channel === 'sms') {
         warnings.push({severity: 'error', code: 'designNotAllowed', token: token.raw});
-      } else if (token.key !== undefined && resolveDesignToken(token.key, opts.theme, scheme) === undefined) {
+      } else if (opts.designKeys !== undefined && token.key !== undefined && !opts.designKeys.has(token.key)) {
+        // Flag a token outside the offered catalog (independent of the selected theme); a recognized key
+        // is accepted even when the previewed theme does not define it.
         warnings.push({severity: 'warning', code: 'designUnresolved', token: token.raw});
+      }
+      continue;
+    }
+    if (token.kind === 'ctx') {
+      // ctx is left literal for the runtime to substitute; but a key the runtime never injects (not in
+      // the offered catalog) will render literally on send — surface it like a missing translation.
+      // Only validate when the caller supplies the catalog; otherwise ctx is left unchecked.
+      if (opts.contextKeys !== undefined && token.key !== undefined && !opts.contextKeys.has(token.key)) {
+        warnings.push({severity: 'error', code: 'unknownContext', token: token.raw});
       }
       continue;
     }
@@ -157,26 +193,30 @@ function collectFieldWarnings(
       // no value in any language and the renderer fails the send — surface it as an error, not a warning.
       warnings.push({severity: 'error', code: 'missingTranslation', token: token.raw});
     }
-    // ctx is the expected runtime case — left literal, not warned.
   }
   return warnings;
 }
 
-/** De-duplicated warnings across subject and body. */
+/**
+ * De-duplicated warnings across subject and body. Warnings are theme-independent — a design token is
+ * flagged against the offered catalog (designKeys), not the selected theme — so no theme/colorScheme.
+ */
 export function collectWarnings(input: {
   subject?: string;
   body: string;
   channel: NotificationChannel;
   translations: Record<string, string>;
-  theme?: Record<string, unknown> | null;
-  colorScheme?: 'light' | 'dark';
+  /** ctx keys the runtime can inject; a {{ctx(key)}} outside this set is flagged. Unset → unchecked. */
+  contextKeys?: ReadonlySet<string>;
+  /** design keys the editor offers; a {{design(key)}} outside this set is flagged. Unset → unchecked. */
+  designKeys?: ReadonlySet<string>;
   /** Suppress missing-translation warnings while translations are still loading / unavailable. */
   skipMissingTranslation?: boolean;
 }): TemplateWarning[] {
   const opts: PreviewResolveOptions = {
     translations: input.translations,
-    theme: input.theme,
-    colorScheme: input.colorScheme,
+    contextKeys: input.contextKeys,
+    designKeys: input.designKeys,
   };
   const skipMissingTranslation = input.skipMissingTranslation ?? false;
   const all = [

@@ -102,7 +102,7 @@ const response = await executeEmbeddedSignInFlow({
 
 if (response.flowStatus === EmbeddedSignInFlowStatus.SuccessCompleted) {
   // Exchange the authorization code for tokens
-  const { code, state, session_state } = response.authData
+  const { code, state } = response.authData
 }
 ```
 
@@ -123,7 +123,7 @@ if (response.flowStatus === EmbeddedSignInFlowStatus.SuccessCompleted) {
 | Property | Type | Description |
 |----------|------|-------------|
 | `flowStatus` | `EmbeddedSignInFlowStatus` | Final or intermediate status |
-| `authData` | `Record<string, string>` | On success: authorization code, state, session_state |
+| `authData` | `Record<string, string>` | On success: authorization code and state |
 
 ## Enums
 

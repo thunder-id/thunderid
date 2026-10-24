@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {DocumentTitle} from '@thunderid/components';
 import {OrganizationUnitPickerScreen, useHasMultipleOUs} from '@thunderid/configure-organization-units';
 import {useToast} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
@@ -146,7 +147,7 @@ export default function CreateResourceServerPage(): JSX.Element {
       ORGANIZATION_UNIT: {label: t('resourceServers:create.steps.organizationUnit', 'Organization'), order: 1},
       TYPE: {label: t('resourceServers:create.steps.type', 'Type'), order: 1 + ouOffset},
       NAME: {label: t('resourceServers:create.steps.name', 'Details'), order: 2 + ouOffset},
-      SEPARATOR: {label: t('resourceServers:create.steps.separator', 'Permission Delimiter'), order: 3 + ouOffset},
+      SEPARATOR: {label: t('resourceServers:create.steps.separator', 'Permission delimiter'), order: 3 + ouOffset},
     };
   }, [t, hasMultipleOUs]);
 
@@ -340,35 +341,42 @@ export default function CreateResourceServerPage(): JSX.Element {
     }
   };
 
+  const pageTitle = t('resourceServers:listing.addResourceServer', 'Add resource server');
+
   if (currentStep === ResourceServerCreateStep.ORGANIZATION_UNIT) {
     if (isOuLoading || !hasMultipleOUs) {
       return (
         <Box sx={{minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+          <DocumentTitle title={pageTitle} />
           <CircularProgress />
         </Box>
       );
     }
 
     return (
-      <OrganizationUnitPickerScreen
-        icon={<Home size={26} />}
-        title={t('resourceServers:create.orgUnit.title', 'Choose an organization unit')}
-        subtitle={t(
-          'resourceServers:create.orgUnit.subtitle',
-          'Select which organization unit this resource server belongs to.',
-        )}
-        value={ouId}
-        onChange={handleOuIdChange}
-        onBack={handleClose}
-        onContinue={handleNext}
-        backLabel={t('common:actions.back', 'Back')}
-        continueLabel={t('common:actions.continue', 'Continue')}
-      />
+      <>
+        <DocumentTitle title={pageTitle} />
+        <OrganizationUnitPickerScreen
+          icon={<Home size={26} />}
+          title={t('resourceServers:create.orgUnit.title', 'Choose an organization unit')}
+          subtitle={t(
+            'resourceServers:create.orgUnit.subtitle',
+            'Select which organization unit this resource server belongs to.',
+          )}
+          value={ouId}
+          onChange={handleOuIdChange}
+          onBack={handleClose}
+          onContinue={handleNext}
+          backLabel={t('common:actions.back', 'Back')}
+          continueLabel={t('common:actions.continue', 'Continue')}
+        />
+      </>
     );
   }
 
   return (
     <Box sx={{minHeight: '100vh', display: 'flex', flexDirection: 'column'}}>
+      <DocumentTitle title={pageTitle} />
       <LinearProgress variant="determinate" value={getProgress()} sx={{height: 6}} />
 
       <Box sx={{flex: 1, display: 'flex', flexDirection: 'row'}}>

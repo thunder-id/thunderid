@@ -296,7 +296,7 @@ func (a *attributeCollector) getUserFromStore(
 		return nil, errors.New("user ID is not available in the context")
 	}
 
-	user, err := a.entityProvider.GetEntity(userID)
+	user, err := a.entityProvider.GetEntityProfile(userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user by ID: %s", err.Message)
 	}

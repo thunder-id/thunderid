@@ -18,6 +18,13 @@ var (
 	// errHandleConflict is an internal sentinel used to roll back a transaction when a handle already
 	// exists; the caller surfaces ErrorTemplateHandleConflict.
 	errHandleConflict = errors.New("template handle already exists")
+
+	// errDeclarativeTemplate is returned when a write targets a file-declared template; the service
+	// surfaces ErrorTemplateReadOnly.
+	errDeclarativeTemplate = errors.New("a notification template declared in a file cannot be changed through the API")
+
+	// errResultLimitExceededInCompositeMode is returned when composite store results exceed the configured limit.
+	errResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
 )
 
 var (
@@ -147,7 +154,7 @@ var (
 		},
 	}
 
-	// ErrorTemplateInUse is returned when a template cannot be deleted because a flow references it.
+	// ErrorTemplateInUse is returned when a template cannot be deleted because it is in use.
 	ErrorTemplateInUse = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "NTM-1010",
@@ -157,7 +164,7 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.notificationtemplateservice.template_in_use_description",
-			DefaultValue: "The template is referenced by a flow and cannot be deleted",
+			DefaultValue: "The template is in use and cannot be deleted",
 		},
 	}
 
@@ -317,6 +324,83 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.notificationtemplateservice.design_placeholder_not_allowed_description",
 			DefaultValue: "A {{design(...)}} placeholder is only allowed in an email template body",
+		},
+	}
+
+	// ErrorTemplateReadOnly is returned when a write targets a file-declared template.
+	ErrorTemplateReadOnly = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "NTM-1022",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.read_only",
+			DefaultValue: "Template is read-only",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.read_only_description",
+			DefaultValue: "The template is declared in a file and cannot be modified through the API",
+		},
+	}
+
+	// ErrorResultLimitExceededInCompositeMode is returned when a composite-mode listing would exceed the
+	// per-source cap, so the merged page cannot be computed reliably.
+	ErrorResultLimitExceededInCompositeMode = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "NTM-1023",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.result_limit_exceeded_in_composite_mode",
+			DefaultValue: "Result limit exceeded in composite mode",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.notificationtemplateservice.result_limit_exceeded_in_composite_mode_description",
+			DefaultValue: "Too many declared or stored templates to merge in composite mode; reduce the " +
+				"number of templates in a channel",
+		},
+	}
+
+	// ErrorDeclarativeModeCreateNotAllowed is returned when a create is attempted while templates run in
+	// declarative-only mode, where the store is read-only. Distinct from ErrorTemplateReadOnly: no file
+	// declares the new handle; creation itself is disabled.
+	ErrorDeclarativeModeCreateNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "NTM-1024",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.cannot_create_in_declarative_only_mode",
+			DefaultValue: "Cannot create template in declarative-only mode",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.notificationtemplateservice.cannot_create_in_declarative_only_mode_description",
+			DefaultValue: "Template creation is not allowed when running in declarative-only mode. " +
+				"Templates must be defined in declarative configuration files",
+		},
+	}
+
+	// ErrorInvalidOU is returned when the ouId is missing or does not reference an existing organization
+	// unit.
+	ErrorInvalidOU = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "NTM-1025",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.invalid_ou",
+			DefaultValue: "Invalid organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.invalid_ou_description",
+			DefaultValue: "A valid ouId is required",
+		},
+	}
+
+	// ErrorOUImmutable is returned when an update (for example a declarative re-import) tries to change
+	// the ouId of an existing template. The ouId is set at creation and cannot be changed.
+	ErrorOUImmutable = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "NTM-1026",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.ou_immutable",
+			DefaultValue: "Organization unit cannot be changed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.ou_immutable_description",
+			DefaultValue: "The ouId is set at creation and cannot be changed for an existing template",
 		},
 	}
 )

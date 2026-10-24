@@ -33,7 +33,8 @@ import {
 import type {ReactNode} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
 import RedirectURIsSection from './RedirectURIsSection';
-import {DELEGATED_ONLY_GRANTS} from '../../../constants/delegationGrants';
+import {DELEGATED_ONLY_GRANTS, DELEGATION_GRANTS} from '../../../constants/delegationGrants';
+import {hasDelegationGrant} from '../../../utils/isDelegatedAgent';
 import {codeComponents} from '../shared/transCodeComponents';
 
 interface OidcDiscovery {
@@ -60,7 +61,8 @@ export default function OperationModesSection({
 
   const isEditable = Boolean(onOAuth2ConfigChange) && !disabled;
   const grantTypes = oauth2Config.grantTypes ?? [];
-  const hasDelegatedMode = grantTypes.includes(OAuth2GrantTypes.AUTHORIZATION_CODE);
+  const hasDelegatedMode = hasDelegationGrant(grantTypes);
+  const heldDelegationGrants = grantTypes.filter((grant) => DELEGATION_GRANTS.includes(grant));
   const flags = deriveOAuth2Flags(oauth2Config);
 
   const updateGrants = (next: string[]): void => {
@@ -73,19 +75,18 @@ export default function OperationModesSection({
     onOAuth2ConfigChange?.(updates);
   };
 
-  // client_credentials and token_exchange apply no matter which modes are active — the former
-  // is mandatory for every agent, the latter is shared across both modes. The delegated-only
-  // grants stay in the list at all times (see isGrantLocked) rather than disappearing when
-  // Delegated mode is off.
-  const availableGrantTypes: string[] = [
-    OAuth2GrantTypes.CLIENT_CREDENTIALS,
-    ...DELEGATED_ONLY_GRANTS,
-    OAuth2GrantTypes.TOKEN_EXCHANGE,
-  ];
+  // client_credentials is mandatory for every agent. The delegated-only grants stay in the list at
+  // all times (see isGrantLocked) rather than disappearing when Delegated mode is off.
+  const availableGrantTypes: string[] = [OAuth2GrantTypes.CLIENT_CREDENTIALS, ...DELEGATED_ONLY_GRANTS];
+
+  // The grant that keeps the agent delegated stays on while it is the only one, so unticking it
+  // cannot switch Delegated mode off by the back door. The Delegated mode switch does that.
+  const isLastDelegationGrant = (grant: string): boolean =>
+    heldDelegationGrants.length === 1 && heldDelegationGrants[0] === grant;
 
   const isGrantLocked = (grant: string): boolean =>
     grant === OAuth2GrantTypes.CLIENT_CREDENTIALS ||
-    (DELEGATED_ONLY_GRANTS.includes(grant) && (!hasDelegatedMode || grant === OAuth2GrantTypes.AUTHORIZATION_CODE));
+    (DELEGATED_ONLY_GRANTS.includes(grant) && (!hasDelegatedMode || isLastDelegationGrant(grant)));
 
   const selectedGrantTypes = grantTypes.filter((grant) => availableGrantTypes.includes(grant));
 
@@ -132,7 +133,7 @@ export default function OperationModesSection({
 
   return (
     <SettingsCard
-      title={t('agents:edit.advanced.oauthAccess.title', 'OAuth 2 Configuration')}
+      title={t('agents:edit.advanced.oauthAccess.title', 'OAuth 2 configuration')}
       description={t(
         'agents:edit.advanced.oauthAccess.description',
         'The grants and redirect URIs this agent is authorized to use.',
@@ -143,7 +144,7 @@ export default function OperationModesSection({
         <Box>
           <FormControl fullWidth size="small">
             <FormLabel htmlFor="agent-grant-types">
-              {t('agents:edit.advanced.oauthAccess.grantTypes.label', 'Grant Types')}
+              {t('agents:edit.advanced.oauthAccess.grantTypes.label', 'Grant types')}
             </FormLabel>
             <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 1}}>
               {t(
@@ -197,7 +198,7 @@ export default function OperationModesSection({
 
         <FormControl fullWidth size="small">
           <FormLabel htmlFor="agent_token_endpoint_auth_method">
-            {t('agents:edit.credentials.tokenEndpointAuthMethod.title', 'Client Authentication Method')}
+            {t('agents:edit.credentials.tokenEndpointAuthMethod.title', 'Client authentication method')}
           </FormLabel>
           <Select
             id="agent_token_endpoint_auth_method"
@@ -270,13 +271,13 @@ export default function OperationModesSection({
                 disabled={!isEditable || flags.isParDisabledByGrants}
                 onChange={(e) => onOAuth2ConfigChange?.({requirePushedAuthorizationRequests: e.target.checked})}
                 inputProps={{
-                  'aria-label': t('agents:edit.advanced.security.par.label', 'Require Pushed Authorization Requests'),
+                  'aria-label': t('agents:edit.advanced.security.par.label', 'Require pushed authorization requests'),
                 }}
               />
             }
             label={
               <Typography variant="subtitle2">
-                {t('agents:edit.advanced.security.par.label', 'Require Pushed Authorization Requests')}
+                {t('agents:edit.advanced.security.par.label', 'Require pushed authorization requests')}
               </Typography>
             }
           />
@@ -284,7 +285,7 @@ export default function OperationModesSection({
             {flags.isParDisabledByGrants ? (
               <Trans
                 i18nKey="agents:edit.advanced.security.par.notApplicable"
-                defaults="Pushed Authorization Requests only apply to the <code>authorization_code</code> grant. Turn that on to enable this setting."
+                defaults="Pushed authorization requests only apply to the <code>authorization_code</code> grant. Turn that on to enable this setting."
                 components={codeComponents}
               />
             ) : (

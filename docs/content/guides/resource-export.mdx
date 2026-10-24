@@ -25,9 +25,15 @@ Use the export API to retrieve <ProductName /> resources:
 Field behavior:
 
 - `resources`: Combined YAML output for all exported resources, with `# File:` headers and `---` separators.
-- `environment_variables`: environment file content with one empty assignment per detected template variable.
+- `environment_variables`: environment file content with one assignment per detected template variable. A
+  variable is left empty, except one for a list the resource does not have, such as an application's
+  `redirectUris` when it has none, which is written as `[]` so the file imports as it is.
 
 If the export has no template variables, `environment_variables` is an empty string.
+
+Organization units come out in the same order every time: each unit before the units under it, units
+under the same parent by name, and each unit once however it is reached. Exporting units that have not
+changed therefore gives the same text.
 
 ## Template Variable Names
 
@@ -105,6 +111,18 @@ both import with the same password.
 resources. The bundle is not returned at all, because one that dropped a resource silently would look
 complete. Rename one of the users, or export them separately.
 
+## Resource Server Identifiers
+
+A resource server's `identifier` is the audience it is served under, such as an API's base URL or
+an MCP server's URL, and each deployment usually serves it under its own. The identifier is exported
+as a template variable named like any other field, so a resource server named `Orders API` exports:
+
+```yaml
+identifier: {{.RESOURCE_SERVER_ORDERS_API_IDENTIFIER}}
+```
+
+Its resources, actions, and delimiter are exported as they are.
+
 ## Exports From a Control Plane
 
 What an export contains depends on the plane you export from. A data plane holds its own values, so
@@ -134,6 +152,10 @@ A reference names one of two collections:
 | `var:` | An ordinary value, such as a client ID | `var:APPLICATION_MY_APP_CLIENT_ID` |
 | `sec:` | A credential, such as a client secret | `sec:APPLICATION_MY_APP_CLIENT_SECRET` |
 
+A list, such as an application's redirect URIs, exports as a list holding one `var:` reference. The
+variable it names holds the items, as described in [Value References](./declarative-configurations/value-references.mdx#a-list-of-values).
+An empty list exports as it is, with no reference.
+
 The prefix is what keeps a credential out of a read. A data plane returns a variable's value when
 asked for it, and never returns a secret's. A client secret, a connection's secret or token, and any
 property marked `isSecret` always export with `sec:`.
@@ -150,9 +172,6 @@ configurations, a reference already placed in one is kept, and a value in the ot
 with a new reference.
 
 ### What a Control Plane Does Not Parameterize
-
-A field parameterized as a list, such as an application's redirect URIs, exports with its values as
-they are. A reference names a single value and has no form that expands into list entries.
 
 A user's credentials are written as template placeholders on either plane, as described in
 [User Credentials](#user-credentials). A control-plane export that includes users who have set a

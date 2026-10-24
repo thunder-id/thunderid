@@ -58,7 +58,7 @@ vi.mock('../../api/useAddGroupMembers', () => ({
 }));
 
 const mockRemoveMutate = vi.fn();
-vi.mock('../../api/useRemoveGroupMembers', () => ({
+vi.mock('../../api/useRemoveGroupMember', () => ({
   default: () => ({mutate: mockRemoveMutate}),
 }));
 
@@ -86,14 +86,14 @@ describe('EditMembersSettings', () => {
   it('should render Add Member button in header action', () => {
     renderWithProviders(<EditMembersSettings group={mockGroup} />);
 
-    expect(screen.getByText('Add Member')).toBeInTheDocument();
+    expect(screen.getByText('Add member')).toBeInTheDocument();
   });
 
   it('should open add member dialog when button clicked', async () => {
     const user = userEvent.setup();
     renderWithProviders(<EditMembersSettings group={mockGroup} />);
 
-    await user.click(screen.getByText('Add Member'));
+    await user.click(screen.getByText('Add member'));
 
     await waitFor(() => {
       expect(screen.getByTestId('add-member-dialog')).toBeInTheDocument();
@@ -104,7 +104,7 @@ describe('EditMembersSettings', () => {
     const user = userEvent.setup();
     renderWithProviders(<EditMembersSettings group={mockGroup} />);
 
-    await user.click(screen.getByText('Add Member'));
+    await user.click(screen.getByText('Add member'));
 
     await waitFor(() => {
       expect(screen.getByTestId('add-member-dialog')).toBeInTheDocument();
@@ -122,7 +122,7 @@ describe('EditMembersSettings', () => {
     const user = userEvent.setup();
     renderWithProviders(<EditMembersSettings group={mockGroup} />);
 
-    await user.click(screen.getByText('Add Member'));
+    await user.click(screen.getByText('Add member'));
     await waitFor(() => {
       expect(screen.getByTestId('add-member-dialog')).toBeInTheDocument();
     });
@@ -142,7 +142,7 @@ describe('EditMembersSettings', () => {
     const user = userEvent.setup();
     renderWithProviders(<EditMembersSettings group={mockGroup} />);
 
-    await user.click(screen.getByText('Add Member'));
+    await user.click(screen.getByText('Add member'));
     await waitFor(() => {
       expect(screen.getByTestId('add-member-dialog')).toBeInTheDocument();
     });
@@ -162,7 +162,7 @@ describe('EditMembersSettings', () => {
     const user = userEvent.setup();
     renderWithProviders(<EditMembersSettings group={mockGroup} />);
 
-    await user.click(screen.getByText('Add Member'));
+    await user.click(screen.getByText('Add member'));
     await waitFor(() => {
       expect(screen.getByTestId('add-member-dialog')).toBeInTheDocument();
     });
@@ -184,7 +184,7 @@ describe('EditMembersSettings', () => {
     const user = userEvent.setup();
     renderWithProviders(<EditMembersSettings group={mockGroup} />);
 
-    await user.click(screen.getByText('Add Member'));
+    await user.click(screen.getByText('Add member'));
     await waitFor(() => {
       expect(screen.getByTestId('add-member-dialog')).toBeInTheDocument();
     });
@@ -198,14 +198,14 @@ describe('EditMembersSettings', () => {
     });
   });
 
-  it('should call removeGroupMembers when remove button is clicked', async () => {
+  it('should call removeGroupMember when remove button is clicked', async () => {
     const user = userEvent.setup();
     renderWithProviders(<EditMembersSettings group={mockGroup} />);
 
     await user.click(screen.getByTestId('remove-member-btn'));
 
     expect(mockRemoveMutate).toHaveBeenCalledWith(
-      {groupId: 'g1', members: [{id: 'u1', type: 'user'}]},
+      {groupId: 'g1', member: {id: 'u1', type: 'user'}},
       expect.objectContaining({onSuccess: expect.any(Function) as unknown, onError: expect.any(Function) as unknown}),
     );
   });
@@ -245,7 +245,7 @@ describe('EditMembersSettings', () => {
     const user = userEvent.setup();
     renderWithProviders(<EditMembersSettings group={mockGroup} />);
 
-    await user.click(screen.getByText('Add Member'));
+    await user.click(screen.getByText('Add member'));
     await waitFor(() => {
       expect(screen.getByTestId('add-member-dialog')).toBeInTheDocument();
     });

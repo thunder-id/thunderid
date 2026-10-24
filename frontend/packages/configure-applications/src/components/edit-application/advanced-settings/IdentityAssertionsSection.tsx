@@ -151,7 +151,7 @@ export default function IdentityAssertionsSection({
     onTokenConfigChange({idJag: {...currentIdJag, validityPeriod: parsed}});
   };
 
-  const toggleLabel = t('applications:edit.advanced.idJag.title', 'Identity Assertions (ID-JAG)');
+  const toggleLabel = t('applications:edit.advanced.idJag.title', 'Identity assertions (ID-JAG)');
   const toggleSwitch = (
     <Switch
       checked={isEnabled}
@@ -173,7 +173,7 @@ export default function IdentityAssertionsSection({
           <Tooltip
             title={t(
               'applications:edit.advanced.idJag.publicClientGuard',
-              'Identity assertions require a confidential client. Turn off Public Client to enable.',
+              'Identity assertions require a confidential client. Turn off public client to enable.',
             )}
           >
             <span>{toggleSwitch}</span>

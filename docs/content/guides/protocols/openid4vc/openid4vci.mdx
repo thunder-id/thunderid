@@ -50,7 +50,7 @@ Manage configurations in **Verifiable Credentials → Templates** in the <Produc
 | Field | Description |
 |---|---|
 | **Handle** | Unique identifier for this credential type. Becomes the OAuth scope and `credential_configuration_id` in issuer metadata. Required. |
-| **Credential Type (VCT)** | The `vct` URI that identifies this credential type to wallets and verifiers. Required. |
+| **Credential type (VCT)** | The `vct` URI that identifies this credential type to wallets and verifiers. Required. |
 | **Claims** | Each entry maps a user profile attribute name to an optional wallet display name. The attribute value is sourced from the user's profile at issuance. Every entry is advertised in the metadata `claims` array, and one with a display name also carries a `display` entry. |
 | **Display** | Wallet presentation display settings: locale (BCP 47 tag, e.g. `en-US`) and `logoUri` (a hosted image URL shown as the credential logo in the wallet). |
 | **Validity** | Lifetime of issued credentials in seconds. Overrides the server-level `credential_validity_seconds` when set. |

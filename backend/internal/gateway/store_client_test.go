@@ -136,21 +136,36 @@ func TestTheStoreClientReportsWhatWentWrong(t *testing.T) {
 	assert.Error(t, client.DeleteSecret(ctx, &broken, "k", "S"))
 }
 
-// UnsetValues asks for the named values with the key, in batches the gateway answers for, and
-// returns those it holds no value for.
-func TestUnsetValuesReturnsWhatTheGatewayLacks(t *testing.T) {
+// HeldValues asks for the named values with the key, in batches the gateway answers for, and
+// returns those it holds with when each was set, so the caller can tell what is missing and what
+// changed.
+func TestHeldValuesReportsWhatTheGatewayHoldsAndSince(t *testing.T) {
 	gw, calls := storeGateway(t, http.StatusOK,
-		`{"variables":[{"name":"A","value":"1"}],"secrets":[{"name":"S0","exists":true}]}`)
+		`{"variables":[{"name":"A","value":"1","updatedAt":"2026-10-14T10:00:00Z"}],`+
+			`"secrets":[{"name":"S0","exists":true}]}`)
 	secrets := make([]string, maxNamesPerLookup+1)
 	for i := range secrets {
 		secrets[i] = fmt.Sprintf("S%d", i)
 	}
 
-	missing, err := newGatewayClient().UnsetValues(context.Background(), gw, "the-key", []string{"A", "B"}, secrets)
+	held, err := newGatewayClient().HeldValues(context.Background(), gw, "the-key", []string{"A", "B"}, secrets)
 
 	require.NoError(t, err)
+	missing := held.missing([]string{"A", "B"}, secrets)
 	assert.Equal(t, []string{"B"}, missing.Variables)
 	assert.Equal(t, secrets[1:], missing.Secrets)
+	snapshot := held.snapshot([]string{"A", "B"}, secrets)
+	assert.JSONEq(t, `{"variables":{"A":"2026-10-14T10:00:00Z"}}`, snapshot,
+		"only values the store gave a time for were recorded")
+	assert.True(t, held.changedFrom([]string{"A"}, secrets, snapshot).empty(), "nothing was set again")
+	earlier := `{"variables":{"A":"2026-10-14T09:00:00Z"}}`
+	assert.Equal(t, []string{"A"}, held.changedFrom([]string{"A", "B"}, secrets, earlier).Variables)
+	later := `{"variables":{"A":"2026-10-14T11:00:00Z"}}`
+	assert.Equal(t, []string{"A"}, held.changedFrom([]string{"A"}, nil, later).Variables,
+		"a time that differs either way is a change, whatever order the clocks put them in")
+	assert.True(t, held.changedFrom([]string{"A"}, nil, `{}`).empty(), "a value not recorded is not reported")
+	assert.True(t, held.changedFrom([]string{"A"}, nil, "").empty(), "nothing recorded reports nothing")
+	assert.True(t, held.changedFrom([]string{"A"}, nil, "not json").empty())
 	require.Len(t, *calls, 3, "the secrets were not asked for in batches")
 	assert.Equal(t, "/variables", (*calls)[0].path)
 	assert.Equal(t, "limit=100&names=A%2CB", (*calls)[0].query)
@@ -158,9 +173,9 @@ func TestUnsetValuesReturnsWhatTheGatewayLacks(t *testing.T) {
 	assert.Equal(t, "/secrets", (*calls)[2].path)
 
 	refusing, _ := storeGateway(t, http.StatusUnauthorized, `{"code":"AUTH-4010"}`)
-	_, err = newGatewayClient().UnsetValues(context.Background(), refusing, "k", nil, []string{"S"})
+	_, err = newGatewayClient().HeldValues(context.Background(), refusing, "k", nil, []string{"S"})
 	assert.True(t, isRefusal(err))
-	_, err = newGatewayClient().UnsetValues(context.Background(), refusing, "k", []string{"A"}, nil)
+	_, err = newGatewayClient().HeldValues(context.Background(), refusing, "k", []string{"A"}, nil)
 	assert.True(t, isRefusal(err))
 }
 

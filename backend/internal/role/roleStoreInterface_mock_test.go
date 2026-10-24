@@ -16,10 +16,19 @@ func newRoleStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *roleStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &roleStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -63,7 +72,7 @@ type roleStoreInterfaceMock_AddAssignments_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - assignments []RoleAssignment
-func (_e *roleStoreInterfaceMock_Expecter) AddAssignments(ctx interface{}, id interface{}, assignments interface{}) *roleStoreInterfaceMock_AddAssignments_Call {
+func (_e *roleStoreInterfaceMock_Expecter) AddAssignments(ctx any, id any, assignments any) *roleStoreInterfaceMock_AddAssignments_Call {
 	return &roleStoreInterfaceMock_AddAssignments_Call{Call: _e.mock.On("AddAssignments", ctx, id, assignments)}
 }
 
@@ -135,7 +144,7 @@ type roleStoreInterfaceMock_CheckRoleNameExists_Call struct {
 //   - ctx context.Context
 //   - ouID string
 //   - name string
-func (_e *roleStoreInterfaceMock_Expecter) CheckRoleNameExists(ctx interface{}, ouID interface{}, name interface{}) *roleStoreInterfaceMock_CheckRoleNameExists_Call {
+func (_e *roleStoreInterfaceMock_Expecter) CheckRoleNameExists(ctx any, ouID any, name any) *roleStoreInterfaceMock_CheckRoleNameExists_Call {
 	return &roleStoreInterfaceMock_CheckRoleNameExists_Call{Call: _e.mock.On("CheckRoleNameExists", ctx, ouID, name)}
 }
 
@@ -208,7 +217,7 @@ type roleStoreInterfaceMock_CheckRoleNameExistsExcludingID_Call struct {
 //   - ouID string
 //   - name string
 //   - excludeRoleID string
-func (_e *roleStoreInterfaceMock_Expecter) CheckRoleNameExistsExcludingID(ctx interface{}, ouID interface{}, name interface{}, excludeRoleID interface{}) *roleStoreInterfaceMock_CheckRoleNameExistsExcludingID_Call {
+func (_e *roleStoreInterfaceMock_Expecter) CheckRoleNameExistsExcludingID(ctx any, ouID any, name any, excludeRoleID any) *roleStoreInterfaceMock_CheckRoleNameExistsExcludingID_Call {
 	return &roleStoreInterfaceMock_CheckRoleNameExistsExcludingID_Call{Call: _e.mock.On("CheckRoleNameExistsExcludingID", ctx, ouID, name, excludeRoleID)}
 }
 
@@ -276,7 +285,7 @@ type roleStoreInterfaceMock_CreateRole_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - role RoleCreationDetail
-func (_e *roleStoreInterfaceMock_Expecter) CreateRole(ctx interface{}, id interface{}, role interface{}) *roleStoreInterfaceMock_CreateRole_Call {
+func (_e *roleStoreInterfaceMock_Expecter) CreateRole(ctx any, id any, role any) *roleStoreInterfaceMock_CreateRole_Call {
 	return &roleStoreInterfaceMock_CreateRole_Call{Call: _e.mock.On("CreateRole", ctx, id, role)}
 }
 
@@ -348,7 +357,7 @@ type roleStoreInterfaceMock_DeleteAssignmentsByAssignee_Call struct {
 //   - ctx context.Context
 //   - assigneeType string
 //   - assigneeID string
-func (_e *roleStoreInterfaceMock_Expecter) DeleteAssignmentsByAssignee(ctx interface{}, assigneeType interface{}, assigneeID interface{}) *roleStoreInterfaceMock_DeleteAssignmentsByAssignee_Call {
+func (_e *roleStoreInterfaceMock_Expecter) DeleteAssignmentsByAssignee(ctx any, assigneeType any, assigneeID any) *roleStoreInterfaceMock_DeleteAssignmentsByAssignee_Call {
 	return &roleStoreInterfaceMock_DeleteAssignmentsByAssignee_Call{Call: _e.mock.On("DeleteAssignmentsByAssignee", ctx, assigneeType, assigneeID)}
 }
 
@@ -410,7 +419,7 @@ type roleStoreInterfaceMock_DeleteAssignmentsByRoleID_Call struct {
 // DeleteAssignmentsByRoleID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *roleStoreInterfaceMock_Expecter) DeleteAssignmentsByRoleID(ctx interface{}, id interface{}) *roleStoreInterfaceMock_DeleteAssignmentsByRoleID_Call {
+func (_e *roleStoreInterfaceMock_Expecter) DeleteAssignmentsByRoleID(ctx any, id any) *roleStoreInterfaceMock_DeleteAssignmentsByRoleID_Call {
 	return &roleStoreInterfaceMock_DeleteAssignmentsByRoleID_Call{Call: _e.mock.On("DeleteAssignmentsByRoleID", ctx, id)}
 }
 
@@ -467,7 +476,7 @@ type roleStoreInterfaceMock_DeleteRole_Call struct {
 // DeleteRole is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *roleStoreInterfaceMock_Expecter) DeleteRole(ctx interface{}, id interface{}) *roleStoreInterfaceMock_DeleteRole_Call {
+func (_e *roleStoreInterfaceMock_Expecter) DeleteRole(ctx any, id any) *roleStoreInterfaceMock_DeleteRole_Call {
 	return &roleStoreInterfaceMock_DeleteRole_Call{Call: _e.mock.On("DeleteRole", ctx, id)}
 }
 
@@ -534,7 +543,7 @@ type roleStoreInterfaceMock_DeleteRolePermission_Call struct {
 //   - ctx context.Context
 //   - resourceServerID string
 //   - permission string
-func (_e *roleStoreInterfaceMock_Expecter) DeleteRolePermission(ctx interface{}, resourceServerID interface{}, permission interface{}) *roleStoreInterfaceMock_DeleteRolePermission_Call {
+func (_e *roleStoreInterfaceMock_Expecter) DeleteRolePermission(ctx any, resourceServerID any, permission any) *roleStoreInterfaceMock_DeleteRolePermission_Call {
 	return &roleStoreInterfaceMock_DeleteRolePermission_Call{Call: _e.mock.On("DeleteRolePermission", ctx, resourceServerID, permission)}
 }
 
@@ -608,7 +617,7 @@ type roleStoreInterfaceMock_GetAllPermissionsForAssignees_Call struct {
 //   - ctx context.Context
 //   - entityID string
 //   - groupIDs []string
-func (_e *roleStoreInterfaceMock_Expecter) GetAllPermissionsForAssignees(ctx interface{}, entityID interface{}, groupIDs interface{}) *roleStoreInterfaceMock_GetAllPermissionsForAssignees_Call {
+func (_e *roleStoreInterfaceMock_Expecter) GetAllPermissionsForAssignees(ctx any, entityID any, groupIDs any) *roleStoreInterfaceMock_GetAllPermissionsForAssignees_Call {
 	return &roleStoreInterfaceMock_GetAllPermissionsForAssignees_Call{Call: _e.mock.On("GetAllPermissionsForAssignees", ctx, entityID, groupIDs)}
 }
 
@@ -685,7 +694,7 @@ type roleStoreInterfaceMock_GetAuthorizedPermissionsByResourceServer_Call struct
 //   - roleIDs []string
 //   - resourceServerID string
 //   - requestedPermissions []string
-func (_e *roleStoreInterfaceMock_Expecter) GetAuthorizedPermissionsByResourceServer(ctx interface{}, entityID interface{}, groupIDs interface{}, roleIDs interface{}, resourceServerID interface{}, requestedPermissions interface{}) *roleStoreInterfaceMock_GetAuthorizedPermissionsByResourceServer_Call {
+func (_e *roleStoreInterfaceMock_Expecter) GetAuthorizedPermissionsByResourceServer(ctx any, entityID any, groupIDs any, roleIDs any, resourceServerID any, requestedPermissions any) *roleStoreInterfaceMock_GetAuthorizedPermissionsByResourceServer_Call {
 	return &roleStoreInterfaceMock_GetAuthorizedPermissionsByResourceServer_Call{Call: _e.mock.On("GetAuthorizedPermissionsByResourceServer", ctx, entityID, groupIDs, roleIDs, resourceServerID, requestedPermissions)}
 }
 
@@ -774,7 +783,7 @@ type roleStoreInterfaceMock_GetEntityRoleIDs_Call struct {
 //   - ctx context.Context
 //   - entityID string
 //   - groupIDs []string
-func (_e *roleStoreInterfaceMock_Expecter) GetEntityRoleIDs(ctx interface{}, entityID interface{}, groupIDs interface{}) *roleStoreInterfaceMock_GetEntityRoleIDs_Call {
+func (_e *roleStoreInterfaceMock_Expecter) GetEntityRoleIDs(ctx any, entityID any, groupIDs any) *roleStoreInterfaceMock_GetEntityRoleIDs_Call {
 	return &roleStoreInterfaceMock_GetEntityRoleIDs_Call{Call: _e.mock.On("GetEntityRoleIDs", ctx, entityID, groupIDs)}
 }
 
@@ -846,7 +855,7 @@ type roleStoreInterfaceMock_GetReferencedPermissions_Call struct {
 
 // GetReferencedPermissions is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *roleStoreInterfaceMock_Expecter) GetReferencedPermissions(ctx interface{}) *roleStoreInterfaceMock_GetReferencedPermissions_Call {
+func (_e *roleStoreInterfaceMock_Expecter) GetReferencedPermissions(ctx any) *roleStoreInterfaceMock_GetReferencedPermissions_Call {
 	return &roleStoreInterfaceMock_GetReferencedPermissions_Call{Call: _e.mock.On("GetReferencedPermissions", ctx)}
 }
 
@@ -907,7 +916,7 @@ type roleStoreInterfaceMock_GetRole_Call struct {
 // GetRole is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *roleStoreInterfaceMock_Expecter) GetRole(ctx interface{}, id interface{}) *roleStoreInterfaceMock_GetRole_Call {
+func (_e *roleStoreInterfaceMock_Expecter) GetRole(ctx any, id any) *roleStoreInterfaceMock_GetRole_Call {
 	return &roleStoreInterfaceMock_GetRole_Call{Call: _e.mock.On("GetRole", ctx, id)}
 }
 
@@ -977,7 +986,7 @@ type roleStoreInterfaceMock_GetRoleAssignments_Call struct {
 //   - id string
 //   - limit int
 //   - offset int
-func (_e *roleStoreInterfaceMock_Expecter) GetRoleAssignments(ctx interface{}, id interface{}, limit interface{}, offset interface{}) *roleStoreInterfaceMock_GetRoleAssignments_Call {
+func (_e *roleStoreInterfaceMock_Expecter) GetRoleAssignments(ctx any, id any, limit any, offset any) *roleStoreInterfaceMock_GetRoleAssignments_Call {
 	return &roleStoreInterfaceMock_GetRoleAssignments_Call{Call: _e.mock.On("GetRoleAssignments", ctx, id, limit, offset)}
 }
 
@@ -1058,7 +1067,7 @@ type roleStoreInterfaceMock_GetRoleAssignmentsByType_Call struct {
 //   - limit int
 //   - offset int
 //   - assigneeType string
-func (_e *roleStoreInterfaceMock_Expecter) GetRoleAssignmentsByType(ctx interface{}, id interface{}, limit interface{}, offset interface{}, assigneeType interface{}) *roleStoreInterfaceMock_GetRoleAssignmentsByType_Call {
+func (_e *roleStoreInterfaceMock_Expecter) GetRoleAssignmentsByType(ctx any, id any, limit any, offset any, assigneeType any) *roleStoreInterfaceMock_GetRoleAssignmentsByType_Call {
 	return &roleStoreInterfaceMock_GetRoleAssignmentsByType_Call{Call: _e.mock.On("GetRoleAssignmentsByType", ctx, id, limit, offset, assigneeType)}
 }
 
@@ -1139,7 +1148,7 @@ type roleStoreInterfaceMock_GetRoleAssignmentsCount_Call struct {
 // GetRoleAssignmentsCount is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *roleStoreInterfaceMock_Expecter) GetRoleAssignmentsCount(ctx interface{}, id interface{}) *roleStoreInterfaceMock_GetRoleAssignmentsCount_Call {
+func (_e *roleStoreInterfaceMock_Expecter) GetRoleAssignmentsCount(ctx any, id any) *roleStoreInterfaceMock_GetRoleAssignmentsCount_Call {
 	return &roleStoreInterfaceMock_GetRoleAssignmentsCount_Call{Call: _e.mock.On("GetRoleAssignmentsCount", ctx, id)}
 }
 
@@ -1206,7 +1215,7 @@ type roleStoreInterfaceMock_GetRoleAssignmentsCountByType_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - assigneeType string
-func (_e *roleStoreInterfaceMock_Expecter) GetRoleAssignmentsCountByType(ctx interface{}, id interface{}, assigneeType interface{}) *roleStoreInterfaceMock_GetRoleAssignmentsCountByType_Call {
+func (_e *roleStoreInterfaceMock_Expecter) GetRoleAssignmentsCountByType(ctx any, id any, assigneeType any) *roleStoreInterfaceMock_GetRoleAssignmentsCountByType_Call {
 	return &roleStoreInterfaceMock_GetRoleAssignmentsCountByType_Call{Call: _e.mock.On("GetRoleAssignmentsCountByType", ctx, id, assigneeType)}
 }
 
@@ -1280,7 +1289,7 @@ type roleStoreInterfaceMock_GetRoleList_Call struct {
 //   - ctx context.Context
 //   - limit int
 //   - offset int
-func (_e *roleStoreInterfaceMock_Expecter) GetRoleList(ctx interface{}, limit interface{}, offset interface{}) *roleStoreInterfaceMock_GetRoleList_Call {
+func (_e *roleStoreInterfaceMock_Expecter) GetRoleList(ctx any, limit any, offset any) *roleStoreInterfaceMock_GetRoleList_Call {
 	return &roleStoreInterfaceMock_GetRoleList_Call{Call: _e.mock.On("GetRoleList", ctx, limit, offset)}
 }
 
@@ -1355,7 +1364,7 @@ type roleStoreInterfaceMock_GetRoleListByOUID_Call struct {
 //   - ouID string
 //   - limit int
 //   - offset int
-func (_e *roleStoreInterfaceMock_Expecter) GetRoleListByOUID(ctx interface{}, ouID interface{}, limit interface{}, offset interface{}) *roleStoreInterfaceMock_GetRoleListByOUID_Call {
+func (_e *roleStoreInterfaceMock_Expecter) GetRoleListByOUID(ctx any, ouID any, limit any, offset any) *roleStoreInterfaceMock_GetRoleListByOUID_Call {
 	return &roleStoreInterfaceMock_GetRoleListByOUID_Call{Call: _e.mock.On("GetRoleListByOUID", ctx, ouID, limit, offset)}
 }
 
@@ -1430,7 +1439,7 @@ type roleStoreInterfaceMock_GetRoleListCount_Call struct {
 
 // GetRoleListCount is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *roleStoreInterfaceMock_Expecter) GetRoleListCount(ctx interface{}) *roleStoreInterfaceMock_GetRoleListCount_Call {
+func (_e *roleStoreInterfaceMock_Expecter) GetRoleListCount(ctx any) *roleStoreInterfaceMock_GetRoleListCount_Call {
 	return &roleStoreInterfaceMock_GetRoleListCount_Call{Call: _e.mock.On("GetRoleListCount", ctx)}
 }
 
@@ -1491,7 +1500,7 @@ type roleStoreInterfaceMock_GetRoleListCountByOUID_Call struct {
 // GetRoleListCountByOUID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - ouID string
-func (_e *roleStoreInterfaceMock_Expecter) GetRoleListCountByOUID(ctx interface{}, ouID interface{}) *roleStoreInterfaceMock_GetRoleListCountByOUID_Call {
+func (_e *roleStoreInterfaceMock_Expecter) GetRoleListCountByOUID(ctx any, ouID any) *roleStoreInterfaceMock_GetRoleListCountByOUID_Call {
 	return &roleStoreInterfaceMock_GetRoleListCountByOUID_Call{Call: _e.mock.On("GetRoleListCountByOUID", ctx, ouID)}
 }
 
@@ -1559,7 +1568,7 @@ type roleStoreInterfaceMock_GetRolesByNames_Call struct {
 // GetRolesByNames is a helper method to define mock.On call
 //   - ctx context.Context
 //   - names []string
-func (_e *roleStoreInterfaceMock_Expecter) GetRolesByNames(ctx interface{}, names interface{}) *roleStoreInterfaceMock_GetRolesByNames_Call {
+func (_e *roleStoreInterfaceMock_Expecter) GetRolesByNames(ctx any, names any) *roleStoreInterfaceMock_GetRolesByNames_Call {
 	return &roleStoreInterfaceMock_GetRolesByNames_Call{Call: _e.mock.On("GetRolesByNames", ctx, names)}
 }
 
@@ -1628,7 +1637,7 @@ type roleStoreInterfaceMock_GetUserRoles_Call struct {
 //   - ctx context.Context
 //   - entityID string
 //   - groupIDs []string
-func (_e *roleStoreInterfaceMock_Expecter) GetUserRoles(ctx interface{}, entityID interface{}, groupIDs interface{}) *roleStoreInterfaceMock_GetUserRoles_Call {
+func (_e *roleStoreInterfaceMock_Expecter) GetUserRoles(ctx any, entityID any, groupIDs any) *roleStoreInterfaceMock_GetUserRoles_Call {
 	return &roleStoreInterfaceMock_GetUserRoles_Call{Call: _e.mock.On("GetUserRoles", ctx, entityID, groupIDs)}
 }
 
@@ -1699,7 +1708,7 @@ type roleStoreInterfaceMock_IsRoleDeclarative_Call struct {
 // IsRoleDeclarative is a helper method to define mock.On call
 //   - ctx context.Context
 //   - roleID string
-func (_e *roleStoreInterfaceMock_Expecter) IsRoleDeclarative(ctx interface{}, roleID interface{}) *roleStoreInterfaceMock_IsRoleDeclarative_Call {
+func (_e *roleStoreInterfaceMock_Expecter) IsRoleDeclarative(ctx any, roleID any) *roleStoreInterfaceMock_IsRoleDeclarative_Call {
 	return &roleStoreInterfaceMock_IsRoleDeclarative_Call{Call: _e.mock.On("IsRoleDeclarative", ctx, roleID)}
 }
 
@@ -1765,7 +1774,7 @@ type roleStoreInterfaceMock_IsRoleExist_Call struct {
 // IsRoleExist is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *roleStoreInterfaceMock_Expecter) IsRoleExist(ctx interface{}, id interface{}) *roleStoreInterfaceMock_IsRoleExist_Call {
+func (_e *roleStoreInterfaceMock_Expecter) IsRoleExist(ctx any, id any) *roleStoreInterfaceMock_IsRoleExist_Call {
 	return &roleStoreInterfaceMock_IsRoleExist_Call{Call: _e.mock.On("IsRoleExist", ctx, id)}
 }
 
@@ -1823,7 +1832,7 @@ type roleStoreInterfaceMock_RemoveAssignments_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - assignments []RoleAssignment
-func (_e *roleStoreInterfaceMock_Expecter) RemoveAssignments(ctx interface{}, id interface{}, assignments interface{}) *roleStoreInterfaceMock_RemoveAssignments_Call {
+func (_e *roleStoreInterfaceMock_Expecter) RemoveAssignments(ctx any, id any, assignments any) *roleStoreInterfaceMock_RemoveAssignments_Call {
 	return &roleStoreInterfaceMock_RemoveAssignments_Call{Call: _e.mock.On("RemoveAssignments", ctx, id, assignments)}
 }
 
@@ -1886,7 +1895,7 @@ type roleStoreInterfaceMock_UpdateRole_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - role RoleUpdateDetail
-func (_e *roleStoreInterfaceMock_Expecter) UpdateRole(ctx interface{}, id interface{}, role interface{}) *roleStoreInterfaceMock_UpdateRole_Call {
+func (_e *roleStoreInterfaceMock_Expecter) UpdateRole(ctx any, id any, role any) *roleStoreInterfaceMock_UpdateRole_Call {
 	return &roleStoreInterfaceMock_UpdateRole_Call{Call: _e.mock.On("UpdateRole", ctx, id, role)}
 }
 

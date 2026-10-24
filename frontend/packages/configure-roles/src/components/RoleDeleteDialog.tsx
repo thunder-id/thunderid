@@ -52,7 +52,7 @@ export default function RoleDeleteDialog({
 
   return (
     <Dialog open={open} onClose={handleCancel} maxWidth="sm" fullWidth>
-      <DialogTitle>{t('delete.title', 'Delete Role')}</DialogTitle>
+      <DialogTitle>{t('delete.title', 'Delete role')}</DialogTitle>
       <DialogContent>
         <DialogContentText sx={{mb: 2}}>
           {t('delete.message', 'Are you sure you want to delete this role?')}

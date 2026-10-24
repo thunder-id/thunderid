@@ -3138,7 +3138,7 @@ describe('ApplicationCreatePage', () => {
       expect(screen.queryByTestId('application-show-client-secret')).not.toBeInTheDocument();
     });
 
-    it('should navigate directly to the created application for the machine-to-machine client, without a completion screen', async () => {
+    it('should navigate directly to the created application for the machine-to-machine client, handing over its secret', async () => {
       mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
         onSuccess({
           id: 'mcp-app-4',
@@ -3162,10 +3162,101 @@ describe('ApplicationCreatePage', () => {
       await createM2mApp();
 
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/applications/mcp-app-4');
+        expect(mockNavigate).toHaveBeenCalledWith('/applications/mcp-app-4', {
+          state: {
+            justCreatedSecret: {
+              appName: 'My MCP App',
+              clientId: 'mcp-client-id-m2m',
+              clientSecret: 'mcp-client-secret',
+              flowSecret: undefined,
+            },
+          },
+        });
       });
 
       expect(screen.queryByTestId('application-show-client-secret')).not.toBeInTheDocument();
+    });
+
+    it('should offer the confidential client switch, off by default, for the user-delegated client', async () => {
+      renderWithProviders();
+      await selectMcpClientTemplateAndName();
+
+      expect(screen.getByRole('checkbox', {name: 'Confidential client'})).not.toBeChecked();
+    });
+
+    it('should submit a confidential user-delegated oauth2 config when the confidential client switch is on', async () => {
+      mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
+        onSuccess({id: 'mcp-app-5', name: 'My MCP App'} as Application);
+      });
+
+      renderWithProviders();
+      await selectMcpClientTemplateAndName();
+
+      await user.click(screen.getByRole('checkbox', {name: 'Confidential client'}));
+      await user.type(
+        screen.getByPlaceholderText('http://localhost:8080/callback'),
+        'https://agent.example.com/oauth/cb',
+      );
+
+      // CLIENT_TYPE -> create
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+
+      await waitFor(() => {
+        expect(mockCreateApplication).toHaveBeenCalled();
+      });
+
+      const requestBody = mockCreateApplication.mock.calls[0][0] as Application;
+      expect(requestBody.inboundAuthConfig?.[0]?.config).toMatchObject({
+        grantTypes: ['authorization_code', 'refresh_token'],
+        responseTypes: ['code'],
+        redirectUris: ['https://agent.example.com/oauth/cb'],
+        pkceRequired: true,
+        tokenEndpointAuthMethod: 'client_secret_basic',
+        publicClient: false,
+      });
+    });
+
+    it('should hand the generated secret of a confidential user-delegated client to the detail page', async () => {
+      mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
+        onSuccess({
+          id: 'mcp-app-6',
+          name: 'My MCP App',
+          inboundAuthConfig: [
+            {
+              type: 'oauth2',
+              config: {
+                clientId: 'mcp-confidential-client-id',
+                clientSecret: 'mcp-confidential-secret',
+                grantTypes: ['authorization_code', 'refresh_token'],
+                redirectUris: ['https://agent.example.com/oauth/cb'],
+              },
+            },
+          ],
+        } as Application);
+      });
+
+      renderWithProviders();
+      await selectMcpClientTemplateAndName();
+
+      await user.click(screen.getByRole('checkbox', {name: 'Confidential client'}));
+      await user.type(
+        screen.getByPlaceholderText('http://localhost:8080/callback'),
+        'https://agent.example.com/oauth/cb',
+      );
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/applications/mcp-app-6', {
+          state: {
+            justCreatedSecret: {
+              appName: 'My MCP App',
+              clientId: 'mcp-confidential-client-id',
+              clientSecret: 'mcp-confidential-secret',
+              flowSecret: undefined,
+            },
+          },
+        });
+      });
     });
   });
 

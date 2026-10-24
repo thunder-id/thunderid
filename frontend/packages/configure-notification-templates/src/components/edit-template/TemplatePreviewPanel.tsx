@@ -4,9 +4,10 @@
 import {NotificationTemplatePreview} from '@thunderid/configure-design';
 import {useGetThemes, useGetTheme, type Theme} from '@thunderid/design';
 import {getDisplayNameForCode, I18nDefaultConstants, toFlagEmoji, useGetLanguages} from '@thunderid/i18n';
-import {Box, MenuItem, TextField, Typography} from '@wso2/oxygen-ui';
+import {Alert, Box, MenuItem, TextField, Typography} from '@wso2/oxygen-ui';
 import {useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
+import {CONTEXT_TOKEN_KEYS, DESIGN_TOKEN_KEYS} from '../../constants/template-tokens';
 import type {NotificationChannel, TemplateColorScheme} from '../../models/notification-template';
 
 /**
@@ -54,10 +55,11 @@ export default function TemplatePreviewPanel({
   const [language, setLanguage] = useState('');
   const [themeId, setThemeId] = useState('');
 
-  // Selected theme drives the preview styling. `undefined` → default theme; `null` → spinner while
-  // the chosen theme loads. On error or a theme with no data, fall back to the default theme so the
-  // preview renders rather than spinning forever.
-  const {data: selectedTheme, isLoading: selectedThemeLoading} = useGetTheme(themeId);
+  // Selected theme drives the preview styling. No Theme: design tokens render empty, matching delivery
+  // for an app with no theme. A fetch failure surfaces an error (below) rather than silently previewing
+  // as No Theme while the selector still shows the chosen theme.
+  const {data: selectedTheme, isLoading: selectedThemeLoading, isError: selectedThemeError} = useGetTheme(themeId);
+  const themeFetchFailed = Boolean(themeId) && selectedThemeError;
   let previewTheme: Theme | null | undefined;
   if (!themeId) {
     previewTheme = undefined;
@@ -111,7 +113,7 @@ export default function TemplatePreviewPanel({
               disabled={themesLoading}
               SelectProps={{displayEmpty: true}}
             >
-              <MenuItem value="">{t('editor.preview.designThemeDefault', 'Default design theme')}</MenuItem>
+              <MenuItem value="">{t('editor.preview.designThemeNone', 'No Theme')}</MenuItem>
               {themes.map((theme) => (
                 <MenuItem key={theme.id} value={theme.id}>
                   {theme.displayName}
@@ -122,14 +124,25 @@ export default function TemplatePreviewPanel({
         )}
       </Box>
 
-      <NotificationTemplatePreview
-        channel={channel}
-        subject={subject}
-        body={body}
-        locale={language || defaultLocale}
-        theme={previewTheme}
-        colorScheme={colorScheme}
-      />
+      {themeFetchFailed ? (
+        <Alert severity="error">
+          {t(
+            'editor.preview.themeLoadError',
+            'Could not load the selected theme. Pick another theme or No Theme to preview.',
+          )}
+        </Alert>
+      ) : (
+        <NotificationTemplatePreview
+          channel={channel}
+          subject={subject}
+          body={body}
+          locale={language || defaultLocale}
+          theme={previewTheme}
+          colorScheme={colorScheme}
+          contextKeys={CONTEXT_TOKEN_KEYS}
+          designKeys={DESIGN_TOKEN_KEYS}
+        />
+      )}
     </Box>
   );
 }

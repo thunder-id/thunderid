@@ -24,7 +24,8 @@ func (s *PropertiesTestSuite) SetupSuite() {
 }
 
 func (s *PropertiesTestSuite) TestOwnsPropertyKey() {
-	s.True(OwnsPropertyKey(propertyKeyType))
+	s.Equal("authentication_type", PropertyKeyType)
+	s.True(OwnsPropertyKey(PropertyKeyType))
 	s.True(OwnsPropertyKey(propertyKey(FieldBasicPassword)))
 	s.False(OwnsPropertyKey("host"))
 	s.False(OwnsPropertyKey("username"))
@@ -38,7 +39,7 @@ func (s *PropertiesTestSuite) TestToPropertiesBasic() {
 	s.Require().NoError(err)
 
 	values := propertyMap(s.T(), props)
-	s.Equal(string(TypeBasic), values[propertyKeyType])
+	s.Equal(string(TypeBasic), values[PropertyKeyType])
 	s.Equal("mailer", values[propertyKey(FieldBasicUsername)])
 	s.Equal("s3cret", values[propertyKey(FieldBasicPassword)])
 
@@ -48,21 +49,21 @@ func (s *PropertiesTestSuite) TestToPropertiesBasic() {
 	}
 	s.True(byName[propertyKey(FieldBasicPassword)].IsSecret())
 	s.False(byName[propertyKey(FieldBasicUsername)].IsSecret())
-	s.False(byName[propertyKeyType].IsSecret())
+	s.False(byName[PropertyKeyType].IsSecret())
 }
 
 func (s *PropertiesTestSuite) TestToPropertiesAlwaysWritesTypeIncludingNone() {
 	props, err := ToProperties(Config{Type: TypeNone})
 	s.Require().NoError(err)
 	s.Require().Len(props, 1)
-	s.Equal(propertyKeyType, props[0].GetName())
+	s.Equal(PropertyKeyType, props[0].GetName())
 
 	// A zero Config is treated as none rather than rejected, so an omitted block is storable.
 	props, err = ToProperties(Config{})
 	s.Require().NoError(err)
 	s.Require().Len(props, 1)
 	values := propertyMap(s.T(), props)
-	s.Equal(string(TypeNone), values[propertyKeyType])
+	s.Equal(string(TypeNone), values[PropertyKeyType])
 }
 
 func (s *PropertiesTestSuite) TestToPropertiesSkipsBlankAndDropsUndeclaredFields() {
@@ -86,11 +87,11 @@ func (s *PropertiesTestSuite) TestToPropertiesSkipsBlankAndDropsUndeclaredFields
 }
 
 func (s *PropertiesTestSuite) TestToPropertiesRejectsUnknownType() {
-	_, err := ToProperties(Config{Type: Type("bearer")})
+	_, err := ToProperties(Config{Type: Type("digest")})
 	s.Require().Error(err)
 	s.Contains(err.Error(), "unsupported authentication type")
 	s.Require().ErrorIs(err, errUnsupportedType)
-	s.Contains(err.Error(), "bearer")
+	s.Contains(err.Error(), "digest")
 }
 
 func (s *PropertiesTestSuite) TestRoundTripThroughProperties() {
@@ -119,9 +120,51 @@ func (s *PropertiesTestSuite) TestFromPropertiesIgnoresForeignKeys() {
 	s.Empty(cfg.Properties)
 }
 
+func (s *PropertiesTestSuite) TestUpdatePropertiesRetainsOnlyForSameTarget() {
+	stored, err := ToProperties(basicConfig())
+	s.Require().NoError(err)
+	request := &Authentication{Type: string(TypeBasic), Properties: map[string]string{
+		FieldBasicUsername: "mailer", FieldBasicPassword: "******",
+	}}
+	updated, err := UpdateProperties(request, stored, []string{"smtp.example.com"},
+		[]string{"smtp.example.com"}, []Type{TypeNone, TypeBasic}, nil, nil)
+	s.Require().NoError(err)
+	config, err := FromProperties(updated)
+	s.Require().NoError(err)
+	s.Equal("s3cret", config.Get(FieldBasicPassword))
+
+	_, err = UpdateProperties(request, stored, []string{"smtp.example.com"},
+		[]string{"other.example.com"}, []Type{TypeNone, TypeBasic}, nil, nil)
+	s.Require().ErrorIs(err, ErrAuthenticationRequiredForTargetChange)
+	_, err = UpdateProperties(nil, stored, []string{"smtp.example.com"},
+		[]string{"other.example.com"}, []Type{TypeNone, TypeBasic}, nil, nil)
+	s.Require().ErrorIs(err, ErrAuthenticationRequiredForTargetChange)
+}
+
+func (s *PropertiesTestSuite) TestUpdatePropertiesDoesNotRetainSecretForChangedIdentity() {
+	stored, err := ToProperties(basicConfig())
+	s.Require().NoError(err)
+	request := &Authentication{Type: string(TypeBasic), Properties: map[string]string{
+		FieldBasicUsername: "other", FieldBasicPassword: "******",
+	}}
+	_, err = UpdateProperties(request, stored, []string{"smtp.example.com"},
+		[]string{"smtp.example.com"}, []Type{TypeNone, TypeBasic}, nil, nil)
+	s.Require().Error(err)
+}
+
+func (s *PropertiesTestSuite) TestAuthenticationFromPropertiesMasksSecrets() {
+	stored, err := ToProperties(basicConfig())
+	s.Require().NoError(err)
+	authentication, err := AuthenticationFromProperties(stored)
+	s.Require().NoError(err)
+	s.Equal(string(TypeBasic), authentication.Type)
+	s.Equal("mailer", authentication.Properties[FieldBasicUsername])
+	s.Equal("******", authentication.Properties[FieldBasicPassword])
+}
+
 func (s *PropertiesTestSuite) TestFromValuesSurfacesUnknownStoredType() {
-	cfg := FromValues(map[string]string{propertyKeyType: "bearer"})
-	s.Equal(Type("bearer"), cfg.Type)
+	cfg := FromValues(map[string]string{PropertyKeyType: "digest"})
+	s.Equal(Type("digest"), cfg.Type)
 
 	// Surfacing it verbatim lets Validate reject it descriptively instead of silently
 	// downgrading a sender to unauthenticated.
@@ -132,7 +175,7 @@ func (s *PropertiesTestSuite) TestFromValuesSurfacesUnknownStoredType() {
 
 func (s *PropertiesTestSuite) TestFromValuesReadsMaskedSecrets() {
 	cfg := FromValues(map[string]string{
-		propertyKeyType:                    string(TypeBasic),
+		PropertyKeyType:                    string(TypeBasic),
 		propertyKey(FieldBasicUsername):    "mailer",
 		propertyKey(FieldBasicPassword):    "******",
 		propertyKey("somethingUndeclared"): "ignored",

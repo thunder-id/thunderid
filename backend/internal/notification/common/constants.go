@@ -43,8 +43,10 @@ type OTPVerifyStatus string
 const (
 	// OTPVerifyStatusVerified indicates a successful OTP verification.
 	OTPVerifyStatusVerified OTPVerifyStatus = "VERIFIED"
-	// OTPVerifyStatusInvalid indicates an invalid OTP verification attempt.
+	// OTPVerifyStatusInvalid indicates the code presented did not match the one issued.
 	OTPVerifyStatusInvalid OTPVerifyStatus = "INVALID"
+	// OTPVerifyStatusExpired indicates the code had expired, so it was not compared.
+	OTPVerifyStatusExpired OTPVerifyStatus = "EXPIRED"
 )
 
 const (
@@ -70,7 +72,7 @@ const (
 	CustomPropKeyURL = "url"
 	// CustomPropKeyHTTPMethod is the property key for the HTTP method.
 	CustomPropKeyHTTPMethod = "http_method"
-	// CustomPropKeyHTTPHeaders is the property key for the HTTP headers.
+	// CustomPropKeyHTTPHeaders is the property key for custom-provider HTTP headers.
 	CustomPropKeyHTTPHeaders = "http_headers"
 	// CustomPropKeyContentType is the property key for the content type.
 	CustomPropKeyContentType = "content_type"

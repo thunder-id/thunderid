@@ -178,7 +178,7 @@ func (ts *EmailOTPAuthFlowTestSuite) SetupSuite() {
 		AllowedUserTypes:          []string{emailOTPEntityType.Handle},
 		AuthFlowID:                flowID,
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+			"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 		},
 	})
 	ts.Require().NoError(err, "Failed to create test application")

@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice} from '@thunderid/components';
+import {DocumentTitle, QueryErrorNotice} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {AppBreadcrumbs, Box, CircularProgress, IconButton, LinearProgress, Stack, Typography} from '@wso2/oxygen-ui';
 import {X} from '@wso2/oxygen-ui-icons-react';
@@ -69,6 +69,7 @@ export default function ExportPage(): JSX.Element {
 
   return (
     <Box sx={{minHeight: '100vh', display: 'flex', flexDirection: 'column'}}>
+      <DocumentTitle title={t('export.page.title', 'Export configuration')} />
       <LinearProgress variant="determinate" value={100} sx={{height: 6}} />
 
       <Box sx={{p: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0}}>

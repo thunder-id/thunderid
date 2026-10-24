@@ -133,7 +133,7 @@ export default function RedirectURIsSection({
             <Alert severity="error" data-testid="agent-redirect-uris-required">
               {t(
                 'agents:edit.advanced.redirectUris.required',
-                'The Authorization Code grant requires at least one valid redirect URI.',
+                'The authorization code grant requires at least one valid redirect URI.',
               )}
             </Alert>
           )}

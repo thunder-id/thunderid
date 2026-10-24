@@ -61,14 +61,14 @@ describe('ConnectionsList', () => {
   it('hides the category chips that no connection card belongs to', () => {
     render(<ConnectionsList />);
 
-    expect(chipLabels()).toEqual(['Social Login', 'SMS']);
+    expect(chipLabels()).toEqual(['Social login', 'SMS']);
   });
 
   it('shows the enterprise and custom chips once an OIDC connection exists', () => {
     mockConnections([OIDC_FEDERATION]);
     render(<ConnectionsList />);
 
-    expect(chipLabels()).toEqual(['Social Login', 'Enterprise', 'SMS', 'Custom']);
+    expect(chipLabels()).toEqual(['Social login', 'Enterprise', 'SMS', 'Custom']);
 
     selectCategory('Enterprise');
 
@@ -80,9 +80,9 @@ describe('ConnectionsList', () => {
     mockConnections([TRUSTED_ISSUER]);
     render(<ConnectionsList />);
 
-    expect(chipLabels()).toEqual(['Social Login', 'SMS', 'Trusted Token Issuer', 'Custom']);
+    expect(chipLabels()).toEqual(['Social login', 'SMS', 'Trusted token issuer', 'Custom']);
 
-    selectCategory('Trusted Token Issuer');
+    selectCategory('Trusted token issuer');
 
     expect(screen.getByTestId('connection-card-trusted-idp:c2')).toBeInTheDocument();
     expect(screen.queryByText(EMPTY_STATE_TITLE)).not.toBeInTheDocument();
@@ -106,7 +106,7 @@ describe('ConnectionsList', () => {
     mockConnections([]);
     rerender(<ConnectionsList />);
 
-    expect(chipLabels()).toEqual(['Social Login', 'SMS']);
+    expect(chipLabels()).toEqual(['Social login', 'SMS']);
     expect(screen.getByTestId('connection-card-google')).toBeInTheDocument();
     expect(screen.queryByText(EMPTY_STATE_TITLE)).not.toBeInTheDocument();
   });
@@ -128,7 +128,7 @@ describe('ConnectionsList', () => {
   it('shows the branded social login tiles under the social login filter', () => {
     render(<ConnectionsList />);
 
-    selectCategory('Social Login');
+    selectCategory('Social login');
 
     expect(screen.getByTestId('connection-card-google')).toBeInTheDocument();
     expect(screen.getByTestId('connection-card-github')).toBeInTheDocument();

@@ -17,10 +17,19 @@ func NewHealthCheckServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *HealthCheckServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &HealthCheckServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -62,7 +71,7 @@ type HealthCheckServiceInterfaceMock_CheckReadiness_Call struct {
 
 // CheckReadiness is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *HealthCheckServiceInterfaceMock_Expecter) CheckReadiness(ctx interface{}) *HealthCheckServiceInterfaceMock_CheckReadiness_Call {
+func (_e *HealthCheckServiceInterfaceMock_Expecter) CheckReadiness(ctx any) *HealthCheckServiceInterfaceMock_CheckReadiness_Call {
 	return &HealthCheckServiceInterfaceMock_CheckReadiness_Call{Call: _e.mock.On("CheckReadiness", ctx)}
 }
 

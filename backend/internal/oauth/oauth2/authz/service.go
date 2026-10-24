@@ -69,6 +69,7 @@ type authorizeService struct {
 	// session store (the embedded engine), where prompt=none keeps answering login_required.
 	ssoSession   flowsession.Service
 	flowProvider providers.FlowProvider
+	governance   providers.IdentityGovernanceProvider
 	logger       *log.Logger
 }
 
@@ -85,6 +86,7 @@ func newAuthorizeService(
 	criteriaRevoker revocation.CriteriaRevokerInterface,
 	ssoSession flowsession.Service,
 	flowProvider providers.FlowProvider,
+	governance providers.IdentityGovernanceProvider,
 	cfg oauthconfig.Config,
 	jtiStore jti.JTIStoreInterface,
 ) AuthorizeServiceInterface {
@@ -102,6 +104,7 @@ func newAuthorizeService(
 		criteriaRevoker: criteriaRevoker,
 		ssoSession:      ssoSession,
 		flowProvider:    flowProvider,
+		governance:      governance,
 		jtiStore:        jtiStore,
 		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AuthorizeService")),
 	}
@@ -324,6 +327,23 @@ func (as *authorizeService) HandleInitialAuthorizationRequest(ctx context.Contex
 		}
 	}
 
+	// A held application is shown as unavailable here, where a person reads it, and never
+	// redirected (RFC 6749 §3.1.2.4, §4.1.2.1).
+	held, svcErr := oauth2utils.IsClientHeld(ctx, as.governance, app)
+	if svcErr != nil {
+		return nil, &AuthorizationError{
+			Code:    oauth2const.ErrorServerError,
+			Message: "Failed to process authorization request",
+		}
+	}
+	if held {
+		as.logger.Debug(ctx, "Refusing an authorization request for an unavailable application")
+		return nil, &AuthorizationError{
+			Code:    oauth2const.ErrorUnauthorizedClient,
+			Message: "This application is currently unavailable",
+		}
+	}
+
 	// If request_uri is present, resolve the pushed authorization request. A request_uri that is
 	// not a PAR handle is a client-supplied request object by reference (RFC 9101), which is not
 	// supported: reject it rather than ignoring it, so the client learns its request was not
@@ -346,7 +366,7 @@ func (as *authorizeService) HandleInitialAuthorizationRequest(ctx context.Contex
 
 	initiatorReq := &providers.InitiatorRequest{
 		Headers:     utils.FilterSensitiveHeaders(msg.RequestHeaders),
-		QueryParams: msg.RequestQueryParams,
+		QueryParams: utils.FilterSensitiveQueryParams(msg.RequestQueryParams),
 	}
 
 	return as.handleStandardAuthorizationRequest(ctx, msg, app, initiatorReq)

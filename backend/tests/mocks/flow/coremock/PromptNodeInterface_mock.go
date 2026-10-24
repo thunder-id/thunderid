@@ -18,10 +18,19 @@ func NewPromptNodeInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *PromptNodeInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &PromptNodeInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -52,7 +61,7 @@ type PromptNodeInterfaceMock_AddNextNode_Call struct {
 
 // AddNextNode is a helper method to define mock.On call
 //   - nextNodeID string
-func (_e *PromptNodeInterfaceMock_Expecter) AddNextNode(nextNodeID interface{}) *PromptNodeInterfaceMock_AddNextNode_Call {
+func (_e *PromptNodeInterfaceMock_Expecter) AddNextNode(nextNodeID any) *PromptNodeInterfaceMock_AddNextNode_Call {
 	return &PromptNodeInterfaceMock_AddNextNode_Call{Call: _e.mock.On("AddNextNode", nextNodeID)}
 }
 
@@ -92,7 +101,7 @@ type PromptNodeInterfaceMock_AddPreviousNode_Call struct {
 
 // AddPreviousNode is a helper method to define mock.On call
 //   - previousNodeID string
-func (_e *PromptNodeInterfaceMock_Expecter) AddPreviousNode(previousNodeID interface{}) *PromptNodeInterfaceMock_AddPreviousNode_Call {
+func (_e *PromptNodeInterfaceMock_Expecter) AddPreviousNode(previousNodeID any) *PromptNodeInterfaceMock_AddPreviousNode_Call {
 	return &PromptNodeInterfaceMock_AddPreviousNode_Call{Call: _e.mock.On("AddPreviousNode", previousNodeID)}
 }
 
@@ -156,7 +165,7 @@ type PromptNodeInterfaceMock_Execute_Call struct {
 
 // Execute is a helper method to define mock.On call
 //   - ctx *providers.NodeContext
-func (_e *PromptNodeInterfaceMock_Expecter) Execute(ctx interface{}) *PromptNodeInterfaceMock_Execute_Call {
+func (_e *PromptNodeInterfaceMock_Expecter) Execute(ctx any) *PromptNodeInterfaceMock_Execute_Call {
 	return &PromptNodeInterfaceMock_Execute_Call{Call: _e.mock.On("Execute", ctx)}
 }
 
@@ -870,7 +879,7 @@ type PromptNodeInterfaceMock_RemoveNextNode_Call struct {
 
 // RemoveNextNode is a helper method to define mock.On call
 //   - nextNodeID string
-func (_e *PromptNodeInterfaceMock_Expecter) RemoveNextNode(nextNodeID interface{}) *PromptNodeInterfaceMock_RemoveNextNode_Call {
+func (_e *PromptNodeInterfaceMock_Expecter) RemoveNextNode(nextNodeID any) *PromptNodeInterfaceMock_RemoveNextNode_Call {
 	return &PromptNodeInterfaceMock_RemoveNextNode_Call{Call: _e.mock.On("RemoveNextNode", nextNodeID)}
 }
 
@@ -910,7 +919,7 @@ type PromptNodeInterfaceMock_RemovePreviousNode_Call struct {
 
 // RemovePreviousNode is a helper method to define mock.On call
 //   - previousNodeID string
-func (_e *PromptNodeInterfaceMock_Expecter) RemovePreviousNode(previousNodeID interface{}) *PromptNodeInterfaceMock_RemovePreviousNode_Call {
+func (_e *PromptNodeInterfaceMock_Expecter) RemovePreviousNode(previousNodeID any) *PromptNodeInterfaceMock_RemovePreviousNode_Call {
 	return &PromptNodeInterfaceMock_RemovePreviousNode_Call{Call: _e.mock.On("RemovePreviousNode", previousNodeID)}
 }
 
@@ -1016,7 +1025,7 @@ type PromptNodeInterfaceMock_SetCondition_Call struct {
 
 // SetCondition is a helper method to define mock.On call
 //   - condition *core.NodeCondition
-func (_e *PromptNodeInterfaceMock_Expecter) SetCondition(condition interface{}) *PromptNodeInterfaceMock_SetCondition_Call {
+func (_e *PromptNodeInterfaceMock_Expecter) SetCondition(condition any) *PromptNodeInterfaceMock_SetCondition_Call {
 	return &PromptNodeInterfaceMock_SetCondition_Call{Call: _e.mock.On("SetCondition", condition)}
 }
 
@@ -1056,7 +1065,7 @@ type PromptNodeInterfaceMock_SetMessage_Call struct {
 
 // SetMessage is a helper method to define mock.On call
 //   - message string
-func (_e *PromptNodeInterfaceMock_Expecter) SetMessage(message interface{}) *PromptNodeInterfaceMock_SetMessage_Call {
+func (_e *PromptNodeInterfaceMock_Expecter) SetMessage(message any) *PromptNodeInterfaceMock_SetMessage_Call {
 	return &PromptNodeInterfaceMock_SetMessage_Call{Call: _e.mock.On("SetMessage", message)}
 }
 
@@ -1096,7 +1105,7 @@ type PromptNodeInterfaceMock_SetMeta_Call struct {
 
 // SetMeta is a helper method to define mock.On call
 //   - meta interface{}
-func (_e *PromptNodeInterfaceMock_Expecter) SetMeta(meta interface{}) *PromptNodeInterfaceMock_SetMeta_Call {
+func (_e *PromptNodeInterfaceMock_Expecter) SetMeta(meta any) *PromptNodeInterfaceMock_SetMeta_Call {
 	return &PromptNodeInterfaceMock_SetMeta_Call{Call: _e.mock.On("SetMeta", meta)}
 }
 
@@ -1136,7 +1145,7 @@ type PromptNodeInterfaceMock_SetNextNode_Call struct {
 
 // SetNextNode is a helper method to define mock.On call
 //   - nextNode string
-func (_e *PromptNodeInterfaceMock_Expecter) SetNextNode(nextNode interface{}) *PromptNodeInterfaceMock_SetNextNode_Call {
+func (_e *PromptNodeInterfaceMock_Expecter) SetNextNode(nextNode any) *PromptNodeInterfaceMock_SetNextNode_Call {
 	return &PromptNodeInterfaceMock_SetNextNode_Call{Call: _e.mock.On("SetNextNode", nextNode)}
 }
 
@@ -1176,7 +1185,7 @@ type PromptNodeInterfaceMock_SetNextNodeList_Call struct {
 
 // SetNextNodeList is a helper method to define mock.On call
 //   - nextNodeIDList []string
-func (_e *PromptNodeInterfaceMock_Expecter) SetNextNodeList(nextNodeIDList interface{}) *PromptNodeInterfaceMock_SetNextNodeList_Call {
+func (_e *PromptNodeInterfaceMock_Expecter) SetNextNodeList(nextNodeIDList any) *PromptNodeInterfaceMock_SetNextNodeList_Call {
 	return &PromptNodeInterfaceMock_SetNextNodeList_Call{Call: _e.mock.On("SetNextNodeList", nextNodeIDList)}
 }
 
@@ -1216,7 +1225,7 @@ type PromptNodeInterfaceMock_SetPreviousNodeList_Call struct {
 
 // SetPreviousNodeList is a helper method to define mock.On call
 //   - previousNodeIDList []string
-func (_e *PromptNodeInterfaceMock_Expecter) SetPreviousNodeList(previousNodeIDList interface{}) *PromptNodeInterfaceMock_SetPreviousNodeList_Call {
+func (_e *PromptNodeInterfaceMock_Expecter) SetPreviousNodeList(previousNodeIDList any) *PromptNodeInterfaceMock_SetPreviousNodeList_Call {
 	return &PromptNodeInterfaceMock_SetPreviousNodeList_Call{Call: _e.mock.On("SetPreviousNodeList", previousNodeIDList)}
 }
 
@@ -1256,7 +1265,7 @@ type PromptNodeInterfaceMock_SetPrompts_Call struct {
 
 // SetPrompts is a helper method to define mock.On call
 //   - prompts []common.Prompt
-func (_e *PromptNodeInterfaceMock_Expecter) SetPrompts(prompts interface{}) *PromptNodeInterfaceMock_SetPrompts_Call {
+func (_e *PromptNodeInterfaceMock_Expecter) SetPrompts(prompts any) *PromptNodeInterfaceMock_SetPrompts_Call {
 	return &PromptNodeInterfaceMock_SetPrompts_Call{Call: _e.mock.On("SetPrompts", prompts)}
 }
 
@@ -1296,7 +1305,7 @@ type PromptNodeInterfaceMock_SetVariant_Call struct {
 
 // SetVariant is a helper method to define mock.On call
 //   - variant providers.NodeVariant
-func (_e *PromptNodeInterfaceMock_Expecter) SetVariant(variant interface{}) *PromptNodeInterfaceMock_SetVariant_Call {
+func (_e *PromptNodeInterfaceMock_Expecter) SetVariant(variant any) *PromptNodeInterfaceMock_SetVariant_Call {
 	return &PromptNodeInterfaceMock_SetVariant_Call{Call: _e.mock.On("SetVariant", variant)}
 }
 
@@ -1347,7 +1356,7 @@ type PromptNodeInterfaceMock_ShouldExecute_Call struct {
 
 // ShouldExecute is a helper method to define mock.On call
 //   - ctx *providers.NodeContext
-func (_e *PromptNodeInterfaceMock_Expecter) ShouldExecute(ctx interface{}) *PromptNodeInterfaceMock_ShouldExecute_Call {
+func (_e *PromptNodeInterfaceMock_Expecter) ShouldExecute(ctx any) *PromptNodeInterfaceMock_ShouldExecute_Call {
 	return &PromptNodeInterfaceMock_ShouldExecute_Call{Call: _e.mock.On("ShouldExecute", ctx)}
 }
 

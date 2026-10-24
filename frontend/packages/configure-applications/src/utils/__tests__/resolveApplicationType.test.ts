@@ -3,7 +3,7 @@
 
 import {describe, expect, it} from 'vitest';
 import type {OAuth2Config} from '../../models/oauth';
-import resolveApplicationType, {isM2MApplication} from '../resolveApplicationType';
+import resolveApplicationType, {isDirectTokenGrantSet, isM2MApplication} from '../resolveApplicationType';
 
 const makeConfig = (overrides: Partial<OAuth2Config>): OAuth2Config => ({
   publicClient: false,
@@ -52,5 +52,27 @@ describe('isM2MApplication', () => {
   it('detects m2m from config shape for legacy/custom apps', () => {
     expect(isM2MApplication(undefined, makeConfig({grantTypes: ['client_credentials']}))).toBe(true);
     expect(isM2MApplication('custom', makeConfig({grantTypes: ['authorization_code']}))).toBe(false);
+  });
+});
+
+describe('isDirectTokenGrantSet', () => {
+  const JWT_BEARER = 'urn:ietf:params:oauth:grant-type:jwt-bearer';
+  const TOKEN_EXCHANGE = 'urn:ietf:params:oauth:grant-type:token-exchange';
+
+  it('is true when every grant is client_credentials or JWT bearer', () => {
+    expect(isDirectTokenGrantSet(['client_credentials'])).toBe(true);
+    expect(isDirectTokenGrantSet([JWT_BEARER])).toBe(true);
+    expect(isDirectTokenGrantSet(['client_credentials', JWT_BEARER])).toBe(true);
+  });
+
+  it('is false when any other grant is present', () => {
+    expect(isDirectTokenGrantSet([JWT_BEARER, TOKEN_EXCHANGE])).toBe(false);
+    expect(isDirectTokenGrantSet(['client_credentials', TOKEN_EXCHANGE])).toBe(false);
+    expect(isDirectTokenGrantSet(['authorization_code', JWT_BEARER])).toBe(false);
+  });
+
+  it('is false for no grants', () => {
+    expect(isDirectTokenGrantSet([])).toBe(false);
+    expect(isDirectTokenGrantSet(undefined)).toBe(false);
   });
 });

@@ -34,7 +34,18 @@ func (p *disabledEntityProvider) SearchEntities(
 	return nil, errNotImplemented
 }
 
+func (p *disabledEntityProvider) GetLinkedEntities(
+	_, _ string) ([]*providers.Entity, *EntityProviderError) {
+	return nil, errNotImplemented
+}
+
 func (p *disabledEntityProvider) GetEntity(
+	_ string) (*providers.Entity, *EntityProviderError) {
+	return nil, errNotImplemented
+}
+
+// GetEntityProfile is not available without an entity provider.
+func (p *disabledEntityProvider) GetEntityProfile(
 	_ string) (*providers.Entity, *EntityProviderError) {
 	return nil, errNotImplemented
 }

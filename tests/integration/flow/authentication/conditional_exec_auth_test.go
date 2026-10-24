@@ -96,7 +96,7 @@ var (
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
 		AllowedUserTypes:          []string{"conditional_exec_flow_user"},
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+			"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 		},
 	}
 
@@ -451,7 +451,7 @@ func (ts *ConditionalExecAuthFlowTestSuite) TestExecuteConditionalNodes() {
 	ts.Require().NoError(err, "Failed to decode JWT assertion")
 	ts.Require().NotNil(jwtClaims, "JWT claims should not be nil")
 	ts.Require().Equal(conditionalExecTestAppID, jwtClaims.Aud, "JWT aud should match app ID")
-	ts.Require().Equal(conditionalExecEntityType.Handle, jwtClaims.UserType, "JWT userType should match schema")
+	ts.Require().Equal(conditionalExecEntityType.Handle, jwtClaims.UserTypeHandle, "JWT userTypeHandle should match schema")
 	ts.Require().NotEmpty(jwtClaims.OUID, "JWT ouId should not be empty")
 
 	// Verify the created OU

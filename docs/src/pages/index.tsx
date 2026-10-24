@@ -6,12 +6,14 @@ import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import Layout from '@theme/Layout';
 import type {ReactNode} from 'react';
 import CommunitySection from '@site/src/components/HomePage/CommunitySection';
+import DevelopersSection from '@site/src/components/HomePage/DevelopersSection';
 import EventBanner from '@site/src/components/HomePage/EventBanner';
+import FeaturesSection from '@site/src/components/HomePage/FeaturesSection';
 import FooterSection from '@site/src/components/HomePage/FooterSection';
 import HeroSection from '@site/src/components/HomePage/HeroSection';
+import OpenFoundationsSection from '@site/src/components/HomePage/OpenFoundationsSection';
 import ProductOverviewSection from '@site/src/components/HomePage/ProductOverviewSection';
-import SDKShowcaseSection from '@site/src/components/HomePage/SDKShowcaseSection';
-import WorkflowSection from '@site/src/components/HomePage/WorkflowSection';
+import UseCasesSection from '@site/src/components/HomePage/UseCasesSection';
 
 export default function Homepage(): ReactNode {
   const {siteConfig} = useDocusaurusContext();
@@ -25,8 +27,10 @@ export default function Homepage(): ReactNode {
         <EventBanner />
         <HeroSection />
         <ProductOverviewSection />
-        <SDKShowcaseSection />
-        <WorkflowSection />
+        <OpenFoundationsSection />
+        <UseCasesSection />
+        <DevelopersSection />
+        <FeaturesSection />
         <CommunitySection />
         <FooterSection />
       </div>

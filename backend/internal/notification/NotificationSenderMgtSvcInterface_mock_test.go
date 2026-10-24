@@ -19,10 +19,19 @@ func NewNotificationSenderMgtSvcInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *NotificationSenderMgtSvcInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &NotificationSenderMgtSvcInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +87,7 @@ type NotificationSenderMgtSvcInterfaceMock_CreateSender_Call struct {
 // CreateSender is a helper method to define mock.On call
 //   - ctx context.Context
 //   - sender common.NotificationSenderDTO
-func (_e *NotificationSenderMgtSvcInterfaceMock_Expecter) CreateSender(ctx interface{}, sender interface{}) *NotificationSenderMgtSvcInterfaceMock_CreateSender_Call {
+func (_e *NotificationSenderMgtSvcInterfaceMock_Expecter) CreateSender(ctx any, sender any) *NotificationSenderMgtSvcInterfaceMock_CreateSender_Call {
 	return &NotificationSenderMgtSvcInterfaceMock_CreateSender_Call{Call: _e.mock.On("CreateSender", ctx, sender)}
 }
 
@@ -137,7 +146,7 @@ type NotificationSenderMgtSvcInterfaceMock_DeleteSender_Call struct {
 // DeleteSender is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *NotificationSenderMgtSvcInterfaceMock_Expecter) DeleteSender(ctx interface{}, id interface{}) *NotificationSenderMgtSvcInterfaceMock_DeleteSender_Call {
+func (_e *NotificationSenderMgtSvcInterfaceMock_Expecter) DeleteSender(ctx any, id any) *NotificationSenderMgtSvcInterfaceMock_DeleteSender_Call {
 	return &NotificationSenderMgtSvcInterfaceMock_DeleteSender_Call{Call: _e.mock.On("DeleteSender", ctx, id)}
 }
 
@@ -207,7 +216,7 @@ type NotificationSenderMgtSvcInterfaceMock_GetSender_Call struct {
 // GetSender is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *NotificationSenderMgtSvcInterfaceMock_Expecter) GetSender(ctx interface{}, id interface{}) *NotificationSenderMgtSvcInterfaceMock_GetSender_Call {
+func (_e *NotificationSenderMgtSvcInterfaceMock_Expecter) GetSender(ctx any, id any) *NotificationSenderMgtSvcInterfaceMock_GetSender_Call {
 	return &NotificationSenderMgtSvcInterfaceMock_GetSender_Call{Call: _e.mock.On("GetSender", ctx, id)}
 }
 
@@ -277,7 +286,7 @@ type NotificationSenderMgtSvcInterfaceMock_GetSenderByName_Call struct {
 // GetSenderByName is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *NotificationSenderMgtSvcInterfaceMock_Expecter) GetSenderByName(ctx interface{}, name interface{}) *NotificationSenderMgtSvcInterfaceMock_GetSenderByName_Call {
+func (_e *NotificationSenderMgtSvcInterfaceMock_Expecter) GetSenderByName(ctx any, name any) *NotificationSenderMgtSvcInterfaceMock_GetSenderByName_Call {
 	return &NotificationSenderMgtSvcInterfaceMock_GetSenderByName_Call{Call: _e.mock.On("GetSenderByName", ctx, name)}
 }
 
@@ -347,7 +356,7 @@ type NotificationSenderMgtSvcInterfaceMock_GetSenderUsages_Call struct {
 // GetSenderUsages is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *NotificationSenderMgtSvcInterfaceMock_Expecter) GetSenderUsages(ctx interface{}, id interface{}) *NotificationSenderMgtSvcInterfaceMock_GetSenderUsages_Call {
+func (_e *NotificationSenderMgtSvcInterfaceMock_Expecter) GetSenderUsages(ctx any, id any) *NotificationSenderMgtSvcInterfaceMock_GetSenderUsages_Call {
 	return &NotificationSenderMgtSvcInterfaceMock_GetSenderUsages_Call{Call: _e.mock.On("GetSenderUsages", ctx, id)}
 }
 
@@ -416,7 +425,7 @@ type NotificationSenderMgtSvcInterfaceMock_ListSenders_Call struct {
 
 // ListSenders is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *NotificationSenderMgtSvcInterfaceMock_Expecter) ListSenders(ctx interface{}) *NotificationSenderMgtSvcInterfaceMock_ListSenders_Call {
+func (_e *NotificationSenderMgtSvcInterfaceMock_Expecter) ListSenders(ctx any) *NotificationSenderMgtSvcInterfaceMock_ListSenders_Call {
 	return &NotificationSenderMgtSvcInterfaceMock_ListSenders_Call{Call: _e.mock.On("ListSenders", ctx)}
 }
 
@@ -481,7 +490,7 @@ type NotificationSenderMgtSvcInterfaceMock_ListSendersByType_Call struct {
 // ListSendersByType is a helper method to define mock.On call
 //   - ctx context.Context
 //   - senderType common.NotificationSenderType
-func (_e *NotificationSenderMgtSvcInterfaceMock_Expecter) ListSendersByType(ctx interface{}, senderType interface{}) *NotificationSenderMgtSvcInterfaceMock_ListSendersByType_Call {
+func (_e *NotificationSenderMgtSvcInterfaceMock_Expecter) ListSendersByType(ctx any, senderType any) *NotificationSenderMgtSvcInterfaceMock_ListSendersByType_Call {
 	return &NotificationSenderMgtSvcInterfaceMock_ListSendersByType_Call{Call: _e.mock.On("ListSendersByType", ctx, senderType)}
 }
 
@@ -526,7 +535,7 @@ type NotificationSenderMgtSvcInterfaceMock_SetDependencyRegistry_Call struct {
 
 // SetDependencyRegistry is a helper method to define mock.On call
 //   - r resourcedependency.Registry
-func (_e *NotificationSenderMgtSvcInterfaceMock_Expecter) SetDependencyRegistry(r interface{}) *NotificationSenderMgtSvcInterfaceMock_SetDependencyRegistry_Call {
+func (_e *NotificationSenderMgtSvcInterfaceMock_Expecter) SetDependencyRegistry(r any) *NotificationSenderMgtSvcInterfaceMock_SetDependencyRegistry_Call {
 	return &NotificationSenderMgtSvcInterfaceMock_SetDependencyRegistry_Call{Call: _e.mock.On("SetDependencyRegistry", r)}
 }
 
@@ -592,7 +601,7 @@ type NotificationSenderMgtSvcInterfaceMock_UpdateSender_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - sender common.NotificationSenderDTO
-func (_e *NotificationSenderMgtSvcInterfaceMock_Expecter) UpdateSender(ctx interface{}, id interface{}, sender interface{}) *NotificationSenderMgtSvcInterfaceMock_UpdateSender_Call {
+func (_e *NotificationSenderMgtSvcInterfaceMock_Expecter) UpdateSender(ctx any, id any, sender any) *NotificationSenderMgtSvcInterfaceMock_UpdateSender_Call {
 	return &NotificationSenderMgtSvcInterfaceMock_UpdateSender_Call{Call: _e.mock.On("UpdateSender", ctx, id, sender)}
 }
 

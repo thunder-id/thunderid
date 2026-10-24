@@ -63,6 +63,25 @@ func (suite *DefaultEntityProviderTestSuite) TestIdentifyEntity() {
 	suite.Equal(ErrorCodeSystemError, err.Code)
 }
 
+func (suite *DefaultEntityProviderTestSuite) TestGetLinkedEntities() {
+	holders := []providers.Entity{{ID: "e1", OUHandle: "sales"}, {ID: "e2", OUHandle: "support"}}
+	suite.mockService.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").Return(holders, nil).Once()
+
+	got, err := suite.provider.GetLinkedEntities("idp-a", "sub-1")
+	suite.Nil(err)
+	suite.Require().Len(got, 2)
+	suite.Equal("sales", got[0].OUHandle)
+	suite.Equal("support", got[1].OUHandle)
+
+	suite.mockService.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").
+		Return(nil, errors.New("db error")).Once()
+
+	got, err = suite.provider.GetLinkedEntities("idp-a", "sub-1")
+	suite.Nil(got)
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorCodeSystemError, err.Code)
+}
+
 func (suite *DefaultEntityProviderTestSuite) TestGetEntity() {
 	expected := &providers.Entity{
 		ID:       testEntityID,
@@ -83,6 +102,31 @@ func (suite *DefaultEntityProviderTestSuite) TestGetEntity() {
 		Return(nil, entity.ErrEntityNotFound).Once()
 
 	e, err = suite.provider.GetEntity(testEntityID)
+	suite.Nil(e)
+	suite.NotNil(err)
+	suite.Equal(ErrorCodeEntityNotFound, err.Code)
+}
+
+// A profile read goes to the entity service's profile read, so it never loads the runtime row.
+func (suite *DefaultEntityProviderTestSuite) TestGetEntityProfile() {
+	expected := &providers.Entity{
+		ID:       testEntityID,
+		Category: providers.EntityCategoryUser,
+		Type:     "customer",
+	}
+
+	suite.mockService.On("GetEntityProfile", mock.Anything, testEntityID).Return(expected, nil).Once()
+
+	e, err := suite.provider.GetEntityProfile(testEntityID)
+	suite.Nil(err)
+	suite.Equal(testEntityID, e.ID)
+	suite.Equal(providers.EntityCategory("user"), e.Category)
+	suite.mockService.AssertNotCalled(suite.T(), "GetEntity", mock.Anything, mock.Anything)
+
+	suite.mockService.On("GetEntityProfile", mock.Anything, testEntityID).
+		Return(nil, entity.ErrEntityNotFound).Once()
+
+	e, err = suite.provider.GetEntityProfile(testEntityID)
 	suite.Nil(e)
 	suite.NotNil(err)
 	suite.Equal(ErrorCodeEntityNotFound, err.Code)

@@ -81,11 +81,10 @@ export default function UseCaseBranchCards() {
   return (
     <Box
       sx={{
-        display: 'flex',
-        flexWrap: 'wrap',
+        // Columns share the row and wrap below 240px, so the cards fill whatever width the page gives them.
+        display: 'grid',
         gap: '1.25rem',
-        justifyContent: 'flex-start',
-        maxWidth: '900px',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
         width: '100%',
       }}
     >

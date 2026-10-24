@@ -5,7 +5,6 @@ package resource
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -278,7 +277,7 @@ func (s *FileBasedResourceStoreTestSuite) TestGetResourceAndLists_WithData() {
 	fileStore, ok := s.store.(*fileBasedResourceStore)
 	assert.True(s.T(), ok)
 
-	parentID := "rs-data_root"
+	parentID := "rs-data:root"
 	rs := &providers.ResourceServer{
 		ID:        "rs-data",
 		Name:      "Data Server",
@@ -289,6 +288,7 @@ func (s *FileBasedResourceStoreTestSuite) TestGetResourceAndLists_WithData() {
 				Name:        "Root",
 				Handle:      "root",
 				Description: "Root resource",
+				Permission:  "root",
 				Actions: []providers.Action{
 					{Name: "Read", Handle: "read"},
 				},
@@ -299,6 +299,7 @@ func (s *FileBasedResourceStoreTestSuite) TestGetResourceAndLists_WithData() {
 				Description:  "Child resource",
 				Parent:       &parentID,
 				ParentHandle: "root",
+				Permission:   "root:child",
 				Actions: []providers.Action{
 					{Name: "Write", Handle: "write"},
 				},
@@ -309,19 +310,19 @@ func (s *FileBasedResourceStoreTestSuite) TestGetResourceAndLists_WithData() {
 	err := fileStore.Create("rs-data", rs)
 	assert.NoError(s.T(), err)
 
-	resource, err := s.store.GetResource(s.ctx, "root", "rs-data")
-	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), "rs-data_root", resource.ID)
-	assert.Equal(s.T(), "Root", resource.Name)
+	// A bare handle is not an ID.
+	_, err = s.store.GetResource(s.ctx, "root", "rs-data")
+	assert.ErrorIs(s.T(), err, errResourceNotFound)
 
-	resource, err = s.store.GetResource(s.ctx, "rs-data_root", "rs-data")
+	resource, err := s.store.GetResource(s.ctx, "rs-data:root", "rs-data")
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), "rs-data_root", resource.ID)
+	assert.Equal(s.T(), "rs-data:root", resource.ID)
+	assert.Equal(s.T(), "Root", resource.Name)
 
 	resources, err := s.store.GetResourceList(s.ctx, "rs-data", 10, 0)
 	assert.NoError(s.T(), err)
 	assert.Len(s.T(), resources, 1)
-	assert.Equal(s.T(), "rs-data_root", resources[0].ID)
+	assert.Equal(s.T(), "rs-data:root", resources[0].ID)
 
 	resources, err = s.store.GetResourceListByParent(s.ctx, "rs-data", nil, 10, 0)
 	assert.NoError(s.T(), err)
@@ -330,7 +331,7 @@ func (s *FileBasedResourceStoreTestSuite) TestGetResourceAndLists_WithData() {
 	resources, err = s.store.GetResourceListByParent(s.ctx, "rs-data", &parentID, 10, 0)
 	assert.NoError(s.T(), err)
 	assert.Len(s.T(), resources, 1)
-	assert.Equal(s.T(), "rs-data_child", resources[0].ID)
+	assert.Equal(s.T(), "rs-data:root:child", resources[0].ID)
 
 	count, err := s.store.GetResourceListCount(s.ctx, "rs-data")
 	assert.NoError(s.T(), err)
@@ -345,7 +346,7 @@ func (s *FileBasedResourceStoreTestSuite) TestGetActionListAndCounts_WithData() 
 	fileStore, ok := s.store.(*fileBasedResourceStore)
 	assert.True(s.T(), ok)
 
-	parentID := "rs-data_root"
+	parentID := "rs-data:root"
 	rs := &providers.ResourceServer{
 		ID:        "rs-data",
 		Name:      "Data Server",
@@ -353,8 +354,9 @@ func (s *FileBasedResourceStoreTestSuite) TestGetActionListAndCounts_WithData() 
 		Delimiter: ":",
 		Resources: []providers.Resource{
 			{
-				Name:   "Root",
-				Handle: "root",
+				Name:       "Root",
+				Handle:     "root",
+				Permission: "root",
 				Actions: []providers.Action{
 					{Name: "Read", Handle: "read"},
 				},
@@ -364,6 +366,7 @@ func (s *FileBasedResourceStoreTestSuite) TestGetActionListAndCounts_WithData() 
 				Handle:       "child",
 				Parent:       &parentID,
 				ParentHandle: "root",
+				Permission:   "root:child",
 				Actions: []providers.Action{
 					{Name: "Write", Handle: "write"},
 				},
@@ -374,14 +377,14 @@ func (s *FileBasedResourceStoreTestSuite) TestGetActionListAndCounts_WithData() 
 	err := fileStore.Create("rs-data", rs)
 	assert.NoError(s.T(), err)
 
-	rootID := fmt.Sprintf("%s_%s", rs.ID, rs.Resources[0].Handle)
-	rootActionID := fmt.Sprintf("%s_%s_%s", rs.ID, rs.Resources[0].Handle, rs.Resources[0].Actions[0].Handle)
+	rootID := declarativeResourceID(rs, rs.Resources[0].Permission)
+	rootActionID := declarativeActionID(rs, rs.Resources[0].Permission, rs.Resources[0].Actions[0].Handle)
 
 	action, err := s.store.GetAction(s.ctx, rootActionID, "rs-data", nil)
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), rootActionID, action.ID)
 
-	childID := fmt.Sprintf("%s_%s", rs.ID, rs.Resources[1].Handle)
+	childID := declarativeResourceID(rs, rs.Resources[1].Permission)
 
 	// A nil resource ID selects resource server level actions, of which there are none because
 	// declarative resource servers declare actions only under resources.
@@ -412,6 +415,93 @@ func (s *FileBasedResourceStoreTestSuite) TestGetActionListAndCounts_WithData() 
 	assert.Equal(s.T(), 1, count)
 }
 
+// TestHandleRepeatedUnderDifferentParents verifies that a handle repeated under different parents
+// gives each resource its own ID.
+func (s *FileBasedResourceStoreTestSuite) TestHandleRepeatedUnderDifferentParents() {
+	fileStore, ok := s.store.(*fileBasedResourceStore)
+	assert.True(s.T(), ok)
+
+	rs, err := parseToResourceServer([]byte(`
+id: rs-repeat
+name: Repeat Server
+identifier: api
+ouId: ou1
+resources:
+  - { name: Product A, handle: product-a }
+  - { name: Org A, handle: org, parent: product-a, actions: [{ name: View, handle: view }] }
+  - { name: Product B, handle: product-b }
+  - { name: Org B, handle: org, parent: product-b, actions: [{ name: Edit, handle: edit }] }
+`))
+	assert.NoError(s.T(), err)
+	assert.NoError(s.T(), ProcessResourceServer(rs))
+	assert.NoError(s.T(), fileStore.Create(rs.ID, rs))
+
+	for _, tc := range []struct {
+		parentID, orgID, orgName, actionID string
+	}{
+		{"rs-repeat:product-a", "rs-repeat:product-a:org", "Org A", "rs-repeat:product-a:org:view"},
+		{"rs-repeat:product-b", "rs-repeat:product-b:org", "Org B", "rs-repeat:product-b:org:edit"},
+	} {
+		children, err := s.store.GetResourceListByParent(s.ctx, rs.ID, &tc.parentID, 10, 0)
+		assert.NoError(s.T(), err)
+		assert.Len(s.T(), children, 1)
+		assert.Equal(s.T(), tc.orgID, children[0].ID)
+		assert.Equal(s.T(), &tc.parentID, children[0].Parent)
+
+		org, err := s.store.GetResource(s.ctx, tc.orgID, rs.ID)
+		assert.NoError(s.T(), err)
+		assert.Equal(s.T(), tc.orgName, org.Name)
+		assert.Equal(s.T(), &tc.parentID, org.Parent)
+
+		parent, err := s.store.GetResource(s.ctx, tc.parentID, rs.ID)
+		assert.NoError(s.T(), err)
+		assert.Nil(s.T(), parent.Parent)
+
+		actions, err := s.store.GetActionList(s.ctx, rs.ID, &tc.orgID, "", 10, 0)
+		assert.NoError(s.T(), err)
+		assert.Len(s.T(), actions, 1)
+		assert.Equal(s.T(), tc.actionID, actions[0].ID)
+	}
+}
+
+// TestGetActionScopedToResourceServerAndResource verifies that GetAction searches only the given
+// resource server and resource.
+func (s *FileBasedResourceStoreTestSuite) TestGetActionScopedToResourceServerAndResource() {
+	fileStore, ok := s.store.(*fileBasedResourceStore)
+	assert.True(s.T(), ok)
+
+	rs, err := parseToResourceServer([]byte(`
+id: rs-scope
+name: Scope Server
+identifier: api
+ouId: ou1
+resources:
+  - { name: Product A, handle: product-a }
+  - { name: Org A, handle: org, parent: product-a, actions: [{ name: View A, handle: view }] }
+  - { name: Product B, handle: product-b }
+  - { name: Org B, handle: org, parent: product-b, actions: [{ name: View B, handle: view }] }
+`))
+	assert.NoError(s.T(), err)
+	assert.NoError(s.T(), ProcessResourceServer(rs))
+	assert.NoError(s.T(), fileStore.Create(rs.ID, rs))
+
+	orgA, orgB := "rs-scope:product-a:org", "rs-scope:product-b:org"
+	actionA := "rs-scope:product-a:org:view"
+
+	action, err := s.store.GetAction(s.ctx, actionA, rs.ID, &orgA)
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), "View A", action.Name)
+
+	_, err = s.store.GetAction(s.ctx, "view", rs.ID, &orgB)
+	assert.ErrorIs(s.T(), err, errActionNotFound, "An action is not found by its bare handle")
+
+	_, err = s.store.GetAction(s.ctx, actionA, rs.ID, &orgB)
+	assert.ErrorIs(s.T(), err, errActionNotFound, "An action is not found under another resource")
+
+	_, err = s.store.GetAction(s.ctx, actionA, "other-rs", nil)
+	assert.ErrorIs(s.T(), err, errActionNotFound, "An action is not found under another resource server")
+}
+
 func (s *FileBasedResourceStoreTestSuite) TestGetActionList_FilterByKind() {
 	fileStore, ok := s.store.(*fileBasedResourceStore)
 	assert.True(s.T(), ok)
@@ -423,8 +513,9 @@ func (s *FileBasedResourceStoreTestSuite) TestGetActionList_FilterByKind() {
 		Delimiter: ":",
 		Resources: []providers.Resource{
 			{
-				Name:   "Root",
-				Handle: "root",
+				Name:       "Root",
+				Handle:     "root",
+				Permission: "root",
 				Actions: []providers.Action{
 					{Name: "Create User", Handle: "create_user", Kind: providers.ActionKindTool},
 					{Name: "User List", Handle: "user_list", Kind: providers.ActionKindResource},
@@ -436,7 +527,7 @@ func (s *FileBasedResourceStoreTestSuite) TestGetActionList_FilterByKind() {
 	err := fileStore.Create("rs-mcp", rs)
 	assert.NoError(s.T(), err)
 
-	rootID := fmt.Sprintf("%s_%s", rs.ID, rs.Resources[0].Handle)
+	rootID := declarativeResourceID(rs, rs.Resources[0].Permission)
 
 	// Empty kind returns all actions.
 	all, err := s.store.GetActionList(s.ctx, "rs-mcp", &rootID, "", 10, 0)
@@ -482,8 +573,9 @@ func (s *FileBasedResourceStoreTestSuite) TestCheckActionHandleExists_WithData()
 		Delimiter: ":",
 		Resources: []providers.Resource{
 			{
-				Name:   "Root",
-				Handle: "root",
+				Name:       "Root",
+				Handle:     "root",
+				Permission: "root",
 				Actions: []providers.Action{
 					{Name: "Read", Handle: "read"},
 				},

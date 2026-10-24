@@ -18,10 +18,19 @@ func NewOTPServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *OTPServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &OTPServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -89,7 +98,7 @@ type OTPServiceInterfaceMock_GenerateOTP_Call struct {
 //   - recipient string
 //   - recipientAttr string
 //   - otpCfg *common.OTPConfig
-func (_e *OTPServiceInterfaceMock_Expecter) GenerateOTP(ctx interface{}, recipient interface{}, recipientAttr interface{}, otpCfg interface{}) *OTPServiceInterfaceMock_GenerateOTP_Call {
+func (_e *OTPServiceInterfaceMock_Expecter) GenerateOTP(ctx any, recipient any, recipientAttr any, otpCfg any) *OTPServiceInterfaceMock_GenerateOTP_Call {
 	return &OTPServiceInterfaceMock_GenerateOTP_Call{Call: _e.mock.On("GenerateOTP", ctx, recipient, recipientAttr, otpCfg)}
 }
 
@@ -169,7 +178,7 @@ type OTPServiceInterfaceMock_VerifyOTP_Call struct {
 // VerifyOTP is a helper method to define mock.On call
 //   - ctx context.Context
 //   - request common.VerifyOTPDTO
-func (_e *OTPServiceInterfaceMock_Expecter) VerifyOTP(ctx interface{}, request interface{}) *OTPServiceInterfaceMock_VerifyOTP_Call {
+func (_e *OTPServiceInterfaceMock_Expecter) VerifyOTP(ctx any, request any) *OTPServiceInterfaceMock_VerifyOTP_Call {
 	return &OTPServiceInterfaceMock_VerifyOTP_Call{Call: _e.mock.On("VerifyOTP", ctx, request)}
 }
 

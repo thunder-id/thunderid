@@ -13,11 +13,15 @@ import (
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 const (
 	paramTypeTranslation    = "Translation"
 	resourceTypeTranslation = "translation"
+	// namespacePartPrefix names a part holding one namespace's translations, after the
+	// /translations/ns/{namespace} routes.
+	namespacePartPrefix = "ns/"
 )
 
 // translationExporter implements declarativeresource.ResourceExporter for translations.
@@ -124,6 +128,47 @@ func (e *translationExporter) ValidateResource(ctx context.Context,
 	}
 
 	return id, nil
+}
+
+// ViewResource shows an exported language as the resolve read of its translations returns it,
+// holding only what the document says: no system defaults and no fallback language are layered in.
+func (e *translationExporter) ViewResource(_ context.Context, document *yaml.Node) (interface{}, error) {
+	return declarativeresource.DecodeView(document, func(exported *LanguageTranslations) (interface{}, error) {
+		translations := exported.Translations
+		if translations == nil {
+			translations = map[string]map[string]string{}
+		}
+		return viewTranslations(exported.Language, translations), nil
+	})
+}
+
+// ViewResourceParts shows a part ns/{namespace} for each namespace the language's translations hold,
+// narrowed to that namespace as the read's namespace filter narrows it.
+func (e *translationExporter) ViewResourceParts(_ context.Context, document *yaml.Node) (
+	map[string]interface{}, error) {
+	return declarativeresource.DecodeView(document, func(exported *LanguageTranslations) (
+		map[string]interface{}, error) {
+		parts := make(map[string]interface{}, len(exported.Translations))
+		for namespace, keys := range exported.Translations {
+			parts[namespacePartPrefix+namespace] = viewTranslations(exported.Language,
+				map[string]map[string]string{namespace: keys})
+		}
+		return parts, nil
+	})
+}
+
+// viewTranslations shows translations as the resolve read returns them.
+func viewTranslations(language string,
+	translations map[string]map[string]string) *providers.LanguageTranslationsResponse {
+	total := 0
+	for _, keys := range translations {
+		total += len(keys)
+	}
+	return &providers.LanguageTranslationsResponse{
+		Language:     language,
+		TotalResults: total,
+		Translations: translations,
+	}
 }
 
 // GetResourceRules returns the parameterization rules for translations.

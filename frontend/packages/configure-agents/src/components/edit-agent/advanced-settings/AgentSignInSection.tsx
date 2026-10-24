@@ -37,11 +37,11 @@ export default function AgentSignInSection({
     onFieldChange('allowedAgentTypes', enabled ? [DEFAULT_AGENT_TYPE_HANDLE] : []);
   };
 
-  const toggleLabel = t('agents:edit.advanced.agentSignIn.toggle.label', 'Enable Agent Sign-In');
+  const toggleLabel = t('agents:edit.advanced.agentSignIn.toggle.label', 'Enable agent sign-in');
 
   return (
     <SettingsCard
-      title={t('agents:edit.advanced.agentSignIn.title', 'Agent Sign-In')}
+      title={t('agents:edit.advanced.agentSignIn.title', 'Agent sign-in')}
       description={t(
         'agents:edit.advanced.agentSignIn.description',
         'Allow agents to sign in through this agent using the sign-in flow.',

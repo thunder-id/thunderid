@@ -18,10 +18,19 @@ func NewJWTServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *JWTServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &JWTServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -86,7 +95,7 @@ type JWTServiceInterfaceMock_GenerateJWT_Call struct {
 //   - claims map[string]interface{}
 //   - typ string
 //   - alg string
-func (_e *JWTServiceInterfaceMock_Expecter) GenerateJWT(ctx interface{}, sub interface{}, iss interface{}, validityPeriod interface{}, claims interface{}, typ interface{}, alg interface{}) *JWTServiceInterfaceMock_GenerateJWT_Call {
+func (_e *JWTServiceInterfaceMock_Expecter) GenerateJWT(ctx any, sub any, iss any, validityPeriod any, claims any, typ any, alg any) *JWTServiceInterfaceMock_GenerateJWT_Call {
 	return &JWTServiceInterfaceMock_GenerateJWT_Call{Call: _e.mock.On("GenerateJWT", ctx, sub, iss, validityPeriod, claims, typ, alg)}
 }
 
@@ -172,7 +181,7 @@ type JWTServiceInterfaceMock_VerifyJWT_Call struct {
 //   - jwtToken string
 //   - expectedAud string
 //   - expectedIss string
-func (_e *JWTServiceInterfaceMock_Expecter) VerifyJWT(ctx interface{}, jwtToken interface{}, expectedAud interface{}, expectedIss interface{}) *JWTServiceInterfaceMock_VerifyJWT_Call {
+func (_e *JWTServiceInterfaceMock_Expecter) VerifyJWT(ctx any, jwtToken any, expectedAud any, expectedIss any) *JWTServiceInterfaceMock_VerifyJWT_Call {
 	return &JWTServiceInterfaceMock_VerifyJWT_Call{Call: _e.mock.On("VerifyJWT", ctx, jwtToken, expectedAud, expectedIss)}
 }
 
@@ -241,7 +250,7 @@ type JWTServiceInterfaceMock_VerifyJWTSignature_Call struct {
 // VerifyJWTSignature is a helper method to define mock.On call
 //   - ctx context.Context
 //   - jwtToken string
-func (_e *JWTServiceInterfaceMock_Expecter) VerifyJWTSignature(ctx interface{}, jwtToken interface{}) *JWTServiceInterfaceMock_VerifyJWTSignature_Call {
+func (_e *JWTServiceInterfaceMock_Expecter) VerifyJWTSignature(ctx any, jwtToken any) *JWTServiceInterfaceMock_VerifyJWTSignature_Call {
 	return &JWTServiceInterfaceMock_VerifyJWTSignature_Call{Call: _e.mock.On("VerifyJWTSignature", ctx, jwtToken)}
 }
 
@@ -301,7 +310,7 @@ type JWTServiceInterfaceMock_VerifyJWTSignatureWithJWKS_Call struct {
 //   - ctx context.Context
 //   - jwtToken string
 //   - jwksURL string
-func (_e *JWTServiceInterfaceMock_Expecter) VerifyJWTSignatureWithJWKS(ctx interface{}, jwtToken interface{}, jwksURL interface{}) *JWTServiceInterfaceMock_VerifyJWTSignatureWithJWKS_Call {
+func (_e *JWTServiceInterfaceMock_Expecter) VerifyJWTSignatureWithJWKS(ctx any, jwtToken any, jwksURL any) *JWTServiceInterfaceMock_VerifyJWTSignatureWithJWKS_Call {
 	return &JWTServiceInterfaceMock_VerifyJWTSignatureWithJWKS_Call{Call: _e.mock.On("VerifyJWTSignatureWithJWKS", ctx, jwtToken, jwksURL)}
 }
 
@@ -366,7 +375,7 @@ type JWTServiceInterfaceMock_VerifyJWTSignatureWithPublicKey_Call struct {
 //   - ctx context.Context
 //   - jwtToken string
 //   - keyRef providers.KeyRef
-func (_e *JWTServiceInterfaceMock_Expecter) VerifyJWTSignatureWithPublicKey(ctx interface{}, jwtToken interface{}, keyRef interface{}) *JWTServiceInterfaceMock_VerifyJWTSignatureWithPublicKey_Call {
+func (_e *JWTServiceInterfaceMock_Expecter) VerifyJWTSignatureWithPublicKey(ctx any, jwtToken any, keyRef any) *JWTServiceInterfaceMock_VerifyJWTSignatureWithPublicKey_Call {
 	return &JWTServiceInterfaceMock_VerifyJWTSignatureWithPublicKey_Call{Call: _e.mock.On("VerifyJWTSignatureWithPublicKey", ctx, jwtToken, keyRef)}
 }
 
@@ -433,7 +442,7 @@ type JWTServiceInterfaceMock_VerifyJWTWithJWKS_Call struct {
 //   - jwksURL string
 //   - expectedAud string
 //   - expectedIss string
-func (_e *JWTServiceInterfaceMock_Expecter) VerifyJWTWithJWKS(ctx interface{}, jwtToken interface{}, jwksURL interface{}, expectedAud interface{}, expectedIss interface{}) *JWTServiceInterfaceMock_VerifyJWTWithJWKS_Call {
+func (_e *JWTServiceInterfaceMock_Expecter) VerifyJWTWithJWKS(ctx any, jwtToken any, jwksURL any, expectedAud any, expectedIss any) *JWTServiceInterfaceMock_VerifyJWTWithJWKS_Call {
 	return &JWTServiceInterfaceMock_VerifyJWTWithJWKS_Call{Call: _e.mock.On("VerifyJWTWithJWKS", ctx, jwtToken, jwksURL, expectedAud, expectedIss)}
 }
 
@@ -510,7 +519,7 @@ type JWTServiceInterfaceMock_VerifyJWTWithPublicKey_Call struct {
 //   - keyRef providers.KeyRef
 //   - expectedAud string
 //   - expectedIss string
-func (_e *JWTServiceInterfaceMock_Expecter) VerifyJWTWithPublicKey(ctx interface{}, jwtToken interface{}, keyRef interface{}, expectedAud interface{}, expectedIss interface{}) *JWTServiceInterfaceMock_VerifyJWTWithPublicKey_Call {
+func (_e *JWTServiceInterfaceMock_Expecter) VerifyJWTWithPublicKey(ctx any, jwtToken any, keyRef any, expectedAud any, expectedIss any) *JWTServiceInterfaceMock_VerifyJWTWithPublicKey_Call {
 	return &JWTServiceInterfaceMock_VerifyJWTWithPublicKey_Call{Call: _e.mock.On("VerifyJWTWithPublicKey", ctx, jwtToken, keyRef, expectedAud, expectedIss)}
 }
 

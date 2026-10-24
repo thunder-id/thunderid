@@ -37,7 +37,7 @@ describe('IdentityAssertionsSection', () => {
     it('should render the card title and description', () => {
       render(<IdentityAssertionsSection oauth2Config={baseConfig} onTokenConfigChange={mockOnTokenConfigChange} />);
 
-      expect(screen.getByText('Identity Assertions (ID-JAG)')).toBeInTheDocument();
+      expect(screen.getByText('Identity assertions (ID-JAG)')).toBeInTheDocument();
       expect(
         screen.getByText(
           "Issue signed assertions of the signed-in user's identity that external services accept for token issuance.",
@@ -48,7 +48,7 @@ describe('IdentityAssertionsSection', () => {
     it('should render with the switch off and body hidden when idJag is undefined', () => {
       render(<IdentityAssertionsSection oauth2Config={baseConfig} onTokenConfigChange={mockOnTokenConfigChange} />);
 
-      const toggle = screen.getByLabelText('Identity Assertions (ID-JAG)');
+      const toggle = screen.getByLabelText('Identity assertions (ID-JAG)');
       expect(toggle).not.toBeChecked();
       expect(screen.queryByText('Allowed audiences *')).not.toBeInTheDocument();
     });
@@ -65,7 +65,7 @@ describe('IdentityAssertionsSection', () => {
 
       render(<IdentityAssertionsSection oauth2Config={oauth2Config} onTokenConfigChange={mockOnTokenConfigChange} />);
 
-      const toggle = screen.getByLabelText('Identity Assertions (ID-JAG)');
+      const toggle = screen.getByLabelText('Identity assertions (ID-JAG)');
       expect(toggle).toBeChecked();
       expect(screen.getByText('Allowed audiences *')).toBeInTheDocument();
       expect(screen.getByText('https://api.example.com')).toBeInTheDocument();
@@ -78,7 +78,7 @@ describe('IdentityAssertionsSection', () => {
 
       render(<IdentityAssertionsSection oauth2Config={baseConfig} onTokenConfigChange={mockOnTokenConfigChange} />);
 
-      await user.click(screen.getByLabelText('Identity Assertions (ID-JAG)'));
+      await user.click(screen.getByLabelText('Identity assertions (ID-JAG)'));
 
       expect(mockOnTokenConfigChange).toHaveBeenCalledTimes(1);
       expect(mockOnTokenConfigChange).toHaveBeenCalledWith(
@@ -101,7 +101,7 @@ describe('IdentityAssertionsSection', () => {
 
       render(<IdentityAssertionsSection oauth2Config={oauth2Config} onTokenConfigChange={mockOnTokenConfigChange} />);
 
-      await user.click(screen.getByLabelText('Identity Assertions (ID-JAG)'));
+      await user.click(screen.getByLabelText('Identity assertions (ID-JAG)'));
 
       expect(mockOnTokenConfigChange).toHaveBeenCalledTimes(1);
       expect(mockOnTokenConfigChange).toHaveBeenCalledWith({
@@ -123,7 +123,7 @@ describe('IdentityAssertionsSection', () => {
 
       render(<IdentityAssertionsSection oauth2Config={oauth2Config} onTokenConfigChange={mockOnTokenConfigChange} />);
 
-      await user.click(screen.getByLabelText('Identity Assertions (ID-JAG)'));
+      await user.click(screen.getByLabelText('Identity assertions (ID-JAG)'));
 
       expect(mockOnTokenConfigChange).toHaveBeenCalledTimes(1);
       expect(mockOnTokenConfigChange).toHaveBeenCalledWith({
@@ -307,13 +307,13 @@ describe('IdentityAssertionsSection', () => {
     });
   });
 
-  describe('Public Client Guard', () => {
+  describe('Public client Guard', () => {
     it('should disable the toggle when publicClient is true', () => {
       const oauth2Config: OAuth2Config = {...baseConfig, publicClient: true};
 
       render(<IdentityAssertionsSection oauth2Config={oauth2Config} onTokenConfigChange={mockOnTokenConfigChange} />);
 
-      expect(screen.getByLabelText('Identity Assertions (ID-JAG)')).toBeDisabled();
+      expect(screen.getByLabelText('Identity assertions (ID-JAG)')).toBeDisabled();
     });
 
     it('should disable the toggle when tokenEndpointAuthMethod is none', () => {
@@ -321,7 +321,7 @@ describe('IdentityAssertionsSection', () => {
 
       render(<IdentityAssertionsSection oauth2Config={oauth2Config} onTokenConfigChange={mockOnTokenConfigChange} />);
 
-      expect(screen.getByLabelText('Identity Assertions (ID-JAG)')).toBeDisabled();
+      expect(screen.getByLabelText('Identity assertions (ID-JAG)')).toBeDisabled();
     });
 
     it('should show a tooltip explaining why the toggle is disabled', async () => {
@@ -330,19 +330,19 @@ describe('IdentityAssertionsSection', () => {
 
       render(<IdentityAssertionsSection oauth2Config={oauth2Config} onTokenConfigChange={mockOnTokenConfigChange} />);
 
-      const toggle = screen.getByLabelText('Identity Assertions (ID-JAG)');
+      const toggle = screen.getByLabelText('Identity assertions (ID-JAG)');
       const tooltipTrigger = toggle.closest('.MuiSwitch-root')?.parentElement;
       await user.hover(tooltipTrigger!);
 
       expect(
-        await screen.findByText('Identity assertions require a confidential client. Turn off Public Client to enable.'),
+        await screen.findByText('Identity assertions require a confidential client. Turn off public client to enable.'),
       ).toBeInTheDocument();
     });
 
     it('should not disable the toggle when the client is confidential', () => {
       render(<IdentityAssertionsSection oauth2Config={baseConfig} onTokenConfigChange={mockOnTokenConfigChange} />);
 
-      expect(screen.getByLabelText('Identity Assertions (ID-JAG)')).not.toBeDisabled();
+      expect(screen.getByLabelText('Identity assertions (ID-JAG)')).not.toBeDisabled();
     });
 
     it('should disable the toggle when the disabled prop is set', () => {
@@ -350,7 +350,7 @@ describe('IdentityAssertionsSection', () => {
         <IdentityAssertionsSection oauth2Config={baseConfig} onTokenConfigChange={mockOnTokenConfigChange} disabled />,
       );
 
-      expect(screen.getByLabelText('Identity Assertions (ID-JAG)')).toBeDisabled();
+      expect(screen.getByLabelText('Identity assertions (ID-JAG)')).toBeDisabled();
     });
   });
 

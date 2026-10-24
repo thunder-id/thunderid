@@ -18,10 +18,19 @@ func NewPresentationDefinitionServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *PresentationDefinitionServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &PresentationDefinitionServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type PresentationDefinitionServiceInterfaceMock_CreatePresentationDefinition_Cal
 // CreatePresentationDefinition is a helper method to define mock.On call
 //   - ctx context.Context
 //   - dto *presentation.PresentationDefinitionDTO
-func (_e *PresentationDefinitionServiceInterfaceMock_Expecter) CreatePresentationDefinition(ctx interface{}, dto interface{}) *PresentationDefinitionServiceInterfaceMock_CreatePresentationDefinition_Call {
+func (_e *PresentationDefinitionServiceInterfaceMock_Expecter) CreatePresentationDefinition(ctx any, dto any) *PresentationDefinitionServiceInterfaceMock_CreatePresentationDefinition_Call {
 	return &PresentationDefinitionServiceInterfaceMock_CreatePresentationDefinition_Call{Call: _e.mock.On("CreatePresentationDefinition", ctx, dto)}
 }
 
@@ -136,7 +145,7 @@ type PresentationDefinitionServiceInterfaceMock_DeletePresentationDefinition_Cal
 // DeletePresentationDefinition is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *PresentationDefinitionServiceInterfaceMock_Expecter) DeletePresentationDefinition(ctx interface{}, id interface{}) *PresentationDefinitionServiceInterfaceMock_DeletePresentationDefinition_Call {
+func (_e *PresentationDefinitionServiceInterfaceMock_Expecter) DeletePresentationDefinition(ctx any, id any) *PresentationDefinitionServiceInterfaceMock_DeletePresentationDefinition_Call {
 	return &PresentationDefinitionServiceInterfaceMock_DeletePresentationDefinition_Call{Call: _e.mock.On("DeletePresentationDefinition", ctx, id)}
 }
 
@@ -206,7 +215,7 @@ type PresentationDefinitionServiceInterfaceMock_GetPresentationDefinition_Call s
 // GetPresentationDefinition is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *PresentationDefinitionServiceInterfaceMock_Expecter) GetPresentationDefinition(ctx interface{}, id interface{}) *PresentationDefinitionServiceInterfaceMock_GetPresentationDefinition_Call {
+func (_e *PresentationDefinitionServiceInterfaceMock_Expecter) GetPresentationDefinition(ctx any, id any) *PresentationDefinitionServiceInterfaceMock_GetPresentationDefinition_Call {
 	return &PresentationDefinitionServiceInterfaceMock_GetPresentationDefinition_Call{Call: _e.mock.On("GetPresentationDefinition", ctx, id)}
 }
 
@@ -276,7 +285,7 @@ type PresentationDefinitionServiceInterfaceMock_GetPresentationDefinitionByHandl
 // GetPresentationDefinitionByHandle is a helper method to define mock.On call
 //   - ctx context.Context
 //   - handle string
-func (_e *PresentationDefinitionServiceInterfaceMock_Expecter) GetPresentationDefinitionByHandle(ctx interface{}, handle interface{}) *PresentationDefinitionServiceInterfaceMock_GetPresentationDefinitionByHandle_Call {
+func (_e *PresentationDefinitionServiceInterfaceMock_Expecter) GetPresentationDefinitionByHandle(ctx any, handle any) *PresentationDefinitionServiceInterfaceMock_GetPresentationDefinitionByHandle_Call {
 	return &PresentationDefinitionServiceInterfaceMock_GetPresentationDefinitionByHandle_Call{Call: _e.mock.On("GetPresentationDefinitionByHandle", ctx, handle)}
 }
 
@@ -344,7 +353,7 @@ type PresentationDefinitionServiceInterfaceMock_IsPresentationDefinitionDeclarat
 // IsPresentationDefinitionDeclarative is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *PresentationDefinitionServiceInterfaceMock_Expecter) IsPresentationDefinitionDeclarative(ctx interface{}, id interface{}) *PresentationDefinitionServiceInterfaceMock_IsPresentationDefinitionDeclarative_Call {
+func (_e *PresentationDefinitionServiceInterfaceMock_Expecter) IsPresentationDefinitionDeclarative(ctx any, id any) *PresentationDefinitionServiceInterfaceMock_IsPresentationDefinitionDeclarative_Call {
 	return &PresentationDefinitionServiceInterfaceMock_IsPresentationDefinitionDeclarative_Call{Call: _e.mock.On("IsPresentationDefinitionDeclarative", ctx, id)}
 }
 
@@ -413,7 +422,7 @@ type PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummar
 
 // ListPresentationDefinitionSummaries is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *PresentationDefinitionServiceInterfaceMock_Expecter) ListPresentationDefinitionSummaries(ctx interface{}) *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummaries_Call {
+func (_e *PresentationDefinitionServiceInterfaceMock_Expecter) ListPresentationDefinitionSummaries(ctx any) *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummaries_Call {
 	return &PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummaries_Call{Call: _e.mock.On("ListPresentationDefinitionSummaries", ctx)}
 }
 
@@ -477,7 +486,7 @@ type PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitions_Call
 
 // ListPresentationDefinitions is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *PresentationDefinitionServiceInterfaceMock_Expecter) ListPresentationDefinitions(ctx interface{}) *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitions_Call {
+func (_e *PresentationDefinitionServiceInterfaceMock_Expecter) ListPresentationDefinitions(ctx any) *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitions_Call {
 	return &PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitions_Call{Call: _e.mock.On("ListPresentationDefinitions", ctx)}
 }
 
@@ -543,7 +552,7 @@ type PresentationDefinitionServiceInterfaceMock_UpdatePresentationDefinition_Cal
 //   - ctx context.Context
 //   - id string
 //   - dto *presentation.PresentationDefinitionDTO
-func (_e *PresentationDefinitionServiceInterfaceMock_Expecter) UpdatePresentationDefinition(ctx interface{}, id interface{}, dto interface{}) *PresentationDefinitionServiceInterfaceMock_UpdatePresentationDefinition_Call {
+func (_e *PresentationDefinitionServiceInterfaceMock_Expecter) UpdatePresentationDefinition(ctx any, id any, dto any) *PresentationDefinitionServiceInterfaceMock_UpdatePresentationDefinition_Call {
 	return &PresentationDefinitionServiceInterfaceMock_UpdatePresentationDefinition_Call{Call: _e.mock.On("UpdatePresentationDefinition", ctx, id, dto)}
 }
 

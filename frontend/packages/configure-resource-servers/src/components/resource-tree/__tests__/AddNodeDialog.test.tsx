@@ -123,7 +123,7 @@ describe('AddNodeDialog', () => {
   it('renders the Add Action title when mode is server-action', () => {
     renderWithProviders(<AddNodeDialog {...defaultProps} mode="server-action" />);
 
-    expect(screen.getByText('Add Action')).toBeInTheDocument();
+    expect(screen.getByText('Add action')).toBeInTheDocument();
   });
 
   it('does not render when open is false', () => {

@@ -196,7 +196,7 @@ describe('GroupEditPage', () => {
 
     // Resolved through the i18n catalog, not the raw (unlocalized) error message.
     expect(screen.getByText('Failed to load group')).toBeInTheDocument();
-    expect(screen.getByText('Back to Groups')).toBeInTheDocument();
+    expect(screen.getByText('Back to groups')).toBeInTheDocument();
   });
 
   it('should render not found state when no group', () => {
@@ -222,7 +222,7 @@ describe('GroupEditPage', () => {
     const user = userEvent.setup();
     renderWithProviders(<GroupEditPage />);
 
-    await user.click(screen.getByText('Back to Groups'));
+    await user.click(screen.getByText('Back to groups'));
 
     expect(mockNavigate).toHaveBeenCalledWith('/groups');
   });
@@ -315,7 +315,7 @@ describe('GroupEditPage', () => {
     const user = userEvent.setup();
     renderWithProviders(<GroupEditPage />);
 
-    await user.click(screen.getByText('Back to Groups'));
+    await user.click(screen.getByText('Back to groups'));
 
     expect(mockNavigate).toHaveBeenCalledWith('/groups');
   });
@@ -531,7 +531,7 @@ describe('GroupEditPage', () => {
       expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText('Save Changes'));
+    await user.click(screen.getByText('Save changes'));
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith({
@@ -600,7 +600,7 @@ describe('GroupEditPage', () => {
     const user = userEvent.setup();
     renderWithProviders(<GroupEditPage />);
 
-    await user.click(screen.getByText('Back to Groups'));
+    await user.click(screen.getByText('Back to groups'));
 
     expect(mockNavigate).toHaveBeenCalledWith('/groups');
   });
@@ -610,7 +610,7 @@ describe('GroupEditPage', () => {
     const user = userEvent.setup();
     renderWithProviders(<GroupEditPage />);
 
-    await user.click(screen.getByText('Back to Groups'));
+    await user.click(screen.getByText('Back to groups'));
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/groups');

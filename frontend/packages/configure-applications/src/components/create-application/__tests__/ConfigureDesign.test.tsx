@@ -83,16 +83,16 @@ describe('ConfigureDesign', () => {
     });
   });
 
-  describe('Sign-In Approach', () => {
+  describe('Sign-in approach', () => {
     it('renders both approach options and reflects the selected one', () => {
       renderComponent({
         showApproachSection: true,
         selectedApproach: ApplicationCreateFlowSignInApproach.EMBEDDED,
       });
 
-      expect(screen.getByText('Sign-In Approach')).toBeInTheDocument();
+      expect(screen.getByText('Sign-in approach')).toBeInTheDocument();
       expect(screen.getByText(/Redirect to .* Gate/)).toBeInTheDocument();
-      expect(screen.getByText('Bring Your Own UI')).toBeInTheDocument();
+      expect(screen.getByText('Bring your own UI')).toBeInTheDocument();
       expect(screen.getAllByRole('radio')[1]).toBeChecked();
     });
 
@@ -119,7 +119,7 @@ describe('ConfigureDesign', () => {
       });
 
       expect(screen.getByText(/Redirect to .* Gate/)).toBeInTheDocument();
-      expect(screen.queryByText('Bring Your Own UI')).not.toBeInTheDocument();
+      expect(screen.queryByText('Bring your own UI')).not.toBeInTheDocument();
       expect(screen.getAllByRole('radio')).toHaveLength(1);
     });
   });
@@ -243,12 +243,12 @@ describe('ConfigureDesign', () => {
   describe('Layout selection', () => {
     const mockLayoutDetails = {
       id: 'layout-1',
-      displayName: 'Split Screen',
+      displayName: 'Split screen',
       layout: {screens: {}},
     };
 
     const mockLayoutsList = [
-      {id: 'layout-1', displayName: 'Split Screen'},
+      {id: 'layout-1', displayName: 'Split screen'},
       {id: 'layout-2', displayName: 'Centered Card'},
     ];
 

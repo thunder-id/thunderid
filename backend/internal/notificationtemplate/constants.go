@@ -34,3 +34,17 @@ const (
 	maxDisplayNameLength = 255
 	maxDescriptionLength = 512
 )
+
+// systemEndpointReferrer is the dependency ResourceType for a reserved-template dependent. Local, not
+// a shared type: it only surfaces (humanized) in the delete-conflict summary.
+const systemEndpointReferrer = "systemEndpoint"
+
+// systemReservedTemplates are the templates required by built-in out-of-flow endpoints.
+var systemReservedTemplates = []reservedTemplate{
+	{
+		channel:     ChannelTypeSMS,
+		handle:      "otp",
+		consumerID:  "sms-otp-authentication",
+		displayName: "SMS OTP authentication",
+	},
+}

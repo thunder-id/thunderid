@@ -56,7 +56,7 @@ describe('TokenValidationSection', () => {
         </TestWrapper>,
       );
 
-      expect(screen.getByTestId('card-title')).toHaveTextContent('Token Validity');
+      expect(screen.getByTestId('card-title')).toHaveTextContent('Token validity');
       expect(screen.getByTestId('card-description')).toHaveTextContent(
         'Configure how long tokens remain valid before expiration',
       );
@@ -115,7 +115,7 @@ describe('TokenValidationSection', () => {
         </TestWrapper>,
       );
 
-      expect(screen.getByTestId('card-title')).toHaveTextContent('Token Validity');
+      expect(screen.getByTestId('card-title')).toHaveTextContent('Token validity');
       expect(screen.getByTestId('card-description')).toHaveTextContent(
         'Configure how long tokens remain valid before expiration',
       );
@@ -152,7 +152,7 @@ describe('TokenValidationSection', () => {
         </TestWrapper>,
       );
 
-      expect(screen.getByTestId('card-title')).toHaveTextContent('Token Validity');
+      expect(screen.getByTestId('card-title')).toHaveTextContent('Token validity');
       expect(screen.getByTestId('card-description')).toHaveTextContent(
         'Configure how long tokens remain valid before expiration',
       );
@@ -168,7 +168,7 @@ describe('TokenValidationSection', () => {
       );
 
       // Switch to ID Token tab
-      await user.click(screen.getByRole('tab', {name: /ID Token/i}));
+      await user.click(screen.getByRole('tab', {name: /ID token/i}));
 
       const input = document.getElementById('idTokenValidity-input');
       expect(input).toHaveValue(3600);
@@ -184,7 +184,7 @@ describe('TokenValidationSection', () => {
       );
 
       // Switch to ID Token tab
-      await user.click(screen.getByRole('tab', {name: /ID Token/i}));
+      await user.click(screen.getByRole('tab', {name: /ID token/i}));
 
       const input = document.getElementById('idTokenValidity-input');
       expect(input).toHaveValue(900);
@@ -201,7 +201,7 @@ describe('TokenValidationSection', () => {
         </TestWrapper>,
       );
 
-      await user.click(screen.getByRole('tab', {name: /Refresh Token/i}));
+      await user.click(screen.getByRole('tab', {name: /Refresh token/i}));
 
       const input = document.getElementById('refreshTokenValidity-input');
       expect(input).toHaveValue(86400);
@@ -216,7 +216,7 @@ describe('TokenValidationSection', () => {
         </TestWrapper>,
       );
 
-      await user.click(screen.getByRole('tab', {name: /Refresh Token/i}));
+      await user.click(screen.getByRole('tab', {name: /Refresh token/i}));
 
       const input = document.getElementById('refreshTokenValidity-input');
       expect(input).toHaveValue(172800);
@@ -282,7 +282,7 @@ describe('TokenValidationSection', () => {
       );
 
       // Switch to ID Token tab
-      await user.click(screen.getByRole('tab', {name: /ID Token/i}));
+      await user.click(screen.getByRole('tab', {name: /ID token/i}));
 
       const input = document.getElementById('idTokenValidity-input') as HTMLInputElement;
       await user.clear(input);
@@ -300,7 +300,7 @@ describe('TokenValidationSection', () => {
         </TestWrapper>,
       );
 
-      await user.click(screen.getByRole('tab', {name: /Refresh Token/i}));
+      await user.click(screen.getByRole('tab', {name: /Refresh token/i}));
 
       const input = document.getElementById('refreshTokenValidity-input') as HTMLInputElement;
       await user.clear(input);

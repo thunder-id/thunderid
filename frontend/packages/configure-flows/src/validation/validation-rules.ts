@@ -289,13 +289,18 @@ function getNodeExecutorName(node: Node): string | undefined {
   return (node.data as StepData | undefined)?.action?.executor?.name;
 }
 
-function createGraphErrorNotification(errorId: string, i18nKey: string, node: Node): Notification {
+function createGraphErrorNotification(
+  errorId: string,
+  i18nKey: string,
+  node: Node,
+  type: NotificationType = NotificationType.ERROR,
+): Notification {
   const message = createElement(Trans, {
     i18nKey,
     values: {id: node.id},
     components: {code: createElement('code')},
   });
-  const notification = new Notification(errorId, message, NotificationType.ERROR);
+  const notification = new Notification(errorId, message, type);
 
   notification.addResource(node as unknown as Resource);
 
@@ -446,6 +451,172 @@ export const signOutConfirmActionRule: GraphValidationRule = (nodes: Node[], edg
 };
 
 /**
+ * Collects every element in a step that raises the linking refusal action,
+ * including ones nested inside containers such as a form block.
+ */
+function collectLinkingRejectElements(elements: FlowElement[] | undefined): FlowElement[] {
+  if (!elements) {
+    return [];
+  }
+
+  return elements.flatMap((element) => [
+    ...((element as FlowElement & {actionType?: string}).actionType === PromptActionTypes.Reject ? [element] : []),
+    ...collectLinkingRejectElements(element.components),
+  ]);
+}
+
+/**
+ * The linking node reads the refusal, so the button raising it has to lead back
+ * to that node: a prompt forwards its action type to whatever the action points
+ * at, and no further. Wired elsewhere, or left unwired, the refusal never
+ * arrives and the node reads the pass as a verification nobody completed.
+ *
+ * Only the refusal is checked here. The confirmation must lead to a CALL step
+ * that runs a verification flow, or to verification steps in this flow that
+ * return to the linking node, which the server enforces when the flow is saved.
+ *
+ * Mirrors the handle convention the serializer uses, where a button's outgoing
+ * edge leaves the step from `${elementId}_NEXT`.
+ */
+export const linkingRejectActionRule: GraphValidationRule = (nodes: Node[], edges: Edge[]): Notification[] => {
+  const notifications: Notification[] = [];
+
+  const linkingNodeIds = new Set(
+    nodes.filter((node) => getNodeExecutorName(node) === ExecutionTypes.AccountLinking).map((node) => node.id),
+  );
+
+  // Without a linking node in the flow, a REJECT button belongs to something else.
+  if (linkingNodeIds.size === 0) {
+    return notifications;
+  }
+
+  for (const node of nodes) {
+    const elements = collectLinkingRejectElements((node.data as StepData | undefined)?.components);
+
+    for (const element of elements) {
+      const handleId = `${element.id}${VisualFlowConstants.FLOW_BUILDER_NEXT_HANDLE_SUFFIX}`;
+      const edge = edges.find((candidate) => candidate.source === node.id && candidate.sourceHandle === handleId);
+
+      if (!edge) {
+        notifications.push(
+          createGraphElementNotification(
+            `${element.id}_LINKING_REJECT_NOT_CONNECTED`,
+            'flows:core.validation.linking.rejectNotConnected',
+            element,
+            NotificationType.WARNING,
+          ),
+        );
+        continue;
+      }
+
+      if (!linkingNodeIds.has(edge.target)) {
+        notifications.push(
+          createGraphElementNotification(
+            `${element.id}_LINKING_REJECT_INVALID_TARGET`,
+            'flows:core.validation.linking.rejectInvalidTarget',
+            element,
+            NotificationType.WARNING,
+          ),
+        );
+      }
+    }
+  }
+
+  return notifications;
+};
+
+const FEDERATED_EXECUTORS: ReadonlySet<string> = new Set([
+  ExecutionTypes.OAuthExecutor,
+  ExecutionTypes.OIDCAuthExecutor,
+  ExecutionTypes.GoogleFederation,
+  ExecutionTypes.GithubFederation,
+]);
+
+const FAILURE_HANDLE = 'failure';
+
+function isSuccessEdge(edge: Edge): boolean {
+  return (
+    edge.sourceHandle !== FAILURE_HANDLE &&
+    !edge.sourceHandle?.endsWith(VisualFlowConstants.FLOW_BUILDER_INCOMPLETE_HANDLE_SUFFIX)
+  );
+}
+
+/**
+ * Mirrors the server's save checks on the linking node's own handles, so the author sees them
+ * while drawing. The prompt is reached only through `onIncomplete`, so a node without it can never
+ * ask. A failure path that returns to the node must first pass a federated sign-in: only a fresh
+ * sign-in replaces the verified account's provider state, and without one the node runs again on
+ * what the failed attempt left behind. A federated executor's success edge is the only edge not
+ * followed, since it is the one that follows a sign-in.
+ *
+ * Warnings rather than errors, like `linkingRejectActionRule`: the server refuses the save either
+ * way, so these must not block the author mid-draw.
+ */
+export const linkingExecutorWiringRule: GraphValidationRule = (nodes: Node[], edges: Edge[]): Notification[] => {
+  const notifications: Notification[] = [];
+  const executorNames = new Map(nodes.map((node) => [node.id, getNodeExecutorName(node)]));
+
+  for (const node of nodes) {
+    if (executorNames.get(node.id) !== ExecutionTypes.AccountLinking) {
+      continue;
+    }
+
+    const outgoing = edges.filter((edge) => edge.source === node.id);
+
+    if (
+      !outgoing.some((edge) => edge.sourceHandle?.endsWith(VisualFlowConstants.FLOW_BUILDER_INCOMPLETE_HANDLE_SUFFIX))
+    ) {
+      notifications.push(
+        createGraphErrorNotification(
+          `${node.id}_LINKING_INCOMPLETE_NOT_CONNECTED`,
+          'flows:core.validation.linking.incompleteNotConnected',
+          node,
+          NotificationType.WARNING,
+        ),
+      );
+    }
+
+    const failureTarget = outgoing.find((edge) => edge.sourceHandle === FAILURE_HANDLE)?.target;
+
+    if (!failureTarget) {
+      continue;
+    }
+
+    const visited = new Set<string>();
+    const pending = [failureTarget];
+    let loopsBack = false;
+
+    while (pending.length > 0 && !loopsBack) {
+      const current = pending.pop()!;
+
+      if (current === node.id) {
+        loopsBack = true;
+      } else if (!visited.has(current)) {
+        visited.add(current);
+        const isFederated = FEDERATED_EXECUTORS.has(executorNames.get(current) ?? '');
+
+        edges
+          .filter((edge) => edge.source === current && !(isFederated && isSuccessEdge(edge)))
+          .forEach((edge) => pending.push(edge.target));
+      }
+    }
+
+    if (loopsBack) {
+      notifications.push(
+        createGraphErrorNotification(
+          `${node.id}_LINKING_FAILURE_LOOP`,
+          'flows:core.validation.linking.failureLoop',
+          node,
+          NotificationType.WARNING,
+        ),
+      );
+    }
+  }
+
+  return notifications;
+};
+
+/**
  * Collects every rich text that is wired as an interactive link, including ones
  * nested inside containers such as a form block.
  */
@@ -509,7 +680,12 @@ export const richTextActionWiringRule: GraphValidationRule = (nodes: Node[], edg
  */
 export const COMMON_GRAPH_VALIDATION_RULES: GraphValidationRule[] = [richTextActionWiringRule];
 
-export const GRAPH_VALIDATION_RULES: GraphValidationRule[] = [ssoPairingRule, ...COMMON_GRAPH_VALIDATION_RULES];
+export const GRAPH_VALIDATION_RULES: GraphValidationRule[] = [
+  ssoPairingRule,
+  linkingRejectActionRule,
+  linkingExecutorWiringRule,
+  ...COMMON_GRAPH_VALIDATION_RULES,
+];
 
 /**
  * Rules that apply to sign-out flows.

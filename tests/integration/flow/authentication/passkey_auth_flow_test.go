@@ -194,7 +194,7 @@ var (
 		// The flow executor takes its allowed origins from the application, not from server config.
 		PasskeyAllowedOrigins: []string{passkeyFlowOrigin},
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+			"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 		},
 	}
 )

@@ -64,7 +64,7 @@ describe('ConfigureTemplateIdentity', () => {
       const user = userEvent.setup();
       renderComponent();
 
-      await user.type(screen.getByPlaceholderText('e.g. OTP Verification'), 'A');
+      await user.type(screen.getByPlaceholderText('e.g. OTP verification'), 'A');
 
       expect(onDisplayNameChange).toHaveBeenCalledWith('A');
       expect(onHandleChange).toHaveBeenCalledWith('a');
@@ -74,7 +74,7 @@ describe('ConfigureTemplateIdentity', () => {
       const user = userEvent.setup();
       renderComponent({handleEdited: true});
 
-      await user.type(screen.getByPlaceholderText('e.g. OTP Verification'), 'A');
+      await user.type(screen.getByPlaceholderText('e.g. OTP verification'), 'A');
 
       expect(onDisplayNameChange).toHaveBeenCalledWith('A');
       expect(onHandleChange).not.toHaveBeenCalled();

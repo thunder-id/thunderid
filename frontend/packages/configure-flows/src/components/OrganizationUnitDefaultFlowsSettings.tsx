@@ -132,7 +132,7 @@ export default function OrganizationUnitDefaultFlowsSettings(
         {...renderProps}
         flowType={FlowType.AUTHENTICATION}
         field="authFlowId"
-        title={t('organizationUnits:edit.flows.labels.authenticationFlow', 'Sign-in Flow')}
+        title={t('organizationUnits:edit.flows.labels.authenticationFlow', 'Sign-in flow')}
         description={t(
           'organizationUnits:edit.flows.authenticationFlow.description',
           'Choose the default flow that handles user login and authentication for applications under this organization unit.',
@@ -149,7 +149,7 @@ export default function OrganizationUnitDefaultFlowsSettings(
         flowType={FlowType.REGISTRATION}
         field="registrationFlowId"
         enabledField="isRegistrationFlowEnabled"
-        title={t('organizationUnits:edit.flows.labels.registrationFlow', 'Sign-up Flow')}
+        title={t('organizationUnits:edit.flows.labels.registrationFlow', 'Sign-up flow')}
         description={t(
           'organizationUnits:edit.flows.registrationFlow.description',
           'Choose the default flow that handles user sign-up and account creation for applications under this organization unit.',
@@ -166,7 +166,7 @@ export default function OrganizationUnitDefaultFlowsSettings(
         flowType={FlowType.RECOVERY}
         field="recoveryFlowId"
         enabledField="isRecoveryFlowEnabled"
-        title={t('organizationUnits:edit.flows.labels.recoveryFlow', 'Recovery Flow')}
+        title={t('organizationUnits:edit.flows.labels.recoveryFlow', 'Recovery flow')}
         description={t(
           'organizationUnits:edit.flows.recoveryFlow.description',
           'Choose the default flow that handles password and account recovery for applications under this organization unit.',
@@ -182,7 +182,7 @@ export default function OrganizationUnitDefaultFlowsSettings(
         {...renderProps}
         flowType={FlowType.SIGNOUT}
         field="signOutFlowId"
-        title={t('organizationUnits:edit.flows.labels.signOutFlow', 'Sign Out Flow')}
+        title={t('organizationUnits:edit.flows.labels.signOutFlow', 'Sign out flow')}
         description={t(
           'organizationUnits:edit.flows.signOutFlow.description',
           'Choose the default flow that handles user sign-out and session termination for applications under this organization unit.',

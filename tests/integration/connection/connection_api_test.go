@@ -156,10 +156,11 @@ type vonageConnectionRequest struct {
 }
 
 type smsGatewayConnectionRequest struct {
-	Name        string `json:"name"`
-	URL         string `json:"url"`
-	HTTPMethod  string `json:"httpMethod,omitempty"`
-	HTTPHeaders string `json:"httpHeaders,omitempty"`
+	Name           string                  `json:"name"`
+	URL            string                  `json:"url"`
+	HTTPMethod     string                  `json:"httpMethod,omitempty"`
+	HTTPHeaders    string                  `json:"httpHeaders,omitempty"`
+	Authentication *outboundAuthentication `json:"authentication,omitempty"`
 }
 
 type smtpConnectionRequest struct {
@@ -203,6 +204,7 @@ type connectionResponse struct {
 	APISecret    string `json:"apiSecret,omitempty"`
 	SenderID     string `json:"senderId,omitempty"`
 	URL          string `json:"url,omitempty"`
+	HTTPHeaders  string `json:"httpHeaders,omitempty"`
 
 	Host        string `json:"host,omitempty"`
 	Port        int    `json:"port,omitempty"`
@@ -434,12 +436,18 @@ func (s *ConnectionAPITestSuite) TestVonageCreateAndGet() {
 func (s *ConnectionAPITestSuite) TestSMSGatewayCRUDRoundTrip() {
 	created := s.createConnection("sms-gateway", smsGatewayConnectionRequest{
 		Name: "Test SMS Gateway", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+		Authentication: &outboundAuthentication{Type: "api_key", Properties: map[string]string{
+			"X-First-Key": "first-secret", "X-Second-Key": "second-secret",
+		}},
 	})
 	defer s.deleteConnection("sms-gateway", created.ID)
 
 	s.Equal("sms-gateway", created.Type)
-	// SMS gateway fields are non-secret and round-trip in plaintext.
 	s.Equal("https://sms.example.com/send", created.URL)
+	s.Require().NotNil(created.Authentication)
+	s.Equal(map[string]string{
+		"X-First-Key": maskedSecretValue, "X-Second-Key": maskedSecretValue,
+	}, created.Authentication.Properties)
 
 	res, err := doRequest(http.MethodGet, "/connections/sms-gateway/"+created.ID, nil)
 	s.Require().NoError(err)
@@ -447,6 +455,149 @@ func (s *ConnectionAPITestSuite) TestSMSGatewayCRUDRoundTrip() {
 	var fetched connectionResponse
 	s.Require().NoError(res.decode(&fetched))
 	s.Equal("https://sms.example.com/send", fetched.URL)
+	s.Equal(created.Authentication.Properties, fetched.Authentication.Properties)
+
+	updateRes, err := doRequest(http.MethodPut, "/connections/sms-gateway/"+created.ID,
+		smsGatewayConnectionRequest{
+			Name: "Test SMS Gateway", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+			Authentication: &outboundAuthentication{Type: "api_key", Properties: map[string]string{
+				"X-Second-Key": maskedSecretValue, "X-Third-Key": "third-secret",
+			}},
+		})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, updateRes.status, string(updateRes.body))
+	var updated connectionResponse
+	s.Require().NoError(updateRes.decode(&updated))
+	s.Require().NotNil(updated.Authentication)
+	s.Equal(map[string]string{
+		"X-Second-Key": maskedSecretValue, "X-Third-Key": maskedSecretValue,
+	}, updated.Authentication.Properties)
+
+	deleteHeadersRes, err := doRequest(http.MethodPut, "/connections/sms-gateway/"+created.ID,
+		map[string]interface{}{
+			"name":           "Test SMS Gateway",
+			"url":            "https://sms.example.com/send",
+			"httpMethod":     "POST",
+			"authentication": outboundAuthentication{Type: "none"},
+		})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, deleteHeadersRes.status, string(deleteHeadersRes.body))
+	var withoutHeaders connectionResponse
+	s.Require().NoError(deleteHeadersRes.decode(&withoutHeaders))
+	s.Require().NotNil(withoutHeaders.Authentication)
+	s.Equal("none", withoutHeaders.Authentication.Type)
+}
+
+func (s *ConnectionAPITestSuite) TestSMSGatewayAuthenticationUpdateRequiresFreshHeadersForNewURL() {
+	created := s.createConnection("sms-gateway", smsGatewayConnectionRequest{
+		Name: "SMS Gateway Credential Update", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+		Authentication: &outboundAuthentication{Type: "api_key", Properties: map[string]string{
+			"X-API-Key": "original-key",
+		}},
+	})
+	defer s.deleteConnection("sms-gateway", created.ID)
+	path := "/connections/sms-gateway/" + created.ID
+
+	unchanged, err := doRequest(http.MethodPut, path, smsGatewayConnectionRequest{
+		Name: "SMS Gateway Credential Update", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, unchanged.status, string(unchanged.body))
+	var retained connectionResponse
+	s.Require().NoError(unchanged.decode(&retained))
+	s.Equal(maskedSecretValue, retained.Authentication.Properties["X-Api-Key"])
+
+	for _, authentication := range []*outboundAuthentication{
+		nil,
+		{Type: "api_key", Properties: map[string]string{"X-API-Key": maskedSecretValue}},
+	} {
+		rejected, requestErr := doRequest(http.MethodPut, path, smsGatewayConnectionRequest{
+			Name: "SMS Gateway Credential Update", URL: "https://other.example.com/send", HTTPMethod: "POST",
+			Authentication: authentication,
+		})
+		s.Require().NoError(requestErr)
+		s.Equal(http.StatusBadRequest, rejected.status, string(rejected.body))
+	}
+
+	updated, err := doRequest(http.MethodPut, path, smsGatewayConnectionRequest{
+		Name: "SMS Gateway Credential Update", URL: "https://other.example.com/send", HTTPMethod: "POST",
+		Authentication: &outboundAuthentication{Type: "api_key", Properties: map[string]string{
+			"X-API-Key": "replacement-key",
+		}},
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, updated.status, string(updated.body))
+	var result connectionResponse
+	s.Require().NoError(updated.decode(&result))
+	s.Equal("https://other.example.com/send", result.URL)
+	s.Equal(maskedSecretValue, result.Authentication.Properties["X-Api-Key"])
+}
+
+func (s *ConnectionAPITestSuite) TestSMSGatewayRejectsInvalidAPIKeyHeaders() {
+	tests := []struct {
+		name    string
+		headers map[string]string
+	}{
+		{"invalid name", map[string]string{"X Key": "secret"}},
+		{"invalid value", map[string]string{"X-Key": "line1\r\nline2"}},
+		{"reserved header", map[string]string{"Connection": "keep-alive"}},
+		{"masked value", map[string]string{"X-Key": maskedSecretValue}},
+		{"duplicate canonical names", map[string]string{"x-key": "one", "X-Key": "two"}},
+	}
+	for _, test := range tests {
+		s.Run(test.name, func() {
+			response, err := doRequest(http.MethodPost, "/connections/sms-gateway", smsGatewayConnectionRequest{
+				Name: "Invalid SMS Gateway Headers", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+				Authentication: &outboundAuthentication{Type: "api_key", Properties: test.headers},
+			})
+			s.Require().NoError(err)
+			s.Equal(http.StatusBadRequest, response.status, string(response.body))
+		})
+	}
+}
+
+func (s *ConnectionAPITestSuite) TestSMSGatewayGeneralHeadersRemainSeparateFromAuthentication() {
+	created := s.createConnection("sms-gateway", smsGatewayConnectionRequest{
+		Name: "SMS Gateway Separate Headers", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+		HTTPHeaders: "X-Campaign-ID: campaign-1",
+		Authentication: &outboundAuthentication{Type: "api_key", Properties: map[string]string{
+			"X-API-Key": "secret",
+		}},
+	})
+	defer s.deleteConnection("sms-gateway", created.ID)
+	s.Equal("X-Campaign-ID: campaign-1", created.HTTPHeaders)
+	s.Equal(maskedSecretValue, created.Authentication.Properties["X-Api-Key"])
+
+	response, err := doRequest(http.MethodPut, "/connections/sms-gateway/"+created.ID,
+		smsGatewayConnectionRequest{
+			Name: "SMS Gateway Separate Headers", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+			HTTPHeaders: "X-Campaign-ID: campaign-2",
+		})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, response.status, string(response.body))
+	var updated connectionResponse
+	s.Require().NoError(response.decode(&updated))
+	s.Equal("X-Campaign-ID: campaign-2", updated.HTTPHeaders)
+	s.Equal(maskedSecretValue, updated.Authentication.Properties["X-Api-Key"])
+}
+
+func (s *ConnectionAPITestSuite) TestSMSGatewayURLChangeRetainsGeneralHeaders() {
+	created := s.createConnection("sms-gateway", smsGatewayConnectionRequest{
+		Name: "SMS Gateway URL Change", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+		HTTPHeaders: "X-Campaign-ID: campaign-1",
+	})
+	defer s.deleteConnection("sms-gateway", created.ID)
+
+	response, err := doRequest(http.MethodPut, "/connections/sms-gateway/"+created.ID,
+		smsGatewayConnectionRequest{
+			Name: "SMS Gateway URL Change", URL: "https://other.example.com/send", HTTPMethod: "POST",
+		})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, response.status, string(response.body))
+	var updated connectionResponse
+	s.Require().NoError(response.decode(&updated))
+	s.Equal("https://other.example.com/send", updated.URL)
+	s.Equal("X-Campaign-ID: campaign-1", updated.HTTPHeaders)
 }
 
 func (s *ConnectionAPITestSuite) TestSMTPCRUDRoundTripWithSecretMasking() {
@@ -493,6 +644,38 @@ func (s *ConnectionAPITestSuite) TestSMTPCRUDRoundTripWithSecretMasking() {
 	s.Equal("implicit", updated.TLS)
 	s.Require().NotNil(updated.Authentication)
 	s.Equal(maskedSecretValue, updated.Authentication.Properties["password"])
+}
+
+func (s *ConnectionAPITestSuite) TestSMTPAuthenticationUpdateRequiresFreshPasswordForNewHost() {
+	created := s.createConnection("email-smtp", smtpConnectionRequest{
+		Name: "SMTP Credential Update", Host: "smtp.example.com", Port: 587,
+		FromAddress: "noreply@example.com", TLS: "starttls", Authentication: basicAuth("mailer", "original"),
+	})
+	defer s.deleteConnection("email-smtp", created.ID)
+	path := "/connections/email-smtp/" + created.ID
+
+	for _, authentication := range []*outboundAuthentication{
+		nil,
+		basicAuth("mailer", maskedSecretValue),
+	} {
+		rejected, err := doRequest(http.MethodPut, path, smtpConnectionRequest{
+			Name: "SMTP Credential Update", Host: "other.example.com", Port: 587,
+			FromAddress: "noreply@example.com", TLS: "starttls", Authentication: authentication,
+		})
+		s.Require().NoError(err)
+		s.Equal(http.StatusBadRequest, rejected.status, string(rejected.body))
+	}
+
+	updated, err := doRequest(http.MethodPut, path, smtpConnectionRequest{
+		Name: "SMTP Credential Update", Host: "other.example.com", Port: 587,
+		FromAddress: "noreply@example.com", TLS: "starttls", Authentication: basicAuth("mailer", "replacement"),
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, updated.status, string(updated.body))
+	var result connectionResponse
+	s.Require().NoError(updated.decode(&result))
+	s.Equal("other.example.com", result.Host)
+	s.Equal(maskedSecretValue, result.Authentication.Properties["password"])
 }
 
 // Switching the method off must discard the stored credential, so switching back requires the
@@ -1876,13 +2059,65 @@ func (s *ConnectionAPITestSuite) TestAttributeConfigurationWithExistingAuthoriza
 	s.Require().Equal(http.StatusOK, updateRes.status, string(updateRes.body))
 }
 
-// An Authorization header is how a gateway carries a credential today.
+// General headers remain separate from the outbound authentication block.
 func (s *ConnectionAPITestSuite) TestSMSGatewayAuthorizationHeaderAllowed() {
 	created := s.createConnection("sms-gateway", smsGatewayConnectionRequest{
 		Name: "Gateway Header Auth", URL: "https://sms.example.com/send", HTTPMethod: "POST",
 		HTTPHeaders: "Authorization: Bearer token",
 	})
+	s.Equal("Authorization: Bearer token", created.HTTPHeaders)
 	s.deleteConnection("sms-gateway", created.ID)
+}
+
+func (s *ConnectionAPITestSuite) TestSMSGatewayBearerAndBasicAuthentication() {
+	for _, test := range []struct {
+		name           string
+		authentication *outboundAuthentication
+		visible        map[string]string
+	}{
+		{"bearer", &outboundAuthentication{Type: "bearer",
+			Properties: map[string]string{"token": "secret-token"}},
+			map[string]string{"token": maskedSecretValue}},
+		{"basic", basicAuth("sms-user", "secret-password"),
+			map[string]string{"username": "sms-user", "password": maskedSecretValue}},
+	} {
+		s.Run(test.name, func() {
+			created := s.createConnection("sms-gateway", smsGatewayConnectionRequest{
+				Name: "SMS Gateway " + test.name, URL: "https://sms.example.com/send", HTTPMethod: "POST",
+				Authentication: test.authentication,
+			})
+			defer s.deleteConnection("sms-gateway", created.ID)
+			s.Require().NotNil(created.Authentication)
+			s.Equal(test.name, created.Authentication.Type)
+			s.Equal(test.visible, created.Authentication.Properties)
+		})
+	}
+}
+
+func (s *ConnectionAPITestSuite) TestSMSGatewayRejectsInsecureAuthenticatedURLAndAuthorizationOverlap() {
+	for _, authentication := range []*outboundAuthentication{
+		{Type: "bearer", Properties: map[string]string{"token": "secret-token"}},
+		basicAuth("sms-user", "secret-password"),
+		{Type: "api_key", Properties: map[string]string{"X-API-Key": "secret-key"}},
+	} {
+		response, err := doRequest(http.MethodPost, "/connections/sms-gateway", smsGatewayConnectionRequest{
+			Name: "Insecure SMS Gateway", URL: "http://sms.example.com/send", HTTPMethod: "POST",
+			Authentication: authentication,
+		})
+		s.Require().NoError(err)
+		s.Equal(http.StatusBadRequest, response.status, string(response.body))
+	}
+	for _, authentication := range []*outboundAuthentication{
+		{Type: "bearer", Properties: map[string]string{"token": "secret-token"}},
+		basicAuth("sms-user", "secret-password"),
+	} {
+		response, err := doRequest(http.MethodPost, "/connections/sms-gateway", smsGatewayConnectionRequest{
+			Name: "Overlapping SMS Gateway", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+			HTTPHeaders: "authorization: legacy-value", Authentication: authentication,
+		})
+		s.Require().NoError(err)
+		s.Equal(http.StatusBadRequest, response.status, string(response.body))
+	}
 }
 
 // connectionMetaResponse is the payload of GET /connections/meta.
@@ -1948,11 +2183,17 @@ func (s *ConnectionAPITestSuite) TestConnectionMetaDescribesAuthenticationMethod
 	}
 }
 
-// A vendor whose credentials are a fixed contract offers no choice, so it advertises none.
+// Fixed-credential vendors advertise no methods; SMS gateway supports every HTTP method.
 func (s *ConnectionAPITestSuite) TestConnectionMetaVendorsWithoutConfigurableAuthentication() {
-	for _, vendor := range []string{"twilio", "vonage", "google", "sms-gateway"} {
+	for _, vendor := range []string{"twilio", "vonage", "google"} {
 		s.Empty(s.describeVendor(vendor).Authentication.Methods, vendor)
 	}
+	methods := s.describeVendor("sms-gateway").Authentication.Methods
+	s.Require().Len(methods, 4)
+	s.Equal("none", methods[0].Type)
+	s.Equal("bearer", methods[1].Type)
+	s.Equal("basic", methods[2].Type)
+	s.Equal("api_key", methods[3].Type)
 }
 
 // Without a vendor filter, every registered vendor is described in a stable order.
@@ -1967,7 +2208,7 @@ func (s *ConnectionAPITestSuite) TestConnectionMetaWithoutVendorDescribesEveryVe
 		}
 	}
 	s.Equal([]string{"google", "github", "oidc", "oauth", "twilio", "vonage", "sms-gateway",
-		"email-smtp", "authzen-pdp"}, names)
+		"email-smtp", "authzen-pdp", "http"}, names)
 }
 
 func (s *ConnectionAPITestSuite) TestConnectionMetaRejectsUnknownVendor() {

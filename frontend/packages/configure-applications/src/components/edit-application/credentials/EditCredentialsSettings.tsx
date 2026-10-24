@@ -12,7 +12,7 @@ import type {Application} from '../../../models/application';
 import type {InboundAuthConfig} from '../../../models/inbound-auth';
 import type {AttestationConfig, OAuth2Config} from '../../../models/oauth';
 import {TokenEndpointAuthMethods} from '../../../models/oauth';
-import resolveApplicationType, {isClientCredentialsOnlyGrantSet} from '../../../utils/resolveApplicationType';
+import resolveApplicationType, {isDirectTokenGrantSet} from '../../../utils/resolveApplicationType';
 import ClientSecretSuccessDialog from '../../ClientSecretSuccessDialog';
 import CopyableField from '../../common/CopyableField';
 import RegenerateFlowSecretDialog from '../../RegenerateFlowSecretDialog';
@@ -98,16 +98,14 @@ export default function EditCredentialsSettings({
 
   // Only flow-native apps are issued a Flow Secret and can rotate it: full-stack, custom, or mcp
   // apps using the embedded (non-redirect) sign-in option. Browser (public redirect), mobile
-  // (attestation), and m2m (direct token, including client_credentials-only mcp configs) apps never
-  // hold one. The canonical application type is the discriminator, falling back to the OAuth config
-  // shape for legacy/custom apps.
+  // (attestation), and m2m apps never hold one, nor does any client whose grants are all direct-token
+  // grants (client_credentials or JWT bearer). The canonical application type is the discriminator,
+  // falling back to the OAuth config shape for legacy/custom apps.
   const grantTypes = oauth2Config?.grantTypes ?? [];
   const isFlowNativeClient =
     (resolvedType === 'fullstack' || resolvedType === 'custom' || resolvedType === 'mcp') &&
     (!oauth2Config ||
-      (!oauth2Config.publicClient &&
-        !grantTypes.includes('authorization_code') &&
-        !isClientCredentialsOnlyGrantSet(grantTypes)));
+      (!oauth2Config.publicClient && !grantTypes.includes('authorization_code') && !isDirectTokenGrantSet(grantTypes)));
 
   const handleRegenerateClick = useCallback((): void => {
     setRegenerateDialogOpen(true);
@@ -191,8 +189,8 @@ export default function EditCredentialsSettings({
 
   const showSecretSection = isConfidentialClient || isFlowNativeClient;
   const secretLabel = isConfidentialClient
-    ? t('applications:clientSecret.clientSecretLabel', 'Client Secret')
-    : t('applications:edit.credentials.sections.secret.flowSecretLabel', 'Flow Secret');
+    ? t('applications:clientSecret.clientSecretLabel', 'Client secret')
+    : t('applications:edit.credentials.sections.secret.flowSecretLabel', 'Flow secret');
   const secretHint = isConfidentialClient
     ? t(
         'applications:edit.credentials.sections.secret.hints.clientSecret',

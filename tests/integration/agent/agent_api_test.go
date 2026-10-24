@@ -349,6 +349,39 @@ func (ts *AgentAPITestSuite) TestAgentUpdate() {
 	resp2.Body.Close()
 }
 
+func (ts *AgentAPITestSuite) TestAgentUpdateReportsTheDerivedStatus() {
+	ts.Require().NotEmpty(createdAgentID)
+	encoded, err := json.Marshal(Agent{
+		OUID:        testOUID,
+		Type:        "default",
+		Attributes:  agentAttrs(createdAgentName, nil),
+		Description: "Agent with entity row only",
+	})
+	ts.Require().NoError(err)
+	var body map[string]interface{}
+	ts.Require().NoError(json.Unmarshal(encoded, &body))
+	body["status"] = map[string]interface{}{"value": "SUSPENDED"}
+	payload, err := json.Marshal(body)
+	ts.Require().NoError(err)
+
+	req, err := http.NewRequest(http.MethodPut, testServerURL+agentBasePath+"/"+createdAgentID,
+		bytes.NewReader(payload))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, string(raw))
+
+	var updated struct {
+		Status json.RawMessage `json:"status"`
+	}
+	ts.Require().NoError(json.Unmarshal(raw, &updated))
+	ts.JSONEq(`{"value":"ACTIVE"}`, string(updated.Status), "the update must report the derived status")
+}
+
 func (ts *AgentAPITestSuite) TestAgentUpdate_NameConflict() {
 	// Create a second agent, then try to rename it to the primary agent's name.
 	other := Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs("agent-conflict-temp", nil)}
@@ -475,6 +508,147 @@ func (ts *AgentAPITestSuite) TestCreateAgentWithOAuth() {
 	}
 }
 
+// delegatedAgent builds a delegated agent request with the given grant types.
+func delegatedAgent(name string, grantTypes ...string) Agent {
+	return Agent{
+		OUID:       testOUID,
+		Type:       "default",
+		Attributes: agentAttrs(name, nil),
+		Delegated:  true,
+		InboundAuthConfig: []InboundAuthConfig{
+			{
+				Type: "oauth2",
+				Config: &OAuthAgentConfig{
+					RedirectURIs: []string{"https://agent.example.com/callback"},
+					GrantTypes:   grantTypes,
+				},
+			},
+		},
+	}
+}
+
+func (ts *AgentAPITestSuite) createAgentWithStatus(agent Agent, status int) (Agent, string) {
+	ts.T().Helper()
+	resp, err := doPost(testServerURL+agentBasePath, agent)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	ts.Require().Equal(status, resp.StatusCode, string(body))
+
+	var created Agent
+	_ = json.Unmarshal(body, &created)
+	if created.ID != "" {
+		ts.T().Cleanup(func() { _ = deleteAgent(created.ID) })
+	}
+	var apiErr struct {
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal(body, &apiErr)
+	return created, apiErr.Code
+}
+
+func (ts *AgentAPITestSuite) TestCreateAgent_DelegatedGetsTheDefaultGrants() {
+	created, _ := ts.createAgentWithStatus(delegatedAgent("delegated-defaults"), http.StatusCreated)
+
+	ts.Require().Len(created.InboundAuthConfig, 1)
+	cfg := created.InboundAuthConfig[0].Config
+	ts.Require().NotNil(cfg)
+	ts.Assert().Equal([]string{"client_credentials", "authorization_code", "refresh_token"}, cfg.GrantTypes)
+	ts.Assert().Equal([]string{"code"}, cfg.ResponseTypes)
+	ts.Assert().True(cfg.PKCERequired)
+	ts.Assert().NotEmpty(cfg.ClientSecret)
+}
+
+func (ts *AgentAPITestSuite) TestCreateAgent_DelegatedWithoutAnOAuthConfigNeedsARedirectURI() {
+	agent := delegatedAgent("delegated-no-config")
+	agent.InboundAuthConfig = nil
+
+	_, code := ts.createAgentWithStatus(agent, http.StatusBadRequest)
+
+	// An OAuth config is created for it, and the default authorization code grant it brings needs a
+	// redirect URI that the request had no way to give.
+	ts.Assert().Equal("AGT-1021", code)
+}
+
+func (ts *AgentAPITestSuite) TestCreateAgent_NotDelegatedAlwaysHoldsClientCredentials() {
+	agent := delegatedAgent("not-delegated-grants", "authorization_code")
+	agent.Delegated = false
+	agent.InboundAuthConfig[0].Config.ResponseTypes = []string{"code"}
+
+	created, _ := ts.createAgentWithStatus(agent, http.StatusCreated)
+
+	ts.Require().Len(created.InboundAuthConfig, 1)
+	ts.Assert().Equal([]string{"client_credentials", "authorization_code"},
+		created.InboundAuthConfig[0].Config.GrantTypes)
+}
+
+func (ts *AgentAPITestSuite) TestCreateAgent_DelegatedKeepsRequestedDelegationGrants() {
+	agent := delegatedAgent("delegated-explicit", "authorization_code", "urn:openid:params:grant-type:ciba")
+	agent.InboundAuthConfig[0].Config.ResponseTypes = []string{"code"}
+
+	created, _ := ts.createAgentWithStatus(agent, http.StatusCreated)
+
+	ts.Require().Len(created.InboundAuthConfig, 1)
+	ts.Assert().Equal([]string{"client_credentials", "authorization_code", "urn:openid:params:grant-type:ciba"},
+		created.InboundAuthConfig[0].Config.GrantTypes)
+}
+
+// A public client authenticates with no secret, which client credentials cannot use, so it is not
+// given that grant.
+func (ts *AgentAPITestSuite) TestCreateAgent_PublicClientIsNotGivenClientCredentials() {
+	agent := delegatedAgent("public-client-agent", "authorization_code")
+	agent.Delegated = false
+	config := agent.InboundAuthConfig[0].Config
+	config.ResponseTypes = []string{"code"}
+	config.PKCERequired = true
+	config.PublicClient = true
+	config.TokenEndpointAuthMethod = "none"
+
+	created, _ := ts.createAgentWithStatus(agent, http.StatusCreated)
+
+	ts.Require().Len(created.InboundAuthConfig, 1)
+	ts.Assert().Equal([]string{"authorization_code"}, created.InboundAuthConfig[0].Config.GrantTypes)
+}
+
+// Any one of authorization code, CIBA and token exchange makes an agent delegated. The others are not
+// needed: CIBA signs a user in through the backchannel and issues refresh tokens itself.
+func (ts *AgentAPITestSuite) TestCreateAgent_DelegatedWithoutTheAuthorizationCodeGrant() {
+	const (
+		cibaGrant     = "urn:openid:params:grant-type:ciba"
+		exchangeGrant = "urn:ietf:params:oauth:grant-type:token-exchange"
+	)
+	cases := []struct {
+		name     string
+		requests []string
+		expected []string
+	}{
+		{"CIBAAlone", []string{cibaGrant}, []string{"client_credentials", cibaGrant}},
+		{"CIBAWithRefreshToken", []string{cibaGrant, "refresh_token"},
+			[]string{"client_credentials", cibaGrant, "refresh_token"}},
+		{"TokenExchangeAlone", []string{exchangeGrant}, []string{"client_credentials", exchangeGrant}},
+	}
+
+	for _, tc := range cases {
+		ts.Run(tc.name, func() {
+			agent := delegatedAgent("delegated-no-code-"+tc.name, tc.requests...)
+			// Without the authorization code grant there is no callback to register.
+			agent.InboundAuthConfig[0].Config.RedirectURIs = nil
+
+			created, _ := ts.createAgentWithStatus(agent, http.StatusCreated)
+
+			ts.Require().Len(created.InboundAuthConfig, 1)
+			ts.Assert().Equal(tc.expected, created.InboundAuthConfig[0].Config.GrantTypes)
+		})
+	}
+}
+
+func (ts *AgentAPITestSuite) TestCreateAgent_DelegatedWithoutADelegationGrantIsRejected() {
+	_, code := ts.createAgentWithStatus(delegatedAgent("delegated-refresh-only", "refresh_token"),
+		http.StatusBadRequest)
+
+	ts.Assert().Equal("AGT-1044", code)
+}
+
 // --- creation validation ---
 
 func (ts *AgentAPITestSuite) TestCreateAgent_MissingName() {
@@ -484,6 +658,130 @@ func (ts *AgentAPITestSuite) TestCreateAgent_MissingName() {
 	defer resp.Body.Close()
 	ts.Assert().Equal(http.StatusBadRequest, resp.StatusCode)
 	ts.Assert().Equal("AGT-1015", errorCode(resp))
+}
+
+// TestCreateAgent_NoneAuthWithIDJAGRejected verifies that a public client using the 'none' auth method
+// is rejected with 400 when it uses the jwt-bearer grant or enables ID-JAG, both of which require a
+// confidential client.
+func (ts *AgentAPITestSuite) TestCreateAgent_NoneAuthWithIDJAGRejected() {
+	cases := []struct {
+		name   string
+		config map[string]interface{}
+	}{
+		{
+			name: "jwt-bearer grant",
+			config: map[string]interface{}{
+				"clientId":                "agent_none_jwt_bearer_client",
+				"grantTypes":              []string{"urn:ietf:params:oauth:grant-type:jwt-bearer"},
+				"tokenEndpointAuthMethod": "none",
+				"publicClient":            true,
+			},
+		},
+		{
+			name: "ID-JAG enabled",
+			config: map[string]interface{}{
+				"clientId":                "agent_none_idjag_client",
+				"grantTypes":              []string{"urn:ietf:params:oauth:grant-type:token-exchange"},
+				"tokenEndpointAuthMethod": "none",
+				"publicClient":            true,
+				"token": map[string]interface{}{
+					"idJag": map[string]interface{}{
+						"enabled":          true,
+						"allowedAudiences": []string{"https://target-rs.example.com"},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		ts.Run(tc.name, func() {
+			resp, err := doPost(testServerURL+agentBasePath, map[string]interface{}{
+				"ouId":              testOUID,
+				"type":              "default",
+				"attributes":        map[string]interface{}{"name": "none-auth-" + tc.config["clientId"].(string)},
+				"inboundAuthConfig": []map[string]interface{}{{"type": "oauth2", "config": tc.config}},
+			})
+			ts.Require().NoError(err)
+			defer resp.Body.Close()
+			ts.Require().Equal(http.StatusBadRequest, resp.StatusCode, readBody(resp))
+			ts.Assert().Equal("AGT-1021", errorCode(resp))
+		})
+	}
+}
+
+// TestCreateAgent_InvalidIDJAGConfigRejected verifies that a confidential agent client enabling ID-JAG
+// is rejected with 400 when it lacks the token-exchange grant, through which ID-JAGs are issued, or a
+// non-blank allowed audience.
+func (ts *AgentAPITestSuite) TestCreateAgent_InvalidIDJAGConfigRejected() {
+	tokenExchange := "urn:ietf:params:oauth:grant-type:token-exchange"
+	cases := []struct {
+		name       string
+		clientID   string
+		grantTypes []string
+		audiences  []string
+		wantKey    string
+	}{
+		{
+			name:       "without token exchange",
+			clientID:   "agent_idjag_no_exchange_client",
+			grantTypes: []string{"client_credentials"},
+			audiences:  []string{"https://target-rs.example.com"},
+			wantKey:    "error.agentservice.idjag_requires_token_exchange_description",
+		},
+		{
+			name:       "without allowed audience",
+			clientID:   "agent_idjag_no_audience_client",
+			grantTypes: []string{"client_credentials", tokenExchange},
+			audiences:  []string{},
+			wantKey:    "error.agentservice.idjag_requires_allowed_audience_description",
+		},
+		{
+			name:       "with blank allowed audience",
+			clientID:   "agent_idjag_blank_audience_client",
+			grantTypes: []string{"client_credentials", tokenExchange},
+			audiences:  []string{"  "},
+			wantKey:    "error.agentservice.idjag_requires_allowed_audience_description",
+		},
+	}
+
+	for _, tc := range cases {
+		ts.Run(tc.name, func() {
+			resp, err := doPost(testServerURL+agentBasePath, map[string]interface{}{
+				"ouId":       testOUID,
+				"type":       "default",
+				"attributes": map[string]interface{}{"name": "invalid-idjag-" + tc.clientID},
+				"inboundAuthConfig": []map[string]interface{}{{
+					"type": "oauth2",
+					"config": map[string]interface{}{
+						"clientId":                tc.clientID,
+						"grantTypes":              tc.grantTypes,
+						"tokenEndpointAuthMethod": "client_secret_basic",
+						"token": map[string]interface{}{
+							"idJag": map[string]interface{}{
+								"enabled":          true,
+								"allowedAudiences": tc.audiences,
+							},
+						},
+					},
+				}},
+			})
+			ts.Require().NoError(err)
+			defer resp.Body.Close()
+			body := readBody(resp)
+			ts.Require().Equal(http.StatusBadRequest, resp.StatusCode, body)
+
+			var errResp struct {
+				Code        string `json:"code"`
+				Description struct {
+					Key string `json:"key"`
+				} `json:"description"`
+			}
+			ts.Require().NoError(json.Unmarshal([]byte(body), &errResp))
+			ts.Assert().Equal("AGT-1021", errResp.Code)
+			ts.Assert().Equal(tc.wantKey, errResp.Description.Key)
+		})
+	}
 }
 
 func (ts *AgentAPITestSuite) TestCreateAgent_MissingType() {
@@ -701,6 +999,80 @@ func (ts *AgentAPITestSuite) TestUpdateAgent_AddInboundProfile() {
 	var updated Agent
 	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&updated))
 	ts.Assert().Equal(defaultAuthFlowID, updated.AuthFlowID)
+}
+
+// updateAgentWithStatus replaces an agent and checks the response status. It returns the agent and the
+// error code from the response body.
+func (ts *AgentAPITestSuite) updateAgentWithStatus(agentID string, agent Agent, status int) (Agent, string) {
+	ts.T().Helper()
+	body, err := json.Marshal(agent)
+	ts.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPut, testServerURL+agentBasePath+"/"+agentID, bytes.NewReader(body))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	ts.Require().Equal(status, resp.StatusCode, string(raw))
+
+	var updated Agent
+	_ = json.Unmarshal(raw, &updated)
+	var apiErr struct {
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal(raw, &apiErr)
+	return updated, apiErr.Code
+}
+
+func (ts *AgentAPITestSuite) TestUpdateAgent_DelegatedGetsTheDefaultGrants() {
+	agentID, err := createAgent(Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs("update-delegated", nil)})
+	ts.Require().NoError(err)
+	defer func() { _ = deleteAgent(agentID) }()
+
+	updated, _ := ts.updateAgentWithStatus(agentID, delegatedAgent("update-delegated"), http.StatusOK)
+
+	ts.Require().Len(updated.InboundAuthConfig, 1)
+	cfg := updated.InboundAuthConfig[0].Config
+	ts.Require().NotNil(cfg)
+	ts.Assert().Equal([]string{"client_credentials", "authorization_code", "refresh_token"}, cfg.GrantTypes)
+	ts.Assert().Equal([]string{"code"}, cfg.ResponseTypes)
+	ts.Assert().True(cfg.PKCERequired)
+}
+
+func (ts *AgentAPITestSuite) TestUpdateAgent_NotDelegatedAlwaysHoldsClientCredentials() {
+	agentID, err := createAgent(Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs("update-cc", nil)})
+	ts.Require().NoError(err)
+	defer func() { _ = deleteAgent(agentID) }()
+
+	agent := delegatedAgent("update-cc", "authorization_code")
+	agent.Delegated = false
+	agent.InboundAuthConfig[0].Config.ResponseTypes = []string{"code"}
+
+	updated, _ := ts.updateAgentWithStatus(agentID, agent, http.StatusOK)
+
+	ts.Require().Len(updated.InboundAuthConfig, 1)
+	ts.Assert().Equal([]string{"client_credentials", "authorization_code"},
+		updated.InboundAuthConfig[0].Config.GrantTypes)
+}
+
+func (ts *AgentAPITestSuite) TestUpdateAgent_DelegatedWithoutADelegationGrantIsRejected() {
+	agentID, err := createAgent(Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs("update-refresh", nil)})
+	ts.Require().NoError(err)
+	defer func() { _ = deleteAgent(agentID) }()
+
+	_, code := ts.updateAgentWithStatus(agentID, delegatedAgent("update-refresh", "refresh_token"),
+		http.StatusBadRequest)
+
+	ts.Assert().Equal("AGT-1044", code)
+
+	// The rejected update leaves the agent as it was, with no inbound client.
+	resp, err := doGet(testServerURL + agentBasePath + "/" + agentID)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	var fetched Agent
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&fetched))
+	ts.Assert().Empty(fetched.InboundAuthConfig)
 }
 
 // --- transition: inbound profile → entity-only on update ---

@@ -18,10 +18,19 @@ func NewIDPProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *IDPProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &IDPProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +87,7 @@ type IDPProviderMock_GetDirectAuthorizationTargets_Call struct {
 //   - ctx context.Context
 //   - idp *providers.IDPDTO
 //   - claims map[string]interface{}
-func (_e *IDPProviderMock_Expecter) GetDirectAuthorizationTargets(ctx interface{}, idp interface{}, claims interface{}) *IDPProviderMock_GetDirectAuthorizationTargets_Call {
+func (_e *IDPProviderMock_Expecter) GetDirectAuthorizationTargets(ctx any, idp any, claims any) *IDPProviderMock_GetDirectAuthorizationTargets_Call {
 	return &IDPProviderMock_GetDirectAuthorizationTargets_Call{Call: _e.mock.On("GetDirectAuthorizationTargets", ctx, idp, claims)}
 }
 
@@ -153,7 +162,7 @@ type IDPProviderMock_GetIdentityProvider_Call struct {
 // GetIdentityProvider is a helper method to define mock.On call
 //   - ctx context.Context
 //   - idpID string
-func (_e *IDPProviderMock_Expecter) GetIdentityProvider(ctx interface{}, idpID interface{}) *IDPProviderMock_GetIdentityProvider_Call {
+func (_e *IDPProviderMock_Expecter) GetIdentityProvider(ctx any, idpID any) *IDPProviderMock_GetIdentityProvider_Call {
 	return &IDPProviderMock_GetIdentityProvider_Call{Call: _e.mock.On("GetIdentityProvider", ctx, idpID)}
 }
 
@@ -224,7 +233,7 @@ type IDPProviderMock_GetIdentityProvidersByProperty_Call struct {
 //   - ctx context.Context
 //   - propertyKey string
 //   - propertyValue string
-func (_e *IDPProviderMock_Expecter) GetIdentityProvidersByProperty(ctx interface{}, propertyKey interface{}, propertyValue interface{}) *IDPProviderMock_GetIdentityProvidersByProperty_Call {
+func (_e *IDPProviderMock_Expecter) GetIdentityProvidersByProperty(ctx any, propertyKey any, propertyValue any) *IDPProviderMock_GetIdentityProvidersByProperty_Call {
 	return &IDPProviderMock_GetIdentityProvidersByProperty_Call{Call: _e.mock.On("GetIdentityProvidersByProperty", ctx, propertyKey, propertyValue)}
 }
 

@@ -167,30 +167,32 @@ func (s *FileBasedStoreTestSuite) seedLinkedEntity(id, linkedIDs string) {
 		SystemAttributes: json.RawMessage(`{"linkedIds":` + linkedIDs + `}`)})
 }
 
-func (s *FileBasedStoreTestSuite) TestResolveLinkedAccount_OneMatch() {
+func (s *FileBasedStoreTestSuite) TestResolveLinkedAccounts_OneMatch() {
 	s.seedLinkedEntity("linked1", `{"idp-a":{"sub-1":{}}}`)
 	s.seedLinkedEntity("other1", `{"idp-a":{"sub-2":{}}}`)
 
-	id, err := s.store.ResolveLinkedAccount(s.ctx, "idp-a", "sub-1")
+	ids, err := s.store.ResolveLinkedAccounts(s.ctx, "idp-a", "sub-1")
 	s.Require().NoError(err)
-	s.Equal("linked1", *id)
+	s.Equal([]string{"linked1"}, ids)
 }
 
-func (s *FileBasedStoreTestSuite) TestResolveLinkedAccount_NoMatch() {
+func (s *FileBasedStoreTestSuite) TestResolveLinkedAccounts_NoMatch() {
 	s.seedEntity(makeTestEntity("plain1", "user", "ou1"))
 	s.seedLinkedEntity("linked2", `{"idp-b":{"sub-1":{}}}`)
 	s.seedLinkedEntity("malformed1", `"not-an-object"`)
 
-	_, err := s.store.ResolveLinkedAccount(s.ctx, "idp-a", "sub-1")
-	s.ErrorIs(err, ErrEntityNotFound)
+	ids, err := s.store.ResolveLinkedAccounts(s.ctx, "idp-a", "sub-1")
+	s.Require().NoError(err)
+	s.Empty(ids)
 }
 
-func (s *FileBasedStoreTestSuite) TestResolveLinkedAccount_MultipleMatches() {
+func (s *FileBasedStoreTestSuite) TestResolveLinkedAccounts_MultipleMatches() {
 	s.seedLinkedEntity("linked3", `{"idp-a":{"sub-1":{}}}`)
 	s.seedLinkedEntity("linked4", `{"idp-a":{"sub-1":{}}}`)
 
-	_, err := s.store.ResolveLinkedAccount(s.ctx, "idp-a", "sub-1")
-	s.ErrorIs(err, ErrAmbiguousEntity)
+	ids, err := s.store.ResolveLinkedAccounts(s.ctx, "idp-a", "sub-1")
+	s.Require().NoError(err)
+	s.ElementsMatch([]string{"linked3", "linked4"}, ids)
 }
 
 func (s *FileBasedStoreTestSuite) TestGetEntityListCount_WithCategoryAndFilter() {
@@ -248,6 +250,69 @@ func (s *FileBasedStoreTestSuite) TestGetEntityListByOUIDs_WithFilter() {
 	s.NoError(err)
 	s.Len(list, 1)
 	s.Equal("flt1", list[0].ID)
+}
+
+// A system attribute filter matches the system attributes only, never a schema attribute of the same
+// name; the other filters match as the list filters do.
+func (s *FileBasedStoreTestSuite) TestGetEntityListBySystemAttributes() {
+	withSystemAttrs := func(e providers.Entity, owner string) providers.Entity {
+		e.SystemAttributes, _ = json.Marshal(map[string]interface{}{"owner": owner})
+		return e
+	}
+	s.seedEntity(withSystemAttrs(makeTestEntity("own1", "agent", "ou-A"), "user-1"))
+	s.seedEntity(withSystemAttrs(makeTestEntity("own2", "agent", "ou-B"), "user-1"))
+	s.seedEntity(withSystemAttrs(makeTestEntity("other", "agent", "ou-A"), "user-2"))
+	s.seedEntity(withSystemAttrs(makeTestEntity("app1", "app", "ou-A"), "user-1"))
+	schemaOwner := makeTestEntity("schema", "agent", "ou-A")
+	schemaOwner.Attributes, _ = json.Marshal(map[string]interface{}{"owner": "user-1"})
+	s.seedEntity(schemaOwner)
+
+	byOwner := SystemAttributeQuery{SystemAttributes: map[string]interface{}{"owner": "user-1"}}
+	count, err := s.store.GetEntityListCountBySystemAttributes(s.ctx, "agent", byOwner)
+	s.NoError(err)
+	s.Equal(2, count)
+
+	list, err := s.store.GetEntityListBySystemAttributes(s.ctx, "agent", byOwner, 1, 0)
+	s.NoError(err)
+	s.Len(list, 1)
+
+	withAttr := byOwner
+	withAttr.Attributes = map[string]interface{}{"email": "own1@test.com"}
+	list, err = s.store.GetEntityListBySystemAttributes(s.ctx, "agent", withAttr, 10, 0)
+	s.NoError(err)
+	s.Require().Len(list, 1)
+	s.Equal("own1", list[0].ID)
+
+	count, err = s.store.GetEntityListCountBySystemAttributes(s.ctx, "agent", SystemAttributeQuery{})
+	s.NoError(err)
+	s.Zero(count, "no system attribute filter matches nothing")
+}
+
+func (s *FileBasedStoreTestSuite) TestGetEntityListBySystemAttributesAndOUIDs() {
+	withOwner := func(e providers.Entity, owner string) providers.Entity {
+		e.SystemAttributes, _ = json.Marshal(map[string]interface{}{"owner": owner})
+		return e
+	}
+	s.seedEntity(withOwner(makeTestEntity("ouA1", "agent", "ou-A"), "user-1"))
+	s.seedEntity(withOwner(makeTestEntity("ouB1", "agent", "ou-B"), "user-1"))
+	s.seedEntity(withOwner(makeTestEntity("ouB2", "agent", "ou-B"), "user-2"))
+
+	byOwner := SystemAttributeQuery{SystemAttributes: map[string]interface{}{"owner": "user-1"}}
+	count, err := s.store.GetEntityListCountBySystemAttributesAndOUIDs(s.ctx, "agent", byOwner, []string{"ou-B"})
+	s.NoError(err)
+	s.Equal(1, count)
+
+	list, err := s.store.GetEntityListBySystemAttributesAndOUIDs(
+		s.ctx, "agent", byOwner, []string{"ou-A", "ou-B"}, 1, 1)
+	s.NoError(err)
+	s.Len(list, 1, "paginated within the OUs")
+
+	count, err = s.store.GetEntityListCountBySystemAttributesAndOUIDs(s.ctx, "agent", byOwner, []string{})
+	s.NoError(err)
+	s.Zero(count, "an empty OU list matches nothing")
+	count, err = s.store.GetEntityListCountBySystemAttributesAndOUIDs(s.ctx, "agent", byOwner, nil)
+	s.NoError(err)
+	s.Zero(count, "a nil OU list matches nothing")
 }
 
 func (s *FileBasedStoreTestSuite) TestGetGroupCountForEntity() {

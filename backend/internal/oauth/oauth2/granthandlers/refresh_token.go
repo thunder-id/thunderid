@@ -40,6 +40,7 @@ type refreshTokenGrantHandler struct {
 	actorProvider    providers.ActorProvider
 	refreshRevoker   revocation.RefreshTokenRevokerInterface
 	criteriaRevoker  revocation.CriteriaRevokerInterface
+	governance       providers.IdentityGovernanceProvider
 }
 
 // newRefreshTokenGrantHandler creates a new instance of RefreshTokenGrantHandler.
@@ -53,6 +54,7 @@ func newRefreshTokenGrantHandler(
 	actorProvider providers.ActorProvider,
 	refreshRevoker revocation.RefreshTokenRevokerInterface,
 	criteriaRevoker revocation.CriteriaRevokerInterface,
+	governance providers.IdentityGovernanceProvider,
 	cfg oauthconfig.Config,
 ) RefreshTokenGrantHandlerInterface {
 	return &refreshTokenGrantHandler{
@@ -66,6 +68,7 @@ func newRefreshTokenGrantHandler(
 		actorProvider:    actorProvider,
 		refreshRevoker:   refreshRevoker,
 		criteriaRevoker:  criteriaRevoker,
+		governance:       governance,
 	}
 }
 
@@ -114,9 +117,10 @@ func (h *refreshTokenGrantHandler) resolveRefreshToken(ctx context.Context,
 				ErrorDescription: "Token revocation status could not be verified",
 			}
 		}
-		// A revoked (already-rotated) refresh token presented again is a replay signal: revoke
-		// the whole token family so the attacker's freshly rotated tokens die too (RFC 9700 §4.14.2).
-		if errors.Is(err, revocation.ErrTokenRevoked) {
+		// Only the token's own jti on the deny list (an already-rotated token presented again) is a
+		// replay signal: revoke the whole token family so the attacker's freshly rotated tokens die too
+		// (RFC 9700 §4.14.2). A criteria hit, such as a lost scope, is not reuse and only rejects.
+		if errors.Is(err, revocation.ErrTokenIDRevoked) {
 			h.revokeTokenFamilyOnReplay(ctx, tokenRequest.RefreshToken, logger)
 		}
 		return nil, &model.ErrorResponse{
@@ -154,6 +158,9 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 
 	subjectEntity, errResp := h.verifyCredentialsUnchanged(ctx, refreshTokenClaims, oauthApp, logger)
 	if errResp != nil {
+		return nil, errResp
+	}
+	if errResp := h.verifySubjectAdmitted(ctx, subjectEntity, logger); errResp != nil {
 		return nil, errResp
 	}
 
@@ -514,6 +521,32 @@ func (h *refreshTokenGrantHandler) verifyCredentialsUnchanged(ctx context.Contex
 		}
 	}
 	return subjectEntity, nil
+}
+
+// verifySubjectAdmitted refuses a refresh for a suspended subject. Issuance admits an automatic
+// lock, so a locked account keeps refreshing. A nil entity means sub did not resolve, which only a
+// provider-set subject mapping produces; that is not checked.
+func (h *refreshTokenGrantHandler) verifySubjectAdmitted(ctx context.Context,
+	subjectEntity *providers.Entity, logger *log.Logger) *model.ErrorResponse {
+	if h.governance == nil || subjectEntity == nil {
+		return nil
+	}
+	decision, svcErr := h.governance.EvaluateAccess(ctx, subjectEntity.ID, providers.AccessPlaneIssuance, "")
+	if svcErr != nil {
+		// The authority has logged the cause.
+		return &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to verify the refresh token subject",
+		}
+	}
+	if !decision.Admitted {
+		logger.Debug(ctx, "Refusing a refresh for a held subject")
+		return &model.ErrorResponse{
+			Error:            constants.ErrorInvalidGrant,
+			ErrorDescription: "Invalid refresh token",
+		}
+	}
+	return nil
 }
 
 // setRefreshSubjectIdentity records which entity the refreshed token is for, so issuance reports the

@@ -13,23 +13,25 @@ var (
 	queryCreateTemplate = dbmodel.DBQuery{
 		ID: "NTQ-NOTIF_TMPL-01",
 		Query: `INSERT INTO "NOTIFICATION_TEMPLATE" ` +
-			`(ID, CHANNEL, HANDLE, DISPLAY_NAME, DESCRIPTION, CONTENT, DESIGN, DEPLOYMENT_ID) ` +
-			`VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			`(ID, CHANNEL, HANDLE, OU_ID, DISPLAY_NAME, DESCRIPTION, CONTENT, DESIGN, DEPLOYMENT_ID) ` +
+			`VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 	}
 
 	// queryGetTemplateByID retrieves a template by channel and id.
 	queryGetTemplateByID = dbmodel.DBQuery{
 		ID: "NTQ-NOTIF_TMPL-02",
-		Query: `SELECT ID, CHANNEL, HANDLE, DISPLAY_NAME, DESCRIPTION, CONTENT, DESIGN ` +
+		Query: `SELECT ID, CHANNEL, HANDLE, OU_ID, DISPLAY_NAME, DESCRIPTION, CONTENT, DESIGN ` +
 			`FROM "NOTIFICATION_TEMPLATE" ` +
 			`WHERE ID = $1 AND CHANNEL = $2 AND DEPLOYMENT_ID = $3`,
 	}
 
 	// queryListTemplates retrieves a page of templates of a channel. The list response is a summary
-	// (id, handle, displayName, description), so CONTENT and DESIGN are not selected.
+	// (id, handle, displayName, description), so CONTENT and DESIGN are not selected. OU_ID is a
+	// required (NOT NULL) column, so it is selected to satisfy the row reader even though the summary
+	// drops it.
 	queryListTemplates = dbmodel.DBQuery{
 		ID: "NTQ-NOTIF_TMPL-03",
-		Query: `SELECT ID, CHANNEL, HANDLE, DISPLAY_NAME, DESCRIPTION ` +
+		Query: `SELECT ID, CHANNEL, HANDLE, OU_ID, DISPLAY_NAME, DESCRIPTION ` +
 			`FROM "NOTIFICATION_TEMPLATE" ` +
 			`WHERE CHANNEL = $1 AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT DESC, ID DESC LIMIT $2 OFFSET $3`,
 	}
@@ -68,7 +70,7 @@ var (
 	// queryGetTemplateByHandle retrieves a template by channel and handle (the runtime lookup key).
 	queryGetTemplateByHandle = dbmodel.DBQuery{
 		ID: "NTQ-NOTIF_TMPL-08",
-		Query: `SELECT ID, CHANNEL, HANDLE, DISPLAY_NAME, DESCRIPTION, CONTENT, DESIGN ` +
+		Query: `SELECT ID, CHANNEL, HANDLE, OU_ID, DISPLAY_NAME, DESCRIPTION, CONTENT, DESIGN ` +
 			`FROM "NOTIFICATION_TEMPLATE" ` +
 			`WHERE HANDLE = $1 AND CHANNEL = $2 AND DEPLOYMENT_ID = $3`,
 	}

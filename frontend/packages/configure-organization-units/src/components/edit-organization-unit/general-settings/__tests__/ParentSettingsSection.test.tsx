@@ -51,9 +51,9 @@ describe('ParentSettingsSection', () => {
 
     renderWithProviders(<ParentSettingsSection organizationUnit={mockOrganizationUnit} />);
 
-    expect(screen.getByRole('heading', {name: 'Parent Organization Unit'})).toBeInTheDocument();
+    expect(screen.getByRole('heading', {name: 'Parent organization unit'})).toBeInTheDocument();
     expect(screen.getByText('The parent organization unit in the hierarchy.')).toBeInTheDocument();
-    expect(screen.getAllByText('Parent Organization Unit')).toHaveLength(1);
+    expect(screen.getAllByText('Parent organization unit')).toHaveLength(1);
   });
 
   it('should identify a root organization unit when no parent exists', () => {

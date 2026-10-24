@@ -18,6 +18,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
@@ -36,6 +37,7 @@ type userExporter struct {
 	service           UserServiceInterface
 	entityService     entity.EntityServiceInterface
 	entityTypeService entitytype.EntityTypeServiceInterface
+	sharingService    sharing.SharingServiceInterface
 	// references writes a credential as a secret reference rather than a template placeholder, as a
 	// control plane's export does for every other credential.
 	references bool
@@ -51,8 +53,10 @@ func newUserExporter(
 	service UserServiceInterface,
 	entityService entity.EntityServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	sharingService sharing.SharingServiceInterface,
 ) *userExporter {
-	return &userExporter{service: service, entityService: entityService, entityTypeService: entityTypeService}
+	return &userExporter{service: service, entityService: entityService, entityTypeService: entityTypeService,
+		sharingService: sharingService}
 }
 
 // GetResourceType returns the resource type for users.
@@ -137,12 +141,24 @@ func (e *userExporter) GetResourceByID(
 		return nil, "", svcErr
 	}
 
+	// A document that silently lost its sharing would re-import as a user shared nowhere, so this
+	// fails the export rather than thinning it.
+	replayable, sharingErr := e.sharingService.ExportPolicies(ctx, UserSharingType, user.ID)
+	if sharingErr != nil {
+		return nil, "", translateSharingError(sharingErr)
+	}
+	var policies []sharing.PolicyRequest
+	for _, r := range replayable {
+		policies = append(policies, r.Request)
+	}
+
 	exportUser := &userDeclarativeResource{
-		ID:          user.ID,
-		Type:        user.Type,
-		OUID:        user.OUID,
-		Attributes:  attributesMap,
-		Credentials: credentials,
+		ID:              user.ID,
+		Type:            user.Type,
+		OUID:            user.OUID,
+		Attributes:      attributesMap,
+		Credentials:     credentials,
+		SharingPolicies: policies,
 	}
 
 	return exportUser, username, nil
@@ -228,6 +244,27 @@ func (e *userExporter) ValidateResource(ctx context.Context,
 	return username, nil
 }
 
+// ViewResource shows an exported user as a read of it returns it. A read never returns a user's
+// credentials, so the view leaves out the ones the export carries.
+func (e *userExporter) ViewResource(_ context.Context, document *yaml.Node) (interface{}, error) {
+	return declarativeresource.DecodeView(document, func(exported *userDeclarativeResource) (
+		interface{}, error) {
+		attributes, err := json.Marshal(exported.Attributes)
+		return &providers.User{
+			ID:         exported.ID,
+			OUID:       exported.OUID,
+			Type:       exported.Type,
+			Attributes: attributes,
+		}, err
+	})
+}
+
+// SecretFields names where an exported user holds its credentials: every key of the credentials
+// map, since which credentials a user has is its type's to say.
+func (e *userExporter) SecretFields() []string {
+	return []string{"credentials.*"}
+}
+
 // GetResourceRules returns the parameterization rules for users.
 func (e *userExporter) GetResourceRules() *declarativeresource.ResourceRules {
 	return &declarativeresource.ResourceRules{
@@ -246,6 +283,50 @@ func makeUserDeclarativeConfig(userService UserServiceInterface) entity.Declarat
 		Category:  providers.EntityCategoryUser,
 		Parser:    makeUserParser(userService),
 		Validator: makeUserValidator(),
+	}
+}
+
+// makeUserSharingConfig creates the loader config the sharing framework reads a user's declared
+// policies with. It names the users directory, because a policy is carried inside the user that
+// declares it rather than in a document of its own.
+func makeUserSharingConfig(userService UserServiceInterface) sharing.DeclarativeLoaderConfig {
+	return sharing.DeclarativeLoaderConfig{
+		ResourceType:  UserSharingType,
+		DirectoryName: "users",
+		Parser:        makeUserSharingParser(userService),
+	}
+}
+
+// makeUserSharingParser returns a parser that reads the sharing half of one user document. A
+// document may name its organization unit by handle, and only the service resolves that to the id a
+// policy is declared against.
+func makeUserSharingParser(
+	userService UserServiceInterface,
+) func([]byte) (*sharing.DeclaredResourcePolicies, error) {
+	return func(data []byte) (*sharing.DeclaredResourcePolicies, error) {
+		var userRes userDeclarativeResource
+		if err := yaml.Unmarshal(data, &userRes); err != nil {
+			return nil, fmt.Errorf("failed to parse user YAML: %w", err)
+		}
+		if len(userRes.SharingPolicies) == 0 {
+			return &sharing.DeclaredResourcePolicies{ResourceID: userRes.ID}, nil
+		}
+
+		user := providers.User{ID: userRes.ID, OUID: userRes.OUID, OUHandle: userRes.OUHandle}
+		if svcErr := userService.ResolveUserOUHandle(context.Background(), &user); svcErr != nil {
+			return nil, fmt.Errorf(
+				"organization unit with handle %q not found for user '%s'", user.OUHandle, user.ID)
+		}
+		name, _ := userRes.Attributes["username"].(string)
+		if name == "" {
+			name = user.ID
+		}
+		return &sharing.DeclaredResourcePolicies{
+			ResourceID:   user.ID,
+			ResourceName: name,
+			OwningOUID:   user.OUID,
+			Policies:     userRes.SharingPolicies,
+		}, nil
 	}
 }
 
@@ -304,7 +385,7 @@ func makeUserValidator() func(e *providers.Entity, svc entity.EntityServiceInter
 		}
 
 		// Check for duplicates in the store (covers both DB and already-loaded file resources)
-		_, err := svc.GetEntity(context.Background(), e.ID)
+		_, err := svc.GetEntityProfile(context.Background(), e.ID)
 		if err == nil {
 			return fmt.Errorf("duplicate user ID '%s': user already exists", e.ID)
 		}
@@ -316,13 +397,16 @@ func makeUserValidator() func(e *providers.Entity, svc entity.EntityServiceInter
 	}
 }
 
+// userDeclarativeResource is a user as a resource file states it, with the sharing policies that
+// govern it carried alongside.
 type userDeclarativeResource struct {
-	ID          string                 `yaml:"id"`
-	Type        string                 `yaml:"type"`
-	OUID        string                 `yaml:"ouId,omitempty"`
-	OUHandle    string                 `yaml:"ouHandle,omitempty"`
-	Attributes  map[string]interface{} `yaml:"attributes"`
-	Credentials map[string]interface{} `yaml:"credentials,omitempty"` // Flexible format for YAML
+	ID              string                  `yaml:"id"`
+	Type            string                  `yaml:"type"`
+	OUID            string                  `yaml:"ouId,omitempty"`
+	OUHandle        string                  `yaml:"ouHandle,omitempty"`
+	Attributes      map[string]interface{}  `yaml:"attributes"`
+	Credentials     map[string]interface{}  `yaml:"credentials,omitempty"` // Flexible format for YAML
+	SharingPolicies []sharing.PolicyRequest `yaml:"sharingPolicies,omitempty"`
 }
 
 // parseToUser parses YAML data into a User and its Credentials. The ou_handle from YAML is

@@ -49,17 +49,17 @@ Open the Console at <ConsoleUrl />.
 
 ## Register an Agent
 
-1. In the Console, open **Agents** and click **Add Agent**.
+1. In the Console, open **Agents** and click **Add agent**.
 2. Name it `Course Agent`. Select **Gemini** as the **Model Provider**, enter `gemini-flash-lite-latest` as the **Model**, and select an **Owner**. Complete the wizard to create the agent.
 3. Copy the **Client Secret** when shown, then the **Client ID** from **Overview** → **Agent details**. Keep them for `.env`; the secret appears only once.
 
 ## Configure Access
 
-In **Resource Servers**, create an **API** resource server named `Course Catalog` with **Identifier** `https://courses.example.com` and permission delimiter `:`. On **Resources**, create `Courses` with handle `courses`.
+In **Resource servers**, create an **API** resource server named `Course Catalog` with **Identifier** `https://courses.example.com` and permission delimiter `:`. On **Resources**, create `Courses` with handle `courses`.
 
 <Mode value="own">
 
-Create the following action under **Courses**. In **Roles**, create the role with that permission, then assign it on **Assignments** → **Add Assignment**:
+Create the following action under **Courses**. In **Roles**, create the role with that permission, then assign it on **Assignments** → **Add assignment**:
 
 | Action name | Handle | Permission | Role | Assign to |
 |---|---|---|---|---|
@@ -68,7 +68,7 @@ Create the following action under **Courses**. In **Roles**, create the role wit
 </Mode>
 <Mode value="obo">
 
-Use an existing non-admin user as the student, or create one in **Users** with a username and password. Create the following action under **Courses**. In **Roles**, create the role with that permission, then assign it on **Assignments** → **Add Assignment**:
+Use an existing non-admin user as the student, or create one in **Users** with a username and password. Create the following action under **Courses**. In **Roles**, create the role with that permission, then assign it on **Assignments** → **Add assignment**:
 
 | Action name | Handle | Permission | Role | Assign to |
 |---|---|---|---|---|
@@ -76,9 +76,9 @@ Use an existing non-admin user as the student, or create one in **Users** with a
 
 Enable delegated access and consent:
 
-1. In **Agents** → **Course Agent** → **Advanced**, turn on **Delegated mode**. Keep **Require PKCE** on, leave **Require Pushed Authorization Requests** off, and add `http://localhost:6274/callback` under **Authorized redirect URIs**. Save.
+1. In **Agents** → **Course Agent** → **Advanced**, turn on **Delegated mode**. Keep **Require PKCE** on, leave **Require pushed authorization requests** off, and add `http://localhost:6274/callback` under **Authorized redirect URIs**. Save.
 2. In **Flows**, create `Course Enrollment Sign-in` from the **Basic** sign-in template. Add **User Consent** from **Widgets** between **Authorization** and **Auth Assertion Generator**. Connect both **Allow** and **Deny** responses back to **User Consent**. Turn on **Fail flow when user denies consent** and save.
-3. On the agent's **Flows** tab, select **Course Enrollment Sign-in** as its **Sign-in Flow** and save.
+3. On the agent's **Flows** tab, select **Course Enrollment Sign-in** as its **Sign-in flow** and save.
 
 </Mode>
 
@@ -419,7 +419,7 @@ In PowerShell, set `$env:NODE_EXTRA_CA_CERTS = "$PWD/thunderid.pem"` before runn
 
 | Symptom | Check |
 |---|---|
-| HTTP `401` from token or introspection requests | Use the agent's current Client ID and secret. On **Advanced**, confirm **Client Authentication Method** is `client_secret_basic`. |
+| HTTP `401` from token or introspection requests | Use the agent's current Client ID and secret. On **Advanced**, confirm **Client authentication method** is `client_secret_basic`. |
 | `invalid_target` | Match `COURSE_RESOURCE` to the resource server's **Identifier**. |
 | Certificate verification fails | Export the running instance's certificate. Set `NODE_EXTRA_CA_CERTS` before starting the process, as shown above. |
 | Gemini reports a model or quota error | Check `GEMINI_MODEL`, your API key, and your Google project quota. |

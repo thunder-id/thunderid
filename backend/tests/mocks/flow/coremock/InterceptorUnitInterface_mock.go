@@ -16,10 +16,19 @@ func NewInterceptorUnitInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *InterceptorUnitInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &InterceptorUnitInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -366,7 +375,7 @@ type InterceptorUnitInterfaceMock_SetApplyTo_Call struct {
 
 // SetApplyTo is a helper method to define mock.On call
 //   - applyTo []string
-func (_e *InterceptorUnitInterfaceMock_Expecter) SetApplyTo(applyTo interface{}) *InterceptorUnitInterfaceMock_SetApplyTo_Call {
+func (_e *InterceptorUnitInterfaceMock_Expecter) SetApplyTo(applyTo any) *InterceptorUnitInterfaceMock_SetApplyTo_Call {
 	return &InterceptorUnitInterfaceMock_SetApplyTo_Call{Call: _e.mock.On("SetApplyTo", applyTo)}
 }
 
@@ -406,7 +415,7 @@ type InterceptorUnitInterfaceMock_SetInterceptor_Call struct {
 
 // SetInterceptor is a helper method to define mock.On call
 //   - interceptor core.InterceptorInterface
-func (_e *InterceptorUnitInterfaceMock_Expecter) SetInterceptor(interceptor interface{}) *InterceptorUnitInterfaceMock_SetInterceptor_Call {
+func (_e *InterceptorUnitInterfaceMock_Expecter) SetInterceptor(interceptor any) *InterceptorUnitInterfaceMock_SetInterceptor_Call {
 	return &InterceptorUnitInterfaceMock_SetInterceptor_Call{Call: _e.mock.On("SetInterceptor", interceptor)}
 }
 
@@ -446,7 +455,7 @@ type InterceptorUnitInterfaceMock_SetMode_Call struct {
 
 // SetMode is a helper method to define mock.On call
 //   - mode providers.InterceptorMode
-func (_e *InterceptorUnitInterfaceMock_Expecter) SetMode(mode interface{}) *InterceptorUnitInterfaceMock_SetMode_Call {
+func (_e *InterceptorUnitInterfaceMock_Expecter) SetMode(mode any) *InterceptorUnitInterfaceMock_SetMode_Call {
 	return &InterceptorUnitInterfaceMock_SetMode_Call{Call: _e.mock.On("SetMode", mode)}
 }
 
@@ -486,7 +495,7 @@ type InterceptorUnitInterfaceMock_SetName_Call struct {
 
 // SetName is a helper method to define mock.On call
 //   - name string
-func (_e *InterceptorUnitInterfaceMock_Expecter) SetName(name interface{}) *InterceptorUnitInterfaceMock_SetName_Call {
+func (_e *InterceptorUnitInterfaceMock_Expecter) SetName(name any) *InterceptorUnitInterfaceMock_SetName_Call {
 	return &InterceptorUnitInterfaceMock_SetName_Call{Call: _e.mock.On("SetName", name)}
 }
 
@@ -526,7 +535,7 @@ type InterceptorUnitInterfaceMock_SetProperties_Call struct {
 
 // SetProperties is a helper method to define mock.On call
 //   - properties map[string]interface{}
-func (_e *InterceptorUnitInterfaceMock_Expecter) SetProperties(properties interface{}) *InterceptorUnitInterfaceMock_SetProperties_Call {
+func (_e *InterceptorUnitInterfaceMock_Expecter) SetProperties(properties any) *InterceptorUnitInterfaceMock_SetProperties_Call {
 	return &InterceptorUnitInterfaceMock_SetProperties_Call{Call: _e.mock.On("SetProperties", properties)}
 }
 
@@ -566,7 +575,7 @@ type InterceptorUnitInterfaceMock_SetScope_Call struct {
 
 // SetScope is a helper method to define mock.On call
 //   - scope providers.InterceptorScope
-func (_e *InterceptorUnitInterfaceMock_Expecter) SetScope(scope interface{}) *InterceptorUnitInterfaceMock_SetScope_Call {
+func (_e *InterceptorUnitInterfaceMock_Expecter) SetScope(scope any) *InterceptorUnitInterfaceMock_SetScope_Call {
 	return &InterceptorUnitInterfaceMock_SetScope_Call{Call: _e.mock.On("SetScope", scope)}
 }
 

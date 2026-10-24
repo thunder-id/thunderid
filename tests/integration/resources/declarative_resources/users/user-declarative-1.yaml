@@ -9,3 +9,10 @@ attributes:
   family_name: User
 credentials:
   password: "TempPassword123!"
+# Shared, by its own file, into the root of another tree. The policy is read-only through the API.
+sharingPolicies:
+  - id: decl-user-1-policy-1
+    otherTreeRoots:
+      mode: selected
+      units:
+        - ouId: decl-m2m-root

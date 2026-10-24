@@ -385,7 +385,7 @@ export default function IntegrationGuides({
   const hasVisibleQuickstart = Boolean(primaryQuickstartDocsUrl) || visibleQuickstarts.length > 0;
   const endpointsCard = (showOAuthEndpoints || showFlowEndpoints) && (
     <OverviewCard
-      title={t('applications:edit.overview.endpoints.appNativeTitle', 'Useful Endpoints')}
+      title={t('applications:edit.overview.endpoints.appNativeTitle', 'Useful endpoints')}
       description={t(
         'applications:edit.overview.endpoints.appNativeDescription',
         'For driving sign-in and registration with a fully custom UI.',
@@ -419,13 +419,13 @@ export default function IntegrationGuides({
         )}
         {application.ouId && (
           <CopyableField
-            label={t('applications:edit.overview.appDetails.organizationUnitId', 'Organization Unit ID')}
+            label={t('applications:edit.overview.appDetails.organizationUnitId', 'Organization unit ID')}
             value={application.ouId}
           />
         )}
         {organizationUnit?.handle && (
           <CopyableField
-            label={t('applications:edit.overview.appDetails.organizationUnitHandle', 'Organization Unit Handle')}
+            label={t('applications:edit.overview.appDetails.organizationUnitHandle', 'Organization unit handle')}
             value={organizationUnit.handle}
           />
         )}
@@ -628,7 +628,7 @@ export default function IntegrationGuides({
                       </Typography>
                       {onGoToCustomization && (
                         <Button size="small" endIcon={<ArrowRight size={11} />} onClick={onGoToCustomization}>
-                          {t('applications:edit.overview.signInPreview.editCustomization', 'Edit in Customization')}
+                          {t('applications:edit.overview.signInPreview.editCustomization', 'Edit in customization')}
                         </Button>
                       )}
                     </Stack>
@@ -669,7 +669,7 @@ export default function IntegrationGuides({
                       </Typography>
                       {onGoToFlows && (
                         <Button size="small" endIcon={<ArrowRight size={11} />} onClick={onGoToFlows}>
-                          {t('applications:edit.overview.signInPreview.editFlows', 'Edit in Flows')}
+                          {t('applications:edit.overview.signInPreview.editFlows', 'Edit in flows')}
                         </Button>
                       )}
                     </Stack>

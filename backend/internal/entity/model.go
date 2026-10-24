@@ -26,6 +26,15 @@ type EntityIdentifier struct {
 	Source   string `json:"source"`
 }
 
+// SystemAttributeQuery selects the entities of a category whose system attributes hold the given
+// values.
+type SystemAttributeQuery struct {
+	// SystemAttributes are matched against the system attributes only. At least one is required.
+	SystemAttributes map[string]interface{}
+	// Attributes are matched the way the list filters match them.
+	Attributes map[string]interface{}
+}
+
 // AuthenticateResult represents the result of an entity authentication.
 type AuthenticateResult struct {
 	EntityID       string                   `json:"entityId"`
@@ -65,4 +74,12 @@ type entityStoreEntry struct {
 	Entity            providers.Entity
 	Credentials       json.RawMessage
 	SystemCredentials json.RawMessage
+}
+
+// entityRuntimeData is an entity's row in ENTITY_RUNTIME_DATA. It is not cached with the profile.
+type entityRuntimeData struct {
+	ID         string
+	State      providers.EntityState
+	Attributes json.RawMessage
+	Revision   int64
 }

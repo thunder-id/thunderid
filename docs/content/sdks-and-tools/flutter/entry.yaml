@@ -17,6 +17,9 @@ docs:
   quickstart: /docs/next/getting-started/connect-your-application/flutter
 links:
   github: https://github.com/thunder-id/flutter-sdks
+  samples: https://github.com/thunder-id/samples/tree/main/quickstarts/flutter
+# Offers the quickstart's released zip at the top of the page, from the samples repo releases.
+sample: quickstarts/flutter
 apiReference:
   source: manual
 
@@ -423,7 +426,7 @@ guides:
     title: Try the Flutter Sample App
     icon: terminal
     description: Run the {{ProductName}} Flutter sample app to see the full authentication lifecycle end to end.
-    intro: 'The SDK repository ships a sample app in [`samples/quickstart`](https://github.com/thunder-id/flutter-sdks/tree/main/samples/quickstart)
+    intro: 'The [samples repository](https://github.com/thunder-id/samples) ships a sample app in [`quickstarts/flutter`](https://github.com/thunder-id/samples/tree/main/quickstarts/flutter)
       that exercises the full authentication lifecycle end to end: sign-in, sign-up, and sign-out via the SDK''s app-native
       Flow Execution, on both iOS and Android. } />'
     sections:
@@ -437,7 +440,8 @@ guides:
         code:
           lang: bash
           content: |-
-            cd samples/quickstart
+            git clone https://github.com/thunder-id/samples.git
+            cd samples/quickstarts/flutter
 
             # 1. Copy and fill in your environment
             cp .env.example .env

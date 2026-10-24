@@ -36,6 +36,10 @@ const (
 	// CategoryFlows groups all flow orchestration events for tracing end-to-end flows.
 	CategoryFlows EventCategory = "observability.flows"
 
+	// CategoryAdministration groups administrative changes: identity lifecycle operations and
+	// server-config writes.
+	CategoryAdministration EventCategory = "observability.administration"
+
 	// CategoryAll is a special category that matches all events.
 	// Subscribers to this category receive all events regardless of type.
 	CategoryAll EventCategory = "observability.all"
@@ -61,9 +65,23 @@ var eventTypeToCategory = map[providers.EventType]EventCategory{
 	EventTypeTokenIssued:                    CategoryAuthentication,
 	EventTypeTokenIssuanceFailed:            CategoryAuthentication,
 	EventTypeTokenRevoked:                   CategoryAuthentication,
+	EventTypeTokenRevocationFailed:          CategoryAuthentication,
 	EventTypeRuntimePersistentDBUnavailable: CategoryAuthentication,
 	EventTypeBackchannelLogoutDelivered:     CategoryAuthentication,
 	EventTypeBackchannelLogoutFailed:        CategoryAuthentication,
+	EventTypeIdentityLocked:                 CategoryAuthentication,
+	EventTypeIdentitySelfUnlocked:           CategoryAuthentication,
+	EventTypeIdentitySelfUnlockFailed:       CategoryAuthentication,
+
+	// Administration events
+	EventTypeIdentitySuspended:          CategoryAdministration,
+	EventTypeIdentitySuspensionFailed:   CategoryAdministration,
+	EventTypeIdentityUnsuspended:        CategoryAdministration,
+	EventTypeIdentityUnsuspensionFailed: CategoryAdministration,
+	EventTypeIdentityUnlocked:           CategoryAdministration,
+	EventTypeIdentityUnlockFailed:       CategoryAdministration,
+	EventTypeServerConfigUpdated:        CategoryAdministration,
+	EventTypeServerConfigUpdateFailed:   CategoryAdministration,
 
 	// Flow events
 	EventTypeFlowStarted:                CategoryFlows,
@@ -92,6 +110,7 @@ func GetAllCategories() []EventCategory {
 		CategoryAuthentication,
 		CategoryAuthorization,
 		CategoryFlows,
+		CategoryAdministration,
 	}
 }
 

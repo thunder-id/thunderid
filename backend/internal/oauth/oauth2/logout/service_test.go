@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -173,9 +174,14 @@ func (suite *LogoutServiceTestSuite) TestInitiateSignOutFlow_StripsIDTokenHintFr
 		AppID: "app-1",
 		QueryParams: map[string][]string{
 			"id_token_hint":            {"header.payload.sig"},
+			"client_secret":            {"supersecret"},
 			"client_id":                {"client-x"},
 			"post_logout_redirect_uri": {"https://rp.example/after"},
 			"state":                    {"xyz"},
+		},
+		Headers: map[string][]string{
+			"User-Agent":    {"curl/8.0"},
+			"Authorization": {"Bearer secret"},
 		},
 	})
 
@@ -184,9 +190,14 @@ func (suite *LogoutServiceTestSuite) TestInitiateSignOutFlow_StripsIDTokenHintFr
 	suite.Require().NotNil(captured.InitiatorRequest)
 	forwarded := captured.InitiatorRequest.QueryParams
 	suite.NotContains(forwarded, "id_token_hint")
+	// client_secret is a credential param and must be stripped by the sensitive-param filter.
+	suite.NotContains(forwarded, "client_secret")
 	suite.Equal([]string{"client-x"}, forwarded["client_id"])
 	suite.Equal([]string{"https://rp.example/after"}, forwarded["post_logout_redirect_uri"])
 	suite.Equal([]string{"xyz"}, forwarded["state"])
+	// Credential headers must also be stripped; non-sensitive ones preserved.
+	suite.Empty(http.Header(captured.InitiatorRequest.Headers).Get("Authorization"))
+	suite.Equal("curl/8.0", http.Header(captured.InitiatorRequest.Headers).Get("User-Agent"))
 }
 
 func (suite *LogoutServiceTestSuite) TestFilterQueryParams() {

@@ -262,10 +262,8 @@ func (s *SMTPTestSuite) TestUpdateWithoutPasswordPreservesStoredSecret() {
 	s.Equal(http.StatusOK, rr.Code)
 }
 
-// Changing where or as whom the stored password is presented must require it to be entered
-// again. Otherwise a caller who can edit the connection but not read its secrets could point it
-// at a server they control and receive the stored password on the next send.
-func (s *SMTPTestSuite) TestUpdateChangingCredentialTargetDropsStoredSecret() {
+// Changing where or as whom the stored password is presented requires fresh credentials.
+func (s *SMTPTestSuite) TestUpdateChangingCredentialTargetRequiresFreshCredentials() {
 	cases := []struct {
 		name     string
 		host     string
@@ -281,11 +279,6 @@ func (s *SMTPTestSuite) TestUpdateChangingCredentialTargetDropsStoredSecret() {
 			s.SetupTest()
 			s.mockNotif.On("GetSender", mock.Anything, "sm-1").
 				Return(s.storedSMTPSender(), (*tidcommon.ServiceError)(nil))
-			var captured ncommon.NotificationSenderDTO
-			s.mockNotif.On("UpdateSender", mock.Anything, "sm-1", mock.Anything).
-				Run(func(args mock.Arguments) { captured = args.Get(2).(ncommon.NotificationSenderDTO) }).
-				Return(s.storedSMTPSender(), (*tidcommon.ServiceError)(nil))
-
 			body, _ := json.Marshal(emailSMTPConnectionRequest{
 				Name: "Corp SMTP", Host: tc.host, Port: tc.port,
 				FromAddress: "noreply@example.com", TLS: string(ncommon.TLSModeSTARTTLS),
@@ -298,11 +291,8 @@ func (s *SMTPTestSuite) TestUpdateChangingCredentialTargetDropsStoredSecret() {
 			updateSenderHandler(s.handler, ncommon.NotificationSenderTypeEmail,
 				ncommon.NotificationProviderTypeSMTP, emailSMTPToSenderDTO, emailSMTPFromSenderDTO)(rr, req)
 
-			s.Require().NotEmpty(captured.Properties)
-			for _, prop := range captured.Properties {
-				s.NotEqual("authentication_password", prop.GetName(),
-					"the stored password must not follow a changed credential target")
-			}
+			s.Equal(http.StatusBadRequest, rr.Code)
+			s.mockNotif.AssertNotCalled(s.T(), "UpdateSender", mock.Anything, "sm-1", mock.Anything)
 		})
 	}
 }

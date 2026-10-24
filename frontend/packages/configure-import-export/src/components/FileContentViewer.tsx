@@ -100,7 +100,7 @@ export default function FileContentViewer({
           suggestedName: fileName,
           types: [
             {
-              description: 'Configuration File',
+              description: 'Configuration file',
               accept: {[mimeType]: acceptTypes},
             },
           ],

@@ -30,6 +30,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/flow/flowmgtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -88,7 +89,7 @@ func (suite *ExportServiceTestSuite) SetupTest() {
 
 	// Create exporters
 	exporters := []declarativeresource.ResourceExporter{
-		application.NewApplicationExporterForTest(suite.appServiceMock),
+		application.NewApplicationExporterForTest(suite.appServiceMock, sharingWithNoPolicies(suite.T())),
 		connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService, nil),
 		entitytype.NewEntityTypeExporterForTest(suite.mockEntityTypeService, entitytype.TypeCategoryUser),
 		flowmgt.NewFlowGraphExporterForTest(suite.mockFlowService),
@@ -280,6 +281,18 @@ func (suite *ExportServiceTestSuite) TestExportResources_CompleteOAuthApplicatio
 
 	assert.Equal(suite.T(), 1, result.Summary.ResourceTypes["application"])
 	assert.Equal(suite.T(), int64(len(file.Content)), file.Size)
+}
+
+// A list the resource does not have is still a range in its document, so the .env gives it as an
+// empty list an import can range over rather than as no value.
+func (suite *ExportServiceTestSuite) TestGenerateEnvFile_AbsentListIsAnEmptyList() {
+	envFile := (&exportService{}).generateEnvFile([]ExportFile{{Content: "clientId: {{.APP_CLIENT_ID}}\n" +
+		"redirectUris:\n{{- range .APP_REDIRECT_URIS}}\n  - {{.}}\n{{- end}}\n" +
+		"scopes:\n{{- range .APP_SCOPES}}\n  - {{.}}\n{{- end}}\n"}},
+		map[string]string{"APP_SCOPES": `["openid"]`})
+
+	suite.Require().NotNil(envFile)
+	suite.Equal("APP_CLIENT_ID=\nAPP_REDIRECT_URIS=[]\nAPP_SCOPES=[\"openid\"]\n", envFile.Content)
 }
 
 // TestExportResources_HyphenatedApplicationName tests that a resource name containing a hyphen
@@ -1279,7 +1292,7 @@ func (suite *ExportServiceTestSuite) TestExportResources_TemplateGenerationError
 
 	// Create exporters with the test services
 	exporters := []declarativeresource.ResourceExporter{
-		application.NewApplicationExporterForTest(suite.appServiceMock),
+		application.NewApplicationExporterForTest(suite.appServiceMock, sharingWithNoPolicies(suite.T())),
 		connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService, nil),
 		entitytype.NewEntityTypeExporterForTest(suite.mockEntityTypeService, entitytype.TypeCategoryUser),
 	}
@@ -1373,10 +1386,11 @@ func (suite *ExportServiceTestSuite) TestExportResources_WithGroupByTypeStructur
 	appFiles := 0
 	idpFiles := 0
 	for _, file := range result.Files {
-		if file.ResourceType == "application" {
+		switch file.ResourceType {
+		case "application":
 			assert.Equal(suite.T(), "applications", file.FolderPath)
 			appFiles++
-		} else if file.ResourceType == "connection" {
+		case "connection":
 			assert.Equal(suite.T(), "connections", file.FolderPath)
 			idpFiles++
 		}
@@ -2840,4 +2854,15 @@ func TestExport_DistinctVariablesDoNotClash(t *testing.T) {
 	if clash != "" {
 		t.Fatalf("expected no clash between distinct variables, got %q", clash)
 	}
+}
+
+// sharingWithNoPolicies is a sharing service holding no policy for any application, which is what
+// every export test here starts from.
+func sharingWithNoPolicies(t interface {
+	mock.TestingT
+	Cleanup(func())
+}) *sharingmock.SharingServiceInterfaceMock {
+	m := sharingmock.NewSharingServiceInterfaceMock(t)
+	m.EXPECT().ExportPolicies(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	return m
 }

@@ -21,7 +21,7 @@ interface BasePropertyDefinition {
  * String property definition
  */
 export interface StringPropertyDefinition extends BasePropertyDefinition {
-  type: 'string';
+  type: 'string' | 'email' | 'mobile';
   credential?: boolean;
   enum?: string[];
   regex?: string;
@@ -55,7 +55,7 @@ export interface ObjectPropertyDefinition extends BasePropertyDefinition {
  */
 export type ArrayItemDefinition =
   | {
-      type: 'string' | 'number' | 'boolean';
+      type: 'string' | 'email' | 'mobile' | 'number' | 'boolean';
       enum?: string[];
     }
   | {
@@ -91,6 +91,8 @@ export type UserTypeDefinition = Record<string, PropertyDefinition>;
  */
 export interface SystemAttributes {
   display?: string;
+  primaryEmail?: string;
+  primaryMobile?: string;
 }
 
 /**
@@ -176,7 +178,7 @@ export interface ApiError {
 /**
  * Property type union for form inputs
  */
-export type PropertyType = 'string' | 'number' | 'boolean' | 'array' | 'object';
+export type PropertyType = 'email' | 'mobile' | 'string' | 'number' | 'boolean' | 'array' | 'object';
 
 /**
  * UI property type including 'enum' as a separate option (maps to string with enum values)
@@ -196,6 +198,7 @@ export interface SchemaPropertyInput {
   credential: boolean;
   enum: string[];
   regex: string;
+  primary?: boolean;
   /** Preserved array item definition for round-trip fidelity. */
   items?: ArrayItemDefinition;
   /** Preserved nested object properties for round-trip fidelity. */

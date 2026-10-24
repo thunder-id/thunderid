@@ -9,6 +9,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/role"
@@ -29,11 +30,12 @@ func Initialize(
 	ouService oupkg.OrganizationUnitServiceInterface,
 	roleService role.RoleServiceInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
+	governance identitygovernance.IdentityGovernanceServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 ) (AgentServiceInterface, declarativeresource.ResourceExporter, error) {
 	service := newAgentService(authzService, entityService, inboundClientService, ouService, roleService,
-		valueCapturer, entityTypeService)
+		governance, valueCapturer, entityTypeService)
 
 	if err := entityService.LoadIndexedAttributes(getAgentIndexedAttributes()); err != nil {
 		return nil, nil, err

@@ -6,12 +6,11 @@ ouId: decl-m2m-root
 type: fullstack
 template: web
 url: https://example.com
-# Every organization unit in the deployment, current and future. allOus is owner-only and, for an
+# Every organization unit in the deployment, current and future. allUnits is owner-only and, for an
 # application owned below a root, also needs resource_sharing.allow_child_ou_cross_tree_sharing.
 sharingPolicies:
   - id: decl-m2m-all-ous-policy-1
-    targets:
-      - scope: allOus
+    allUnits: {}
 inboundAuthConfig:
   - type: "oauth2"
     config:

@@ -4,6 +4,7 @@
 package entity
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -62,6 +63,96 @@ func (s *StoreConstantsTestSuite) TestBuildEntityListQueryByOUIDs_WithFilters() 
 	s.NoError(err)
 	s.NotEmpty(q.Query)
 	s.NotEmpty(args)
+}
+
+// The system attribute keys are written in as literals, matching the expression indexes on them.
+func (s *StoreConstantsTestSuite) TestBuildEntityCountQueryBySystemAttributes() {
+	sysQuery := SystemAttributeQuery{SystemAttributes: map[string]interface{}{"owner": "u1"}}
+	q, args, err := buildEntityCountQueryBySystemAttributes("agent", sysQuery, nil, testDeploymentID)
+	s.NoError(err)
+	s.Equal("ASQ-ENTITY_MGT-32", q.ID)
+	s.Equal(`SELECT COUNT(*) as total FROM "ENTITY" WHERE CATEGORY = $1 `+
+		`AND SYSTEM_ATTRIBUTES->>'owner' = $2 AND DEPLOYMENT_ID = $3`, q.PostgresQuery)
+	s.Equal(`SELECT COUNT(*) as total FROM "ENTITY" WHERE CATEGORY = ? `+
+		`AND json_extract(SYSTEM_ATTRIBUTES, '$.owner') = ? AND DEPLOYMENT_ID = ?`, q.SQLiteQuery)
+	s.Equal(q.PostgresQuery, q.Query)
+	s.Equal([]interface{}{"agent", "u1", testDeploymentID}, args)
+}
+
+func (s *StoreConstantsTestSuite) TestBuildEntityListQueryBySystemAttributes_AllConditions() {
+	sysQuery := SystemAttributeQuery{
+		SystemAttributes: map[string]interface{}{"owner": "u1", "agentCategory": "personal-assistant"},
+		Attributes:       map[string]interface{}{"name": "Assistant"},
+	}
+	q, args, err := buildEntityListQueryBySystemAttributes(
+		"agent", sysQuery, map[string]bool{"name": true}, 10, 20, testDeploymentID)
+	s.NoError(err)
+	s.Equal("ASQ-ENTITY_MGT-33", q.ID)
+	s.Equal(`SELECT ID, OU_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" WHERE CATEGORY = $1 `+
+		`AND (ATTRIBUTES->>'name' = $2 OR `+fmt.Sprintf(identifierExistsCondition, "name", "$3")+`) `+
+		`AND SYSTEM_ATTRIBUTES->>'agentCategory' = $4 AND SYSTEM_ATTRIBUTES->>'owner' = $5 `+
+		`AND DEPLOYMENT_ID = $6 ORDER BY ID LIMIT $7 OFFSET $8`, q.PostgresQuery)
+	s.Equal(`SELECT ID, OU_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" WHERE CATEGORY = ? `+
+		`AND (json_extract(ATTRIBUTES, '$.name') = ? OR `+fmt.Sprintf(identifierExistsCondition, "name", "?")+`) `+
+		`AND json_extract(SYSTEM_ATTRIBUTES, '$.agentCategory') = ? `+
+		`AND json_extract(SYSTEM_ATTRIBUTES, '$.owner') = ? `+
+		`AND DEPLOYMENT_ID = ? ORDER BY ID LIMIT ? OFFSET ?`, q.SQLiteQuery)
+	s.Equal([]interface{}{"agent", "Assistant", "Assistant", "personal-assistant", "u1",
+		testDeploymentID, 10, 20}, args)
+}
+
+// The OU-scoped variants always apply the OU list, before the deployment condition.
+func (s *StoreConstantsTestSuite) TestBuildEntityQueryBySystemAttributesAndOUIDs() {
+	sysQuery := SystemAttributeQuery{SystemAttributes: map[string]interface{}{"owner": "u1"}}
+
+	q, args, err := buildEntityCountQueryBySystemAttributesAndOUIDs(
+		"agent", sysQuery, []string{"ou1", "ou2"}, nil, testDeploymentID)
+	s.NoError(err)
+	s.Equal("ASQ-ENTITY_MGT-34", q.ID)
+	s.Equal(`SELECT COUNT(*) as total FROM "ENTITY" WHERE CATEGORY = $1 `+
+		`AND SYSTEM_ATTRIBUTES->>'owner' = $2 AND OU_ID IN ($3, $4) AND DEPLOYMENT_ID = $5`, q.PostgresQuery)
+	s.Equal(`SELECT COUNT(*) as total FROM "ENTITY" WHERE CATEGORY = ? `+
+		`AND json_extract(SYSTEM_ATTRIBUTES, '$.owner') = ? AND OU_ID IN (?, ?) AND DEPLOYMENT_ID = ?`,
+		q.SQLiteQuery)
+	s.Equal([]interface{}{"agent", "u1", "ou1", "ou2", testDeploymentID}, args)
+
+	q, args, err = buildEntityListQueryBySystemAttributesAndOUIDs(
+		"agent", sysQuery, []string{"ou1"}, nil, 10, 0, testDeploymentID)
+	s.NoError(err)
+	s.Equal("ASQ-ENTITY_MGT-35", q.ID)
+	s.Equal(`SELECT ID, OU_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" WHERE CATEGORY = $1 `+
+		`AND SYSTEM_ATTRIBUTES->>'owner' = $2 AND OU_ID IN ($3) AND DEPLOYMENT_ID = $4 `+
+		`ORDER BY ID LIMIT $5 OFFSET $6`, q.PostgresQuery)
+	s.Equal([]interface{}{"agent", "u1", "ou1", testDeploymentID, 10, 0}, args)
+
+	q, _, err = buildEntityListQueryBySystemAttributesAndOUIDs(
+		"agent", sysQuery, []string{}, nil, 10, 0, testDeploymentID)
+	s.NoError(err)
+	s.Contains(q.PostgresQuery, " AND 1=0", "an empty OU list matches nothing")
+	s.Contains(q.SQLiteQuery, " AND 1=0", "an empty OU list matches nothing")
+
+	_, _, err = buildEntityCountQueryBySystemAttributesAndOUIDs(
+		"agent", SystemAttributeQuery{}, []string{"ou1"}, nil, testDeploymentID)
+	s.Error(err)
+	_, _, err = buildEntityListQueryBySystemAttributesAndOUIDs(
+		"agent", SystemAttributeQuery{}, []string{"ou1"}, nil, 10, 0, testDeploymentID)
+	s.Error(err)
+}
+
+func (s *StoreConstantsTestSuite) TestBuildEntityQueryBySystemAttributes_Errors() {
+	_, _, err := buildEntityCountQueryBySystemAttributes("agent", SystemAttributeQuery{}, nil, testDeploymentID)
+	s.Error(err, "no system attribute filter")
+
+	badKey := SystemAttributeQuery{SystemAttributes: map[string]interface{}{"owner'--": "u1"}}
+	_, _, err = buildEntityListQueryBySystemAttributes("agent", badKey, nil, 10, 0, testDeploymentID)
+	s.Error(err, "invalid system attribute key")
+
+	badAttr := SystemAttributeQuery{
+		SystemAttributes: map[string]interface{}{"owner": "u1"},
+		Attributes:       map[string]interface{}{"name'--": "x"},
+	}
+	_, _, err = buildEntityListQueryBySystemAttributes("agent", badAttr, nil, 10, 0, testDeploymentID)
+	s.Error(err, "invalid attribute key")
 }
 
 func (s *StoreConstantsTestSuite) TestBuildIdentifyQuery_EmptyFilters() {

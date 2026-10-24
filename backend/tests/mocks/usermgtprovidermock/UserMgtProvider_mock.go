@@ -18,10 +18,19 @@ func NewUserMgtProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *UserMgtProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &UserMgtProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type UserMgtProviderMock_CreateUser_Call struct {
 // CreateUser is a helper method to define mock.On call
 //   - ctx context.Context
 //   - user *providers.User
-func (_e *UserMgtProviderMock_Expecter) CreateUser(ctx interface{}, user interface{}) *UserMgtProviderMock_CreateUser_Call {
+func (_e *UserMgtProviderMock_Expecter) CreateUser(ctx any, user any) *UserMgtProviderMock_CreateUser_Call {
 	return &UserMgtProviderMock_CreateUser_Call{Call: _e.mock.On("CreateUser", ctx, user)}
 }
 

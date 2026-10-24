@@ -16,10 +16,19 @@ func newAttributeCacheStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *attributeCacheStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &attributeCacheStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -64,7 +73,7 @@ type attributeCacheStoreInterfaceMock_CreateAttributeCache_Call struct {
 //   - id string
 //   - data []byte
 //   - ttlSeconds int64
-func (_e *attributeCacheStoreInterfaceMock_Expecter) CreateAttributeCache(ctx interface{}, id interface{}, data interface{}, ttlSeconds interface{}) *attributeCacheStoreInterfaceMock_CreateAttributeCache_Call {
+func (_e *attributeCacheStoreInterfaceMock_Expecter) CreateAttributeCache(ctx any, id any, data any, ttlSeconds any) *attributeCacheStoreInterfaceMock_CreateAttributeCache_Call {
 	return &attributeCacheStoreInterfaceMock_CreateAttributeCache_Call{Call: _e.mock.On("CreateAttributeCache", ctx, id, data, ttlSeconds)}
 }
 
@@ -131,7 +140,7 @@ type attributeCacheStoreInterfaceMock_DeleteAttributeCache_Call struct {
 // DeleteAttributeCache is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *attributeCacheStoreInterfaceMock_Expecter) DeleteAttributeCache(ctx interface{}, id interface{}) *attributeCacheStoreInterfaceMock_DeleteAttributeCache_Call {
+func (_e *attributeCacheStoreInterfaceMock_Expecter) DeleteAttributeCache(ctx any, id any) *attributeCacheStoreInterfaceMock_DeleteAttributeCache_Call {
 	return &attributeCacheStoreInterfaceMock_DeleteAttributeCache_Call{Call: _e.mock.On("DeleteAttributeCache", ctx, id)}
 }
 
@@ -189,7 +198,7 @@ type attributeCacheStoreInterfaceMock_ExtendAttributeCacheTTL_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - ttlSeconds int
-func (_e *attributeCacheStoreInterfaceMock_Expecter) ExtendAttributeCacheTTL(ctx interface{}, id interface{}, ttlSeconds interface{}) *attributeCacheStoreInterfaceMock_ExtendAttributeCacheTTL_Call {
+func (_e *attributeCacheStoreInterfaceMock_Expecter) ExtendAttributeCacheTTL(ctx any, id any, ttlSeconds any) *attributeCacheStoreInterfaceMock_ExtendAttributeCacheTTL_Call {
 	return &attributeCacheStoreInterfaceMock_ExtendAttributeCacheTTL_Call{Call: _e.mock.On("ExtendAttributeCacheTTL", ctx, id, ttlSeconds)}
 }
 
@@ -262,7 +271,7 @@ type attributeCacheStoreInterfaceMock_GetAttributeCache_Call struct {
 // GetAttributeCache is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *attributeCacheStoreInterfaceMock_Expecter) GetAttributeCache(ctx interface{}, id interface{}) *attributeCacheStoreInterfaceMock_GetAttributeCache_Call {
+func (_e *attributeCacheStoreInterfaceMock_Expecter) GetAttributeCache(ctx any, id any) *attributeCacheStoreInterfaceMock_GetAttributeCache_Call {
 	return &attributeCacheStoreInterfaceMock_GetAttributeCache_Call{Call: _e.mock.On("GetAttributeCache", ctx, id)}
 }
 

@@ -17,10 +17,19 @@ func NewAuthorizeServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *AuthorizeServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &AuthorizeServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -75,7 +84,7 @@ type AuthorizeServiceInterfaceMock_GetAuthorizationCodeDetails_Call struct {
 //   - ctx context.Context
 //   - clientID string
 //   - code string
-func (_e *AuthorizeServiceInterfaceMock_Expecter) GetAuthorizationCodeDetails(ctx interface{}, clientID interface{}, code interface{}) *AuthorizeServiceInterfaceMock_GetAuthorizationCodeDetails_Call {
+func (_e *AuthorizeServiceInterfaceMock_Expecter) GetAuthorizationCodeDetails(ctx any, clientID any, code any) *AuthorizeServiceInterfaceMock_GetAuthorizationCodeDetails_Call {
 	return &AuthorizeServiceInterfaceMock_GetAuthorizationCodeDetails_Call{Call: _e.mock.On("GetAuthorizationCodeDetails", ctx, clientID, code)}
 }
 
@@ -149,7 +158,7 @@ type AuthorizeServiceInterfaceMock_HandleAuthorizationCallback_Call struct {
 //   - ctx context.Context
 //   - authID string
 //   - assertion string
-func (_e *AuthorizeServiceInterfaceMock_Expecter) HandleAuthorizationCallback(ctx interface{}, authID interface{}, assertion interface{}) *AuthorizeServiceInterfaceMock_HandleAuthorizationCallback_Call {
+func (_e *AuthorizeServiceInterfaceMock_Expecter) HandleAuthorizationCallback(ctx any, authID any, assertion any) *AuthorizeServiceInterfaceMock_HandleAuthorizationCallback_Call {
 	return &AuthorizeServiceInterfaceMock_HandleAuthorizationCallback_Call{Call: _e.mock.On("HandleAuthorizationCallback", ctx, authID, assertion)}
 }
 
@@ -224,7 +233,7 @@ type AuthorizeServiceInterfaceMock_HandleInitialAuthorizationRequest_Call struct
 // HandleInitialAuthorizationRequest is a helper method to define mock.On call
 //   - ctx context.Context
 //   - msg *authz.OAuthMessage
-func (_e *AuthorizeServiceInterfaceMock_Expecter) HandleInitialAuthorizationRequest(ctx interface{}, msg interface{}) *AuthorizeServiceInterfaceMock_HandleInitialAuthorizationRequest_Call {
+func (_e *AuthorizeServiceInterfaceMock_Expecter) HandleInitialAuthorizationRequest(ctx any, msg any) *AuthorizeServiceInterfaceMock_HandleInitialAuthorizationRequest_Call {
 	return &AuthorizeServiceInterfaceMock_HandleInitialAuthorizationRequest_Call{Call: _e.mock.On("HandleInitialAuthorizationRequest", ctx, msg)}
 }
 

@@ -18,10 +18,19 @@ func newNotificationTemplateAdapterMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *notificationTemplateAdapterMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &notificationTemplateAdapterMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +87,7 @@ type notificationTemplateAdapterMock_CreateTemplate_Call struct {
 //   - ctx context.Context
 //   - channel notificationtemplate.ChannelType
 //   - request notificationtemplate.CreateTemplateRequest
-func (_e *notificationTemplateAdapterMock_Expecter) CreateTemplate(ctx interface{}, channel interface{}, request interface{}) *notificationTemplateAdapterMock_CreateTemplate_Call {
+func (_e *notificationTemplateAdapterMock_Expecter) CreateTemplate(ctx any, channel any, request any) *notificationTemplateAdapterMock_CreateTemplate_Call {
 	return &notificationTemplateAdapterMock_CreateTemplate_Call{Call: _e.mock.On("CreateTemplate", ctx, channel, request)}
 }
 
@@ -154,7 +163,7 @@ type notificationTemplateAdapterMock_GetTemplateByHandle_Call struct {
 //   - ctx context.Context
 //   - channel notificationtemplate.ChannelType
 //   - handle string
-func (_e *notificationTemplateAdapterMock_Expecter) GetTemplateByHandle(ctx interface{}, channel interface{}, handle interface{}) *notificationTemplateAdapterMock_GetTemplateByHandle_Call {
+func (_e *notificationTemplateAdapterMock_Expecter) GetTemplateByHandle(ctx any, channel any, handle any) *notificationTemplateAdapterMock_GetTemplateByHandle_Call {
 	return &notificationTemplateAdapterMock_GetTemplateByHandle_Call{Call: _e.mock.On("GetTemplateByHandle", ctx, channel, handle)}
 }
 
@@ -231,7 +240,7 @@ type notificationTemplateAdapterMock_UpdateTemplate_Call struct {
 //   - channel notificationtemplate.ChannelType
 //   - id string
 //   - request notificationtemplate.UpdateTemplateRequest
-func (_e *notificationTemplateAdapterMock_Expecter) UpdateTemplate(ctx interface{}, channel interface{}, id interface{}, request interface{}) *notificationTemplateAdapterMock_UpdateTemplate_Call {
+func (_e *notificationTemplateAdapterMock_Expecter) UpdateTemplate(ctx any, channel any, id any, request any) *notificationTemplateAdapterMock_UpdateTemplate_Call {
 	return &notificationTemplateAdapterMock_UpdateTemplate_Call{Call: _e.mock.On("UpdateTemplate", ctx, channel, id, request)}
 }
 
@@ -301,7 +310,7 @@ type notificationTemplateAdapterMock_ValidateTemplate_Call struct {
 //   - ctx context.Context
 //   - channel notificationtemplate.ChannelType
 //   - request notificationtemplate.CreateTemplateRequest
-func (_e *notificationTemplateAdapterMock_Expecter) ValidateTemplate(ctx interface{}, channel interface{}, request interface{}) *notificationTemplateAdapterMock_ValidateTemplate_Call {
+func (_e *notificationTemplateAdapterMock_Expecter) ValidateTemplate(ctx any, channel any, request any) *notificationTemplateAdapterMock_ValidateTemplate_Call {
 	return &notificationTemplateAdapterMock_ValidateTemplate_Call{Call: _e.mock.On("ValidateTemplate", ctx, channel, request)}
 }
 

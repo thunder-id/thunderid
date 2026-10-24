@@ -1,10 +1,11 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 // Package utils provides utility functions for OAuth2 operations.
 package utils
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -16,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -279,4 +281,18 @@ func EnsureClientSubTypeAttribute(token *providers.OAuthTokenConfig) *providers.
 		clientConfig.Attributes = append(clientConfig.Attributes, constants.ClaimSubType)
 	}
 	return token
+}
+
+// IsClientHeld reports whether governance holds the client's entity at the application plane. With no
+// governance, client or entity ID the client is not held. A governance fault is a server error.
+func IsClientHeld(ctx context.Context, governance providers.IdentityGovernanceProvider,
+	client *providers.OAuthClient) (bool, *tidcommon.ServiceError) {
+	if governance == nil || client == nil || client.ID == "" {
+		return false, nil
+	}
+	decision, svcErr := governance.EvaluateAccess(ctx, client.ID, providers.AccessPlaneApplication, "")
+	if svcErr != nil {
+		return false, &tidcommon.InternalServerError
+	}
+	return !decision.Admitted, nil
 }

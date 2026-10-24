@@ -6,6 +6,7 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -74,9 +75,11 @@ func validateDeclaredGateway(data interface{}) error {
 	// Refused as the file is read, rather than registering an address nothing can call. A declaration
 	// is loaded at start-up, so the alternative is a server that comes up holding a gateway that can
 	// never answer.
-	if _, ok := normalizeBaseURL(declared.BaseURL); !ok {
-		return fmt.Errorf("gateway %q needs an absolute http or https baseUrl, such as "+
-			"https://dp.example.com:8090", declared.Name)
+	if _, problem := normalizeBaseURL(declared.BaseURL, allowPrivateAddresses()); problem != baseURLUsable {
+		return fmt.Errorf(declaredURLRefusal, declared.Name, redactedURL(declared.BaseURL), problem)
+	}
+	if !validGatewayName(strings.TrimSpace(declared.Name)) {
+		return fmt.Errorf(declaredNameRefusal, declared.Name)
 	}
 	// Refused here rather than loaded with nothing to present. A declared gateway holds its key in
 	// memory only, so one the file does not name is one this control plane can never authenticate
@@ -158,4 +161,21 @@ func loadDeclarativeGateways(fileStore *gatewayFileStore) error {
 		return fmt.Errorf("failed to load gateway resources: %w", err)
 	}
 	return nil
+}
+
+// What a declared gateway is refused for, as the start-up error says it.
+const (
+	declaredURLRefusal = "gateway %q needs an https baseUrl this plane may call, such as " +
+		"https://dp.example.com:8090, but %q %s"
+	declaredNameRefusal = "gateway %q needs a name of at most 64 letters, digits, spaces, hyphens, " +
+		"underscores and dots, with at least one letter or digit"
+)
+
+// redactedURL is a base URL as an error may show it: with any user information it carries replaced,
+// so a password written into the address never reaches a log.
+func redactedURL(raw string) string {
+	if parsed, err := url.Parse(strings.TrimSpace(raw)); err == nil && parsed.User != nil {
+		return parsed.Redacted()
+	}
+	return raw
 }

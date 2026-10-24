@@ -48,7 +48,7 @@ export default function ConfigureSeparator({
 
       <FormControl fullWidth required error={!isDelimiterValid}>
         <FormLabel htmlFor="resource-server-separator-select">
-          {t('resourceServers:create.separator.label', 'Permission Delimiter')}
+          {t('resourceServers:create.separator.label', 'Permission delimiter')}
         </FormLabel>
         <Select
           id="resource-server-separator-select"

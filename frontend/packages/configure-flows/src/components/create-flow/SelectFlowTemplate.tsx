@@ -33,8 +33,8 @@ const CATEGORY_ORDER = ['PASSWORD', 'SOCIAL_LOGIN', 'MFA', 'PASSWORDLESS'];
 
 const CATEGORY_LABELS: Record<string, string> = {
   PASSWORD: 'Password',
-  SOCIAL_LOGIN: 'Social Login',
-  MFA: 'Multi-Factor',
+  SOCIAL_LOGIN: 'Social login',
+  MFA: 'Multi-factor',
   PASSWORDLESS: 'Passwordless',
 };
 

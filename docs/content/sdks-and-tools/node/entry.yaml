@@ -18,6 +18,9 @@ docs:
 links:
   github: https://github.com/thunder-id/javascript-sdks
   package: https://www.npmjs.com/package/@thunderid/node
+  samples: https://github.com/thunder-id/samples/tree/main/quickstarts/node
+# Offers the quickstart's released zip at the top of the page, from the samples repo releases.
+sample: quickstarts/node
 apiReference:
   source: typedoc
 
@@ -332,7 +335,7 @@ guides:
             })
       - title: 3. Handle the Callback
         description: After the user authenticates at the identity provider, the browser redirects to the callback URL
-          with the authorization code, session state, and state parameter. Exchange these values for tokens.
+          with the authorization code and state parameter. Validate `state`, then exchange the authorization code for tokens.
         code:
           file: src/routes/callback.ts
           lang: ts
@@ -345,13 +348,12 @@ guides:
                 return res.redirect('/sign-in')
               }
 
-              const { code, session_state, state } = req.query
+              const { code, state } = req.query
 
               await auth.signIn(
                 (authUrl) => res.redirect(authUrl),
                 sessionId,
                 code as string,
-                session_state as string,
                 state as string,
               )
 

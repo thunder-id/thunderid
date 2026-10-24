@@ -18,10 +18,19 @@ func NewNodeInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *NodeInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &NodeInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -52,7 +61,7 @@ type NodeInterfaceMock_AddNextNode_Call struct {
 
 // AddNextNode is a helper method to define mock.On call
 //   - nextNodeID string
-func (_e *NodeInterfaceMock_Expecter) AddNextNode(nextNodeID interface{}) *NodeInterfaceMock_AddNextNode_Call {
+func (_e *NodeInterfaceMock_Expecter) AddNextNode(nextNodeID any) *NodeInterfaceMock_AddNextNode_Call {
 	return &NodeInterfaceMock_AddNextNode_Call{Call: _e.mock.On("AddNextNode", nextNodeID)}
 }
 
@@ -92,7 +101,7 @@ type NodeInterfaceMock_AddPreviousNode_Call struct {
 
 // AddPreviousNode is a helper method to define mock.On call
 //   - previousNodeID string
-func (_e *NodeInterfaceMock_Expecter) AddPreviousNode(previousNodeID interface{}) *NodeInterfaceMock_AddPreviousNode_Call {
+func (_e *NodeInterfaceMock_Expecter) AddPreviousNode(previousNodeID any) *NodeInterfaceMock_AddPreviousNode_Call {
 	return &NodeInterfaceMock_AddPreviousNode_Call{Call: _e.mock.On("AddPreviousNode", previousNodeID)}
 }
 
@@ -156,7 +165,7 @@ type NodeInterfaceMock_Execute_Call struct {
 
 // Execute is a helper method to define mock.On call
 //   - ctx *providers.NodeContext
-func (_e *NodeInterfaceMock_Expecter) Execute(ctx interface{}) *NodeInterfaceMock_Execute_Call {
+func (_e *NodeInterfaceMock_Expecter) Execute(ctx any) *NodeInterfaceMock_Execute_Call {
 	return &NodeInterfaceMock_Execute_Call{Call: _e.mock.On("Execute", ctx)}
 }
 
@@ -602,7 +611,7 @@ type NodeInterfaceMock_RemoveNextNode_Call struct {
 
 // RemoveNextNode is a helper method to define mock.On call
 //   - nextNodeID string
-func (_e *NodeInterfaceMock_Expecter) RemoveNextNode(nextNodeID interface{}) *NodeInterfaceMock_RemoveNextNode_Call {
+func (_e *NodeInterfaceMock_Expecter) RemoveNextNode(nextNodeID any) *NodeInterfaceMock_RemoveNextNode_Call {
 	return &NodeInterfaceMock_RemoveNextNode_Call{Call: _e.mock.On("RemoveNextNode", nextNodeID)}
 }
 
@@ -642,7 +651,7 @@ type NodeInterfaceMock_RemovePreviousNode_Call struct {
 
 // RemovePreviousNode is a helper method to define mock.On call
 //   - previousNodeID string
-func (_e *NodeInterfaceMock_Expecter) RemovePreviousNode(previousNodeID interface{}) *NodeInterfaceMock_RemovePreviousNode_Call {
+func (_e *NodeInterfaceMock_Expecter) RemovePreviousNode(previousNodeID any) *NodeInterfaceMock_RemovePreviousNode_Call {
 	return &NodeInterfaceMock_RemovePreviousNode_Call{Call: _e.mock.On("RemovePreviousNode", previousNodeID)}
 }
 
@@ -748,7 +757,7 @@ type NodeInterfaceMock_SetCondition_Call struct {
 
 // SetCondition is a helper method to define mock.On call
 //   - condition *core.NodeCondition
-func (_e *NodeInterfaceMock_Expecter) SetCondition(condition interface{}) *NodeInterfaceMock_SetCondition_Call {
+func (_e *NodeInterfaceMock_Expecter) SetCondition(condition any) *NodeInterfaceMock_SetCondition_Call {
 	return &NodeInterfaceMock_SetCondition_Call{Call: _e.mock.On("SetCondition", condition)}
 }
 
@@ -788,7 +797,7 @@ type NodeInterfaceMock_SetNextNodeList_Call struct {
 
 // SetNextNodeList is a helper method to define mock.On call
 //   - nextNodeIDList []string
-func (_e *NodeInterfaceMock_Expecter) SetNextNodeList(nextNodeIDList interface{}) *NodeInterfaceMock_SetNextNodeList_Call {
+func (_e *NodeInterfaceMock_Expecter) SetNextNodeList(nextNodeIDList any) *NodeInterfaceMock_SetNextNodeList_Call {
 	return &NodeInterfaceMock_SetNextNodeList_Call{Call: _e.mock.On("SetNextNodeList", nextNodeIDList)}
 }
 
@@ -828,7 +837,7 @@ type NodeInterfaceMock_SetPreviousNodeList_Call struct {
 
 // SetPreviousNodeList is a helper method to define mock.On call
 //   - previousNodeIDList []string
-func (_e *NodeInterfaceMock_Expecter) SetPreviousNodeList(previousNodeIDList interface{}) *NodeInterfaceMock_SetPreviousNodeList_Call {
+func (_e *NodeInterfaceMock_Expecter) SetPreviousNodeList(previousNodeIDList any) *NodeInterfaceMock_SetPreviousNodeList_Call {
 	return &NodeInterfaceMock_SetPreviousNodeList_Call{Call: _e.mock.On("SetPreviousNodeList", previousNodeIDList)}
 }
 
@@ -879,7 +888,7 @@ type NodeInterfaceMock_ShouldExecute_Call struct {
 
 // ShouldExecute is a helper method to define mock.On call
 //   - ctx *providers.NodeContext
-func (_e *NodeInterfaceMock_Expecter) ShouldExecute(ctx interface{}) *NodeInterfaceMock_ShouldExecute_Call {
+func (_e *NodeInterfaceMock_Expecter) ShouldExecute(ctx any) *NodeInterfaceMock_ShouldExecute_Call {
 	return &NodeInterfaceMock_ShouldExecute_Call{Call: _e.mock.On("ShouldExecute", ctx)}
 }
 

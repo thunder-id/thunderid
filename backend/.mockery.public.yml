@@ -283,6 +283,15 @@ packages:
       pkgname: magiclinkmock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/authn/openid4vp:
+    config:
+      dir: tests/mocks/authn/openid4vpmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: openid4vpmock
+      filename: "{{.InterfaceName}}_mock.go"
+    interfaces:
+      OpenID4VPServiceInterface:
+
   github.com/thunder-id/thunderid/internal/authn/passkey:
     interfaces:
       PasskeyServiceInterface:
@@ -307,6 +316,15 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: idpmock
       filename: "{{.InterfaceName}}_mock.go"
+
+  github.com/thunder-id/thunderid/internal/connection/httpconnection:
+    interfaces:
+      HTTPConnectionServiceInterface:
+        config:
+          dir: tests/mocks/connection/httpconnectionmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: httpconnectionmock
+          filename: "{{.InterfaceName}}_mock.go"
 
   github.com/thunder-id/thunderid/internal/notification:
     config:
@@ -570,6 +588,15 @@ packages:
       pkgname: entityprovidermock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/identitygovernance:
+    interfaces:
+      IdentityGovernanceServiceInterface:
+        config:
+          dir: tests/mocks/identitygovernancemock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: identitygovernancemock
+          filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/pkg/thunderidengine/providers:
     interfaces:
       AuthnProviderManager:
@@ -577,6 +604,12 @@ packages:
           dir: tests/mocks/authnprovider/managermock
           structname: '{{.InterfaceName}}Mock'
           pkgname: managermock
+          filename: "{{.InterfaceName}}_mock.go"
+      IdentityGovernanceProvider:
+        config:
+          dir: tests/mocks/identitygovernanceprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: identitygovernanceprovidermock
           filename: "{{.InterfaceName}}_mock.go"
       AuthnProviderInterface:
         config:

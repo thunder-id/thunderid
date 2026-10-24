@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {
@@ -109,8 +109,12 @@ function HttpRequestProperties({resource, onChange}: CommonResourcePropertiesPro
           onValueChange={(index, newValue) =>
             updateHeaderEntries((prev) => prev.map((entry, i) => (i === index ? [entry[0], newValue] : entry)))
           }
+          keyLabel={t('flows:core.executions.httpRequest.headers.keyLabel')}
+          valueLabel={t('flows:core.executions.httpRequest.headers.valueLabel')}
           keyPlaceholder={t('flows:core.executions.httpRequest.headers.keyPlaceholder')}
           valuePlaceholder={t('flows:core.executions.httpRequest.headers.valuePlaceholder')}
+          addLabel={t('flows:core.executions.httpRequest.headers.addLabel')}
+          removeLabel={t('common:actions.delete', 'Delete')}
         />
       </div>
 
@@ -169,8 +173,12 @@ function HttpRequestProperties({resource, onChange}: CommonResourcePropertiesPro
           onValueChange={(index, newValue) =>
             updateResponseMappingEntries((prev) => prev.map((entry, i) => (i === index ? [entry[0], newValue] : entry)))
           }
+          keyLabel={t('flows:core.executions.httpRequest.responseMapping.keyLabel')}
+          valueLabel={t('flows:core.executions.httpRequest.responseMapping.valueLabel')}
           keyPlaceholder={t('flows:core.executions.httpRequest.responseMapping.keyPlaceholder')}
           valuePlaceholder={t('flows:core.executions.httpRequest.responseMapping.valuePlaceholder')}
+          addLabel={t('flows:core.executions.httpRequest.responseMapping.addLabel')}
+          removeLabel={t('common:actions.delete', 'Delete')}
         />
       </div>
 

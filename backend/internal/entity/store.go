@@ -46,7 +46,7 @@ type entityStoreInterface interface {
 
 	// Query
 	IdentifyEntity(ctx context.Context, filters map[string]interface{}) (*string, error)
-	ResolveLinkedAccount(ctx context.Context, idpID, sub string) (*string, error)
+	ResolveLinkedAccounts(ctx context.Context, idpID, sub string) ([]string, error)
 	SearchEntities(ctx context.Context, filters map[string]interface{}) ([]providers.Entity, error)
 	GetEntityListCount(ctx context.Context, category string,
 		filters map[string]interface{}) (int, error)
@@ -56,6 +56,14 @@ type entityStoreInterface interface {
 		ouIDs []string, filters map[string]interface{}) (int, error)
 	GetEntityListByOUIDs(ctx context.Context, category string,
 		ouIDs []string, limit, offset int, filters map[string]interface{}) ([]providers.Entity, error)
+	GetEntityListCountBySystemAttributes(ctx context.Context, category string,
+		sysQuery SystemAttributeQuery) (int, error)
+	GetEntityListBySystemAttributes(ctx context.Context, category string,
+		sysQuery SystemAttributeQuery, limit, offset int) ([]providers.Entity, error)
+	GetEntityListCountBySystemAttributesAndOUIDs(ctx context.Context, category string,
+		sysQuery SystemAttributeQuery, ouIDs []string) (int, error)
+	GetEntityListBySystemAttributesAndOUIDs(ctx context.Context, category string,
+		sysQuery SystemAttributeQuery, ouIDs []string, limit, offset int) ([]providers.Entity, error)
 	ValidateEntityIDs(ctx context.Context, entityIDs []string) ([]string, error)
 	GetEntitiesByIDs(ctx context.Context, entityIDs []string) ([]providers.Entity, error)
 	ValidateEntityIDsInOUs(ctx context.Context, entityIDs []string, ouIDs []string) ([]string, error)
@@ -164,7 +172,6 @@ func (es *entityDBStore) CreateEntity(ctx context.Context, entity providers.Enti
 		es.scope(ctx),
 		string(entity.Category),
 		entity.Type,
-		string(entity.State),
 		entity.OUID,
 		string(attributes),
 		systemAttrs,
@@ -259,11 +266,12 @@ func (es *entityDBStore) UpdateEntity(ctx context.Context, entity *providers.Ent
 		systemAttrs = string(entity.SystemAttributes)
 	}
 
+	// entity.State is not written; it lives in the runtime store.
 	rowsAffected, err := dbClient.ExecuteContext(
 		ctx,
 		QueryUpdateEntity,
 		entity.ID, entity.OUID, entity.Type,
-		string(entity.State), string(attributes), systemAttrs, time.Now().UTC(), es.scope(ctx),
+		string(attributes), systemAttrs, time.Now().UTC(), es.scope(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to execute update entity query: %w", err)
@@ -423,9 +431,6 @@ func (es *entityDBStore) syncAttributeIdentifiers(ctx context.Context, entityID 
 	}
 
 	_, err = dbClient.ExecuteContext(ctx, *query, args...)
-	if provider.IsUniqueIndexViolation(err, linkedIDIndexName, linkedIDIndexColumns) {
-		return ErrLinkedAccountConflict
-	}
 	if err != nil {
 		return fmt.Errorf("failed to batch insert identifiers: %w", err)
 	}
@@ -547,9 +552,9 @@ func (es *entityDBStore) LockEntity(ctx context.Context, id string) (providers.E
 	return es.GetEntity(ctx, id)
 }
 
-// ResolveLinkedAccount resolves the entity linked to a subject at a connection from the identifier
-// index only.
-func (es *entityDBStore) ResolveLinkedAccount(ctx context.Context, idpID, sub string) (*string, error) {
+// ResolveLinkedAccounts returns the entities linked to a subject at a connection from the identifier
+// index only. A subject no entity is linked to returns an empty list.
+func (es *entityDBStore) ResolveLinkedAccounts(ctx context.Context, idpID, sub string) ([]string, error) {
 	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
@@ -561,18 +566,15 @@ func (es *entityDBStore) ResolveLinkedAccount(ctx context.Context, idpID, sub st
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
 
-	if len(results) == 0 {
-		return nil, ErrEntityNotFound
+	entityIDs := make([]string, 0, len(results))
+	for _, row := range results {
+		entityID, ok := row["id"].(string)
+		if !ok || entityID == "" {
+			return nil, fmt.Errorf("unexpected type for id: %T", row["id"])
+		}
+		entityIDs = append(entityIDs, entityID)
 	}
-	if len(results) > 1 {
-		return nil, ErrAmbiguousEntity
-	}
-
-	entityID, ok := results[0]["id"].(string)
-	if !ok || entityID == "" {
-		return nil, fmt.Errorf("unexpected type for id: %T", results[0]["id"])
-	}
-	return &entityID, nil
+	return entityIDs, nil
 }
 
 // SearchEntities searches for all entities matching the provided filters.
@@ -677,6 +679,89 @@ func (es *entityDBStore) GetEntityListByOUIDs(ctx context.Context, category stri
 
 	listQuery, args, err := buildEntityListQueryByOUIDs(
 		category, ouIDs, filters, es.indexedAttributes, limit, offset, es.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to build list query: %w", err)
+	}
+
+	results, err := dbClient.QueryContext(ctx, listQuery, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute paginated query: %w", err)
+	}
+
+	return buildEntitiesFromResults(results)
+}
+
+// GetEntityListCountBySystemAttributes retrieves the number of entities a system attribute query selects.
+func (es *entityDBStore) GetEntityListCountBySystemAttributes(ctx context.Context, category string,
+	sysQuery SystemAttributeQuery) (int, error) {
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	countQuery, args, err := buildEntityCountQueryBySystemAttributes(
+		category, sysQuery, es.indexedAttributes, es.scope(ctx))
+	if err != nil {
+		return 0, fmt.Errorf("failed to build count query: %w", err)
+	}
+
+	return executeCountQuery(dbClient, ctx, countQuery, args)
+}
+
+// GetEntityListBySystemAttributes retrieves the entities a system attribute query selects.
+func (es *entityDBStore) GetEntityListBySystemAttributes(ctx context.Context, category string,
+	sysQuery SystemAttributeQuery, limit, offset int) ([]providers.Entity, error) {
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	listQuery, args, err := buildEntityListQueryBySystemAttributes(
+		category, sysQuery, es.indexedAttributes, limit, offset, es.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to build list query: %w", err)
+	}
+
+	results, err := dbClient.QueryContext(ctx, listQuery, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute paginated query: %w", err)
+	}
+
+	return buildEntitiesFromResults(results)
+}
+
+// GetEntityListCountBySystemAttributesAndOUIDs retrieves the number of entities a system attribute query
+// selects within the given organization units.
+func (es *entityDBStore) GetEntityListCountBySystemAttributesAndOUIDs(ctx context.Context, category string,
+	sysQuery SystemAttributeQuery, ouIDs []string) (int, error) {
+	if len(ouIDs) == 0 {
+		return 0, nil
+	}
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	countQuery, args, err := buildEntityCountQueryBySystemAttributesAndOUIDs(
+		category, sysQuery, ouIDs, es.indexedAttributes, es.scope(ctx))
+	if err != nil {
+		return 0, fmt.Errorf("failed to build count query: %w", err)
+	}
+
+	return executeCountQuery(dbClient, ctx, countQuery, args)
+}
+
+// GetEntityListBySystemAttributesAndOUIDs retrieves the entities a system attribute query selects within
+// the given organization units.
+func (es *entityDBStore) GetEntityListBySystemAttributesAndOUIDs(ctx context.Context, category string,
+	sysQuery SystemAttributeQuery, ouIDs []string, limit, offset int) ([]providers.Entity, error) {
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	listQuery, args, err := buildEntityListQueryBySystemAttributesAndOUIDs(
+		category, sysQuery, ouIDs, es.indexedAttributes, limit, offset, es.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build list query: %w", err)
 	}
@@ -890,11 +975,6 @@ func buildEntityFromResultRow(row map[string]interface{}) (providers.Entity, err
 		return providers.Entity{}, fmt.Errorf("failed to parse type as string")
 	}
 
-	state, ok := row["state"].(string)
-	if !ok {
-		return providers.Entity{}, fmt.Errorf("failed to parse state as string")
-	}
-
 	var attributes string
 	switch v := row["attributes"].(type) {
 	case string:
@@ -909,7 +989,6 @@ func buildEntityFromResultRow(row map[string]interface{}) (providers.Entity, err
 		ID:       entityID,
 		Category: providers.EntityCategory(category),
 		Type:     entityType,
-		State:    providers.EntityState(state),
 		OUID:     ouID,
 	}
 

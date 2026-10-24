@@ -65,7 +65,6 @@ class MyCustomClient extends ThunderIDJavaScriptClient {
     const params = new URLSearchParams(window.location.search)
     return this.requestAccessToken(
       params.get('code')!,
-      params.get('session_state') ?? '',
       params.get('state')!,
     )
   }

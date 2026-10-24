@@ -111,7 +111,7 @@ func createTestExporters(
 	entityTypeService *entitytypemock.EntityTypeServiceInterfaceMock,
 ) []declarativeresource.ResourceExporter {
 	return []declarativeresource.ResourceExporter{
-		application.NewApplicationExporterForTest(appService),
+		application.NewApplicationExporterForTest(appService, nil),
 		connection.NewConnectionExporterForTest(idpService, notificationService, nil),
 		entitytype.NewEntityTypeExporterForTest(entityTypeService, entitytype.TypeCategoryUser),
 	}

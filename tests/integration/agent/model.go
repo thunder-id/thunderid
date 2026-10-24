@@ -18,6 +18,7 @@ type Agent struct {
 	Owner       string          `json:"owner,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
 	IsReadOnly  bool            `json:"isReadOnly"`
+	Delegated   bool            `json:"delegated,omitempty"`
 
 	AuthFlowID                string              `json:"authFlowId,omitempty"`
 	RegistrationFlowID        string              `json:"registrationFlowId,omitempty"`

@@ -293,7 +293,7 @@ export default function Preview({appLogo, selectedTheme, integrations}: PreviewP
                           <FormControl required>
                             <FormLabel htmlFor="preview-mobile">
                               {t('applications:onboarding.preview.mobileNumber', {
-                                defaultValue: 'Mobile Number',
+                                defaultValue: 'Mobile number',
                               })}
                             </FormLabel>
                             <TextField

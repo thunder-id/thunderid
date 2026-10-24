@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/logout/backchannel"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -85,7 +86,8 @@ func main() {
 	}
 
 	// Register the services.
-	jwtService, runtimeCryptoSvc, importService, mcpServer, backchannelDispatcher := registerServices(mux, cacheManager)
+	jwtService, runtimeCryptoSvc, importService, mcpServer, backchannelDispatcher, lockNotifier :=
+		registerServices(mux, cacheManager)
 
 	// When invoked as the bootstrap one-shot (`thunderid bootstrap`), create the
 	// default resources in-process and exit without starting the HTTP server.
@@ -152,7 +154,7 @@ func main() {
 	// Wait for shutdown signal
 	<-sigChan
 	logger.Info(ctx, "Shutting down server...")
-	gracefulShutdown(ctx, logger, server, cacheManager, revocationSyncer, backchannelDispatcher)
+	gracefulShutdown(ctx, logger, server, cacheManager, revocationSyncer, backchannelDispatcher, lockNotifier)
 }
 
 // initRevocationCache builds the Resource Server token-revocation enforcer and its background syncer
@@ -321,6 +323,7 @@ func gracefulShutdown(
 	cacheManager cache.CacheManagerInterface,
 	revocationSyncer revocationcache.Syncer,
 	backchannelDispatcher backchannel.DispatcherInterface,
+	lockNotifier identitygovernance.LockNotifierInterface,
 ) {
 	ctx, cancel := context.WithTimeout(ctx, shutdownTimeout)
 	defer cancel()
@@ -335,10 +338,13 @@ func gracefulShutdown(
 	// Stop the token-revocation cache syncer.
 	revocationSyncer.Stop()
 
-	// Stop back-channel logout delivery before observability shuts down, so the final delivery
-	// outcomes still reach a subscriber.
+	// Stop back-channel logout delivery and lock email notices before observability shuts down, so
+	// the final delivery outcomes still reach a subscriber.
 	if backchannelDispatcher != nil {
 		backchannelDispatcher.Stop()
+	}
+	if lockNotifier != nil {
+		lockNotifier.Stop()
 	}
 
 	// Shutdown services

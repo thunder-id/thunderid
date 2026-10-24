@@ -61,7 +61,7 @@ func (suite *FileBasedStoreTestSuite) SetupTest() {
 }
 
 func (suite *FileBasedStoreTestSuite) createTestSender(id, name string) *common.NotificationSenderDTO {
-	properties := []cmodels.Property{}
+	properties := make([]cmodels.Property, 0, 3)
 	prop, _ := cmodels.NewProperty("account_sid", "test_account_sid", false)
 	properties = append(properties, *prop)
 	prop2, _ := cmodels.NewProperty("auth_token", "test_auth_token", true)
@@ -240,7 +240,7 @@ func (suite *FileBasedStoreTestSuite) TestCreateMultipleSenders_WithProperties()
 	twilioSender := suite.createTestSender("twilio-001", "Twilio Production")
 
 	// Vonage sender with different properties
-	vonageProps := []cmodels.Property{}
+	vonageProps := make([]cmodels.Property, 0, 3)
 	prop1, _ := cmodels.NewProperty("api_key", "test_api_key", false)
 	vonageProps = append(vonageProps, *prop1)
 	prop2, _ := cmodels.NewProperty("api_secret", "test_api_secret", true)

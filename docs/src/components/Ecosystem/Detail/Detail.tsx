@@ -8,7 +8,7 @@ import {ComponentType, JSX, useState} from 'react';
 import EntryIcon from './EntryIcon';
 import {CodeCard, Cta, Pill, RailHeading, TabStrip} from './primitives';
 import Section from './sections';
-import {DEFAULT_ACCENT, toneColour, useInk} from './theme';
+import {DEFAULT_ACCENT, useCyan, useInk, useToneColour} from './theme';
 import SdkQuickstartDownload from '../../SdkQuickstartDownload';
 import {artifactOf, entryHref, originOf, packageLabel} from '../presentation';
 import useEntryFacts from '../useEntryFacts';
@@ -98,6 +98,8 @@ function HeroAside({aside, accent}: {aside: EcosystemHeroAside; accent: string})
 
 function Hero({entry, accent, version = undefined}: {entry: EcosystemEntry; accent: string; version?: string}): JSX.Element {
   const ink = useInk();
+  const cyan = useCyan();
+  const toneColour = useToneColour();
   const facts = useEntryFacts(entry);
   const official = originOf(entry) === 'official';
   const hero = entry.hero;
@@ -144,8 +146,8 @@ function Hero({entry, accent, version = undefined}: {entry: EcosystemEntry; acce
             icon={official ? <Check size={10} strokeWidth={3} /> : <Users size={10} strokeWidth={2.4} />}
             sx={{
               height: 22,
-              color: official ? '#8bf9fa' : '#fbbf24',
-              borderColor: official ? '#8bf9fa' : 'rgba(251,191,36,0.6)',
+              color: official ? cyan : '#fbbf24',
+              borderColor: official ? cyan : 'rgba(251,191,36,0.6)',
               '& .MuiChip-icon': {color: 'inherit', ml: '6px'},
             }}
           />
@@ -555,9 +557,11 @@ export function Shell({
  * An entry's own page: the shell over the entry's sections.
  *
  * The sample callout is the same one the quickstarts carry, keyed on the entry
- * id because that is what the release feed calls the package. It renders
- * nothing for an entry with no published sample archive, so entries opt in by
- * publishing one rather than by being listed here.
+ * id because that is what the release feed calls the package. An entry whose
+ * sample lives in the samples repository names it with `sample` instead, and
+ * the callout offers that sample's release. It renders nothing for an entry
+ * with no published sample archive, so entries opt in by publishing one rather
+ * than by being listed here.
  */
 export default function Detail({entry}: {entry: EcosystemEntry}): JSX.Element {
   return (
@@ -569,7 +573,16 @@ export default function Detail({entry}: {entry: EcosystemEntry}): JSX.Element {
         // The callout carries its own bottom margin for prose pages; here the
         // column's own gap does that work.
         <Box sx={{'& > *': {mb: 0}}}>
-          <SdkQuickstartDownload packageId={entry.id} icon={<EntryIcon name={entry.icon} size={22} />} />
+          {entry.sample ? (
+            <SdkQuickstartDownload
+              packageId={entry.sample}
+              type="sample"
+              prewiredWith={entry.package.name}
+              icon={<EntryIcon name={entry.icon} size={22} />}
+            />
+          ) : (
+            <SdkQuickstartDownload packageId={entry.id} icon={<EntryIcon name={entry.icon} size={22} />} />
+          )}
         </Box>
       }
     />

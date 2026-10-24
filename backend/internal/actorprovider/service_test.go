@@ -167,7 +167,7 @@ func (s *ActorProviderTestSuite) TestAuthenticateActor_Delegates_Failure() {
 
 func (s *ActorProviderTestSuite) TestGetActor_Delegates() {
 	expected := &providers.Entity{ID: "app-1"}
-	s.mockEntity.On("GetEntity", "app-1").Return(expected, (*entityprovider.EntityProviderError)(nil))
+	s.mockEntity.On("GetEntityProfile", "app-1").Return(expected, (*entityprovider.EntityProviderError)(nil))
 
 	entity, err := s.provider.GetActor("app-1")
 
@@ -189,7 +189,7 @@ func (s *ActorProviderTestSuite) TestGetActor_AgentDisplayComesFromTheDisplayAtt
 				[]string{"default"}).Return(map[string]string{"default": tc.displayPath},
 				(*tidcommon.ServiceError)(nil)).Once()
 			provider := Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, s.mockRole, mockType)
-			s.mockEntity.On("GetEntity", "agent-1").Return(&providers.Entity{
+			s.mockEntity.On("GetEntityProfile", "agent-1").Return(&providers.Entity{
 				ID: "agent-1", Category: providers.EntityCategoryAgent, Type: "default",
 				Attributes: []byte(`{"name":"Ledger Agent"}`),
 			}, (*entityprovider.EntityProviderError)(nil)).Once()

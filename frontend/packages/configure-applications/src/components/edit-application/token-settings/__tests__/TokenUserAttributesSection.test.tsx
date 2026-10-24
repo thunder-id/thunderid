@@ -74,7 +74,7 @@ describe('TokenUserAttributesSection', () => {
 
       // Native mode issues one token and has no response-format controls, so it drops the
       // "& Response" title and the multi-token wording.
-      expect(screen.getByTestId('card-title')).toHaveTextContent('Token Attributes');
+      expect(screen.getByTestId('card-title')).toHaveTextContent('Token attributes');
       expect(screen.getByTestId('card-description')).toHaveTextContent(
         'Choose the attributes included in the token issued to this application.',
       );
@@ -92,7 +92,7 @@ describe('TokenUserAttributesSection', () => {
         />,
       );
 
-      expect(screen.getByTestId('card-title')).toHaveTextContent('Token Attributes & Response');
+      expect(screen.getByTestId('card-title')).toHaveTextContent('Token attributes & response');
     });
 
     it('drops the "user info responses" mention from the description when showUserInfoTab is false', () => {
@@ -299,7 +299,7 @@ describe('TokenUserAttributesSection', () => {
     it('shows User Info panel with inherit toggle when activeTab is "userinfo"', () => {
       render(<TokenUserAttributesSection {...oauthProps} activeTab="userinfo" />);
 
-      expect(screen.getByText('Use same attributes as ID Token')).toBeInTheDocument();
+      expect(screen.getByText('Use same attributes as ID token')).toBeInTheDocument();
     });
 
     it('shows custom user info panel when isUserInfoCustomAttributes is true', () => {
@@ -400,7 +400,7 @@ describe('TokenUserAttributesSection', () => {
     it('does not render the User Info panel when showUserInfoTab is false, even if activeTab is "userinfo"', () => {
       render(<TokenUserAttributesSection {...oauthProps} showUserInfoTab={false} activeTab="userinfo" />);
 
-      expect(screen.queryByText('Use same attributes as ID Token')).not.toBeInTheDocument();
+      expect(screen.queryByText('Use same attributes as ID token')).not.toBeInTheDocument();
     });
 
     it('maps tab clicks to only the two visible tabs when showUserInfoTab is false', async () => {
@@ -468,7 +468,7 @@ describe('TokenUserAttributesSection', () => {
     });
   });
 
-  describe('ID Token response format', () => {
+  describe('ID token response format', () => {
     it('renders response type select in ID Token tab', () => {
       render(
         <TokenUserAttributesSection
@@ -482,8 +482,8 @@ describe('TokenUserAttributesSection', () => {
         />,
       );
 
-      expect(screen.getByText('Response Format')).toBeInTheDocument();
-      expect(screen.getByText('Response Type')).toBeInTheDocument();
+      expect(screen.getByText('Response format')).toBeInTheDocument();
+      expect(screen.getByText('Response type')).toBeInTheDocument();
     });
 
     it('shows encryption fields when ID token response type is JWE', () => {
@@ -500,8 +500,8 @@ describe('TokenUserAttributesSection', () => {
         />,
       );
 
-      expect(screen.getByText('Encryption Algorithm')).toBeInTheDocument();
-      expect(screen.getByText('Content Encryption')).toBeInTheDocument();
+      expect(screen.getByText('Encryption algorithm')).toBeInTheDocument();
+      expect(screen.getByText('Content encryption')).toBeInTheDocument();
     });
 
     it('does not show encryption fields when ID token response type is JWT', () => {
@@ -518,7 +518,7 @@ describe('TokenUserAttributesSection', () => {
         />,
       );
 
-      expect(screen.queryByText('Encryption Algorithm')).not.toBeInTheDocument();
+      expect(screen.queryByText('Encryption algorithm')).not.toBeInTheDocument();
     });
   });
 
@@ -538,7 +538,7 @@ describe('TokenUserAttributesSection', () => {
         />,
       );
 
-      expect(screen.getByText('Response Format')).toBeInTheDocument();
+      expect(screen.getByText('Response format')).toBeInTheDocument();
     });
 
     it('does not show a signing algorithm selector when UserInfo response type is JWS', () => {
@@ -558,8 +558,8 @@ describe('TokenUserAttributesSection', () => {
       );
 
       // Signing always uses the server key, so no algorithm is chosen or encryption shown for JWS.
-      expect(screen.queryByText('Signing Algorithm')).not.toBeInTheDocument();
-      expect(screen.queryByText('Encryption Algorithm')).not.toBeInTheDocument();
+      expect(screen.queryByText('Signing algorithm')).not.toBeInTheDocument();
+      expect(screen.queryByText('Encryption algorithm')).not.toBeInTheDocument();
     });
 
     it('shows encryption fields when UserInfo response type is JWE', () => {
@@ -578,8 +578,8 @@ describe('TokenUserAttributesSection', () => {
         />,
       );
 
-      expect(screen.getByText('Encryption Algorithm')).toBeInTheDocument();
-      expect(screen.getByText('Content Encryption')).toBeInTheDocument();
+      expect(screen.getByText('Encryption algorithm')).toBeInTheDocument();
+      expect(screen.getByText('Content encryption')).toBeInTheDocument();
     });
 
     it('does not show algorithm fields when UserInfo response type is JSON', () => {
@@ -599,8 +599,8 @@ describe('TokenUserAttributesSection', () => {
         />,
       );
 
-      expect(screen.queryByText('Signing Algorithm')).not.toBeInTheDocument();
-      expect(screen.queryByText('Encryption Algorithm')).not.toBeInTheDocument();
+      expect(screen.queryByText('Signing algorithm')).not.toBeInTheDocument();
+      expect(screen.queryByText('Encryption algorithm')).not.toBeInTheDocument();
       // With a certificate configured, the certificate-required hint is not shown.
       expect(screen.queryByText(/Encrypted formats require an OAuth client certificate/)).not.toBeInTheDocument();
     });
@@ -638,7 +638,7 @@ describe('TokenUserAttributesSection', () => {
         />,
       );
 
-      expect(screen.getByText('Encryption Algorithm')).toBeInTheDocument();
+      expect(screen.getByText('Encryption algorithm')).toBeInTheDocument();
       expect(screen.getByText(/Encrypted formats require an OAuth client certificate/)).toBeInTheDocument();
     });
 

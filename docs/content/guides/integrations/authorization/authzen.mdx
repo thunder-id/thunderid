@@ -113,7 +113,7 @@ The response includes these endpoints:
 
 ### Create a Customer User Type
 
-1. In the Console, navigate to **User Types**. Click **Create User Type**.
+1. In the Console, navigate to **User types**. Click **Create user type**.
 2. Enter `TravelCustomer` as the name and keep the suggested handle, `travelcustomer`. The handle identifies the user type in the connection configuration and cannot be changed later. Select an organization unit.
 3. Add these string attributes:
 
@@ -123,13 +123,13 @@ The response includes these endpoints:
    | `customerRef`   | Yes      | `customer-bob` |
    | `loyaltyTier`   | Yes      | `silver`       |
 
-4. Click **Create User Type**.
+4. Click **Create user type**.
 
 For details about user type schemas, see [User Types](../../../users/user-types).
 
 ### Create a Travel Staff User Type
 
-1. Navigate to **User Types**. Click **Create User Type**.
+1. Navigate to **User types**. Click **Create user type**.
 2. Enter `TravelStaff` as the name and keep the suggested handle, `travelstaff`. Select an organization unit.
 3. Add these required string attributes:
 
@@ -140,22 +140,22 @@ For details about user type schemas, see [User Types](../../../users/user-types)
    | `managedRegion` | `EU`               |
    | `country`       | `DE`               |
 
-4. Click **Create User Type**.
+4. Click **Create user type**.
 
 ### Create Customer and Travel Agent Users
 
-1. Navigate to **Users**. Click **Add User**.
+1. Navigate to **Users**. Click **Add user**.
 2. Select **TravelCustomer**. Select the same organization unit as the user type.
 3. Select **Create User**. Complete the required standard fields. Enter the test values from the table above.
 4. Open the customer's details. Copy the **User ID** from the quick-copy section.
-5. Click **Add User**. Select **TravelStaff**. Select the same organization unit as the user type. Complete the required standard fields. Enter the travel agent values from the `TravelStaff` table.
+5. Click **Add user**. Select **TravelStaff**. Select the same organization unit as the user type. Complete the required standard fields. Enter the travel agent values from the `TravelStaff` table.
 6. Open the travel agent's details. Copy the **User ID**.
 
 For details about creating and managing users, see [Manage Users](../../../users/manage-users).
 
 ### Create the Resource Server and Actions
 
-1. Navigate to **Resource Servers**. Click **Create Resource Server**.
+1. Navigate to **Resource servers**. Click **Create resource server**.
 2. Select **API**. Configure these values:
 
    | Field                | Value                                    |
@@ -178,12 +178,12 @@ For more information about resources and actions, see [Resource Servers](../../.
 ### Create the AuthZEN PDP Connection
 
 1. Navigate to **Connections**. Select **Add custom connection**.
-2. Select **Policy Decision Point (PDP)**. Select **AuthZEN**.
+2. Select **Policy decision point (PDP)**. Select **AuthZEN**.
 3. Enter `Cerbos Travel PDP` as the connection name.
 4. Set **AuthZEN evaluation endpoint** to `https://<CERBOS_HOST>/access/v1/evaluation`.
 5. Set **AuthZEN batch evaluation endpoint** to `https://<CERBOS_HOST>/access/v1/evaluations`. Select **Create connection**.
 6. Open the **Authentication** tab. Select **None**.
-7. Open the **Attribute Configuration** tab. Under **User**, select **TravelCustomer**. Add `accountStatus`, `customerRef`, and `loyaltyTier`. Keep the same attribute names for the PDP.
+7. Open the **Attribute configuration** tab. Under **User**, select **TravelCustomer**. Add `accountStatus`, `customerRef`, and `loyaltyTier`. Keep the same attribute names for the PDP.
 8. Under **User**, select **TravelStaff**. Add `accountStatus`, `staffRef`, `managedRegion`, and `country`. Keep the same attribute names for the PDP.
 9. Select **Save changes**.
 
@@ -191,17 +191,17 @@ For details about AuthZEN connection settings and attribute mappings, see [Polic
 
 ### Assign the PDP to the Resource Server
 
-1. Navigate to **Resource Servers**. Open **Travel Booking API**.
-2. Open the **Advanced** tab. Select **Cerbos Travel PDP** under **Authorization Engine**.
+1. Navigate to **Resource servers**. Open **Travel Booking API**.
+2. Open the **Advanced** tab. Select **Cerbos Travel PDP** under **Authorization engine**.
 3. Save the changes.
 
-To restore the built-in authorization engine after completing this walkthrough, open the **Advanced** tab, select **Local - Role Based Access Control** under **Authorization Engine**, and save the changes.
+To restore the built-in authorization engine after completing this walkthrough, open the **Advanced** tab, select **Local - role based access control** under **Authorization engine**, and save the changes.
 
 ### Create a Backend Service Application
 
-1. Navigate to **Applications**. Click **Add Application**.
-2. Select **Backend Service**. Enter `Travel Booking Service` as the application name.
-3. Create the application. Copy the **Application ID**, **Client ID**, and **Client Secret**.
+1. Navigate to **Applications**. Click **Add application**.
+2. Select **Backend service**. Enter `Travel Booking Service` as the application name.
+3. Create the application. Copy the **Application ID**, **Client ID**, and **Client secret**.
 4. Replace both `<application-id>` placeholders in `authzen-cerbos/policies/travel-booking.yaml` with the copied **Application ID**.
 
 Use this application to verify the client credentials flow. For details about application types and credentials, see [Manage Applications](../../../applications/manage-applications).

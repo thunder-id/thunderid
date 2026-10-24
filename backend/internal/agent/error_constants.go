@@ -501,4 +501,19 @@ var (
 				"and string-typed in an allowed agent type",
 		},
 	}
+
+	// ErrorMissingDelegationGrantType is returned when a delegated agent is given grant types beyond
+	// client credentials but none that lets it act for a signed-in user.
+	ErrorMissingDelegationGrantType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1044",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.missing_delegation_grant_type",
+			DefaultValue: "Missing required grant types for a delegated agent",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.missing_delegation_grant_type_description",
+			DefaultValue: "A delegated agent needs at least one of these grant types: {{param(grantTypes)}}",
+		},
+	}
 )

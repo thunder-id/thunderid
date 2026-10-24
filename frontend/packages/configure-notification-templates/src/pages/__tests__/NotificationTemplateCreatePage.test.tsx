@@ -7,13 +7,16 @@ import {useTranslation} from 'react-i18next';
 import {describe, expect, it, vi, beforeAll, beforeEach} from 'vitest';
 import NotificationTemplateCreatePage from '@/pages/NotificationTemplateCreatePage';
 
-const {mockParams, mockNavigate, mockUseCreate, mockMutate, mockUseGetTemplates} = vi.hoisted(() => ({
-  mockParams: {current: {channel: 'email'} as Record<string, string | undefined>},
-  mockNavigate: vi.fn(),
-  mockUseCreate: vi.fn(),
-  mockMutate: vi.fn(),
-  mockUseGetTemplates: vi.fn(),
-}));
+const {mockParams, mockNavigate, mockUseCreate, mockMutate, mockUseGetTemplates, mockUseHasMultipleOUs, mockUseGetOU} =
+  vi.hoisted(() => ({
+    mockParams: {current: {channel: 'email'} as Record<string, string | undefined>},
+    mockNavigate: vi.fn(),
+    mockUseCreate: vi.fn(),
+    mockMutate: vi.fn(),
+    mockUseGetTemplates: vi.fn(),
+    mockUseHasMultipleOUs: vi.fn(),
+    mockUseGetOU: vi.fn(),
+  }));
 
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
@@ -22,6 +25,31 @@ vi.mock('react-router', async () => {
 
 vi.mock('@/api/useCreateNotificationTemplate', () => ({default: mockUseCreate}));
 vi.mock('@/api/useGetNotificationTemplates', () => ({default: mockUseGetTemplates}));
+
+// OU wizard dependencies: the picker screen is a stub exposing a button that selects an OU.
+vi.mock('@thunderid/configure-organization-units', () => ({
+  useHasMultipleOUs: mockUseHasMultipleOUs,
+  useGetOrganizationUnit: mockUseGetOU,
+  OrganizationUnitPickerScreen: ({
+    value,
+    onChange,
+    onContinue,
+  }: {
+    value: string;
+    onChange: (v: string) => void;
+    onContinue: () => void;
+  }) => (
+    <div>
+      <span data-testid="ou-step" />
+      <button type="button" data-testid="pick-ou" onClick={() => onChange('ou-picked')}>
+        {value === '' ? 'pick' : value}
+      </button>
+      <button type="button" data-testid="ou-continue" onClick={onContinue}>
+        ou-continue
+      </button>
+    </div>
+  ),
+}));
 
 // Minimal layout: render the step content and the footer (which holds the wizard buttons).
 vi.mock('@thunderid/components', async (importOriginal) => ({
@@ -129,6 +157,9 @@ describe('NotificationTemplateCreatePage', () => {
     mockParams.current = {channel: 'email'};
     mockUseCreate.mockReturnValue({mutate: mockMutate, isPending: false});
     mockUseGetTemplates.mockReturnValue({data: {templates: []}});
+    // Default: a single-OU deployment, so the OU step is skipped and the only OU is adopted.
+    mockUseHasMultipleOUs.mockReturnValue({hasMultipleOUs: false, isLoading: false, ouList: [{id: 'ou-default'}]});
+    mockUseGetOU.mockReturnValue({data: {id: 'ou-default', name: 'Default'}, isLoading: false});
   });
 
   const continueBtn = (): HTMLElement => screen.getByRole('button', {name: t('common:actions.continue')});
@@ -187,6 +218,7 @@ describe('NotificationTemplateCreatePage', () => {
         channel: 'email',
         data: {
           handle: 'otp-verification',
+          ouId: 'ou-default',
           displayName: 'OTP Verification',
           design: {colorScheme: 'light'},
           content: {subject: 'Your code', body: '<p>Body</p>'},
@@ -240,7 +272,12 @@ describe('NotificationTemplateCreatePage', () => {
     expect(mockMutate).toHaveBeenCalledWith(
       {
         channel: 'sms',
-        data: {handle: 'otp-verification', displayName: 'OTP Verification', content: {body: '<p>Body</p>'}},
+        data: {
+          handle: 'otp-verification',
+          ouId: 'ou-default',
+          displayName: 'OTP Verification',
+          content: {body: '<p>Body</p>'},
+        },
       },
       expect.anything(),
     );
@@ -262,6 +299,38 @@ describe('NotificationTemplateCreatePage', () => {
     expect(screen.getByText('Failed to create template. Please try again.')).toBeInTheDocument();
     expect(screen.queryByText('raw server text')).not.toBeInTheDocument();
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('shows the OU step first on a multi-OU deployment and submits the picked ouId', async () => {
+    mockUseHasMultipleOUs.mockReturnValue({
+      hasMultipleOUs: true,
+      isLoading: false,
+      ouList: [{id: 'ou-a'}, {id: 'ou-b'}],
+    });
+    mockMutate.mockImplementation((_vars: unknown, opts: {onSuccess: (tpl: {id: string}) => void}) => {
+      opts.onSuccess({id: 'new-id'});
+    });
+    const user = userEvent.setup();
+    render(<NotificationTemplateCreatePage />);
+
+    // The OU picker is the first screen; pick an OU and continue into the wizard.
+    expect(screen.getByTestId('ou-step')).toBeInTheDocument();
+    await user.click(screen.getByTestId('pick-ou'));
+    await user.click(screen.getByTestId('ou-continue'));
+
+    await startFromScratch(user);
+    await user.click(screen.getByTestId('fill-identity'));
+    await user.click(continueBtn());
+    await user.click(screen.getByTestId('fill-content'));
+    await user.click(createBtn());
+
+    expect(mockMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: 'email',
+        data: expect.objectContaining({ouId: 'ou-picked'}) as unknown,
+      }),
+      expect.anything(),
+    );
   });
 
   it('navigates back to the channel list when cancel is clicked on the template step', async () => {

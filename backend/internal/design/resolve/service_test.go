@@ -393,8 +393,25 @@ func (suite *ResolveServiceTestSuite) TestResolveDesignContent_Success() {
 	assert.Equal(suite.T(), `<span style="color: #fa7b3f">hi</span>`, out)
 }
 
-// Test ResolveDesignContent - A token with an unsafe value is dropped, leaving its placeholder unresolved
-func (suite *ResolveServiceTestSuite) TestResolveDesignContent_DropsUnsafeTokenValue() {
+// Test ResolveDesignContent - resolved values are HTML-escaped, so a quote in a value cannot break out
+// of the style attribute it lands in.
+func (suite *ResolveServiceTestSuite) TestResolveDesignContent_EscapesResolvedValues() {
+	theme := `{"defaultColorScheme": "light", "colorSchemes": {"light": {"palette": {` +
+		`"primary": {"main": "#fff\" onmouseover=\"alert(1)"}}}}}`
+	suite.mockThemeService.On("GetTheme", mock.Anything, "t1").Return(
+		&thememgt.Theme{ID: "t1", Theme: json.RawMessage(theme)}, nil)
+
+	out, err := suite.service.ResolveDesignContent(context.Background(), "t1", "light",
+		`<span style="color: {{design(palette.primary.main)}}">hi</span>`)
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(),
+		`<span style="color: #fff&#34; onmouseover=&#34;alert(1)">hi</span>`, out)
+}
+
+// Test ResolveDesignContent - a value containing markup is HTML-escaped, so it renders as text rather
+// than injecting an element.
+func (suite *ResolveServiceTestSuite) TestResolveDesignContent_EscapesMarkupValue() {
 	theme := `{"defaultColorScheme": "light", "colorSchemes": {"light": {"palette": {` +
 		`"primary": {"main": "<script>alert(1)</script>"}}}}}`
 	suite.mockThemeService.On("GetTheme", mock.Anything, "t1").Return(
@@ -404,7 +421,7 @@ func (suite *ResolveServiceTestSuite) TestResolveDesignContent_DropsUnsafeTokenV
 		"color: {{design(palette.primary.main)}};")
 
 	assert.Nil(suite.T(), err)
-	assert.Equal(suite.T(), "color: {{design(palette.primary.main)}};", out)
+	assert.Equal(suite.T(), "color: &lt;script&gt;alert(1)&lt;/script&gt;;", out)
 }
 
 // Test ResolveDesignContent - Content with no placeholder is returned without loading the theme

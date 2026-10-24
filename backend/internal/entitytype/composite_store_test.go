@@ -343,9 +343,10 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_GetEntityTypeList() {
 	suite.Equal(2, len(result))
 	// Verify that all results have the IsReadOnly flag set appropriately
 	for _, item := range result {
-		if item.ID == "file-schema-1" {
+		switch item.ID {
+		case "file-schema-1":
 			suite.True(item.IsReadOnly, "File-based schemas should be read-only")
-		} else if item.ID == "db-schema-1" {
+		case "db-schema-1":
 			suite.False(item.IsReadOnly, "DB-backed schemas should be mutable")
 		}
 	}
@@ -549,9 +550,10 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_GetEntityTypeListByOUID
 	// Should have both from file store and DB store
 	suite.Equal(2, len(result))
 	for _, item := range result {
-		if item.ID == "file-schema-1" {
+		switch item.ID {
+		case "file-schema-1":
 			suite.True(item.IsReadOnly, "File-based schemas should be read-only")
-		} else if item.ID == "db-schema-1" {
+		case "db-schema-1":
 			suite.False(item.IsReadOnly, "DB-backed schemas should be mutable")
 		}
 	}

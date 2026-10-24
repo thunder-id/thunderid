@@ -46,7 +46,7 @@ export default function AttributesSummarySection({user}: AttributesSummarySectio
 
   return (
     <SettingsCard
-      title={t('users:manageUser.sections.attributes.title', 'User Attributes')}
+      title={t('users:manageUser.sections.attributes.title', 'User attributes')}
       description={t(
         'users:manageUser.sections.attributes.summaryDescription',
         "A preview of this user's attribute values. Manage them from the Attributes tab.",

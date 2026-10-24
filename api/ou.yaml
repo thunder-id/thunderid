@@ -33,7 +33,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
-        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/ouFilterParam'
       responses:
         "200":
           description: List of root organization units
@@ -403,7 +403,7 @@ paths:
                       defaultValue: "Organization unit has children"
                     description:
                       key: "error.ouservice.organization_unit_has_children_description"
-                      defaultValue: "Cannot delete organization unit with children or users/groups"
+                      defaultValue: "Cannot delete an organization unit that has child organization units, users, groups, user types, agent types, or sharing policies it issued"
         "404":
           description: Organization unit not found
           content:
@@ -435,7 +435,7 @@ paths:
             format: uuid
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
-        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/ouFilterParam'
       responses:
         "200":
           description: List of child organization units
@@ -970,7 +970,7 @@ paths:
                       defaultValue: "Organization unit has children"
                     description:
                       key: "error.ouservice.organization_unit_has_children_description"
-                      defaultValue: "Cannot delete organization unit with children or users/groups"
+                      defaultValue: "Cannot delete an organization unit that has child organization units, users, groups, user types, agent types, or sharing policies it issued"
         "404":
           description: Organization unit not found
           content:
@@ -1009,7 +1009,7 @@ paths:
           example: "engineering/frontend"
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
-        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/ouFilterParam'
       responses:
         "200":
           description: List of child organization units
@@ -1395,28 +1395,39 @@ components:
         type: string
         enum:
           - display
-    filterParam:
+    ouFilterParam:
       in: query
       name: filter
       required: false
       description: |
         Filter organization units by attribute values.
-        Supported operators: `eq`, `gt`, `lt`.
+        Format: `attribute operator "value"`. Join multiple conditions with `AND` or `OR`; `AND` takes precedence over `OR`.
         Filterable attributes: `name`, `handle`, `description`, `createdAt`, `updatedAt`.
-        Format: `attribute operator "value"`.
+        Supported operators:
+        - `eq` - Equals. Case-insensitive for `name`, `handle`, and `description`.
+        - `sw` - Starts with. Case-insensitive.
+        - `gt` - Greater than. Use with `createdAt` or `updatedAt` in ISO 8601 format.
+        - `lt` - Less than. Use with `createdAt` or `updatedAt` in ISO 8601 format.
         Examples:
-        - `name eq "Engineering"`
-        - `handle eq "frontend"`
-        - `createdAt gt "2026-01-01T00:00:00Z"`
+        - `name eq "Engineering"` - Organization units named "Engineering"
+        - `handle sw "eng"` - Organization units whose handle starts with "eng"
+        - `createdAt gt "2026-01-01T00:00:00Z"` - Organization units created after 1 January 2026
+        - `name eq "Engineering" OR name eq "Sales"` - Organization units named "Engineering" or "Sales"
       schema:
         type: string
       examples:
         name-filter:
           summary: Filter by name
           value: 'name eq "Engineering"'
+        handle-prefix-filter:
+          summary: Filter by handle prefix
+          value: 'handle sw "eng"'
         created-at-filter:
           summary: Filter by creation timestamp
           value: 'createdAt gt "2026-01-01T00:00:00Z"'
+        combined-filter:
+          summary: Combine conditions with OR
+          value: 'name eq "Engineering" OR name eq "Sales"'
 
   schemas:
     OrganizationUnitBasic:

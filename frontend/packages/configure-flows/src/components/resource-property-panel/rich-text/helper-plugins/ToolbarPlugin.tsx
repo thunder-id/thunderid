@@ -319,7 +319,7 @@ function ToolbarPlugin({
               editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold');
             }}
             className={classNames({active: isBold && !disabled})}
-            aria-label="Format Bold"
+            aria-label="Format bold"
           >
             <Bold size={14} />
           </IconButton>
@@ -331,7 +331,7 @@ function ToolbarPlugin({
               editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic');
             }}
             className={classNames({active: isItalic && !disabled})}
-            aria-label="Format Italics"
+            aria-label="Format italics"
           >
             <Italic size={14} />
           </IconButton>
@@ -343,7 +343,7 @@ function ToolbarPlugin({
               editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline');
             }}
             className={classNames({active: isUnderline && !disabled})}
-            aria-label="Format Underline"
+            aria-label="Format underline"
           >
             <Underline size={14} />
           </IconButton>
@@ -353,7 +353,7 @@ function ToolbarPlugin({
             disabled={disabled}
             onClick={() => insertLink()}
             className={classNames({active: isLink && !disabled})}
-            aria-label="Format Link"
+            aria-label="Format link"
           >
             <LinkIcon size={14} />
           </IconButton>
@@ -366,7 +366,7 @@ function ToolbarPlugin({
                 editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'left');
               }}
               className={classNames({active: selectedAlignment === 1 && !disabled})}
-              aria-label="Left Align"
+              aria-label="Left align"
             >
               <TextAlignStart size={14} />
             </IconButton>
@@ -376,7 +376,7 @@ function ToolbarPlugin({
                 editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'center');
               }}
               className={classNames({active: selectedAlignment === 2 && !disabled})}
-              aria-label="Center Align"
+              aria-label="Center align"
             >
               <TextAlignCenter size={14} />
             </IconButton>
@@ -386,7 +386,7 @@ function ToolbarPlugin({
                 editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'right');
               }}
               className={classNames({active: selectedAlignment === 3 && !disabled})}
-              aria-label="Right Align"
+              aria-label="Right align"
             >
               <TextAlignEnd size={14} />
             </IconButton>
@@ -396,7 +396,7 @@ function ToolbarPlugin({
                 editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'justify');
               }}
               className={classNames({active: selectedAlignment === 4 && !disabled})}
-              aria-label="Justify Align"
+              aria-label="Justify align"
             >
               <TextAlignJustify size={14} />
             </IconButton>

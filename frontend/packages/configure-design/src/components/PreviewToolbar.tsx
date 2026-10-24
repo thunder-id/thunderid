@@ -182,7 +182,7 @@ export default function PreviewToolbar({
           variant="caption"
           sx={{fontSize: '0.7rem', color: 'text.secondary', userSelect: 'none', lineHeight: 1}}
         >
-          {t('common.preview.toolbar.fields.color_scheme.label', 'Color Scheme')}
+          {t('common.preview.toolbar.fields.color_scheme.label', 'Color scheme')}
         </Typography>
         <Box
           sx={{

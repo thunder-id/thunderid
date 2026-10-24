@@ -22,7 +22,7 @@ import {
 
 Use this guide to add <ProductName /> authentication to a Node.js service using the `@thunderid/node` SDK.
 
-<SdkQuickstartDownload packageId="node" icon={<NodeLogo size={22} />} promptFlow="redirect-based" />
+<SdkQuickstartDownload packageId="node" sample="quickstarts/node" icon={<NodeLogo size={22} />} promptFlow="redirect-based" />
 
 <TutorialHero>
 
@@ -61,8 +61,8 @@ Once it's running, the console is available at [https://localhost:8090/console](
     :::
 
 2. Navigate to **Applications**.
-3. Click **Add Application**.
-4. From the **Choose a type** page, select **Backend Service**.
+3. Click **Add application**.
+4. From the **Choose a type** page, select **Backend service**.
 5. Enter a name (e.g. `My Node.js Service`).
 6. Click **Create**.
 
@@ -71,7 +71,7 @@ Backend Service applications are pre-configured for the `client_credentials` gra
 :::
 
 :::note Note
-Copy the **Client ID** from the **General** tab, and the **Client Secret** from the window that pops up when the application is created; it's shown only once (if lost, regenerate it from the application's **Credentials** tab).
+Copy the **Client ID** from the **General** tab, and the **Client secret** from the window that pops up when the application is created; it's shown only once (if lost, regenerate it from the application's **Credentials** tab).
 :::
 
 ## Create a Node.js Project
@@ -159,7 +159,7 @@ console.log(`Authenticated with scope: ${scope}`);
 ```
 
 :::warning Configuration
-Replace `<your-client-id>` and `<your-client-secret>` with the **Client ID** and **Client Secret** from your <ProductName /> application.
+Replace `<your-client-id>` and `<your-client-secret>` with the **Client ID** and **Client secret** from your <ProductName /> application.
 :::
 
 ### Configuration Parameters

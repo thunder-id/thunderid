@@ -15,12 +15,17 @@ describe('KeyValueEditor', () => {
     onValueChange: vi.fn(),
     keyPlaceholder: 'Key',
     valuePlaceholder: 'Value',
+    keyLabel: 'Key Column',
+    valueLabel: 'Value Column',
+    addLabel: 'Add Entry',
+    removeLabel: 'Remove Entry',
   };
 
-  it('should render add button when entries are empty', () => {
+  // With no rows there is nothing but this button, so it has to say what it adds.
+  it('should render the named add button when entries are empty', () => {
     render(<KeyValueEditor {...defaultProps} />);
 
-    expect(screen.getByLabelText('Add entry')).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Add Entry'})).toBeInTheDocument();
   });
 
   it('should call onAdd when add button is clicked', async () => {
@@ -29,7 +34,7 @@ describe('KeyValueEditor', () => {
 
     render(<KeyValueEditor {...defaultProps} onAdd={onAdd} />);
 
-    await user.click(screen.getByLabelText('Add entry'));
+    await user.click(screen.getByRole('button', {name: 'Add Entry'}));
 
     expect(onAdd).toHaveBeenCalledTimes(1);
   });
@@ -95,7 +100,7 @@ describe('KeyValueEditor', () => {
 
     render(<KeyValueEditor {...defaultProps} entries={entries} onRemove={onRemove} />);
 
-    await user.click(screen.getByLabelText('Remove entry'));
+    await user.click(screen.getByLabelText('Remove Entry'));
 
     expect(onRemove).toHaveBeenCalledWith(0);
   });
@@ -109,7 +114,26 @@ describe('KeyValueEditor', () => {
 
     render(<KeyValueEditor {...defaultProps} entries={entries} />);
 
-    expect(screen.getAllByLabelText('Remove entry')).toHaveLength(3);
+    expect(screen.getAllByLabelText('Remove Entry')).toHaveLength(3);
+  });
+
+  // The fields repeat, so they are headed once and named for a screen reader on every row.
+  it('should head the columns only when there are rows to head', () => {
+    const {rerender} = render(<KeyValueEditor {...defaultProps} />);
+
+    expect(screen.queryByText('Key Column')).not.toBeInTheDocument();
+
+    rerender(<KeyValueEditor {...defaultProps} entries={[['a', '1']]} />);
+
+    expect(screen.getByText('Key Column')).toBeInTheDocument();
+    expect(screen.getByText('Value Column')).toBeInTheDocument();
+  });
+
+  it('should name each row field for assistive technology', () => {
+    render(<KeyValueEditor {...defaultProps} entries={[['a', '1']]} />);
+
+    expect(screen.getByLabelText('Key Column')).toHaveValue('a');
+    expect(screen.getByLabelText('Value Column')).toHaveValue('1');
   });
 
   it('should use provided placeholders', () => {

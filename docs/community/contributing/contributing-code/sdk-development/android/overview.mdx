@@ -23,11 +23,11 @@ src/main/kotlin/dev/thunderid/
       presentation/     SignIn, SignUp, user and organization components
     i18n/               Localization
 src/test/kotlin/        Unit tests
-samples/quickstart/     Demo app, not part of the SDK
 tests/e2e/              End-to-end suite
+playground/             App for exercising the SDK from source
 ```
 
-The layering runs core → Compose → sample. The sample depends on the SDK through `includeBuild`, so a change to the SDK is picked up when you rebuild the sample.
+The layering runs core → Compose. The quickstart sample lives in [`quickstarts/android`](https://github.com/thunder-id/samples/tree/main/quickstarts/android) in the samples repository and depends on the published SDK. `tests/e2e/scripts/prepare-sample.sh` fetches it into `tests/e2e/.samples` and substitutes your checkout through `includeBuild`, so a change to the SDK is picked up when you rebuild that copy.
 
 Every Compose component ships in two variants: a **styled** one with opinionated Material 3 defaults, such as `SignInButton`, and a **base** slot-based one for full customization, such as `BaseSignInButton`.
 
@@ -39,7 +39,11 @@ Every Compose component ships in two variants: a **styled** one with opinionated
 ./gradlew lint ktlintCheck
 ```
 
-Build and install the sample onto a running emulator with `./gradlew installDebug` from `samples/quickstart`. That directory is its own Gradle build, so `ktlintCheck` does not exist there; run lint from the repository root.
+Build and install the prepared sample onto a running emulator with `./gradlew installDebug` from `tests/e2e/.samples/quickstarts/android`. That directory is its own Gradle build, so `ktlintCheck` does not exist there; run lint from the repository root.
+
+## Playground
+
+`playground/` is a Jetpack Compose app that substitutes the SDK from this checkout through `includeBuild`, so it always runs your changes. It has four tabs: capability checks for each SDK feature with a pass or fail reason, a component explorer with live controls and generated Compose code, a session inspector for tokens and claims, and an SDK event log. Copy `config.properties.example` to `config.properties`, fill in your server URL and application, then run `./gradlew installDebug` from `playground/` with an emulator running. The pull request builder lints and builds it, so keep its checks and stories in step when you change a capability or a component.
 
 ## Code Style
 

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
@@ -136,6 +137,11 @@ func (h *jwtAuthenticator) authenticateToken(ctx context.Context, token, expecte
 		} else if accessTokenSubject != "" {
 			securityCtx.revocationAppKey = subject
 		}
+		audiences, err := revocation.TokenAudiences(attributes, scopes)
+		if err != nil {
+			return nil, errInvalidToken
+		}
+		securityCtx.revocationAudiences = audiences
 		if issuedAt, ok := attributes[claimIssuedAt].(float64); ok {
 			securityCtx.establishedAt = time.Unix(int64(issuedAt), 0).UTC()
 		}

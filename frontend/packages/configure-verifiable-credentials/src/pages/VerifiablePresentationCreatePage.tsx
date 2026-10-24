@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {FullScreenCreationWizardLayout} from '@thunderid/components';
+import {DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
 import {
   OrganizationUnitPickerScreen,
   useGetOrganizationUnit,
@@ -73,7 +73,7 @@ export default function VerifiablePresentationCreatePage(): JSX.Element {
   }, [hasMultipleOUs]);
 
   const stepLabels: Record<Step, string> = {
-    ORGANIZATION_UNIT: t('create.steps.organizationUnit', 'Organization Unit'),
+    ORGANIZATION_UNIT: t('create.steps.organizationUnit', 'Organization unit'),
     NAME: t('createWizard.steps.name', 'Details'),
     DETAILS: t('create.steps.details', 'Type'),
     CLAIMS: t('create.steps.claims', 'Claims'),
@@ -229,33 +229,39 @@ export default function VerifiablePresentationCreatePage(): JSX.Element {
     );
   };
 
+  const pageTitle = t('create.title', 'New presentation definition');
+
   if (effectiveStep === 'ORGANIZATION_UNIT') {
     if (isOuLoading || !hasMultipleOUs) {
       return (
         <Box sx={{minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+          <DocumentTitle title={pageTitle} />
           <CircularProgress />
         </Box>
       );
     }
 
     return (
-      <OrganizationUnitPickerScreen
-        icon={<Home size={26} />}
-        title={t('create.organizationUnit.title', 'Where should this verifiable presentation belong?')}
-        subtitle={t(
-          'create.organizationUnit.subtitle',
-          "Choose the organization unit that will own this verifiable presentation. You can't change this once created.",
-        )}
-        value={effectiveOuId}
-        onChange={(value: string): void => {
-          clearCreateError();
-          setOuId(value);
-        }}
-        onBack={close}
-        onContinue={handleNext}
-        backLabel={t('common:actions.back', 'Back')}
-        continueLabel={t('common:actions.continue', 'Continue')}
-      />
+      <>
+        <DocumentTitle title={pageTitle} />
+        <OrganizationUnitPickerScreen
+          icon={<Home size={26} />}
+          title={t('create.organizationUnit.title', 'Where should this verifiable presentation belong?')}
+          subtitle={t(
+            'create.organizationUnit.subtitle',
+            "Choose the organization unit that will own this verifiable presentation. You can't change this once created.",
+          )}
+          value={effectiveOuId}
+          onChange={(value: string): void => {
+            clearCreateError();
+            setOuId(value);
+          }}
+          onBack={close}
+          onContinue={handleNext}
+          backLabel={t('common:actions.back', 'Back')}
+          continueLabel={t('common:actions.continue', 'Continue')}
+        />
+      </>
     );
   }
 
@@ -296,6 +302,7 @@ export default function VerifiablePresentationCreatePage(): JSX.Element {
         </Stack>
       }
     >
+      <DocumentTitle title={pageTitle} />
       {effectiveStep !== 'NAME' && (
         <>
           <Typography variant="h4" sx={{mb: 1}}>

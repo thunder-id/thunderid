@@ -19,10 +19,19 @@ func NewPasskeyServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *PasskeyServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &PasskeyServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +87,7 @@ type PasskeyServiceInterfaceMock_FinishAuthentication_Call struct {
 // FinishAuthentication is a helper method to define mock.On call
 //   - ctx context.Context
 //   - req *passkey.PasskeyAuthenticationFinishRequest
-func (_e *PasskeyServiceInterfaceMock_Expecter) FinishAuthentication(ctx interface{}, req interface{}) *PasskeyServiceInterfaceMock_FinishAuthentication_Call {
+func (_e *PasskeyServiceInterfaceMock_Expecter) FinishAuthentication(ctx any, req any) *PasskeyServiceInterfaceMock_FinishAuthentication_Call {
 	return &PasskeyServiceInterfaceMock_FinishAuthentication_Call{Call: _e.mock.On("FinishAuthentication", ctx, req)}
 }
 
@@ -148,7 +157,7 @@ type PasskeyServiceInterfaceMock_FinishRegistration_Call struct {
 // FinishRegistration is a helper method to define mock.On call
 //   - ctx context.Context
 //   - req *passkey.PasskeyRegistrationFinishRequest
-func (_e *PasskeyServiceInterfaceMock_Expecter) FinishRegistration(ctx interface{}, req interface{}) *PasskeyServiceInterfaceMock_FinishRegistration_Call {
+func (_e *PasskeyServiceInterfaceMock_Expecter) FinishRegistration(ctx any, req any) *PasskeyServiceInterfaceMock_FinishRegistration_Call {
 	return &PasskeyServiceInterfaceMock_FinishRegistration_Call{Call: _e.mock.On("FinishRegistration", ctx, req)}
 }
 
@@ -218,7 +227,7 @@ type PasskeyServiceInterfaceMock_StartAuthentication_Call struct {
 // StartAuthentication is a helper method to define mock.On call
 //   - ctx context.Context
 //   - req *passkey.PasskeyAuthenticationStartRequest
-func (_e *PasskeyServiceInterfaceMock_Expecter) StartAuthentication(ctx interface{}, req interface{}) *PasskeyServiceInterfaceMock_StartAuthentication_Call {
+func (_e *PasskeyServiceInterfaceMock_Expecter) StartAuthentication(ctx any, req any) *PasskeyServiceInterfaceMock_StartAuthentication_Call {
 	return &PasskeyServiceInterfaceMock_StartAuthentication_Call{Call: _e.mock.On("StartAuthentication", ctx, req)}
 }
 
@@ -288,7 +297,7 @@ type PasskeyServiceInterfaceMock_StartRegistration_Call struct {
 // StartRegistration is a helper method to define mock.On call
 //   - ctx context.Context
 //   - req *passkey.PasskeyRegistrationStartRequest
-func (_e *PasskeyServiceInterfaceMock_Expecter) StartRegistration(ctx interface{}, req interface{}) *PasskeyServiceInterfaceMock_StartRegistration_Call {
+func (_e *PasskeyServiceInterfaceMock_Expecter) StartRegistration(ctx any, req any) *PasskeyServiceInterfaceMock_StartRegistration_Call {
 	return &PasskeyServiceInterfaceMock_StartRegistration_Call{Call: _e.mock.On("StartRegistration", ctx, req)}
 }
 

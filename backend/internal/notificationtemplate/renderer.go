@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"html"
-	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
@@ -31,8 +30,9 @@ type designResolver interface {
 // TemplateRendererInterface is the runtime surface consumed by flow executors: it returns fully
 // resolved, ready-to-send content and exposes no CRUD.
 //
-// Escaping: only {{ctx(...)}} values are HTML-escaped (HTML body only), as untrusted caller input;
-// translation and design values are inserted verbatim. Context is substituted last.
+// Escaping (HTML body only): {{ctx(...)}} values are HTML-escaped here as untrusted caller input, and
+// design values arrive already HTML-escaped from the design resolve service; translation values are
+// inserted verbatim. Context is substituted last.
 type TemplateRendererInterface interface {
 	Resolve(
 		ctx context.Context, channel ChannelType, handle string, in RenderInput,
@@ -118,8 +118,8 @@ func (r *templateRenderer) resolveContent(ctx context.Context, channel ChannelTy
 	return &ResolvedContent{Subject: subject, Body: body}, nil
 }
 
-// renderField resolves one field's placeholders in order: translations, then design tokens, then
-// context values last (so a context value is never reinterpreted). Each step fails closed.
+// renderField resolves a field's placeholders in order: translations, design, then context last.
+// Translations and context fail closed; an unresolved design token is stripped to empty.
 func (r *templateRenderer) renderField(ctx context.Context, locale, template string, opts renderOptions) (
 	string, *tidcommon.ServiceError) {
 	text, svcErr := r.applyTranslations(ctx, locale, template, opts.translations)
@@ -132,8 +132,9 @@ func (r *templateRenderer) renderField(ctx context.Context, locale, template str
 			return "", svcErr
 		}
 	}
-	// Before substituting context, every {{t}}/{{design}} must be resolved and well-formed; a leftover
-	// fails closed. Checking here (not after) avoids misreading a context value's placeholder-like text.
+	// Fail closed on any leftover {{t}}/{{design}} or malformed placeholder (design is resolved/stripped
+	// above for the body; subject and SMS reject it at write time). Checked before context so a context
+	// value's placeholder-like text is not misread.
 	if ph := unresolvedBeforeContext(text); ph != "" {
 		r.logger.Error(ctx, "Unresolved or malformed placeholder before context substitution",
 			log.String("placeholder", ph))
@@ -200,33 +201,27 @@ func (r *templateRenderer) applyTranslations(ctx context.Context, locale, text s
 	return out, nil
 }
 
-// applyDesignTokens substitutes {{design(<token>)}} via the design resolve service. No-op when the
-// field has no design token; fails closed when a token cannot be resolved.
+// applyDesignTokens resolves {{design(<token>)}} against the app's theme, then strips any token still
+// unresolved (no theme, or not defined by the theme) to empty rather than failing the send.
 func (r *templateRenderer) applyDesignTokens(ctx context.Context, text, themeID, colorScheme string) (
 	string, *tidcommon.ServiceError) {
-	if !strings.Contains(text, designPlaceholderPrefix) {
+	if !designPlaceholderRegex.MatchString(text) {
 		return text, nil
 	}
-	if r.design == nil {
-		r.logger.Error(ctx, "Cannot resolve design tokens: design resolver not configured")
-		return "", &tidcommon.InternalServerError
+	// Resolve only when the app has a theme; a themeless app leaves every token for the strip below.
+	if themeID != "" {
+		if r.design == nil {
+			r.logger.Error(ctx, "Cannot resolve design tokens: design resolver not configured")
+			return "", &tidcommon.InternalServerError
+		}
+		resolved, svcErr := r.design.ResolveDesignContent(ctx, themeID, colorScheme, text)
+		if svcErr != nil {
+			r.logger.Error(ctx, "Failed to resolve design tokens", log.String("errorCode", svcErr.Code))
+			return "", &tidcommon.InternalServerError
+		}
+		text = resolved
 	}
-	if themeID == "" {
-		r.logger.Error(ctx, "Cannot resolve design tokens: no theme supplied for the render")
-		return "", &tidcommon.InternalServerError
-	}
-
-	resolved, svcErr := r.design.ResolveDesignContent(ctx, themeID, colorScheme, text)
-	if svcErr != nil {
-		r.logger.Error(ctx, "Failed to resolve design tokens", log.String("errorCode", svcErr.Code))
-		return "", &tidcommon.InternalServerError
-	}
-	// The design service leaves an unknown token in place; fail closed rather than ship it.
-	if strings.Contains(resolved, designPlaceholderPrefix) {
-		r.logger.Error(ctx, "Unresolved design token after substitution")
-		return "", &tidcommon.InternalServerError
-	}
-	return resolved, nil
+	return designPlaceholderRegex.ReplaceAllString(text, ""), nil
 }
 
 // applyContextValues substitutes {{ctx(<key>)}} with flow-context values. A placeholder with no value

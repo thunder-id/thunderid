@@ -12,8 +12,11 @@ Load only the guidance the task needs:
 
 | Working on… | Read |
 |---|---|
-| Backend Go code | [backend/AGENTS.md](backend/AGENTS.md) |
+| Backend Go code | [backend/AGENTS.md](backend/AGENTS.md) and [.agent/skills/backend/SKILL.md](.agent/skills/backend/SKILL.md) |
+| Tests: Go unit, integration, or Console e2e | [.agent/skills/backend-tests/SKILL.md](.agent/skills/backend-tests/SKILL.md) |
+| Implementing a feature that has a spec, threat model, or user docs | [.agent/skills/spec-sync/SKILL.md](.agent/skills/spec-sync/SKILL.md) |
 | Frontend React code | [frontend/AGENTS.md](frontend/AGENTS.md) |
+| Frontend UI: Oxygen UI components, styling, layout, or a new shared component | [.agent/skills/ui-development/SKILL.md](.agent/skills/ui-development/SKILL.md) |
 | Documentation | [docs/AGENTS.md](docs/AGENTS.md) |
 | A ThunderID client SDK or integration package | [.agent/skills/sdk-development/SKILL.md](.agent/skills/sdk-development/SKILL.md) |
 | Database schema, queries, or stores | [.agent/skills/db/SKILL.md](.agent/skills/db/SKILL.md) |

@@ -16,10 +16,19 @@ func NewEnforcementServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *EnforcementServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &EnforcementServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -62,7 +71,7 @@ type EnforcementServiceInterfaceMock_EnsureNotRevoked_Call struct {
 // EnsureNotRevoked is a helper method to define mock.On call
 //   - ctx context.Context
 //   - identity RevocationIdentity
-func (_e *EnforcementServiceInterfaceMock_Expecter) EnsureNotRevoked(ctx interface{}, identity interface{}) *EnforcementServiceInterfaceMock_EnsureNotRevoked_Call {
+func (_e *EnforcementServiceInterfaceMock_Expecter) EnsureNotRevoked(ctx any, identity any) *EnforcementServiceInterfaceMock_EnsureNotRevoked_Call {
 	return &EnforcementServiceInterfaceMock_EnsureNotRevoked_Call{Call: _e.mock.On("EnsureNotRevoked", ctx, identity)}
 }
 

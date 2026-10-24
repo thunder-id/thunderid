@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/notification/common"
+	notificationconfig "github.com/thunder-id/thunderid/internal/notification/config"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -47,42 +48,19 @@ func TestOTPServiceTestSuite(t *testing.T) {
 	suite.Run(t, new(OTPServiceTestSuite))
 }
 
-func (suite *OTPServiceTestSuite) SetupSuite() {
-	testConfig := &config.Config{
-		JWT: engineconfig.JWTConfig{
-			Issuer:         "test-issuer",
-			ValidityPeriod: 3600,
-		},
-		Crypto: config.CryptoConfig{
-			Encryption: engineconfig.EncryptionConfig{
-				Key: "0579f866ac7c9273580d0ff163fa01a7b2401a7ff3ddc3e3b14ae3136fa6025e",
-			},
-		},
-		Notification: config.NotificationConfig{
+func (suite *OTPServiceTestSuite) SetupTest() {
+	suite.mockJWTService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
+	suite.service = &otpService{
+		logger:     log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OTPService")),
+		jwtService: suite.mockJWTService,
+		cfg: notificationconfig.Config{
+			JWT: engineconfig.JWTConfig{Issuer: "test-issuer"},
 			OTP: config.OTPConfig{
 				Length:                6,
 				UseNumericOnly:        boolPtr(true),
 				ValidityPeriodSeconds: 120,
 			},
 		},
-	}
-	err := config.InitializeServerRuntime("", testConfig)
-	if err != nil {
-		suite.T().Fatalf("Failed to initialize server runtime: %v", err)
-	}
-}
-
-func (suite *OTPServiceTestSuite) SetupTest() {
-	config.GetServerRuntime().Config.Notification.OTP = config.OTPConfig{
-		Length:                6,
-		UseNumericOnly:        boolPtr(true),
-		ValidityPeriodSeconds: 120,
-	}
-	suite.mockJWTService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
-
-	suite.service = &otpService{
-		logger:     log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OTPService")),
-		jwtService: suite.mockJWTService,
 	}
 }
 
@@ -238,7 +216,7 @@ func (suite *OTPServiceTestSuite) TestVerifyOTP_Success() {
 	testToken := buildTestJWT(sessionData)
 
 	suite.mockJWTService.On("VerifyJWT",
-		mock.Anything, testToken, otpSessionAudience, mock.Anything,
+		mock.Anything, testToken, otpSessionAudience, "test-issuer",
 	).Return((*tidcommon.ServiceError)(nil)).Once()
 
 	req := common.VerifyOTPDTO{SessionToken: testToken, OTPCode: "123456"}
@@ -261,7 +239,7 @@ func (suite *OTPServiceTestSuite) TestVerifyOTP_IncorrectOTP() {
 	testToken := buildTestJWT(sessionData)
 
 	suite.mockJWTService.On("VerifyJWT",
-		mock.Anything, testToken, otpSessionAudience, mock.Anything,
+		mock.Anything, testToken, otpSessionAudience, "test-issuer",
 	).Return((*tidcommon.ServiceError)(nil)).Once()
 
 	req := common.VerifyOTPDTO{SessionToken: testToken, OTPCode: "000000"}
@@ -282,7 +260,7 @@ func (suite *OTPServiceTestSuite) TestVerifyOTP_ExpiredOTP() {
 	testToken := buildTestJWT(sessionData)
 
 	suite.mockJWTService.On("VerifyJWT",
-		mock.Anything, testToken, otpSessionAudience, mock.Anything,
+		mock.Anything, testToken, otpSessionAudience, "test-issuer",
 	).Return((*tidcommon.ServiceError)(nil)).Once()
 
 	req := common.VerifyOTPDTO{SessionToken: testToken, OTPCode: "123456"}
@@ -290,7 +268,8 @@ func (suite *OTPServiceTestSuite) TestVerifyOTP_ExpiredOTP() {
 
 	suite.Nil(err)
 	suite.NotNil(res)
-	suite.Equal(common.OTPVerifyStatusInvalid, res.Status)
+	suite.Equal(common.OTPVerifyStatusExpired, res.Status)
+	suite.Equal("+15559876543", res.Recipient)
 }
 
 func (suite *OTPServiceTestSuite) TestVerifyOTP_InvalidSessionToken() {
@@ -327,7 +306,7 @@ func (suite *OTPServiceTestSuite) TestVerifyOTP_MalformedJWTPayload() {
 }
 
 func (suite *OTPServiceTestSuite) TestNewOTPService_Constructor() {
-	svc := newOTPService(suite.mockJWTService)
+	svc := newOTPService(suite.mockJWTService, suite.service.cfg)
 	suite.NotNil(svc)
 }
 

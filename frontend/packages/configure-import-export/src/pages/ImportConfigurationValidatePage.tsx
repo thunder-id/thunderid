@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {DocumentTitle} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, Button, IconButton, LinearProgress, Stack, Typography, Alert, Chip, AppBreadcrumbs} from '@wso2/oxygen-ui';
 import {CheckCircle, X, AlertCircle} from '@wso2/oxygen-ui-icons-react';
@@ -119,6 +120,7 @@ export default function ImportConfigurationValidatePage(): JSX.Element {
 
   return (
     <Box sx={{minHeight: '100vh', display: 'flex', flexDirection: 'column'}}>
+      <DocumentTitle title={t('validate.title', 'Validating configuration')} />
       <LinearProgress variant="determinate" value={66} sx={{height: 6}} />
 
       <Box

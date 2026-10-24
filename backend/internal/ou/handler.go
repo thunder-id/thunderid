@@ -229,17 +229,14 @@ func (
 	switch svcErr.Type {
 	case tidcommon.ClientErrorType:
 		statusCode = http.StatusBadRequest
-		if svcErr.Code == ErrorOrganizationUnitNotFound.Code {
+		switch svcErr.Code {
+		case ErrorOrganizationUnitNotFound.Code:
 			statusCode = http.StatusNotFound
-		} else if svcErr.Code == ErrorOrganizationUnitNameConflict.Code ||
-			svcErr.Code == ErrorOrganizationUnitHandleConflict.Code {
+		case ErrorOrganizationUnitNameConflict.Code, ErrorOrganizationUnitHandleConflict.Code:
 			statusCode = http.StatusConflict
-		} else if svcErr.Code == ErrorInvalidLimit.Code ||
-			svcErr.Code == ErrorInvalidOffset.Code ||
-			svcErr.Code == ErrorInvalidHandlePath.Code ||
-			svcErr.Code == ErrorInvalidFilter.Code {
+		case ErrorInvalidLimit.Code, ErrorInvalidOffset.Code, ErrorInvalidHandlePath.Code, ErrorInvalidFilter.Code:
 			statusCode = http.StatusBadRequest
-		} else if svcErr.Code == tidcommon.ErrorUnauthorized.Code {
+		case tidcommon.ErrorUnauthorized.Code:
 			statusCode = http.StatusForbidden
 		}
 	default:

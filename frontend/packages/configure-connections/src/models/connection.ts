@@ -16,6 +16,7 @@ export const ConnectionTypes = {
   SMS_GATEWAY: 'sms-gateway',
   AUTHZEN_PDP: 'authzen-pdp',
   SMTP: 'email-smtp',
+  HTTP: 'http',
 } as const;
 
 export type ConnectionType = (typeof ConnectionTypes)[keyof typeof ConnectionTypes];
@@ -45,6 +46,7 @@ export const ConnectionInstanceCategories = {
   SMS_PROVIDER: 'sms-provider',
   AUTHORIZATION_PDP: 'authorization-pdp',
   EMAIL_PROVIDER: 'email-provider',
+  HTTP: 'http',
 } as const;
 
 export type ConnectionInstanceCategory =
@@ -354,12 +356,8 @@ export interface SMSGatewayConnectionRequest {
   url: string;
   httpMethod: string;
   contentType: string;
-  /**
-   * Comma-separated "Key: value" pairs sent with every request, for headers that are not
-   * credentials. Credentials belong in `authentication`, where they are stored encrypted.
-   */
   httpHeaders?: string;
-  /** Omit to send no credentials. A method other than `none` requires an https URL. */
+  /** Omit to send no credentials. A method other than `none` requires an HTTPS URL. */
   authentication?: OutboundAuthConfig;
 }
 
@@ -370,24 +368,32 @@ export interface AuthZENPDPConnectionRequest {
   batchEndpoint?: string;
   timeoutMs?: number;
   retryCount?: number;
-  authentication?: OutboundAuthentication;
+  authentication?: OutboundAuthConfig;
   subjectAttributeMappings?: AuthZENPDPSubjectAttributeMapping[];
 }
 
-export interface APIKeyHeader {
+export type OutboundAuthentication = OutboundAuthConfig;
+export type OutboundAuthenticationResponse = OutboundAuthConfig;
+
+/**
+ * Request payload for an HTTP endpoint connection, a service that flow steps call.
+ */
+export interface HTTPConnectionRequest {
+  name: string;
+  description?: string;
+  /** Must be https when authentication is set. */
+  url: string;
+  /** 1 to 20000. Omit for the 10000 default. */
+  timeoutMs?: number;
+  /** Plain headers sent with every request. A PUT replaces the whole list. */
+  headers?: HTTPHeader[];
+  /** Omit to send no credentials. A method other than `none` requires an https URL. */
+  authentication?: OutboundAuthConfig;
+}
+
+export interface HTTPHeader {
   name: string;
   value: string;
-}
-
-export interface OutboundAuthentication {
-  scheme: 'NONE' | 'BEARER' | 'BASIC' | 'API_KEY';
-  bearer?: {token: string};
-  basic?: {username: string; password: string};
-  apiKey?: {headers: APIKeyHeader[]};
-}
-
-export interface OutboundAuthenticationResponse extends Omit<OutboundAuthentication, 'apiKey'> {
-  apiKey?: {headers: APIKeyHeader[] | null};
 }
 
 export interface AuthZENPDPSubjectAttributeMapping {
@@ -412,15 +418,17 @@ export type ConnectionRequest =
   | VonageConnectionRequest
   | SMSGatewayConnectionRequest
   | AuthZENPDPConnectionRequest
-  | SMTPConnectionRequest;
+  | SMTPConnectionRequest
+  | HTTPConnectionRequest;
 
 /**
  * Vendor response — secrets are never returned. A superset carrying every vendor's
  * fields (IdP + SMS); the shared form mapping reads only the fields relevant to each type.
  */
-export interface ConnectionResponse extends OIDCConnectionRequest {
+export interface ConnectionResponse extends Partial<OIDCConnectionRequest> {
   id: string;
   type: ConnectionType;
+  name: string;
   /** SMS (Twilio) fields. */
   accountSid?: string;
   authToken?: string;
@@ -432,8 +440,8 @@ export interface ConnectionResponse extends OIDCConnectionRequest {
   /** SMS gateway fields. */
   url?: string;
   httpMethod?: string;
-  contentType?: string;
   httpHeaders?: string;
+  contentType?: string;
   /** AuthZEN PDP fields. */
   endpoint?: string;
   batchEndpoint?: string;
@@ -446,11 +454,10 @@ export interface ConnectionResponse extends OIDCConnectionRequest {
   fromAddress?: string;
   fromName?: string;
   tls?: string;
-  /**
-   * Outbound authentication. An AuthZEN PDP returns its scheme-based shape, while SMTP and the
-   * SMS gateway return the generic type and properties shape. Each vendor reads only its own fields.
-   */
-  authentication?: Partial<OutboundAuthenticationResponse> & Partial<OutboundAuthConfig>;
+  /** HTTP endpoint plain headers. The URL and timeout share the fields above. */
+  headers?: HTTPHeader[] | null;
+  /** Outbound authentication returned with credential values masked. */
+  authentication?: OutboundAuthenticationResponse;
 }
 
 /**
@@ -481,6 +488,8 @@ export interface ConnectionVendorMeta {
   supportsAttributeMapping?: boolean;
   /** Whether this connection exposes outbound service authentication settings. */
   supportsAuthentication?: boolean;
+  /** Changing the `url` origin requires the stored credentials to be entered again. */
+  reentersCredentialsOnOriginChange?: boolean;
   /** Whether this connection exposes subject attribute mappings for authorization requests. */
   supportsSubjectMapping?: boolean;
   /** Copy variant for the General tab settings card. */
@@ -534,6 +543,11 @@ export interface OutboundAuthMethod {
   displayName: string;
   /** The method's fields, in render order. Absent for a method that takes none. */
   fields?: OutboundAuthField[];
+  /**
+   * Describes properties whose names the administrator chooses, such as API-key header names.
+   * Its `key` is unused; each entered name becomes a property.
+   */
+  additionalProperties?: OutboundAuthField;
 }
 
 /**

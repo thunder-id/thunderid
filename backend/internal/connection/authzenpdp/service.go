@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 
@@ -14,6 +15,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -69,7 +72,10 @@ func (s *AuthZENPDPService) CreateAuthZENPDPConnection(
 	ctx context.Context,
 	request ConnectionRequest,
 ) (*AuthZENPDPConnection, *tidcommon.ServiceError) {
-	connection := s.fromRequest(request)
+	connection, err := ConnectionFromRequest(request, s.defaults)
+	if err != nil {
+		return nil, &ErrorInvalidAuthentication
+	}
 	if svcErr := declarativeresource.CheckDeclarativeCreate(); svcErr != nil {
 		return nil, svcErr
 	}
@@ -86,7 +92,7 @@ func (s *AuthZENPDPService) CreateAuthZENPDPConnection(
 		connection.ID = sysutils.GenerateUUID()
 	}
 	var svcErr *tidcommon.ServiceError
-	err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+	err = s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		existing, getErr := s.GetAuthZENPDPByName(txCtx, connection.Name)
 		if getErr != nil {
 			return getErr
@@ -114,12 +120,8 @@ func (s *AuthZENPDPService) UpdateAuthZENPDPConnection(
 	id string,
 	request ConnectionRequest,
 ) (*AuthZENPDPConnection, *tidcommon.ServiceError) {
-	connection := s.fromRequest(request)
 	if svcErr := declarativeresource.CheckDeclarativeUpdate(); svcErr != nil {
 		return nil, svcErr
-	}
-	if connection.Name == "" {
-		return nil, &ErrorInvalidName
 	}
 	current, svcErr := s.GetAuthZENPDP(ctx, id)
 	if svcErr != nil {
@@ -128,6 +130,25 @@ func (s *AuthZENPDPService) UpdateAuthZENPDPConnection(
 	if current == nil {
 		return nil, &ErrorNotFound
 	}
+	properties, err := outboundauth.UpdateProperties(request.Authentication, current.AuthenticationProperties,
+		[]string{current.Endpoint, current.BatchEndpoint},
+		[]string{strings.TrimSpace(request.Endpoint), strings.TrimSpace(request.BatchEndpoint)},
+		httpauth.SupportedTypes(), httpauth.CanonicalizeForUpdate, httpauth.Canonicalize)
+	if err != nil {
+		if errors.Is(err, outboundauth.ErrAuthenticationRequiredForTargetChange) {
+			return nil, &ErrorAuthenticationRequiredForEndpointChange
+		}
+		return nil, &ErrorInvalidAuthentication
+	}
+	request.Authentication = nil
+	connection, err := ConnectionFromRequest(request, s.defaults)
+	if err != nil {
+		return nil, &ErrorInvalidAuthentication
+	}
+	if connection.Name == "" {
+		return nil, &ErrorInvalidName
+	}
+	connection.AuthenticationProperties = properties
 	if err := normalizeEndpoints(&connection); err != nil {
 		return nil, &ErrorInvalidEndpoint
 	}
@@ -240,8 +261,18 @@ func validateConnection(connection AuthZENPDPConnection) error {
 	if err := validateEndpoint(connection.Endpoint); err != nil {
 		return fmt.Errorf("invalid access evaluation endpoint: %w", err)
 	}
+	config, err := outboundauth.FromProperties(connection.AuthenticationProperties)
+	if err != nil {
+		return fmt.Errorf("invalid outbound authentication: %w", err)
+	}
+	if err := validateAuthenticationEndpoint(connection.Endpoint, string(config.Type)); err != nil {
+		return fmt.Errorf("invalid access evaluation endpoint: %w", err)
+	}
 	if connection.BatchEndpoint != "" {
 		if err := validateEndpoint(connection.BatchEndpoint); err != nil {
+			return fmt.Errorf("invalid access evaluations endpoint: %w", err)
+		}
+		if err := validateAuthenticationEndpoint(connection.BatchEndpoint, string(config.Type)); err != nil {
 			return fmt.Errorf("invalid access evaluations endpoint: %w", err)
 		}
 	}
@@ -256,6 +287,19 @@ func validateEndpoint(endpoint string) error {
 		return fmt.Errorf("endpoint must be an absolute URL")
 	}
 	return nil
+}
+
+func validateAuthenticationEndpoint(endpoint, scheme string) error {
+	scheme = strings.ToLower(strings.TrimSpace(scheme))
+	if scheme != string(outboundauth.TypeBearer) && scheme != string(outboundauth.TypeBasic) &&
+		scheme != string(outboundauth.TypeAPIKey) {
+		return nil
+	}
+	parsedEndpoint, err := url.Parse(endpoint)
+	if err != nil {
+		return err
+	}
+	return httpauth.ValidateCredentialTransport(&http.Request{URL: parsedEndpoint})
 }
 
 // validateSubjectAttributeMappings verifies mapped attributes against the declared subject type.
@@ -315,13 +359,13 @@ func (s *AuthZENPDPService) getSubjectTypeAttributes(
 	return nil, &ErrorInvalidSubjectAttributeMapping
 }
 
-// fromRequest converts an API request into the internal connection model with configured defaults.
-func (s *AuthZENPDPService) fromRequest(req ConnectionRequest) AuthZENPDPConnection {
+// ConnectionFromRequest converts an API or declarative request into a connection with configured defaults.
+func ConnectionFromRequest(req ConnectionRequest, defaults config.AuthZENPDPConfig) (AuthZENPDPConnection, error) {
 	timeoutMS := req.TimeoutMS
 	if timeoutMS <= 0 {
-		timeoutMS = s.defaults.TimeoutMS
+		timeoutMS = defaults.TimeoutMS
 	}
-	retryCount := retryCountDefault(s.defaults)
+	retryCount := retryCountDefault(defaults)
 	if req.RetryCount != nil {
 		retryCount = *req.RetryCount
 	}
@@ -335,7 +379,15 @@ func (s *AuthZENPDPService) fromRequest(req ConnectionRequest) AuthZENPDPConnect
 		RetryCount:               retryCount,
 		SubjectAttributeMappings: sanitizeSubjectAttributeMappings(req.SubjectAttributeMappings),
 	}
-	return connection
+	config, err := httpauth.Canonicalize(req.Authentication.Config())
+	if err != nil {
+		return AuthZENPDPConnection{}, err
+	}
+	connection.AuthenticationProperties, err = outboundauth.ToProperties(config)
+	if err != nil {
+		return AuthZENPDPConnection{}, err
+	}
+	return connection, nil
 }
 
 // cloneSubjectAttributeMappings returns an independent copy of subject attribute mappings.

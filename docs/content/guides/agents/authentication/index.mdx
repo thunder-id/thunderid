@@ -34,7 +34,7 @@ See [Client Authentication Methods](../../protocols/oauth-oidc/client-authentica
 
 For agents that should not hold a shared secret at all, the agent can authenticate by signing an assertion with a private key that only it possesses.
 
-- **Console:** on the **Advanced** tab, set **Client Authentication Method** to `private_key_jwt`, then on the **Credentials** tab provide the **Certificate**: an inline JWKS (JSON Web Key Set) or a JWKS URI. The agent signs a JWT assertion with its private key, and <ProductName /> verifies it against the public keys in that JWKS.
+- **Console:** on the **Advanced** tab, set **Client authentication method** to `private_key_jwt`, then on the **Credentials** tab provide the **Certificate**: an inline JWKS (JSON Web Key Set) or a JWKS URI. The agent signs a JWT assertion with its private key, and <ProductName /> verifies it against the public keys in that JWKS.
 - **API:** set `tokenEndpointAuthMethod` to `private_key_jwt` and supply the certificate (a JWKS or a JWKS URI) in the agent's OAuth configuration.
 
 An agent using `private_key_jwt` must have a certificate and no client secret. The API rejects the method if no certificate is set or a client secret is still present, so when switching an agent from a secret, provide the certificate and clear the secret in the same update.

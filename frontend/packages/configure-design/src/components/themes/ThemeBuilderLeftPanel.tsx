@@ -85,7 +85,7 @@ export default function ThemeBuilderLeftPanel({
           <Box>
             <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
               <Typography variant="h6" gutterBottom>
-                {t('themes.forms.settings.fields.default_color_scheme.label', 'Default Color Scheme')}
+                {t('themes.forms.settings.fields.default_color_scheme.label', 'Default color scheme')}
               </Typography>
               <Tooltip title={t('themes.builder.tooltips.hide_sections', 'Hide sections')} placement="right">
                 <IconButton
@@ -132,7 +132,7 @@ export default function ThemeBuilderLeftPanel({
           </Box>
           <Box>
             <Typography variant="h6" gutterBottom>
-              {t('themes.forms.settings.fields.default_text_direction.label', 'Default Text Direction')}
+              {t('themes.forms.settings.fields.default_text_direction.label', 'Default text direction')}
             </Typography>
             <Select
               value={draftTheme.direction ?? 'ltr'}
@@ -146,10 +146,10 @@ export default function ThemeBuilderLeftPanel({
               fullWidth
             >
               <MenuItem value="ltr">
-                {t('themes.forms.settings.fields.default_text_direction.options.ltr.label', 'Left-to-Right (LTR)')}
+                {t('themes.forms.settings.fields.default_text_direction.options.ltr.label', 'Left-to-right (LTR)')}
               </MenuItem>
               <MenuItem value="rtl">
-                {t('themes.forms.settings.fields.default_text_direction.options.rtl.label', 'Right-to-Left (RTL)')}
+                {t('themes.forms.settings.fields.default_text_direction.options.rtl.label', 'Right-to-left (RTL)')}
               </MenuItem>
             </Select>
             <FormHelperText>

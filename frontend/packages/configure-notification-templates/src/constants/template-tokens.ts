@@ -71,3 +71,25 @@ export const CONTEXT_TOKENS: readonly TemplateToken[] = [
   {labelKey: 'editor.tokens.labels.context.magicLink', label: 'Magic link', insert: '{{ctx(magicLink)}}'},
   {labelKey: 'editor.tokens.labels.context.inviteLink', label: 'Invite link', insert: '{{ctx(inviteLink)}}'},
 ];
+
+/**
+ * The ctx keys {@link CONTEXT_TOKENS} offers, derived from their `insert` strings — the set the editor
+ * preview validates {{ctx(key)}} against, so an unoffered key is flagged. Single source: the catalog
+ * above. Empty when an entry's insert is not a `{{ctx(key)}}` placeholder (not expected).
+ */
+export const CONTEXT_TOKEN_KEYS: ReadonlySet<string> = new Set(
+  CONTEXT_TOKENS.map((token) => /^\{\{ctx\(([A-Za-z0-9_.-]+)\)\}\}$/.exec(token.insert)?.[1]).filter(
+    (key): key is string => key !== undefined,
+  ),
+);
+
+/**
+ * The design token keys {@link DESIGN_TOKENS} offers, derived from their `insert` strings. The preview
+ * validates {{design(key)}} against this catalog (not the selected theme), so a key outside the list is
+ * flagged while a recognized key is accepted regardless of which theme is previewed.
+ */
+export const DESIGN_TOKEN_KEYS: ReadonlySet<string> = new Set(
+  DESIGN_TOKENS.map((token) => /^\{\{design\(([A-Za-z0-9_.-]+)\)\}\}$/.exec(token.insert)?.[1]).filter(
+    (key): key is string => key !== undefined,
+  ),
+);

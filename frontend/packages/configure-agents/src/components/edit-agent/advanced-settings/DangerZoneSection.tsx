@@ -15,14 +15,14 @@ export default function DangerZoneSection({onDeleteClick}: DangerZoneSectionProp
 
   return (
     <SettingsCard
-      title={t('agents:edit.general.sections.dangerZone.title', 'Danger Zone')}
+      title={t('agents:edit.general.sections.dangerZone.title', 'Danger zone')}
       description={t(
         'agents:edit.general.sections.dangerZone.description',
         'Actions here are permanent. Make sure before you proceed.',
       )}
     >
       <Typography variant="h6" gutterBottom color="error">
-        {t('agents:edit.general.dangerZone.deleteAgent.title', 'Delete Agent')}
+        {t('agents:edit.general.dangerZone.deleteAgent.title', 'Delete agent')}
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
         {t(
@@ -31,7 +31,7 @@ export default function DangerZoneSection({onDeleteClick}: DangerZoneSectionProp
         )}
       </Typography>
       <Button data-testid="delete-agent-button" variant="contained" color="error" onClick={onDeleteClick}>
-        {t('agents:edit.general.dangerZone.deleteAgent.button', 'Delete Agent')}
+        {t('agents:edit.general.dangerZone.deleteAgent.button', 'Delete agent')}
       </Button>
     </SettingsCard>
   );

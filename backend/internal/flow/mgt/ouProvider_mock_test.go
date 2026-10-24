@@ -18,10 +18,19 @@ func newOuProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ouProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ouProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -75,7 +84,7 @@ type ouProviderMock_GetOrganizationUnit_Call struct {
 // GetOrganizationUnit is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *ouProviderMock_Expecter) GetOrganizationUnit(ctx interface{}, id interface{}) *ouProviderMock_GetOrganizationUnit_Call {
+func (_e *ouProviderMock_Expecter) GetOrganizationUnit(ctx any, id any) *ouProviderMock_GetOrganizationUnit_Call {
 	return &ouProviderMock_GetOrganizationUnit_Call{Call: _e.mock.On("GetOrganizationUnit", ctx, id)}
 }
 

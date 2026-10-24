@@ -63,7 +63,7 @@ export default function ApplicationDeleteDialog({
 
   return (
     <Dialog open={open} onClose={handleCancel} maxWidth="sm" fullWidth>
-      <DialogTitle>{t('delete.title', 'Delete Application')}</DialogTitle>
+      <DialogTitle>{t('delete.title', 'Delete application')}</DialogTitle>
       <DialogContent>
         <DialogContentText sx={{mb: 2}}>
           {t('delete.message', 'Are you sure you want to delete this application? This action cannot be undone.')}

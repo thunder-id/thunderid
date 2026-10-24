@@ -33,6 +33,10 @@ const RetryAfterHeaderName = "Retry-After"
 // the request's trace ID across service boundaries.
 const CorrelationIDHeaderName = "X-Correlation-ID"
 
+// HostHeaderName is the name of the Host header. Go carries the inbound host on http.Request.Host
+// rather than in http.Request.Header, so it is surfaced under this key when capturing request data.
+const HostHeaderName = "Host"
+
 // FlowSecretHeaderName is the name of the header used to present a Flow Secret when initiating
 // a flow directly over HTTP.
 const FlowSecretHeaderName = "Flow-Secret"
@@ -44,6 +48,16 @@ const APIKeyHeaderName = "API-Key"
 // AttestationTokenHeaderName is the name of the header used to present a platform attestation token
 // (e.g. a Google Play Integrity token) when a mobile application initiates a flow directly over HTTP.
 const AttestationTokenHeaderName = "Attestation-Token"
+
+// ClientSecretParamName is the OAuth client_secret request parameter. Defined here (not in oauth2
+// constants) because system/utils needs it for the sensitive-param filter and cannot import oauth2.
+const ClientSecretParamName = "client_secret"
+
+// ClientAssertionParamName is the OAuth client_assertion request parameter.
+const ClientAssertionParamName = "client_assertion"
+
+// ClientAssertionTypeParamName is the OAuth client_assertion_type request parameter.
+const ClientAssertionTypeParamName = "client_assertion_type"
 
 // CRLF is the carriage return and line feed sequence that ends a line in text-based wire protocols
 // such as SMTP and HTTP.

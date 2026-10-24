@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // A version is read document by document, and a document that is not yet YAML, because its
@@ -127,7 +128,7 @@ func TestLineDiffIsAShortestEdit(t *testing.T) {
 	document := func() []string {
 		lines := make([]string, random.Intn(40))
 		for i := range lines {
-			lines[i] = string(rune('a' + random.Intn(4)))
+			lines[i] = string("abcd"[random.Intn(4)])
 		}
 		return lines
 	}
@@ -146,10 +147,10 @@ func TestLineDiffFallsBackToAReplaceOutOfBudget(t *testing.T) {
 		a := make([]string, random.Intn(30))
 		b := make([]string, random.Intn(30))
 		for i := range a {
-			a[i] = string(rune('a' + random.Intn(3)))
+			a[i] = string("abc"[random.Intn(3)])
 		}
 		for i := range b {
-			b[i] = string(rune('a' + random.Intn(3)))
+			b[i] = string("abc"[random.Intn(3)])
 		}
 		assertReplays(t, a, b, diffLines(a, b, 1+random.Intn(20)))
 	}
@@ -318,4 +319,17 @@ func TestEnclosingKeyIsEmptyWhenNoKeyEnclosesTheItem(t *testing.T) {
 	assert.Equal(t, []ValueReference{{Name: "TOP_LEVEL_ITEM", Kind: ReferenceVariable,
 		ResourceType: "application", List: true}}, references)
 	assert.Empty(t, enclosingKey([]string{"- var:X"}, 0, 0))
+}
+
+// A translation has neither an id nor a name, so each language is its own resource, named by it.
+func TestATranslationIsNamedByItsLanguage(t *testing.T) {
+	resources := parseBundle(joinBundle([]string{
+		"resource_type: translation\nlanguage: en\ntranslations: {}",
+		"resource_type: translation\nlanguage: fr\ntranslations: {}",
+	}))
+
+	require.Len(t, resources, 2)
+	assert.Equal(t, "translation/en", resources[0].key())
+	assert.Equal(t, "translation/fr", resources[1].key())
+	assert.Equal(t, "fr", resources[1].Name)
 }

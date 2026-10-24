@@ -33,16 +33,16 @@ vi.mock('@thunderid/configure-resource-servers', () => ({
   useGetResourceServers: () => ({data: {resourceServers: [{id: 'rs-1', name: 'Orders API'}]}}),
 }));
 
-const ADD_MAPPING = 'Add Mapping';
-const ADD_VALUE = 'Add Value';
+const ADD_MAPPING = 'Add mapping';
+const ADD_VALUE = 'Add value';
 const CLAIM = 'Key';
-const VALUE_TYPE = 'Value Type';
+const VALUE_TYPE = 'Value type';
 const DELIMITER = 'Delimiter';
 const OPERATOR = 'Operator';
-const EXTERNAL_VALUE = 'External Value';
-const TARGET_TYPE = 'Target Type';
-const RESOURCE_SERVER = 'Resource Server';
-const ADVANCED_TOGGLE = 'Advanced Rules';
+const EXTERNAL_VALUE = 'External value';
+const TARGET_TYPE = 'Target type';
+const RESOURCE_SERVER = 'Resource server';
+const ADVANCED_TOGGLE = 'Advanced rules';
 const COMMA_PRESET = 'Comma ( , )';
 const NO_DELIMITER_PRESET = 'No delimiter (single value)';
 
@@ -217,7 +217,7 @@ describe('AuthorizationMappingSection', () => {
     fireEvent.click(screen.getByRole('button', {name: ADD_MAPPING}));
     fireEvent.change(screen.getByLabelText(CLAIM), {target: {value: 'groups'}});
 
-    fireEvent.click(screen.getByRole('button', {name: 'Remove Mapping'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Remove mapping'}));
 
     expect(screen.queryByLabelText(CLAIM)).not.toBeInTheDocument();
     expect(onDirectChange).toHaveBeenLastCalledWith(undefined, true);
@@ -260,16 +260,16 @@ describe('AuthorizationMappingSection', () => {
       expect(screen.getByLabelText(DELIMITER)).toBeInTheDocument();
     });
 
-    it('narrows the operator list to Includes/Not Includes for value type Array', () => {
+    it('narrows the operator list to Includes/Not includes for value type Array', () => {
       render(<AuthorizationMappingSection onRuleChange={onRuleChange} onDirectChange={onDirectChange} />);
       addAdvancedRow();
       selectOption(VALUE_TYPE, 'Array');
 
       fireEvent.mouseDown(screen.getByRole('combobox', {name: OPERATOR}));
       expect(screen.getByRole('option', {name: 'Includes'})).toBeInTheDocument();
-      expect(screen.getByRole('option', {name: 'Not Includes'})).toBeInTheDocument();
+      expect(screen.getByRole('option', {name: 'Not includes'})).toBeInTheDocument();
       expect(screen.queryByRole('option', {name: 'Equals'})).not.toBeInTheDocument();
-      expect(screen.queryByRole('option', {name: 'Greater Than'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('option', {name: 'Greater than'})).not.toBeInTheDocument();
     });
 
     it('resets a rule left on Equals to Includes when switching Value Type to Array, and back to Equals when switching away', () => {

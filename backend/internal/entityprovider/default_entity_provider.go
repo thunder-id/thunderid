@@ -57,12 +57,40 @@ func (p *defaultEntityProvider) SearchEntities(
 	return result, nil
 }
 
+// GetLinkedEntities returns the entities linked to a subject at a connection, with OUHandle set.
+func (p *defaultEntityProvider) GetLinkedEntities(
+	idpID, sub string,
+) ([]*providers.Entity, *EntityProviderError) {
+	ctx := security.WithRuntimeContext(context.Background())
+	entities, err := p.entitySvc.GetLinkedEntities(ctx, idpID, sub)
+	if err != nil {
+		return nil, mapEntityError(err)
+	}
+	result := make([]*providers.Entity, 0, len(entities))
+	for i := range entities {
+		result = append(result, toProviderEntity(&entities[i]))
+	}
+	return result, nil
+}
+
 // GetEntity retrieves an entity by ID.
 func (p *defaultEntityProvider) GetEntity(
 	entityID string,
 ) (*providers.Entity, *EntityProviderError) {
 	ctx := security.WithRuntimeContext(context.Background())
 	result, err := p.entitySvc.GetEntity(ctx, entityID)
+	if err != nil {
+		return nil, mapEntityError(err)
+	}
+	return toProviderEntity(result), nil
+}
+
+// GetEntityProfile retrieves an entity's profile by ID, without reading its runtime state.
+func (p *defaultEntityProvider) GetEntityProfile(
+	entityID string,
+) (*providers.Entity, *EntityProviderError) {
+	ctx := security.WithRuntimeContext(context.Background())
+	result, err := p.entitySvc.GetEntityProfile(ctx, entityID)
 	if err != nil {
 		return nil, mapEntityError(err)
 	}

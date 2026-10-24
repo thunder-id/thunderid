@@ -47,8 +47,8 @@ export default function SubjectMappingCategory({
       : t('subjectMapping.mappings.agent', 'Agent mappings');
   const addLabel =
     category === 'user'
-      ? t('subjectMapping.mappings.addUser', 'Add User Mapping')
-      : t('subjectMapping.mappings.addAgent', 'Add Agent Mapping');
+      ? t('subjectMapping.mappings.addUser', 'Add user mapping')
+      : t('subjectMapping.mappings.addAgent', 'Add agent mapping');
 
   return (
     <Stack direction="column" spacing={2} data-testid={`subject-mapping-category-${category}`}>

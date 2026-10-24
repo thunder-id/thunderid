@@ -519,6 +519,10 @@ export function validateEntry(
   optionalString(p, raw, '', 'accent');
   optionalString(p, raw, '', 'author');
   optionalString(p, raw, '', 'version');
+  optionalString(p, raw, '', 'sample');
+  if (typeof raw.sample === 'string' && !/^[a-z0-9-]+\/[a-z0-9-]+$/.test(raw.sample)) {
+    p.add('sample', 'must be a samples repository path in the form "<category>/<name>"');
+  }
 
   if (!isPlainObject(raw.package)) {
     p.add('package', 'is required and must be an object');
@@ -570,6 +574,11 @@ export function validateEntry(
   }
 
   if (raw.hero !== undefined) validateHero(p, raw.hero);
+  // A guide documents a third-party package, so the install card would promote
+  // someone else's package as if it were ours. Guides offer their sample instead.
+  if (raw.type === 'guide' && isPlainObject(raw.hero) && raw.hero.aside !== undefined) {
+    p.add('hero.aside', 'is not allowed on guide entries; name a sample with `sample` instead');
+  }
   if (raw.rail !== undefined) validateRail(p, raw.rail);
 
   if (raw.apiReference !== undefined) {

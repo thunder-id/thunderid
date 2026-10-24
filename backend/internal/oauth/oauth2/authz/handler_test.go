@@ -103,6 +103,19 @@ func (suite *AuthorizeHandlerTestSuite) TestGetOAuthMessageForGetRequest_Success
 	}
 }
 
+func (suite *AuthorizeHandlerTestSuite) TestGetOAuthMessageForGetRequest_FoldsHostIntoHeaders() {
+	req := httptest.NewRequest(http.MethodGet, "/auth?client_id=test-client", nil)
+	req.Host = "idp.example.com"
+
+	msg, err := suite.handler.getOAuthMessageForGetRequest(req)
+
+	assert.NoError(suite.T(), err)
+	suite.Require().NotNil(msg)
+	// Go carries the inbound host on r.Host; it is folded into the headers so
+	// {{request(init.header.Host)}} resolves.
+	assert.Equal(suite.T(), "idp.example.com", http.Header(msg.RequestHeaders).Get("Host"))
+}
+
 func (suite *AuthorizeHandlerTestSuite) TestGetOAuthMessageForGetRequest_ParseFormError() {
 	req := httptest.NewRequest(http.MethodGet, "/auth?client_id=%ZZ", nil)
 

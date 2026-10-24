@@ -56,6 +56,7 @@ type cibaService struct {
 	jwtService      jwt.JWTServiceInterface
 	inboundClient   providers.ActorProvider
 	resourceService providers.ResourceServerProvider
+	governance      providers.IdentityGovernanceProvider
 	logger          *log.Logger
 }
 
@@ -66,6 +67,7 @@ func newCIBAService(
 	jwtService jwt.JWTServiceInterface,
 	actorProvider providers.ActorProvider,
 	resourceService providers.ResourceServerProvider,
+	governance providers.IdentityGovernanceProvider,
 	cfg oauthconfig.Config,
 ) CIBAServiceInterface {
 	return &cibaService{
@@ -75,6 +77,7 @@ func newCIBAService(
 		jwtService:      jwtService,
 		inboundClient:   actorProvider,
 		resourceService: resourceService,
+		governance:      governance,
 		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CIBAService")),
 	}
 }
@@ -180,7 +183,7 @@ func (s *cibaService) InitiateBackchannelAuth(
 		},
 		InitiatorRequest: &providers.InitiatorRequest{
 			Headers:     utils.FilterSensitiveHeaders(request.Headers),
-			QueryParams: request.QueryParams,
+			QueryParams: utils.FilterSensitiveQueryParams(request.QueryParams),
 		},
 	})
 	if flowErr != nil {
@@ -262,7 +265,10 @@ func (s *cibaService) loadPendingRequestForCallback(
 
 	// Resolve the owning client to obtain the expected audience (the app entity ID used as the
 	// assertion `aud`) for defense-in-depth audience validation during signature verification.
-	expectedAud := s.resolveExpectedAudience(ctx, record.ClientID)
+	expectedAud, cibaErr := s.resolveExpectedAudience(ctx, record.ClientID)
+	if cibaErr != nil {
+		return nil, cibaErr
+	}
 
 	if verifyErr := s.jwtService.VerifyJWT(ctx, assertion, expectedAud, ""); verifyErr != nil {
 		s.logger.Debug(ctx, "Assertion verification failed",
@@ -405,18 +411,34 @@ func (s *cibaService) handleFailedCallback(
 
 // resolveExpectedAudience resolves the app entity ID for the given client ID, which the flow uses
 // as the assertion `aud`. It returns an empty string (skipping the audience check) on lookup
-// failure; the authorization_request_id binding remains the primary protection in that case.
-func (s *cibaService) resolveExpectedAudience(ctx context.Context, clientID string) string {
+// failure; the authorization_request_id binding remains the primary protection in that case. A held
+// client refuses the callback.
+func (s *cibaService) resolveExpectedAudience(ctx context.Context, clientID string) (string, *CIBAError) {
 	app, svcErr := s.inboundClient.GetOAuthClientByClientID(ctx, clientID)
 	if svcErr != nil {
 		s.logger.Warn(ctx, "Failed to resolve client for audience validation; skipping audience check",
 			log.String("error", svcErr.Error.DefaultValue))
-		return ""
+		return "", nil
 	}
 	if app == nil {
-		return ""
+		return "", nil
 	}
-	return app.ID
+
+	held, svcErr := oauth2utils.IsClientHeld(ctx, s.governance, app)
+	if svcErr != nil {
+		return "", &CIBAError{
+			Code:    oauth2const.ErrorServerError,
+			Message: "Failed to process backchannel authentication callback",
+		}
+	}
+	if held {
+		s.logger.Debug(ctx, "Refusing a backchannel authentication callback for an unavailable application")
+		return "", &CIBAError{
+			Code:    oauth2const.ErrorUnauthorizedClient,
+			Message: "This application is currently unavailable",
+		}
+	}
+	return app.ID, nil
 }
 
 // Flow executor error codes that mean the login_hint resolved to no single entity. Matched by

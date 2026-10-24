@@ -1,0 +1,43 @@
+---
+title: Customize Notifications
+docType: use-case
+sidebar_position: 5
+description: Tailor the email your consumer flows send, with your own wording, branding, and language, without editing server files.
+---
+
+# Customize Notifications
+
+The flows you built send messages: the recovery flow emails a recovery link. You can tailor what that message says and how it looks, at runtime through the Console or the management API, instead of editing files on the server. For the content format and the runtime values each message can use, see the [Notification Templates](../../../guides/notifications/templates) guide.
+
+## Notification Templates
+
+A notification template is the content <ProductName /> sends on one channel for one purpose, so the password recovery email is its own template, separate from every other message the product sends. Each template belongs to a channel, `email` or `sms`, and carries a stable **handle**, such as `password-recovery`, that a flow node uses to pick it. A template <ProductName /> ships and one an administrator creates are the same kind of resource, and the defaults are preloaded at installation.
+
+The content is written once and stays language-neutral. Instead of a copy per language, it references translation keys, so the Translation feature supplies the wording when the message is sent. Branding stays out of the content too: the email body references design tokens that the [Design](../../../guides/design/overview) feature resolves against your theme, so one design change covers every email.
+
+## Tailor the Recovery Email
+
+The recovery flow you built already sends the `password-recovery` email, so there is nothing to wire up. Editing is enough: open the template, change its content to Wayfinder's wording, and save. Managing templates requires administrative authorization.
+
+<Stepper stepNode="h3" as="h3">
+
+### Open the recovery email template
+
+In the Console, go to **Customize → Notifications → Email Templates** and open **Password Recovery** (`password-recovery`), the template the recovery flow sends. It ships preloaded and is already named by the flow, so you are changing what it says, not connecting it.
+
+### Edit the content
+
+Change the subject and body to Wayfinder's wording and branding, keeping the recovery link the flow provides. The wording comes from your translations and the colors from your design, so you edit those references rather than hard-coding text or styles. For the placeholder syntax and the values the recovery flow supplies, see the [Notification Templates](../../../guides/notifications/templates) guide.
+
+### Preview and save
+
+Use **Preview** to see the resolved email for a chosen language and design theme before it goes out, so a broken layout or a missing translation surfaces while you edit rather than in a customer's inbox. Save when it looks right.
+
+</Stepper>
+
+The next time a customer recovers their password, the flow sends your version of the email, with no file to edit and no restart.
+
+## Next Steps
+
+- Author content, placeholders, and translations in depth in the [Notification Templates](../../../guides/notifications/templates) guide.
+- See the whole solution run end to end in [How It All Runs](../build-run).

@@ -379,7 +379,7 @@ Every flow you deploy must reference only executors that are registered on the s
 | **Resolve OU** | Resolves or selects an organizational unit based on strategy. | Varies by strategy |
 | **Generate Invite** | Generates an invite link for user registration. | - |
 | **Verify Invite** | Verifies an invite token before completing registration. | Generate Invite must have run |
-| **Send Email** | Sends email using configured templates. | Email service configured |
+| **Send Email** | Sends email using configured templates. | Email provider configured |
 | **Send SMS** | Sends SMS using configured templates and sender. | SMS sender configured |
 | **Auth Assertion Generator** | Generates the final authentication assertion on successful flow completion. | User authenticated; assertion settings configured |
 | **End Session** | Terminates the SSO session established by the authentication flow and clears its session cookie. | - |
@@ -405,14 +405,14 @@ Executors do not collect inputs directly. All required inputs must already be av
 
 :::info Declaring inputs in the Flow Builder
 
-Use the **Add Input** option in the executor's properties to specify which inputs the executor expects. The execution validates that each declared input is available from a preceding View or executor output.
+Use the **Add input** option in the executor's properties to specify which inputs the executor expects. The execution validates that each declared input is available from a preceding View or executor output.
 :::
 
 ### Input Types
 
 Each executor input has a `type` field that tells the client how to render the field and what client-side validation to apply.
 
-When an executor forwards inputs dynamically to a PROMPT node via its `onIncomplete` edge, the default type is `TEXT_INPUT` for non-credential inputs and `PASSWORD_INPUT` for credential inputs. To apply stricter client-side validation for a specific attribute (for example, email format validation), declare the input explicitly in the executor's `inputs` array with the appropriate type. The executor preserves the configured `type` when forwarding the input to the prompt node.
+When an executor forwards inputs dynamically to a PROMPT node via its `onIncomplete` edge, the default type is `TEXT_INPUT` for non-credential inputs and `PASSWORD_INPUT` for credential inputs. The **Provisioning** executor forwards user attributes that define a fixed set of allowed values (`enum`) as `SELECT` inputs. To apply stricter client-side validation for a specific attribute (for example, email format validation), declare the input explicitly in the executor's `inputs` array with the appropriate type. The executor preserves the configured `type` when forwarding the input to the prompt node.
 
 | Type | Description |
 |---|---|
@@ -554,11 +554,24 @@ Sets credentials (e.g., password) for an existing user. Typically used in regist
 - User not found in the user store
 - Credential update failed
 
+**Account locks in recovery flows:** setting a credential does not release an account lock. In a recovery flow, place an `IdentityGovernanceExecutor` node in `unlock` mode right after this executor, as the default recovery flows do. Without it, a locked user who completes recovery stays locked. The node releases only the account whose credential this flow set. If identity governance is off or refuses the release, the step completes and the lock stays. If the release fails on a server error, the step fails and the user can run recovery again.
+
+```json
+{
+  "id": "release_account_locks",
+  "type": "TASK_EXECUTION",
+  "executor": { "name": "IdentityGovernanceExecutor", "mode": "unlock" },
+  "onSuccess": "recovery_complete"
+}
+```
+
 </details>
 
 #### Federated Authentication
 
 A federated executor signs in a local user only through a link already recorded for the connection. A matching attribute never signs a user in directly. Follow the federated node with an [Account Linking](#identity-and-user-resolution) node, which matches the connection's account-linking attributes against existing accounts and has the user verify one of the matched accounts before linking it.
+
+A declarative user is read-only, so <ProductName /> does not record a link for it. When the user verifies a declarative account, sign-in completes without storing the link, and later sign-ins through the same connection repeat the matching and verification.
 
 To sign in a first-time federated user who has no local account, enable `allowAuthenticationWithoutLocalUser` on the executor and place a [Provisioning](#user-provisioning-and-attributes) executor downstream. The application must allow exactly one user type with self-registration enabled.
 
@@ -1132,6 +1145,17 @@ Creates a new user record in the user store. This executor persists the user's i
 
 **Cross-OU provisioning:** When `allowCrossOUProvisioning` is set and the user exists in a different OU, the executor creates the user in the target OU instead of failing.
 
+**Federated registration:** A federated identity finds existing users only through its recorded links. In a registration flow, and in a user onboarding flow where an invitee accepts with a federated account, the users linked to the identity decide the outcome before any attribute is collected:
+
+| Linked users that count | Result |
+|---|---|
+| None | The executor creates the user and records the link. |
+| One, and the federated executor allows registration with an existing user | The flow completes as that user. |
+| One, otherwise | The node fails with "User already exists." |
+| Several | The node fails with "User already exists." |
+
+Without `allowCrossOUProvisioning`, every linked user counts. With it, only linked users in the target OU count, so registering into an OU where nobody holds the link creates a second user with the same link.
+
 **Seeding from authorization mapping:** When the identity being provisioned federated in through a connection with [Authorization Mapping](../../identity-providers/add-oidc-provider#authorization-mapping) configured, `seedGroupsFromMapping` and `seedRolesFromMapping` assign whatever groups and roles that mapping resolves for the asserted attributes, as ordinary direct assignments at account-creation time, alongside anything named in `assignGroup`/`assignRole`. This is a one-time snapshot: it does not keep the account in sync with the provider afterward the way the mapping does on every subsequent sign-in, and it has nothing to resolve when the executor runs outside a federated context.
 
 **Executor properties:**
@@ -1147,7 +1171,7 @@ Creates a new user record in the user store. This executor persists the user's i
 | `seedGroupsFromMapping` | Seed Groups From Authorization Mapping | No | `false` | Assign groups the connection's authorization mapping resolved for this subject |
 | `seedRolesFromMapping` | Seed Roles From Authorization Mapping | No | `false` | Assign roles the connection's authorization mapping resolved for this subject |
 
-**Input Configuration:** Required user attributes are dynamically determined from the user type schema, so no fixed input defaults are needed. However, you may optionally declare entries in the executor's `inputs` array to set a specific input type for an attribute (e.g., `EMAIL_INPUT` for an email field). Without an explicit override, non-credential inputs default to `TEXT_INPUT`. See [Input Types](#input-types) for valid types.
+**Input Configuration:** Required user attributes are dynamically determined from the user type schema, so no fixed input defaults are needed. However, you may optionally declare entries in the executor's `inputs` array to set a specific input type for an attribute (e.g., `EMAIL_INPUT` for an email field). Without an explicit override, non-credential inputs default to `TEXT_INPUT`. Attributes that define a fixed set of allowed values (`enum`) in the user type schema are always forwarded as `SELECT` inputs that list those values as options. A prompt node that declares the attribute as a `SELECT` input receives the same options, and a prompt node that declares it with another type keeps that type. In a prompt node that this executor doesn't forward inputs to, define the options in the flow definition. See [Input Types](#input-types) for valid types.
 
 **Example:**
 
@@ -1334,6 +1358,15 @@ Resolves an ambiguous user match by presenting disambiguation options to the use
 - User selection does not match any candidate
 - Candidates are indistinguishable (no further disambiguation options available)
 
+**After a federated sign-in:** When a federated executor ran earlier in the flow, the identity's recorded links decide the user, so the node ignores its inputs and the identity's claims:
+
+1. The node completes without resolving anyone when there is nothing to pick: the identity is linked to at most one user, or the flow is a registration flow. In a registration flow, [Provisioning](#user-provisioning-and-attributes) settles the linked users against the OU it registers into.
+2. When several users hold the identity's link, the federated executor sets `entityState` to `ambiguous`. The node loads those users and offers the attributes that tell them apart, such as `ouHandle` or `userType`, through `onIncomplete`. A field that offers options is never filled in from a claim, so the user always makes the choice.
+3. Only the offered attributes filter the linked users, so the user picks between them and nothing else. A pick that matches none of them is offered again, and linked users that no attribute tells apart fail the flow.
+4. Once one user remains, the node signs that user in, sets `userID`, and sets `entityState` to `exists`.
+
+Place the node between the federated executor and **Account Linking**. The **Account Linking with Verification and Account Selection** widget adds it, with a view that has a `SELECT` field for `ouHandle`. The **Account Linking with Verification** widget leaves it out, so use it only where an identity is linked to at most one user.
+
 </details>
 
 <details>
@@ -1344,7 +1377,7 @@ Links a federated identity that has no recorded link to an existing account, aft
 **When to use:** Immediately after every federated executor whose connection has account-linking attributes configured.
 
 **How it works:**
-1. If somebody is already authenticated, the node completes. This is a returning user whose link is already recorded, so there is nothing to decide and nothing to record.
+1. If somebody is already authenticated, the node completes. This is a returning user whose link is already recorded, so there is nothing to decide and nothing to record. The node also completes when several users hold the identity's link (`entityState` is `ambiguous`), since there is nothing to link. A **Resolve User** node placed before it picks between them.
 2. Otherwise the node matches the connection's account-linking attributes against existing accounts. If none matches, this identity has no local account. The node completes and provisioning creates the account and records the link.
 3. If one or more accounts matched, the node holds them as candidates, publishes the matched attribute values for the prompt, and forwards to whatever is wired on `onIncomplete`. The prompt offers to link the matched account (`CONFIRM`) or to continue with a separate one (`REJECT`), as described in the action table below.
 4. When verification comes back, the node checks that the account that verified is one of the candidates, then records the link to that account before completing. If the account that verified is not a candidate, the node discards that sign-in and shows the prompt once more, so the user can verify another account or refuse. On refusal the candidates are dropped and the flow continues as a new user for provisioning to create.
@@ -1731,7 +1764,7 @@ Sends a transactional email using a configured template. Runs in the background:
 
 **Prerequisites:**
 - `email` (required): the recipient email address must be resolvable before this executor runs. Not a configurable node input. Resolved in priority order: forwarded data from prior executors (e.g., Generate Invite, Magic Link) → user inputs → user store (looked up via `userID`). The executor fails if none of these resolve to a non-empty address.
-- An email service must be configured in <ProductName />. See [SMTP Server Configuration](../../smtp-server/smtp-server-configuration/). The executor returns failure status if no email client is configured.
+- `senderId` (required at runtime): the ID of the email provider the step sends through. There is no deployment-wide default provider. See [Configure an Email Provider](../../notifications/email-providers).
 
 **Skip delivery:** If `skipDelivery` is set to `true`, the executor returns complete immediately without sending anything. Use this in test environments.
 
@@ -1739,7 +1772,9 @@ Sends a transactional email using a configured template. Runs in the background:
 
 | Property | UI Label | Required | Default | Description |
 |---|---|---|---|---|
+| `senderId` | Not shown | Yes, at runtime | - | ID of the email provider the step sends through. The step fails without it. The executor schema marks it optional only because built-in flows include email steps before any provider exists. Set it through the Flow Management API or a declarative flow file. |
 | `emailTemplate` | Email Template | No | `user_invite` | The template scenario to use. If absent or empty, defaults to the user invite template. |
+| `bestEffort` | Not shown | No | `false` | When `true`, a send that fails completes the step instead of failing the flow, and the flow response carries `emailSent: false`. Server-side failures are logged. Set it through the Flow Management API or a declarative flow file. |
 
 **Input Configuration:** None. The email executor resolves the recipient and template data from runtime context; it has no configurable node input defaults.
 
@@ -1750,6 +1785,7 @@ Sends a transactional email using a configured template. Runs in the background:
   "id": "send_email",
   "type": "TASK_EXECUTION",
   "properties": {
+    "senderId": "<email-provider-id>",
     "emailTemplate": "UserInvite"
   },
   "executor": {
@@ -1762,10 +1798,12 @@ Sends a transactional email using a configured template. Runs in the background:
 ```
 
 **Failure conditions:**
-- No email client configured
+- `senderId` missing, empty, or not the ID of an email provider (`FET-1038`, Email provider is not configured)
 - Recipient email address not resolvable from context or user entity
 - Template rendering error
-- SMTP or mail provider error
+- SMTP server unreachable or rejecting the message (server error)
+
+With `bestEffort` set to `true`, none of these fail the step.
 
 </details>
 
@@ -1970,6 +2008,20 @@ The following fields are always available when the corresponding data exists in 
 
 In addition to these fields, any value present in runtime data (set by prior executors) or user inputs (collected from prior Views) can be referenced using the same `{{ctx(fieldName)}}` syntax (e.g., `{{ctx(email)}}`, `{{ctx(username)}}`).
 
+**Request parameter syntax:** Use `{{request(...)}}` to reference headers and query parameters from the HTTP request associated with the flow. This is useful for publishing request metadata (host, user agent, tracking parameters) to external endpoints. The selector is `[source.]type.name`:
+
+- `source` is `init` (the request that initiated the flow, e.g. the OAuth2 `/authorize` call for redirect-based flows) or `current` (the current flow step request). When omitted, `current` is used, so `{{request(header.X)}}` is equivalent to `{{request(current.header.X)}}`. The `init` request is captured only for redirect-based flows (authorize, logout, CIBA); app-native flows (direct `/flow/execute`) have no `init` request.
+- `type` is `header` or `query`.
+- `name` is the header or query parameter name. Header lookups are case-insensitive; query parameter lookups are case-sensitive. When a header or query parameter has multiple values, the first is used.
+
+| Placeholder | Description |
+|---|---|
+| `{{request(header.User-Agent)}}` | The `User-Agent` header from the current flow step request (source omitted → `current`). |
+| `{{request(current.header.User-Agent)}}` | The `User-Agent` header from the current flow step request. |
+| `{{request(init.query.utm_source)}}` | The `utm_source` query parameter from the flow-initiation request. |
+
+Credential-bearing data is stripped at capture and is never available through this syntax: the headers `Authorization`, `Cookie`, `Set-Cookie`, `Proxy-Authorization`, `Flow-Secret`, and `Attestation-Token`, and the client-credential query parameters `client_secret`, `client_assertion`, and `client_assertion_type`. If a request, header, or query parameter is not present, or the selector is malformed (for example `{{request(header)}}` with no name, or `{{request(notaselector)}}`), the placeholder is kept as-is.
+
 **Failure conditions:**
 - URL not configured or invalid
 - HTTP request timeout
@@ -2100,7 +2152,7 @@ Generates the final authentication assertion, a signed JWT, that <ProductName />
 - **Audience (`aud`):** Set to the application (entity) ID.
 - **Assurance:** Extracted from the flow execution history. Lists which authenticators ran, in which step, and at what time.
 - **Authorized permissions:** Included if the Authorization executor ran.
-- **User attributes:** Resolved from the following sources in priority order: consented attributes (if User Consent ran) → essential/optional attribute lists from application configuration → application assertion configuration. Computed attributes (`groups`, `roles`, `userType`, `ouId`, `ouName`, `ouHandle`) are derived at assertion time and included only if configured.
+- **User attributes:** Resolved from the following sources in priority order: consented attributes (if User Consent ran) → essential/optional attribute lists from application configuration → application assertion configuration. Computed attributes (`groups`, `roles`, `userTypeHandle`, `userTypeName`, `ouId`, `ouName`, `ouHandle`) are derived at assertion time and included only if configured.
 - **Token lifetime:** Uses the application's assertion validity period; falls back to the system JWT default.
 
 **Input Configuration:** None. This executor operates entirely on runtime context; it has no configurable node input defaults.

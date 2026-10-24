@@ -78,8 +78,9 @@ var (
 			DefaultValue: "Organization unit has children",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.ouservice.organization_unit_has_children_description",
-			DefaultValue: "Cannot delete organization unit with children or users/groups",
+			Key: "error.ouservice.organization_unit_has_children_description",
+			DefaultValue: "Cannot delete an organization unit that has child organization units, users, " +
+				"groups, user types, agent types, or sharing policies it issued",
 		},
 	}
 	// ErrorCircularDependency is the error returned when a circular dependency is detected.

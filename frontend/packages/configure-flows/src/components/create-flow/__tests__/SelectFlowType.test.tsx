@@ -61,7 +61,7 @@ describe('SelectFlowType', () => {
     it('should render Self Sign-up option', () => {
       render(<SelectFlowType {...defaultProps} />);
 
-      expect(screen.getByText('Self Sign-up')).toBeInTheDocument();
+      expect(screen.getByText('Self sign-up')).toBeInTheDocument();
       expect(screen.getByText('Let users register themselves with your application')).toBeInTheDocument();
     });
 
@@ -75,7 +75,7 @@ describe('SelectFlowType', () => {
     it('should render SignOut option', () => {
       render(<SelectFlowType {...defaultProps} />);
 
-      expect(screen.getByText('Sign Out')).toBeInTheDocument();
+      expect(screen.getByText('Sign out')).toBeInTheDocument();
       expect(screen.getByText('Confirm and terminate an established SSO session')).toBeInTheDocument();
     });
 
@@ -101,7 +101,7 @@ describe('SelectFlowType', () => {
     it('should call onTypeChange with SIGNOUT when SignOut is clicked', () => {
       render(<SelectFlowType {...defaultProps} />);
 
-      fireEvent.click(screen.getByText('Sign Out'));
+      fireEvent.click(screen.getByText('Sign out'));
 
       expect(mockOnTypeChange).toHaveBeenCalledWith('SIGNOUT');
       expect(mockOnReadyChange).toHaveBeenCalledWith(true);
@@ -110,7 +110,7 @@ describe('SelectFlowType', () => {
     it('should call onTypeChange with REGISTRATION when Self Sign-up is clicked', () => {
       render(<SelectFlowType {...defaultProps} />);
 
-      fireEvent.click(screen.getByText('Self Sign-up'));
+      fireEvent.click(screen.getByText('Self sign-up'));
 
       expect(mockOnTypeChange).toHaveBeenCalledWith('REGISTRATION');
       expect(mockOnReadyChange).toHaveBeenCalledWith(true);
@@ -133,7 +133,7 @@ describe('SelectFlowType', () => {
 
       rerender(<SelectFlowType {...defaultProps} selectedType="REGISTRATION" />);
 
-      expect(screen.getByText('Self Sign-up')).toBeInTheDocument();
+      expect(screen.getByText('Self sign-up')).toBeInTheDocument();
     });
 
     it('should call onTypeChange and onReadyChange when Enter is pressed on a card', () => {
@@ -165,7 +165,7 @@ describe('SelectFlowType', () => {
     it('should allow changing selection from one type to another', () => {
       render(<SelectFlowType {...defaultProps} selectedType="AUTHENTICATION" />);
 
-      fireEvent.click(screen.getByText('Self Sign-up'));
+      fireEvent.click(screen.getByText('Self sign-up'));
 
       expect(mockOnTypeChange).toHaveBeenCalledWith('REGISTRATION');
     });

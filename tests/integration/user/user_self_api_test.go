@@ -160,6 +160,24 @@ func (s *SelfUserEndpointsSuite) TestSelfUserUpdateProfile() {
 	s.username = newUsername
 }
 
+func (s *SelfUserEndpointsSuite) TestSelfUserUpdateReportsTheDerivedStatus() {
+	resp, err := s.doUserRequest(http.MethodPut, "/users/me", map[string]interface{}{
+		"attributes": s.selfProfileAttributes(),
+		"status":     map[string]interface{}{"value": "SUSPENDED"},
+	})
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(raw))
+
+	var updated struct {
+		Status json.RawMessage `json:"status"`
+	}
+	s.Require().NoError(json.Unmarshal(raw, &updated))
+	s.JSONEq(`{"value":"ACTIVE"}`, string(updated.Status), "the update must report the derived status")
+}
+
 func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentials() {
 	newPassword := s.password + "!"
 	payload := map[string]interface{}{

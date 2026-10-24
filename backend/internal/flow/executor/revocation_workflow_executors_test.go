@@ -5,7 +5,6 @@ package executor
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -17,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/sessionmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/revocationmock"
@@ -51,11 +51,12 @@ func (s *RevocationWorkflowExecutorsTestSuite) TestUserDeletionFlow() {
 	s.NotEmpty(validationResp.SharedRuntimeData[common.RuntimeKeyRevocationPlan])
 
 	revoker := revocationmock.NewCriteriaRevokerInterfaceMock(s.T())
-	revoker.EXPECT().RevokeByCriteria(mock.Anything, mock.MatchedBy(func(value revocation.CriteriaRevocation) bool {
-		return value.Criterion.Type == revocation.CriterionTypeSubject &&
-			value.Criterion.Value == "user-123" && value.Mode == revocation.ModeAll &&
-			value.Reason == revocation.ReasonUserDeleted
-	})).Return(nil)
+	revoker.EXPECT().RevokeCriteriaBatch(mock.Anything,
+		mock.MatchedBy(func(batch []revocation.CriteriaRevocation) bool {
+			return len(batch) == 1 && batch[0].Criterion.Type == revocation.CriterionTypeSubject &&
+				batch[0].Criterion.Value == "user-123" && batch[0].Mode == revocation.ModeAll &&
+				batch[0].Reason == revocation.ReasonUserDeleted
+		})).Return(nil)
 	criteriaResp, err := newCriteriaRevocationExecutor(s.factory, revoker).Execute(&providers.NodeContext{
 		Context: context.Background(), SharedRuntimeData: validationResp.SharedRuntimeData,
 	})
@@ -146,7 +147,7 @@ func (s *RevocationWorkflowExecutorsTestSuite) TestCriteriaRevocationFailure() {
 	})
 	s.Require().NoError(err)
 	revoker := revocationmock.NewCriteriaRevokerInterfaceMock(s.T())
-	revoker.EXPECT().RevokeByCriteria(mock.Anything, mock.Anything).Return(errors.New("store unavailable"))
+	revoker.EXPECT().RevokeCriteriaBatch(mock.Anything, mock.Anything).Return(&tidcommon.InternalServerError)
 
 	resp, err := newCriteriaRevocationExecutor(s.factory, revoker).Execute(&providers.NodeContext{
 		Context: context.Background(), SharedRuntimeData: map[string]string{common.RuntimeKeyRevocationPlan: encoded},
@@ -189,10 +190,11 @@ func (s *RevocationWorkflowExecutorsTestSuite) TestCriteriaRevocationUsesPlanMod
 	s.Require().NoError(err)
 
 	revoker := revocationmock.NewCriteriaRevokerInterfaceMock(s.T())
-	revoker.EXPECT().RevokeByCriteria(mock.Anything, mock.MatchedBy(func(value revocation.CriteriaRevocation) bool {
-		return value.Mode == revocation.ModeBeforeAction && value.Cutoff.Equal(cutoff) &&
-			value.Reason == revocation.ReasonRoleAssignmentRemoved
-	})).Return(nil)
+	revoker.EXPECT().RevokeCriteriaBatch(mock.Anything,
+		mock.MatchedBy(func(batch []revocation.CriteriaRevocation) bool {
+			return len(batch) == 1 && batch[0].Mode == revocation.ModeBeforeAction &&
+				batch[0].Cutoff.Equal(cutoff) && batch[0].Reason == revocation.ReasonRoleAssignmentRemoved
+		})).Return(nil)
 
 	resp, err := newCriteriaRevocationExecutor(s.factory, revoker).Execute(&providers.NodeContext{
 		Context:           context.Background(),
@@ -216,9 +218,10 @@ func (s *RevocationWorkflowExecutorsTestSuite) TestConfiguredModeReachesRevoker(
 	s.Require().Equal(providers.ExecComplete, preResp.Status)
 
 	revoker := revocationmock.NewCriteriaRevokerInterfaceMock(s.T())
-	revoker.EXPECT().RevokeByCriteria(mock.Anything, mock.MatchedBy(func(value revocation.CriteriaRevocation) bool {
-		return value.Mode == revocation.ModeAll
-	})).Return(nil)
+	revoker.EXPECT().RevokeCriteriaBatch(mock.Anything,
+		mock.MatchedBy(func(batch []revocation.CriteriaRevocation) bool {
+			return len(batch) == 1 && batch[0].Mode == revocation.ModeAll
+		})).Return(nil)
 
 	revokeResp, err := newCriteriaRevocationExecutor(s.factory, revoker).Execute(&providers.NodeContext{
 		Context:           context.Background(),

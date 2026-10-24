@@ -1055,7 +1055,8 @@
       "action": {
         "type": "EXECUTOR",
         "executor": {
-          "name": "CriteriaRevocationExecutor"
+          "name": "CriteriaRevocationExecutor",
+          "mode": "revoke"
         },
         "onSuccess": ""
       }
@@ -1181,6 +1182,309 @@
       "action": {
         "type": "EXECUTOR",
         "executor": {"name": "ClientSecretExecutor"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Account Linking Executor",
+      "label": "Account Linking",
+      "description": "Decide whether this federated identity is new, already signed in, or needs the account verified first",
+      "image": "assets/images/icons/magnifying-glass.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "AccountLinkingExecutor"
+        },
+        "onSuccess": "",
+        "onFailure": "",
+        "onIncomplete": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Revocation Cutoff Executor",
+      "label": "Advance Revocation Cutoff",
+      "description": "Advance the revocation cutoff after the change has committed, closing the window a token could be minted in",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "CriteriaRevocationExecutor", "mode": "advance_cutoff"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Role Assignment Removal Validator",
+      "label": "Validate and Plan Assignment Removal",
+      "description": "Validate the role assignment and plan revocation of the scopes it conveyed",
+      "image": "assets/images/icons/magnifying-glass.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "AccessChangeValidator", "mode": "role_assignment_removal"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Role Assignment Removal Executor",
+      "label": "Remove Role Assignment",
+      "description": "Unassign the role named by the trusted revocation plan",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "RoleExecutor", "mode": "role_assignment_removal"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Role Deletion Validator",
+      "label": "Validate and Plan Role Deletion",
+      "description": "Validate the role and plan revocation of every scope it grants",
+      "image": "assets/images/icons/magnifying-glass.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "AccessChangeValidator", "mode": "role_deletion"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Role Deletion Executor",
+      "label": "Delete Role",
+      "description": "Delete the role named by the trusted revocation plan",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "RoleExecutor", "mode": "role_deletion"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Role Permission Removal Validator",
+      "label": "Validate and Plan Permission Change",
+      "description": "Validate the new permission set and plan revocation of the scopes it drops",
+      "image": "assets/images/icons/magnifying-glass.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "AccessChangeValidator", "mode": "role_permission_removal"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Role Permission Removal Executor",
+      "label": "Change Role Permissions",
+      "description": "Replace the permissions the role grants, as named by the trusted revocation plan",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "RoleExecutor", "mode": "role_permission_removal"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Group Deletion Validator",
+      "label": "Validate and Plan Group Deletion",
+      "description": "Validate the group and plan revocation of the scopes its members hold through it",
+      "image": "assets/images/icons/magnifying-glass.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "AccessChangeValidator", "mode": "group_deletion"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Group Deletion Executor",
+      "label": "Delete Group",
+      "description": "Delete the group named by the trusted revocation plan",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "GroupExecutor", "mode": "group_deletion"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Group Membership Removal Validator",
+      "label": "Validate and Plan Membership Removal",
+      "description": "Validate the membership and plan revocation of the scopes the member held through the group",
+      "image": "assets/images/icons/magnifying-glass.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "AccessChangeValidator", "mode": "group_membership_removal"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Group Membership Removal Executor",
+      "label": "Remove Group Member",
+      "description": "Remove the member named by the trusted revocation plan from the group",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "GroupExecutor", "mode": "group_membership_removal"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Action Deletion Validator",
+      "label": "Validate and Plan Action Deletion",
+      "description": "Validate the action and plan revocation of the scope it defines, for every principal",
+      "image": "assets/images/icons/magnifying-glass.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "AccessChangeValidator", "mode": "action_deletion"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Action Deletion Executor",
+      "label": "Delete Action",
+      "description": "Delete the action behind the scope named by the trusted revocation plan",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "ActionDeletionExecutor"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Identity Governance Executor",
+      "label": "Unlock Identity",
+      "description": "Clear every automatic lock left by failed authentication attempts. In a recovery flow, place it after the credential is set",
+      "image": "LockKeyholeOpen",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "IdentityGovernanceExecutor", "mode": "unlock"},
         "onSuccess": "",
         "onFailure": ""
       }

@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen} from '@thunderid/test-utils';
+import {render, screen, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi} from 'vitest';
 import SignUpPage from '../SignUpPage';
 
@@ -19,5 +19,10 @@ describe('SignUpPage', () => {
   it('renders SignUp component', () => {
     render(<SignUpPage />);
     expect(screen.getByTestId('signup-component')).toBeInTheDocument();
+  });
+
+  it('sets the document title', async () => {
+    render(<SignUpPage />);
+    await waitFor(() => expect(document.title).toBe('Sign up | ThunderID'));
   });
 });

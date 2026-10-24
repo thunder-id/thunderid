@@ -239,7 +239,7 @@ export default function ScopeMapper({
                     letterSpacing: 0.5,
                   }}
                 >
-                  {t('applications:edit.token.scope_mapper.mapped_label', 'Mapped Attributes')}
+                  {t('applications:edit.token.scope_mapper.mapped_label', 'Mapped attributes')}
                 </Typography>
 
                 {mappedAttributes.length === 0 ? (
@@ -279,7 +279,7 @@ export default function ScopeMapper({
                     letterSpacing: 0.5,
                   }}
                 >
-                  {t('applications:edit.token.scope_mapper.available_label', 'Available Attributes')}
+                  {t('applications:edit.token.scope_mapper.available_label', 'Available attributes')}
                 </Typography>
 
                 {isLoadingUserAttributes && (
@@ -332,7 +332,7 @@ export default function ScopeMapper({
           color="text.secondary"
           sx={{display: 'block', mb: 0.75, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5}}
         >
-          {t('applications:edit.token.scopes.add_label', 'Add Scope')}
+          {t('applications:edit.token.scopes.add_label', 'Add scope')}
         </Typography>
         <Stack direction="row" spacing={1} alignItems="flex-start">
           <TextField

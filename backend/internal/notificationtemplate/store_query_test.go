@@ -44,11 +44,11 @@ func (s *NotificationTemplateStoreTestSuite) SetupTest() {
 func (s *NotificationTemplateStoreTestSuite) TestCreateTemplate_EmailWithDesign() {
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateTemplate,
-		"id-1", "email", "otp", "OTP", "desc",
+		"id-1", "email", "otp", "ou-1", "OTP", "desc",
 		`{"subject":"s","body":"b"}`, `{"colorScheme":"dark"}`, "test-deployment").Return(int64(1), nil)
 
 	err := s.store.CreateTemplate(depCtx("test-deployment"), templateDAO{
-		ID: "id-1", Channel: ChannelTypeEmail, Handle: "otp", DisplayName: "OTP", Description: "desc",
+		ID: "id-1", Channel: ChannelTypeEmail, Handle: "otp", OUID: "ou-1", DisplayName: "OTP", Description: "desc",
 		Content: TemplateContent{Subject: "s", Body: "b"},
 		Design:  &TemplateDesign{ColorScheme: colorSchemeDark},
 	})
@@ -59,26 +59,31 @@ func (s *NotificationTemplateStoreTestSuite) TestCreateTemplate_NoDesignStoresEm
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
 	// DESIGN is NOT NULL, so a template without a design persists "{}".
 	s.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateTemplate,
-		"id-2", "sms", "otp", "OTP", "", `{"body":"b"}`, "{}", "test-deployment").Return(int64(1), nil)
+		"id-2", "sms", "otp", "ou-1", "OTP", "", `{"body":"b"}`, "{}", "test-deployment").Return(int64(1), nil)
 
 	err := s.store.CreateTemplate(depCtx("test-deployment"), templateDAO{
-		ID: "id-2", Channel: ChannelTypeSMS, Handle: "otp", DisplayName: "OTP",
+		ID: "id-2", Channel: ChannelTypeSMS, Handle: "otp", OUID: "ou-1", DisplayName: "OTP",
 		Content: TemplateContent{Body: "b"},
 	})
 	s.Require().NoError(err)
 }
 
+func foundTemplateRow() map[string]interface{} {
+	return map[string]interface{}{
+		"id": "id-1", "channel": "email", "handle": "otp", "ou_id": "ou-1", "display_name": "OTP",
+		"description": "desc", "content": `{"subject":"s","body":"b"}`, "design": `{"colorScheme":"dark"}`,
+	}
+}
+
 func (s *NotificationTemplateStoreTestSuite) TestGetTemplate_Found() {
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("QueryContext", mock.Anything, queryGetTemplateByID, "id-1", "email", "test-deployment").
-		Return([]map[string]interface{}{{
-			"id": "id-1", "channel": "email", "handle": "otp", "display_name": "OTP",
-			"description": "desc", "content": `{"subject":"s","body":"b"}`, "design": `{"colorScheme":"dark"}`,
-		}}, nil)
+		Return([]map[string]interface{}{foundTemplateRow()}, nil)
 
 	dao, err := s.store.GetTemplate(depCtx("test-deployment"), ChannelTypeEmail, "id-1")
 	s.Require().NoError(err)
 	s.Require().Equal("otp", dao.Handle)
+	s.Require().Equal("ou-1", dao.OUID)
 	s.Require().Equal("s", dao.Content.Subject)
 	s.Require().NotNil(dao.Design)
 	s.Require().Equal(colorSchemeDark, dao.Design.ColorScheme)
@@ -96,14 +101,12 @@ func (s *NotificationTemplateStoreTestSuite) TestGetTemplate_NotFound() {
 func (s *NotificationTemplateStoreTestSuite) TestGetTemplateByHandle_Found() {
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("QueryContext", mock.Anything, queryGetTemplateByHandle, "otp", "email", "test-deployment").
-		Return([]map[string]interface{}{{
-			"id": "id-1", "channel": "email", "handle": "otp", "display_name": "OTP",
-			"description": "desc", "content": `{"subject":"s","body":"b"}`, "design": `{"colorScheme":"dark"}`,
-		}}, nil)
+		Return([]map[string]interface{}{foundTemplateRow()}, nil)
 
 	dao, err := s.store.GetTemplateByHandle(depCtx("test-deployment"), ChannelTypeEmail, "otp")
 	s.Require().NoError(err)
 	s.Require().Equal("id-1", dao.ID)
+	s.Require().Equal("ou-1", dao.OUID)
 	s.Require().Equal("s", dao.Content.Subject)
 	s.Require().NotNil(dao.Design)
 	s.Require().Equal(colorSchemeDark, dao.Design.ColorScheme)
@@ -122,8 +125,8 @@ func (s *NotificationTemplateStoreTestSuite) TestListTemplates() {
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("QueryContext", mock.Anything, queryListTemplates, "email", 10, 0, "test-deployment").
 		Return([]map[string]interface{}{
-			{"id": "a", "channel": "email", "handle": "a", "display_name": "A"},
-			{"id": "b", "channel": "email", "handle": "b", "display_name": "B"},
+			{"id": "a", "channel": "email", "handle": "a", "ou_id": "ou-1", "display_name": "A"},
+			{"id": "b", "channel": "email", "handle": "b", "ou_id": "ou-1", "display_name": "B"},
 		}, nil)
 
 	list, err := s.store.ListTemplates(depCtx("test-deployment"), ChannelTypeEmail, 10, 0)
@@ -211,7 +214,7 @@ func (s *NotificationTemplateStoreTestSuite) TestCreateTemplate_ExecError() {
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateTemplate,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).Return(int64(0), errors.New("insert failed"))
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(int64(0), errors.New("insert failed"))
 
 	err := s.store.CreateTemplate(depCtx("test-deployment"), templateDAO{
 		ID: "id", Channel: ChannelTypeEmail, Handle: "h", DisplayName: "D",

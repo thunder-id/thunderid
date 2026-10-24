@@ -17,10 +17,19 @@ func NewRuntimeCryptoProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *RuntimeCryptoProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &RuntimeCryptoProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type RuntimeCryptoProviderMock_Decrypt_Call struct {
 //   - algorithm string
 //   - params map[string]interface{}
 //   - content []byte
-func (_e *RuntimeCryptoProviderMock_Expecter) Decrypt(ctx interface{}, keyRef interface{}, algorithm interface{}, params interface{}, content interface{}) *RuntimeCryptoProviderMock_Decrypt_Call {
+func (_e *RuntimeCryptoProviderMock_Expecter) Decrypt(ctx any, keyRef any, algorithm any, params any, content any) *RuntimeCryptoProviderMock_Decrypt_Call {
 	return &RuntimeCryptoProviderMock_Decrypt_Call{Call: _e.mock.On("Decrypt", ctx, keyRef, algorithm, params, content)}
 }
 
@@ -171,7 +180,7 @@ type RuntimeCryptoProviderMock_Encrypt_Call struct {
 //   - algorithm string
 //   - params map[string]interface{}
 //   - content []byte
-func (_e *RuntimeCryptoProviderMock_Expecter) Encrypt(ctx interface{}, keyRef interface{}, algorithm interface{}, params interface{}, content interface{}) *RuntimeCryptoProviderMock_Encrypt_Call {
+func (_e *RuntimeCryptoProviderMock_Expecter) Encrypt(ctx any, keyRef any, algorithm any, params any, content any) *RuntimeCryptoProviderMock_Encrypt_Call {
 	return &RuntimeCryptoProviderMock_Encrypt_Call{Call: _e.mock.On("Encrypt", ctx, keyRef, algorithm, params, content)}
 }
 
@@ -254,7 +263,7 @@ type RuntimeCryptoProviderMock_GetPublicKeys_Call struct {
 // GetPublicKeys is a helper method to define mock.On call
 //   - ctx context.Context
 //   - filter providers.PublicKeyFilter
-func (_e *RuntimeCryptoProviderMock_Expecter) GetPublicKeys(ctx interface{}, filter interface{}) *RuntimeCryptoProviderMock_GetPublicKeys_Call {
+func (_e *RuntimeCryptoProviderMock_Expecter) GetPublicKeys(ctx any, filter any) *RuntimeCryptoProviderMock_GetPublicKeys_Call {
 	return &RuntimeCryptoProviderMock_GetPublicKeys_Call{Call: _e.mock.On("GetPublicKeys", ctx, filter)}
 }
 
@@ -416,7 +425,7 @@ type RuntimeCryptoProviderMock_Sign_Call struct {
 //   - keyRef providers.KeyRef
 //   - alg string
 //   - content []byte
-func (_e *RuntimeCryptoProviderMock_Expecter) Sign(ctx interface{}, keyRef interface{}, alg interface{}, content interface{}) *RuntimeCryptoProviderMock_Sign_Call {
+func (_e *RuntimeCryptoProviderMock_Expecter) Sign(ctx any, keyRef any, alg any, content any) *RuntimeCryptoProviderMock_Sign_Call {
 	return &RuntimeCryptoProviderMock_Sign_Call{Call: _e.mock.On("Sign", ctx, keyRef, alg, content)}
 }
 
@@ -486,7 +495,7 @@ type RuntimeCryptoProviderMock_Verify_Call struct {
 //   - alg string
 //   - content []byte
 //   - signature []byte
-func (_e *RuntimeCryptoProviderMock_Expecter) Verify(ctx interface{}, keyRef interface{}, alg interface{}, content interface{}, signature interface{}) *RuntimeCryptoProviderMock_Verify_Call {
+func (_e *RuntimeCryptoProviderMock_Expecter) Verify(ctx any, keyRef any, alg any, content any, signature any) *RuntimeCryptoProviderMock_Verify_Call {
 	return &RuntimeCryptoProviderMock_Verify_Call{Call: _e.mock.On("Verify", ctx, keyRef, alg, content, signature)}
 }
 

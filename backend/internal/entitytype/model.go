@@ -33,7 +33,9 @@ func (c TypeCategory) IsValid() bool {
 // SystemAttributes holds system-level metadata for an entity type.
 // Stored as a JSON column for extensibility — new fields can be added without DB migrations.
 type SystemAttributes struct {
-	Display string `json:"display,omitempty" yaml:"display,omitempty"`
+	Display       string `json:"display,omitempty" yaml:"display,omitempty"`
+	PrimaryEmail  string `json:"primaryEmail,omitempty" yaml:"primaryEmail,omitempty"`
+	PrimaryMobile string `json:"primaryMobile,omitempty" yaml:"primaryMobile,omitempty"`
 }
 
 // EntityType represents an entity-type schema definition.

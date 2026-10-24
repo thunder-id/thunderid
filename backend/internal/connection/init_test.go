@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/idp"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
@@ -26,6 +27,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/connection/httpconnectionmock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
 )
@@ -58,8 +60,18 @@ func newConnectionTestHandler(t *testing.T) (*handler, *idpmock.IDPServiceInterf
 	mockNotif := notificationmock.NewNotificationSenderMgtSvcInterfaceMock(t)
 	return newHandler(newService(
 		mockIDP, mockNotif, &testResourceServerLister{},
-		&authZENPDPServiceStub{},
+		&authZENPDPServiceStub{}, newHTTPConnectionServiceMock(t),
 	)), mockIDP, mockNotif
+}
+
+// newHTTPConnectionServiceMock returns an HTTP connection service mock that lists no connections,
+// for tests that list every connection category.
+func newHTTPConnectionServiceMock(t *testing.T) *httpconnectionmock.HTTPConnectionServiceInterfaceMock {
+	t.Helper()
+	mockHTTP := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(t)
+	mockHTTP.On("ListHTTPConnections", mock.Anything).
+		Return([]httpconnection.HTTPConnection{}, (*tidcommon.ServiceError)(nil)).Maybe()
+	return mockHTTP
 }
 
 // mustProperty builds a property, failing the test on error.
@@ -81,6 +93,7 @@ type InitTestSuite struct {
 	mockNotif    *notificationmock.NotificationSenderMgtSvcInterfaceMock
 	mockResource *testResourceServerLister
 	authZENPDP   *authZENPDPServiceStub
+	mockHTTP     *httpconnectionmock.HTTPConnectionServiceInterfaceMock
 }
 
 func TestInitSuite(t *testing.T) {
@@ -93,9 +106,10 @@ func (s *InitTestSuite) SetupTest() {
 	s.mockIDP = idpmock.NewIDPServiceInterfaceMock(s.T())
 	s.mockNotif = notificationmock.NewNotificationSenderMgtSvcInterfaceMock(s.T())
 	s.mockResource = &testResourceServerLister{}
+	s.mockHTTP = httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
 	s.mux = http.NewServeMux()
-	_, err := Initialize(s.mux, s.mockIDP, s.mockNotif, s.mockResource,
-		s.authZENPDP, nil)
+	_, err := Initialize(s.mux, nil, s.mockIDP, s.mockNotif, s.mockResource,
+		s.authZENPDP, s.mockHTTP, nil)
 	s.Require().NoError(err)
 }
 
@@ -186,6 +200,22 @@ func (s *InitTestSuite) TestRouteTable() {
 	s.authZENPDP.createResult = &authzenpdp.AuthZENPDPConnection{ID: "pdp-new", Name: "PDP-new"}
 	s.authZENPDP.updateResult = s.authZENPDP.connection
 
+	httpConnection := &httpconnection.HTTPConnection{ID: "http-1", Name: "Risk",
+		URL: "https://risk.example.com/evaluate", TimeoutMS: 10000}
+	s.mockHTTP.On("ListHTTPConnections", mock.Anything).
+		Return([]httpconnection.HTTPConnection{*httpConnection}, (*tidcommon.ServiceError)(nil))
+	s.mockHTTP.On("CreateHTTPConnection", mock.Anything, mock.Anything).
+		Return(httpConnection, (*tidcommon.ServiceError)(nil))
+	s.mockHTTP.On("GetHTTPConnection", mock.Anything, "http-1").
+		Return(httpConnection, (*tidcommon.ServiceError)(nil))
+	s.mockHTTP.On("UpdateHTTPConnection", mock.Anything, "http-1", mock.Anything).
+		Return(httpConnection, (*tidcommon.ServiceError)(nil))
+	s.mockHTTP.On("DeleteHTTPConnection", mock.Anything, "http-1").
+		Return((*tidcommon.ServiceError)(nil))
+	httpBody, _ := json.Marshal(httpConnectionRequest{
+		Name: "Risk", URL: "https://risk.example.com/evaluate",
+	})
+
 	body, _ := json.Marshal(githubConnectionRequest{
 		Name: "GH", ClientID: "c", ClientSecret: "s", RedirectURI: "https://app/cb",
 	})
@@ -262,6 +292,13 @@ func (s *InitTestSuite) TestRouteTable() {
 		{http.MethodOptions, "/connections/" + emailSMTPVendorName + "/sm-1", nil, http.StatusNoContent},
 		{http.MethodGet, "/connections/" + emailSMTPVendorName + "/sm-1/usages", nil, http.StatusOK},
 		{http.MethodOptions, "/connections/" + emailSMTPVendorName + "/sm-1/usages", nil, http.StatusNoContent},
+		{http.MethodPost, "/connections/http", httpBody, http.StatusCreated},
+		{http.MethodGet, "/connections/http", nil, http.StatusOK},
+		{http.MethodOptions, "/connections/http", nil, http.StatusNoContent},
+		{http.MethodGet, "/connections/http/http-1", nil, http.StatusOK},
+		{http.MethodPut, "/connections/http/http-1", httpBody, http.StatusOK},
+		{http.MethodDelete, "/connections/http/http-1", nil, http.StatusNoContent},
+		{http.MethodOptions, "/connections/http/http-1", nil, http.StatusNoContent},
 	}
 	for _, tc := range cases {
 		req := httptest.NewRequest(tc.method, tc.path, bytes.NewReader(tc.body))

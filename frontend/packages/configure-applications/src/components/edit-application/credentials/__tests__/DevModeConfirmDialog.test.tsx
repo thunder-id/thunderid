@@ -23,7 +23,7 @@ describe('DevModeConfirmDialog', () => {
     render(<DevModeConfirmDialog open onClose={mockOnClose} onConfirm={mockOnConfirm} />);
 
     expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByText('Enable Dev Mode?')).toBeInTheDocument();
+    expect(screen.getByText('Enable dev mode?')).toBeInTheDocument();
   });
 
   it('should not render dialog content when closed', () => {

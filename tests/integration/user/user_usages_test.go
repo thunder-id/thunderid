@@ -71,6 +71,8 @@ type UserUsagesTestSuite struct {
 	secondAgentID  string
 	agentsRemoved  bool
 	ownerRemovable bool
+
+	agentTypeSnapshot *testutils.AgentTypeSnapshot
 }
 
 const (
@@ -111,6 +113,10 @@ func (ts *UserUsagesTestSuite) SetupSuite() {
 	ts.userTypeID = userTypeID
 
 	// The server allows a single `default` agent type, shared across suites and never deleted.
+	snapshot, err := testutils.SnapshotAgentType()
+	ts.Require().NoError(err, "Failed to snapshot the default agent type")
+	ts.agentTypeSnapshot = snapshot
+
 	_, err = testutils.CreateAgentType(testutils.UserType{
 		Handle:      "default",
 		DisplayName: "Default",
@@ -186,6 +192,11 @@ func (ts *UserUsagesTestSuite) TearDownSuite() {
 	if ts.userTypeID != "" {
 		if err := testutils.DeleteUserType(ts.userTypeID); err != nil {
 			ts.T().Logf("Failed to delete the user type: %v", err)
+		}
+	}
+	if ts.agentTypeSnapshot != nil {
+		if err := testutils.RestoreAgentType(ts.agentTypeSnapshot); err != nil {
+			ts.T().Logf("Failed to restore the default agent type: %v", err)
 		}
 	}
 	if ts.ouID != "" {

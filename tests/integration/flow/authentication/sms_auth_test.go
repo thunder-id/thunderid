@@ -238,7 +238,7 @@ var (
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
 		AllowedUserTypes:          []string{"sms_auth_user"},
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+			"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 		},
 	}
 
@@ -437,17 +437,17 @@ func (ts *SMSAuthFlowTestSuite) TearDownSuite() {
 		}
 	}
 
-	// Delete test organization unit
-	if smsAuthTestOU.ID != "" {
-		if err := testutils.DeleteOrganizationUnit(smsAuthTestOU.ID); err != nil {
-			ts.T().Logf("Failed to delete test organization unit during teardown: %v", err)
-		}
-	}
-
 	// Delete test user type
 	if smsAuthEntityTypeID != "" {
 		if err := testutils.DeleteUserType(smsAuthEntityTypeID); err != nil {
 			ts.T().Logf("Failed to delete test user type during teardown: %v", err)
+		}
+	}
+
+	// Delete test organization unit
+	if smsAuthTestOU.ID != "" {
+		if err := testutils.DeleteOrganizationUnit(smsAuthTestOU.ID); err != nil {
+			ts.T().Logf("Failed to delete test organization unit during teardown: %v", err)
 		}
 	}
 }

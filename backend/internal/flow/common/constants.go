@@ -156,6 +156,9 @@ const (
 	// pre-processing node produces for the executors that follow. It travels on the engine context's
 	// cross-frame store, so it survives a CALL into another flow.
 	RuntimeKeyRevocationPlan = "revocationPlan"
+	// RuntimeKeyProvenSubject holds the identity whose control was proven in this execution. The
+	// credential setter writes it after a credential write; a node acting on proof reads it here.
+	RuntimeKeyProvenSubject = "provenSubject"
 	// RuntimeKeyClientID holds the OAuth client ID for the current flow execution, if applicable.
 	RuntimeKeyClientID = "clientId"
 	// RuntimeKeyRequestedPermissions holds the space-separated permission scopes requested by the OAuth client.
@@ -244,8 +247,9 @@ const (
 	// on both the consumption device and the authentication device to correlate the CIBA request.
 	RuntimeKeyBindingMessage = "bindingMessage"
 	// RuntimeKeyEntityState holds the entity existence state, set by the IdentifyingExecutor in
-	// check_state mode, or by the federated auth executors and the linking executor once the
-	// identity resolves to an entity.
+	// check_state and resolve modes, or by the federated auth executors and the linking executor
+	// once the identity resolves to an entity. The federated auth executors set it to ambiguous when
+	// several entities hold the identity's link.
 	RuntimeKeyEntityState = "entityState"
 	// RuntimeKeyExternalIdentity holds what an external party asserted, as the JSON encoding of
 	// core.ExternalIdentity: the connection and subject of a federated authentication, and the claims.

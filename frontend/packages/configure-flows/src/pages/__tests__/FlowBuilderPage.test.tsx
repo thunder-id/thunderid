@@ -17,6 +17,11 @@ vi.mock('../../components/FlowBuilder', () => ({
   default: () => <div data-testid="flow-builder">Flow Builder</div>,
 }));
 
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useConfig: () => ({config: {brand: {product_name: 'ThunderID'}}}),
+}));
+
 // Mock FlowBuilderProvider
 vi.mock('../../context/FlowBuilderProvider', () => ({
   default: ({children}: {children: React.ReactNode}) => <div data-testid="flow-builder-provider">{children}</div>,

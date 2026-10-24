@@ -5,7 +5,7 @@ import {fireEvent, render, screen} from '@testing-library/react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import AccountLinkingSection from '../AccountLinkingSection';
 
-const EXTERNAL_ATTRIBUTE = 'External Attribute';
+const EXTERNAL_ATTRIBUTE = 'External attribute';
 
 // The SettingsCard is mocked to a labelled <section> so the card can be located and scoped by title.
 vi.mock('@thunderid/components', () => ({
@@ -60,7 +60,7 @@ describe('AccountLinkingSection', () => {
     expect(screen.getAllByRole('button', {name: /remove account linking attribute/i})).toHaveLength(2);
   });
 
-  it('disables "Add Attribute" until the last row has content', () => {
+  it('disables "Add attribute" until the last row has content', () => {
     render(<AccountLinkingSection onChange={onChange} />);
     expect(screen.getByTestId('attribute-mapping-link-add')).toBeDisabled();
 

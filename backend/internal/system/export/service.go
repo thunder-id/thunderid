@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -46,6 +47,7 @@ const (
 	resourceTypeServerConfig            = "server_config"
 	resourceTypeCredentialConfiguration = "credential_configuration" //nolint:gosec
 	resourceTypePresentationDefinition  = "presentation_definition"
+	resourceTypeNotificationTemplate    = "notification_template"
 )
 
 // parameterizerInterface defines the interface for template parameterization.
@@ -168,6 +170,7 @@ func (es *exportService) ExportResources(
 		resourceTypeServerConfig:            request.ServerConfigs,
 		resourceTypeCredentialConfiguration: request.CredentialConfigurations,
 		resourceTypePresentationDefinition:  request.PresentationDefinitions,
+		resourceTypeNotificationTemplate:    request.NotificationTemplates,
 	}
 
 	// Export resources using the registry
@@ -254,6 +257,9 @@ func (es *exportService) ExportResources(
 // payload, populating each entry with its original value where available.
 func (es *exportService) generateEnvFile(files []ExportFile, variables map[string]string) *EnvironmentFile {
 	variablesSet := make(map[string]struct{})
+	// A list the resource does not have is still a range over its variable, which an import cannot
+	// range over as no value, so it is written as an empty list.
+	ranged := make(map[string]bool)
 
 	for _, file := range files {
 		matches := templateVariablePattern.FindAllStringSubmatch(file.Content, -1)
@@ -263,6 +269,9 @@ func (es *exportService) generateEnvFile(files []ExportFile, variables map[strin
 					continue
 				}
 				variablesSet[match[i]] = struct{}{}
+				if i == 2 {
+					ranged[match[i]] = true
+				}
 			}
 		}
 	}
@@ -281,7 +290,11 @@ func (es *exportService) generateEnvFile(files []ExportFile, variables map[strin
 	for _, varName := range varNames {
 		contentBuilder.WriteString(varName)
 		contentBuilder.WriteString("=")
-		contentBuilder.WriteString(variables[varName])
+		value := variables[varName]
+		if value == "" && ranged[varName] {
+			value = "[]"
+		}
+		contentBuilder.WriteString(value)
 		contentBuilder.WriteString("\n")
 	}
 
@@ -308,7 +321,7 @@ func (es *exportService) exportResourcesWithExporter(
 	exportErrors := make([]declarativeresource.ExportError, 0, len(resourceIDs))
 	variableValues := make(map[string]string)
 	var resourceIDList []string
-	if len(resourceIDs) == 1 && resourceIDs[0] == "*" {
+	if slices.Equal(resourceIDs, []string{"*"}) {
 		// Export all resources
 		ids, err := exporter.GetAllResourceIDs(ctx)
 		if err != nil {

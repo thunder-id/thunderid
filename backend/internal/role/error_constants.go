@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package role
@@ -222,6 +222,32 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.roleservice.result_limit_exceeded_in_composite_mode_description",
 			DefaultValue: "The total number of records exceeds the maximum limit in composite mode",
+		},
+	}
+	// ErrorMissingAssigneeID is the error returned when an assignee ID is required but absent.
+	ErrorMissingAssigneeID = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1019",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.missing_assignee_id",
+			DefaultValue: "Invalid request format",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.roleservice.missing_assignee_id_description",
+			DefaultValue: "Assignee ID is required",
+		},
+	}
+	// ErrorRoleAssignmentNotFound is the error returned when the assignee does not hold the role.
+	ErrorRoleAssignmentNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1020",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.role_assignment_not_found",
+			DefaultValue: "Role assignment not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.roleservice.role_assignment_not_found_description",
+			DefaultValue: "The assignee does not hold this role",
 		},
 	}
 )

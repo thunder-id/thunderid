@@ -16,10 +16,19 @@ func newConsentStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *consentStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &consentStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -62,7 +71,7 @@ type consentStoreInterfaceMock_CreateConsent_Call struct {
 // CreateConsent is a helper method to define mock.On call
 //   - ctx context.Context
 //   - consent *Consent
-func (_e *consentStoreInterfaceMock_Expecter) CreateConsent(ctx interface{}, consent interface{}) *consentStoreInterfaceMock_CreateConsent_Call {
+func (_e *consentStoreInterfaceMock_Expecter) CreateConsent(ctx any, consent any) *consentStoreInterfaceMock_CreateConsent_Call {
 	return &consentStoreInterfaceMock_CreateConsent_Call{Call: _e.mock.On("CreateConsent", ctx, consent)}
 }
 
@@ -130,7 +139,7 @@ type consentStoreInterfaceMock_GetConsent_Call struct {
 // GetConsent is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *consentStoreInterfaceMock_Expecter) GetConsent(ctx interface{}, id interface{}) *consentStoreInterfaceMock_GetConsent_Call {
+func (_e *consentStoreInterfaceMock_Expecter) GetConsent(ctx any, id any) *consentStoreInterfaceMock_GetConsent_Call {
 	return &consentStoreInterfaceMock_GetConsent_Call{Call: _e.mock.On("GetConsent", ctx, id)}
 }
 
@@ -198,7 +207,7 @@ type consentStoreInterfaceMock_SearchConsents_Call struct {
 // SearchConsents is a helper method to define mock.On call
 //   - ctx context.Context
 //   - filters ConsentFilter
-func (_e *consentStoreInterfaceMock_Expecter) SearchConsents(ctx interface{}, filters interface{}) *consentStoreInterfaceMock_SearchConsents_Call {
+func (_e *consentStoreInterfaceMock_Expecter) SearchConsents(ctx any, filters any) *consentStoreInterfaceMock_SearchConsents_Call {
 	return &consentStoreInterfaceMock_SearchConsents_Call{Call: _e.mock.On("SearchConsents", ctx, filters)}
 }
 
@@ -255,7 +264,7 @@ type consentStoreInterfaceMock_UpdateConsent_Call struct {
 // UpdateConsent is a helper method to define mock.On call
 //   - ctx context.Context
 //   - consent *Consent
-func (_e *consentStoreInterfaceMock_Expecter) UpdateConsent(ctx interface{}, consent interface{}) *consentStoreInterfaceMock_UpdateConsent_Call {
+func (_e *consentStoreInterfaceMock_Expecter) UpdateConsent(ctx any, consent any) *consentStoreInterfaceMock_UpdateConsent_Call {
 	return &consentStoreInterfaceMock_UpdateConsent_Call{Call: _e.mock.On("UpdateConsent", ctx, consent)}
 }
 

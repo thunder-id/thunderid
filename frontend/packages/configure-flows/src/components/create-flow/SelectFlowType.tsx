@@ -37,7 +37,7 @@ export default function SelectFlowType({selectedType, onTypeChange, onReadyChang
     {
       type: FlowType.REGISTRATION,
       labelKey: 'flows:create.type.signup.label',
-      labelDefault: 'Self Sign-up',
+      labelDefault: 'Self sign-up',
       descriptionKey: 'flows:create.type.signup.description',
       descriptionDefault: 'Let users register themselves with your application',
       icon: <UserPlus size={28} />,
@@ -45,7 +45,7 @@ export default function SelectFlowType({selectedType, onTypeChange, onReadyChang
     {
       type: FlowType.RECOVERY,
       labelKey: 'flows:create.type.recovery.label',
-      labelDefault: 'Password Recovery',
+      labelDefault: 'Password recovery',
       descriptionKey: 'flows:create.type.recovery.description',
       descriptionDefault: 'Let users recover their password or account',
       icon: <Lock size={28} />,
@@ -53,7 +53,7 @@ export default function SelectFlowType({selectedType, onTypeChange, onReadyChang
     {
       type: FlowType.SIGNOUT,
       labelKey: 'flows:create.type.signout.label',
-      labelDefault: 'Sign Out',
+      labelDefault: 'Sign out',
       descriptionKey: 'flows:create.type.signout.description',
       descriptionDefault: 'Confirm and terminate an established SSO session',
       icon: <LogOut size={28} />,

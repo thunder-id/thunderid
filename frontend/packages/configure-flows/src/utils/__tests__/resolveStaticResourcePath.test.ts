@@ -64,7 +64,7 @@ describe('resolveStaticResourcePath', () => {
       vi.stubEnv('BASE_URL', '/');
       const result = resolveStaticResourcePath('assets/style.css');
 
-      expect(result).toBe('//assets/style.css');
+      expect(result).toBe('/assets/style.css');
     });
 
     it('should work with subdirectory BASE_URL', () => {

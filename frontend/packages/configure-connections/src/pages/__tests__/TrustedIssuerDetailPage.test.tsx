@@ -96,7 +96,8 @@ describe('TrustedIssuerDetailPage', () => {
   it('should not render capability chips next to the page title', () => {
     render(<TrustedIssuerDetailPage />);
 
-    expect(screen.queryByText('Token exchange')).not.toBeInTheDocument();
+    // The only "Token exchange" text is the settings card heading, not a chip beside the title.
+    expect(screen.getAllByText('Token exchange')).toEqual([screen.getByRole('heading', {name: 'Token exchange'})]);
     expect(screen.queryByText('Inactive')).not.toBeInTheDocument();
     expect(screen.queryByText('ID-JAG')).not.toBeInTheDocument();
   });

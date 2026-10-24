@@ -8,7 +8,7 @@ import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import useRegenerateFlowSecret from '../api/useRegenerateFlowSecret';
 
-const DEFAULT_REGENERATE_FLOW_SECRET_ERROR = 'Failed to regenerate Flow Secret. Please try again.';
+const DEFAULT_REGENERATE_FLOW_SECRET_ERROR = 'Failed to regenerate flow secret. Please try again.';
 
 /**
  * Props for the {@link RegenerateFlowSecretDialog} component.
@@ -100,18 +100,18 @@ export default function RegenerateFlowSecretDialog({
 
   return (
     <Dialog open={open} onClose={handleCancel} maxWidth="sm" fullWidth>
-      <DialogTitle>{t('regenerateFlowSecret.dialog.title', 'Regenerate Flow Secret')}</DialogTitle>
+      <DialogTitle>{t('regenerateFlowSecret.dialog.title', 'Regenerate flow secret')}</DialogTitle>
       <DialogContent>
         <DialogContentText sx={{mb: 2}}>
           {t(
             'regenerateFlowSecret.dialog.message',
-            'Are you sure you want to regenerate the Flow Secret for this application? This will immediately invalidate the current Flow Secret and generate a new one.',
+            'Are you sure you want to regenerate the flow secret for this application? This will immediately invalidate the current flow secret and generate a new one.',
           )}
         </DialogContentText>
         <Alert severity="warning" sx={{mb: 2}}>
           {t(
             'regenerateFlowSecret.dialog.disclaimer',
-            'Warning: Regenerating the Flow Secret invalidates the current secret. Server-side flow initiation will fail until the new Flow Secret is deployed.',
+            'Warning: Regenerating the flow secret invalidates the current secret. Server-side flow initiation will fail until the new flow secret is deployed.',
           )}
         </Alert>
         {error && (

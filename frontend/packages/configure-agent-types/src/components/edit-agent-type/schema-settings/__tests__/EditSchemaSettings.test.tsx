@@ -45,6 +45,34 @@ describe('EditSchemaSettings (agent-type)', () => {
     vi.clearAllMocks();
   });
 
+  it.each(['email', 'mobile'] as const)('requires a regex for %s attributes', async (type) => {
+    const user = userEvent.setup();
+    const {rerender} = render(
+      <EditSchemaSettings
+        properties={[{...baseProperties[0], type, regex: '^custom$'}]}
+        onPropertiesChange={mockOnPropertiesChange}
+        agentTypeHandle="test"
+      />,
+    );
+    const input = screen.getByDisplayValue('^custom$');
+    expect(input).toBeRequired();
+    await user.clear(input);
+    rerender(
+      <EditSchemaSettings
+        properties={[{...baseProperties[0], type, regex: ''}]}
+        onPropertiesChange={mockOnPropertiesChange}
+        agentTypeHandle="test"
+      />,
+    );
+    expect(
+      screen.getByText(
+        type === 'email'
+          ? 'Enter a regular expression for email attributes.'
+          : 'Enter a regular expression for mobile attributes.',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('resets unique and credential when changing type to boolean', async () => {
     const user = userEvent.setup();
     const props = {
@@ -69,6 +97,48 @@ describe('EditSchemaSettings (agent-type)', () => {
         }),
       ]),
     );
+  });
+
+  it.each([
+    ['email', 'Email', '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$'],
+    ['mobile', 'Mobile', '^\\+[1-9]\\d{1,14}$'],
+  ] as const)('applies the default regex and hides allowed values for %s', async (type, label, regex) => {
+    const user = userEvent.setup();
+    const {rerender} = render(
+      <EditSchemaSettings
+        properties={[{...baseProperties[0], regex: '^[a-z]+$'}]}
+        onPropertiesChange={mockOnPropertiesChange}
+        agentTypeHandle="test"
+      />,
+    );
+    await user.click(screen.getByRole('combobox'));
+    await user.click(await screen.findByRole('option', {name: label}));
+    expect(mockOnPropertiesChange).toHaveBeenCalledWith([expect.objectContaining({type, regex, enum: []})]);
+    rerender(
+      <EditSchemaSettings
+        properties={[{...baseProperties[0], type, regex}]}
+        onPropertiesChange={mockOnPropertiesChange}
+        agentTypeHandle="test"
+      />,
+    );
+    expect(screen.getByDisplayValue(regex)).toBeInTheDocument();
+    expect(screen.queryByText(/Allowed Values/i)).not.toBeInTheDocument();
+  });
+
+  it.each(['email', 'mobile'] as const)('preserves uniqueness when changing type to %s', async (type) => {
+    const user = userEvent.setup();
+    render(
+      <EditSchemaSettings
+        properties={[{...baseProperties[0], unique: true, credential: true}]}
+        onPropertiesChange={mockOnPropertiesChange}
+        agentTypeHandle="test"
+      />,
+    );
+    await user.click(screen.getByRole('combobox'));
+    await user.click(await screen.findByRole('option', {name: type === 'email' ? 'Email' : 'Mobile'}));
+    expect(mockOnPropertiesChange).toHaveBeenCalledWith([
+      expect.objectContaining({type, unique: true, credential: false}),
+    ]);
   });
 
   it('preserves enum values when changing type to enum', async () => {

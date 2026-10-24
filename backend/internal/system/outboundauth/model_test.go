@@ -29,7 +29,7 @@ func (s *ModelTestSuite) TestParseType() {
 		{"none", TypeNone, true},
 		{"", TypeNone, true},
 		{"   ", TypeNone, true},
-		{"bearer", "", false},
+		{"bearer", TypeBearer, true},
 		{"oauth2", "", false},
 	}
 
@@ -43,13 +43,13 @@ func (s *ModelTestSuite) TestParseType() {
 // ParseType reads the registry rather than a list of its own, so a method added to the table is
 // parsable without a second edit.
 func (s *ModelTestSuite) TestParseTypeFollowsRegistry() {
-	const apiKey Type = "api_key"
+	const apiKey Type = "custom_api_key"
 
 	_, ok := ParseType(string(apiKey))
 	s.False(ok)
 
 	withTemporaryMethod(Method{Type: apiKey, DisplayName: "API key"}, func() {
-		parsed, ok := ParseType("  API_KEY  ")
+		parsed, ok := ParseType("  CUSTOM_API_KEY  ")
 		s.True(ok)
 		s.Equal(apiKey, parsed)
 	})

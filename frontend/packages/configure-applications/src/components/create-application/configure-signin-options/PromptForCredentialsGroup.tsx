@@ -48,7 +48,7 @@ export default function PromptForCredentialsGroup({
 
   return (
     <AuthMethodGroup
-      title={t('applications:onboarding.configure.security.promptForCredentials.title', 'Prompt for Credentials')}
+      title={t('applications:onboarding.configure.security.promptForCredentials.title', 'Prompt for credentials')}
       checked={enabled}
       onCheckedChange={handleCheckedChange}
       disabled={disabled}

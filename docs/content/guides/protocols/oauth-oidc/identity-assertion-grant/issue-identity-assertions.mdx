@@ -43,16 +43,16 @@ sequenceDiagram
 1. In the Console, navigate to **Applications**.
 2. Select the application.
 3. Open the **Advanced** tab.
-4. Find the **Identity Assertions (ID-JAG)** card and turn on the toggle.
+4. Find the **Identity assertions (ID-JAG)** card and turn on the toggle.
 5. Under **Allowed audiences**, add the identifiers of the external authorization servers this application can request assertions for. Each assertion targets exactly one of these audiences, and the entries must exactly match the `audience` value your application sends in the exchange request.
 6. Set **Assertion validity** in seconds. The default is `300`.
 
 :::note
-Turning on identity assertions also enables the token exchange grant type on the application.
+Turning on identity assertions also enables the token exchange grant type on the application. When you configure the application through the API, a declarative resource, or an import instead, include the `urn:ietf:params:oauth:grant-type:token-exchange` grant type and at least one allowed audience, with no blank values. <ProductName /> rejects an enabled configuration that lacks either with `400 Bad Request`.
 :::
 
 :::note
-The toggle is disabled for public clients. Turn off **Public Client** on the application first.
+The toggle is disabled for public clients. Turn off **Public client** on the application first.
 :::
 
 ## Get an ID Token

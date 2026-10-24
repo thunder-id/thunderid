@@ -13,13 +13,17 @@ import (
 	"time"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/revocation"
+	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -60,6 +64,11 @@ type revocationPlan struct {
 	// application revocation is keyed by the OAuth client id while the delete and the session detachment
 	// need the application id, so the two travel separately rather than one being re-derived.
 	TargetID string `json:"targetId,omitempty"`
+	// AssigneeID is the principal losing a role or leaving a group, when the action names one.
+	AssigneeID   string `json:"assigneeId,omitempty"`
+	AssigneeType string `json:"assigneeType,omitempty"`
+	// ActionArgs carries further acting-node arguments, keyed by the flow input they came from.
+	ActionArgs map[string]string `json:"actionArgs,omitempty"`
 	// TTLSeconds is how long the deny-list row must live to outlast the artifacts the criteria match.
 	// Zero leaves the revocation service on its configured default.
 	TTLSeconds int64 `json:"ttlSeconds,omitempty"`
@@ -95,19 +104,29 @@ func decodeRevocationPlan(data map[string]string) (revocationPlan, error) {
 	return plan, nil
 }
 
-// applicationTargetFromPlan returns the application the trusted plan acts on. The reason check makes a
-// mispaired graph fail cleanly, since flow validation does not stop one action's preparatory node being
-// wired to another's acting node.
-func applicationTargetFromPlan(data map[string]string, want revocation.Reason) (string, error) {
+// revocationPlanFor returns the trusted plan an acting node acts on. The reason check makes a mispaired
+// graph fail cleanly, since flow validation does not stop one action's preparatory node being wired to
+// another's acting node.
+func revocationPlanFor(data map[string]string, want revocation.Reason) (revocationPlan, error) {
 	plan, err := decodeRevocationPlan(data)
 	if err != nil {
-		return "", err
+		return revocationPlan{}, err
 	}
 	if plan.Reason != want {
-		return "", fmt.Errorf("trusted revocation plan was produced for %q, not %q", plan.Reason, want)
+		return revocationPlan{}, fmt.Errorf("trusted revocation plan was produced for %q, not %q",
+			plan.Reason, want)
 	}
 	if plan.TargetID == "" {
-		return "", errors.New("trusted revocation plan has no target application")
+		return revocationPlan{}, errors.New("trusted revocation plan has no target")
+	}
+	return plan, nil
+}
+
+// applicationTargetFromPlan returns the application the trusted plan acts on.
+func applicationTargetFromPlan(data map[string]string, want revocation.Reason) (string, error) {
+	plan, err := revocationPlanFor(data, want)
+	if err != nil {
+		return "", err
 	}
 	return plan.TargetID, nil
 }
@@ -254,7 +273,8 @@ func isCrossOUProvisioningAllowed(ctx *providers.NodeContext) bool {
 }
 
 // setFederatedEntityState records whether federated authentication resolved a concrete local user
-// (via account linking) into the entityState runtime key.
+// (via account linking) into the entityState runtime key. Several users holding the link is recorded
+// as ambiguous, for a later node to let the user pick between them.
 func setFederatedEntityState(ctx context.Context, execResp *providers.ExecutorResponse,
 	authnProvider providers.AuthnProviderManager) {
 	execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateNotExists
@@ -266,9 +286,34 @@ func setFederatedEntityState(ctx context.Context, execResp *providers.ExecutorRe
 
 	authUser, entityRef, svcErr := authnProvider.GetEntityReference(ctx, execResp.AuthUser)
 	execResp.AuthUser = authUser
-	if svcErr == nil && entityRef != nil {
+	switch {
+	case svcErr == nil && entityRef != nil:
 		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateExists
+	case svcErr != nil && svcErr.Code == authnprovidermgr.ErrorAmbiguousUser.Code:
+		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateAmbiguous
 	}
+}
+
+// authenticateEntityByID signs in an entity whose ID the flow already trusts, such as one it just
+// provisioned or the federated link's holder the user picked, onto base. On success it sets the
+// AuthUser and copies the authenticated claims into runtime data. It returns the authentication
+// provider's error as is, and ErrEntityAuthFailed when the AuthUser comes back unauthenticated.
+func authenticateEntityByID(ctx *providers.NodeContext, authnProvider providers.AuthnProviderManager,
+	entityID string, base providers.AuthUser, execResp *providers.ExecutorResponse) *tidcommon.ServiceError {
+	credential := map[string]interface{}{authnprovidercm.CredentialTypeProvisionedEntityID: entityID}
+	authUser, authenticatedClaims, svcErr := authnProvider.AuthenticateUser(ctx.Context, nil, credential,
+		nil, nil, base)
+	if svcErr != nil {
+		return svcErr
+	}
+	if !authUser.IsAuthenticated() {
+		return &ErrEntityAuthFailed
+	}
+	execResp.AuthUser = authUser
+	for key, value := range authenticatedClaims {
+		execResp.RuntimeData[key] = systemutils.ConvertInterfaceValueToString(value)
+	}
+	return nil
 }
 
 // resolveAndSetMappedAuthorizationTargets resolves the IDP's AuthorizationRuleMapping (explicit value
@@ -385,4 +430,83 @@ func federatedIdentityFrom(ctx *providers.NodeContext) *core.ExternalIdentity {
 		return nil
 	}
 	return extIdentity
+}
+
+// decodeRolePermissions reads the JSON-encoded permission set of a role permission change.
+func decodeRolePermissions(encoded string) ([]role.ResourcePermissions, error) {
+	permissions := []role.ResourcePermissions{}
+	if err := json.Unmarshal([]byte(encoded), &permissions); err != nil {
+		return nil, fmt.Errorf("failed to decode role permissions: %w", err)
+	}
+	if permissions == nil {
+		permissions = []role.ResourcePermissions{}
+	}
+	return permissions, nil
+}
+
+// optionalID returns nil for an absent identifier, the form the resource service reads as unscoped.
+func optionalID(id string) *string {
+	if id == "" {
+		return nil
+	}
+	return &id
+}
+
+// refusalResponse fails execResp with the service's refusal, or with fallback when the refusal carries
+// no code. A server error is returned as an error prefixed with failure instead of being shown as a refusal.
+func refusalResponse(execResp *providers.ExecutorResponse, svcErr *tidcommon.ServiceError,
+	fallback tidcommon.ServiceError, failure string) (*providers.ExecutorResponse, error) {
+	if svcErr.Type == tidcommon.ServerErrorType {
+		return nil, fmt.Errorf("%s: %s", failure, svcErr.Error.DefaultValue)
+	}
+	refusal := *svcErr
+	if refusal.Code == "" {
+		refusal = fallback
+	}
+	execResp.Status = providers.ExecFailure
+	execResp.Error = &refusal
+	return execResp, nil
+}
+
+// statedHold returns the flow error for a hold the authentication provider manager states, or nil
+// when svcErr states none.
+func statedHold(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
+	if svcErr == nil {
+		return nil
+	}
+	switch svcErr.Code {
+	case authnprovidermgr.ErrorAccountLocked.Code:
+		return &ErrAccountLocked
+	case authnprovidermgr.ErrorAccountSuspended.Code:
+		return &ErrAccountSuspended
+	default:
+		return nil
+	}
+}
+
+// statedDecision returns the flow error for the hold a refused decision names, or nil when it names
+// none.
+func statedDecision(decision providers.AccessDecision) *tidcommon.ServiceError {
+	switch decision.Reason {
+	case providers.AccessRefusalReasonLocked:
+		return &ErrAccountLocked
+	case providers.AccessRefusalReasonSuspended:
+		return &ErrAccountSuspended
+	default:
+		return nil
+	}
+}
+
+// governanceFault is the error a gate raises when the identity governance provider could not decide.
+func governanceFault(svcErr *tidcommon.ServiceError) error {
+	return fmt.Errorf("identity governance check failed: %s", svcErr.Error.DefaultValue)
+}
+
+// dispatchPlaneFor maps the flow a challenge belongs to onto the plane it is checked at. A lock gives
+// way at the recovery plane, so recovery and registration challenges still go out.
+func dispatchPlaneFor(flowType providers.FlowType) providers.AccessPlane {
+	if flowType == providers.FlowTypeAuthentication {
+		return providers.AccessPlaneDispatch
+	}
+	return providers.AccessPlaneRecovery
 }

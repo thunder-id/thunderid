@@ -18,10 +18,19 @@ func NewHTTPClientInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *HTTPClientInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &HTTPClientInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -74,7 +83,7 @@ type HTTPClientInterfaceMock_Do_Call struct {
 
 // Do is a helper method to define mock.On call
 //   - req *http.Request
-func (_e *HTTPClientInterfaceMock_Expecter) Do(req interface{}) *HTTPClientInterfaceMock_Do_Call {
+func (_e *HTTPClientInterfaceMock_Expecter) Do(req any) *HTTPClientInterfaceMock_Do_Call {
 	return &HTTPClientInterfaceMock_Do_Call{Call: _e.mock.On("Do", req)}
 }
 
@@ -136,7 +145,7 @@ type HTTPClientInterfaceMock_Get_Call struct {
 
 // Get is a helper method to define mock.On call
 //   - url string
-func (_e *HTTPClientInterfaceMock_Expecter) Get(url interface{}) *HTTPClientInterfaceMock_Get_Call {
+func (_e *HTTPClientInterfaceMock_Expecter) Get(url any) *HTTPClientInterfaceMock_Get_Call {
 	return &HTTPClientInterfaceMock_Get_Call{Call: _e.mock.On("Get", url)}
 }
 
@@ -198,7 +207,7 @@ type HTTPClientInterfaceMock_Head_Call struct {
 
 // Head is a helper method to define mock.On call
 //   - url string
-func (_e *HTTPClientInterfaceMock_Expecter) Head(url interface{}) *HTTPClientInterfaceMock_Head_Call {
+func (_e *HTTPClientInterfaceMock_Expecter) Head(url any) *HTTPClientInterfaceMock_Head_Call {
 	return &HTTPClientInterfaceMock_Head_Call{Call: _e.mock.On("Head", url)}
 }
 
@@ -262,7 +271,7 @@ type HTTPClientInterfaceMock_Post_Call struct {
 //   - url string
 //   - contentType string
 //   - body io.Reader
-func (_e *HTTPClientInterfaceMock_Expecter) Post(url interface{}, contentType interface{}, body interface{}) *HTTPClientInterfaceMock_Post_Call {
+func (_e *HTTPClientInterfaceMock_Expecter) Post(url any, contentType any, body any) *HTTPClientInterfaceMock_Post_Call {
 	return &HTTPClientInterfaceMock_Post_Call{Call: _e.mock.On("Post", url, contentType, body)}
 }
 
@@ -335,7 +344,7 @@ type HTTPClientInterfaceMock_PostForm_Call struct {
 // PostForm is a helper method to define mock.On call
 //   - url1 string
 //   - data url.Values
-func (_e *HTTPClientInterfaceMock_Expecter) PostForm(url1 interface{}, data interface{}) *HTTPClientInterfaceMock_PostForm_Call {
+func (_e *HTTPClientInterfaceMock_Expecter) PostForm(url1 any, data any) *HTTPClientInterfaceMock_PostForm_Call {
 	return &HTTPClientInterfaceMock_PostForm_Call{Call: _e.mock.On("PostForm", url1, data)}
 }
 

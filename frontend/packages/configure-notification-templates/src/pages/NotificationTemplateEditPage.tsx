@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice} from '@thunderid/components';
+import {DocumentTitle, QueryErrorNotice} from '@thunderid/components';
 import {Box, CircularProgress, PageContent} from '@wso2/oxygen-ui';
 import {type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -30,8 +30,15 @@ export default function NotificationTemplateEditPage(): JSX.Element {
     return <Navigate to={routes.notificationTemplates.list()} replace />;
   }
 
+  const title =
+    template?.displayName ??
+    (channel === 'email'
+      ? t('navigation:pages.emailTemplates', 'Email templates')
+      : t('navigation:pages.smsTemplates', 'SMS templates'));
+
   return (
     <PageContent>
+      <DocumentTitle title={title} />
       {error ? (
         <QueryErrorNotice
           error={error}

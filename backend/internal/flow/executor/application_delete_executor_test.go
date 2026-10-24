@@ -82,14 +82,15 @@ func (s *ApplicationDeleteExecutorTestSuite) TestApplicationDeletionFlow() {
 	s.NotEmpty(pre.SharedRuntimeData[common.RuntimeKeyRevocationPlan])
 
 	revoker := revocationmock.NewCriteriaRevokerInterfaceMock(s.T())
-	revoker.EXPECT().RevokeByCriteria(mock.Anything, mock.MatchedBy(
-		func(value revocation.CriteriaRevocation) bool {
-			return value.Criterion.Type == revocation.CriterionTypeApplicationKey &&
-				value.Criterion.Value == "client-1" &&
-				value.Mode == revocation.ModeAll &&
-				value.Reason == revocation.ReasonApplicationDeleted &&
-				value.Cutoff.IsZero() &&
-				value.TTL.Seconds() == 2592000
+	revoker.EXPECT().RevokeCriteriaBatch(mock.Anything, mock.MatchedBy(
+		func(batch []revocation.CriteriaRevocation) bool {
+			return len(batch) == 1 &&
+				batch[0].Criterion.Type == revocation.CriterionTypeApplicationKey &&
+				batch[0].Criterion.Value == "client-1" &&
+				batch[0].Mode == revocation.ModeAll &&
+				batch[0].Reason == revocation.ReasonApplicationDeleted &&
+				batch[0].Cutoff.IsZero() &&
+				batch[0].TTL.Seconds() == 2592000
 		})).Return(nil)
 	criteria, err := newCriteriaRevocationExecutor(s.factory, revoker).Execute(
 		s.nodeContext(nil, pre.SharedRuntimeData))
@@ -125,7 +126,7 @@ func (s *ApplicationDeleteExecutorTestSuite) TestDeletion_WithoutOAuthComponentS
 		s.nodeContext(nil, pre.SharedRuntimeData))
 	s.Require().NoError(err)
 	s.Equal(providers.ExecComplete, criteria.Status)
-	revoker.AssertNotCalled(s.T(), "RevokeByCriteria", mock.Anything, mock.Anything)
+	revoker.AssertNotCalled(s.T(), "RevokeCriteriaBatch", mock.Anything, mock.Anything)
 
 	// Session participation is recorded per application whether or not it ever held a token, so the
 	// detachment still runs.

@@ -17,10 +17,19 @@ func NewDiscoveryServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *DiscoveryServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &DiscoveryServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -64,7 +73,7 @@ type DiscoveryServiceInterfaceMock_GetOAuth2AuthorizationServerMetadata_Call str
 
 // GetOAuth2AuthorizationServerMetadata is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *DiscoveryServiceInterfaceMock_Expecter) GetOAuth2AuthorizationServerMetadata(ctx interface{}) *DiscoveryServiceInterfaceMock_GetOAuth2AuthorizationServerMetadata_Call {
+func (_e *DiscoveryServiceInterfaceMock_Expecter) GetOAuth2AuthorizationServerMetadata(ctx any) *DiscoveryServiceInterfaceMock_GetOAuth2AuthorizationServerMetadata_Call {
 	return &DiscoveryServiceInterfaceMock_GetOAuth2AuthorizationServerMetadata_Call{Call: _e.mock.On("GetOAuth2AuthorizationServerMetadata", ctx)}
 }
 
@@ -126,7 +135,7 @@ type DiscoveryServiceInterfaceMock_GetOIDCMetadata_Call struct {
 
 // GetOIDCMetadata is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *DiscoveryServiceInterfaceMock_Expecter) GetOIDCMetadata(ctx interface{}) *DiscoveryServiceInterfaceMock_GetOIDCMetadata_Call {
+func (_e *DiscoveryServiceInterfaceMock_Expecter) GetOIDCMetadata(ctx any) *DiscoveryServiceInterfaceMock_GetOIDCMetadata_Call {
 	return &DiscoveryServiceInterfaceMock_GetOIDCMetadata_Call{Call: _e.mock.On("GetOIDCMetadata", ctx)}
 }
 

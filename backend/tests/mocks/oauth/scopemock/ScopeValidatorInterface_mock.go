@@ -17,10 +17,19 @@ func NewScopeValidatorInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ScopeValidatorInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ScopeValidatorInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -75,7 +84,7 @@ type ScopeValidatorInterfaceMock_ValidateScopes_Call struct {
 //   - ctx context.Context
 //   - requestedScopes string
 //   - clientID string
-func (_e *ScopeValidatorInterfaceMock_Expecter) ValidateScopes(ctx interface{}, requestedScopes interface{}, clientID interface{}) *ScopeValidatorInterfaceMock_ValidateScopes_Call {
+func (_e *ScopeValidatorInterfaceMock_Expecter) ValidateScopes(ctx any, requestedScopes any, clientID any) *ScopeValidatorInterfaceMock_ValidateScopes_Call {
 	return &ScopeValidatorInterfaceMock_ValidateScopes_Call{Call: _e.mock.On("ValidateScopes", ctx, requestedScopes, clientID)}
 }
 

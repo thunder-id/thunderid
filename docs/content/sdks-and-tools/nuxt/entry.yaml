@@ -18,6 +18,9 @@ docs:
 links:
   github: https://github.com/thunder-id/javascript-sdks
   package: https://www.npmjs.com/package/@thunderid/nuxt
+  samples: https://github.com/thunder-id/samples/tree/main/quickstarts/nuxt
+# Offers the quickstart's released zip at the top of the page, from the samples repo releases.
+sample: quickstarts/nuxt
 apiReference:
   source: typedoc
 

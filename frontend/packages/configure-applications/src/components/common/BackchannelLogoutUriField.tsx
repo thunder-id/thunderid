@@ -70,7 +70,7 @@ export default function BackchannelLogoutUriField({
   return (
     <FormControl fullWidth>
       <FormLabel htmlFor="backchannel-logout-uri-input">
-        {t('applications:edit.general.backchannelLogoutUri.title', 'Back-Channel Logout URI')}
+        {t('applications:edit.general.backchannelLogoutUri.title', 'Back-channel logout URI')}
       </FormLabel>
       <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 2}}>
         {t(

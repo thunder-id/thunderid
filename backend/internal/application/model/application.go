@@ -34,6 +34,8 @@ type ApplicationDTO struct {
 	Metadata          map[string]interface{}                  `json:"metadata,omitempty" jsonschema:"Generic metadata. Optional arbitrary key-value pairs for consumer use."`
 
 	SharingPolicies []sharing.PolicyRequest `json:"-"`
+	// Status is the effective access status, set on update results. Never read from a request.
+	Status *providers.ApplicationStatusReport `json:"-"`
 }
 
 // BasicApplicationDTO represents a simplified data transfer object for application service operations.
@@ -64,6 +66,8 @@ type ApplicationProcessedDTO struct {
 	Description string          `yaml:"description,omitempty"`
 	Type        ApplicationType `yaml:"type,omitempty"`
 	Template    string          `yaml:"template,omitempty"`
+	// Status is the effective access status, derived from the entity at read time. Read-only.
+	Status *providers.ApplicationStatusReport `yaml:"-"`
 
 	URL       string `yaml:"url,omitempty"`
 	LogoURL   string `yaml:"logoUrl,omitempty"`
@@ -134,6 +138,8 @@ type ApplicationCompleteResponse struct {
 	TosURI      string          `json:"tosUri,omitempty"`
 	PolicyURI   string          `json:"policyUri,omitempty"`
 	Contacts    []string        `json:"contacts,omitempty"`
+	// Status is the effective access status, set on update responses.
+	Status *providers.ApplicationStatusReport `json:"status,omitempty"`
 
 	inboundmodel.InboundAuthProfileReq
 
@@ -155,6 +161,8 @@ type ApplicationGetResponse struct {
 	TosURI      string          `json:"tosUri,omitempty"`
 	PolicyURI   string          `json:"policyUri,omitempty"`
 	Contacts    []string        `json:"contacts,omitempty"`
+	// Status is the effective access status, derived at read time.
+	Status *providers.ApplicationStatusReport `json:"status,omitempty"`
 
 	inboundmodel.InboundAuthProfileReq
 
@@ -183,6 +191,8 @@ type BasicApplicationResponse struct {
 	Type                      ApplicationType `json:"type,omitempty" jsonschema:"Application type (browser, fullstack, mobile, m2m, mcp, custom)."`
 	Template                  string          `json:"template,omitempty" jsonschema:"Application Template."`
 	IsReadOnly                bool            `json:"isReadOnly" jsonschema:"Indicates if the application is read-only (declarative/immutable)."`
+	// Status is the effective access status, derived at read time.
+	Status *providers.ApplicationStatusReport `json:"status,omitempty" jsonschema:"Effective access status. Read-only."`
 }
 
 // ApplicationListResponse represents the response structure for listing applications.

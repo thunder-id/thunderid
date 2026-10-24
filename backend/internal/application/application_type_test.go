@@ -103,28 +103,55 @@ func (s *ApplicationTypeTestSuite) TestFlowSecretIneligibleByType() {
 
 // TestFullStackCustomAndMCPFlowSecretEligibility verifies full-stack, custom, and mcp apps derive
 // eligibility from the OAuth config shape: an app with no OAuth configuration (embedded), or a
-// confidential, non-redirect client, is eligible; a redirect or m2m-shaped client is not.
+// confidential client with the token-exchange grant and without authorization_code, is eligible;
+// any other client is not.
 func (s *ApplicationTypeTestSuite) TestFullStackCustomAndMCPFlowSecretEligibility() {
-	embedded := &providers.InboundAuthConfigWithSecret{
-		Type: providers.OAuthInboundAuthType,
-		OAuthConfig: &providers.OAuthConfigWithSecret{
-			GrantTypes: []providers.GrantType{
-				providers.GrantTypeClientCredentials,
-				providers.GrantTypeTokenExchange,
+	cases := []struct {
+		name         string
+		grantTypes   []providers.GrantType
+		publicClient bool
+		want         bool
+	}{
+		{name: "token exchange only", grantTypes: []providers.GrantType{providers.GrantTypeTokenExchange}, want: true},
+		{
+			name: "client_credentials and token exchange",
+			grantTypes: []providers.GrantType{
+				providers.GrantTypeClientCredentials, providers.GrantTypeTokenExchange,
 			},
-			TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
+			want: true,
 		},
-	}
-	redirect := &providers.InboundAuthConfigWithSecret{
-		Type: providers.OAuthInboundAuthType,
-		OAuthConfig: &providers.OAuthConfigWithSecret{
-			GrantTypes: []providers.GrantType{providers.GrantTypeAuthorizationCode},
+		{
+			name:       "jwt-bearer and token exchange",
+			grantTypes: []providers.GrantType{providers.GrantTypeJWTBearer, providers.GrantTypeTokenExchange},
+			want:       true,
 		},
-	}
-	m2mShaped := &providers.InboundAuthConfigWithSecret{
-		Type: providers.OAuthInboundAuthType,
-		OAuthConfig: &providers.OAuthConfigWithSecret{
-			GrantTypes: []providers.GrantType{providers.GrantTypeClientCredentials},
+		{
+			name:       "CIBA and token exchange",
+			grantTypes: []providers.GrantType{providers.GrantTypeCIBA, providers.GrantTypeTokenExchange},
+			want:       true,
+		},
+		{name: "authorization_code", grantTypes: []providers.GrantType{providers.GrantTypeAuthorizationCode}},
+		{
+			name: "authorization_code and token exchange",
+			grantTypes: []providers.GrantType{
+				providers.GrantTypeAuthorizationCode, providers.GrantTypeTokenExchange,
+			},
+		},
+		{name: "client_credentials only", grantTypes: []providers.GrantType{providers.GrantTypeClientCredentials}},
+		{name: "jwt-bearer only", grantTypes: []providers.GrantType{providers.GrantTypeJWTBearer}},
+		{
+			name:       "client_credentials and jwt-bearer",
+			grantTypes: []providers.GrantType{providers.GrantTypeClientCredentials, providers.GrantTypeJWTBearer},
+		},
+		{name: "CIBA only", grantTypes: []providers.GrantType{providers.GrantTypeCIBA}},
+		{
+			name:       "CIBA and refresh_token",
+			grantTypes: []providers.GrantType{providers.GrantTypeCIBA, providers.GrantTypeRefreshToken},
+		},
+		{
+			name:         "public client with token exchange",
+			grantTypes:   []providers.GrantType{providers.GrantTypeTokenExchange},
+			publicClient: true,
 		},
 	}
 
@@ -133,12 +160,17 @@ func (s *ApplicationTypeTestSuite) TestFullStackCustomAndMCPFlowSecretEligibilit
 		model.ApplicationTypeCustom,
 		model.ApplicationTypeMCP,
 	} {
-		// Embedded app with no OAuth config, and confidential non-redirect app, are eligible.
 		s.True(isFlowSecretEligible(appType, nil), "type %q embedded should be eligible", appType)
-		s.True(isFlowSecretEligible(appType, embedded), "type %q embedded should be eligible", appType)
-		// Redirect and m2m-shaped apps are not eligible.
-		s.False(isFlowSecretEligible(appType, redirect), "type %q redirect should not be eligible", appType)
-		s.False(isFlowSecretEligible(appType, m2mShaped), "type %q m2m-shaped should not be eligible", appType)
+		for _, tc := range cases {
+			cfg := &providers.InboundAuthConfigWithSecret{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
+					GrantTypes:   tc.grantTypes,
+					PublicClient: tc.publicClient,
+				},
+			}
+			s.Equal(tc.want, isFlowSecretEligible(appType, cfg), "type %q, %s", appType, tc.name)
+		}
 	}
 }
 

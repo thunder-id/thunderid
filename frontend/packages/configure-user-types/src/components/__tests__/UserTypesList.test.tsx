@@ -359,7 +359,7 @@ describe('UserTypesList', () => {
     await user.click(deleteButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getByText('Delete User Type')).toBeInTheDocument();
+      expect(screen.getByText('Delete user type')).toBeInTheDocument();
       expect(screen.getByText('Are you sure you want to delete this user type?')).toBeInTheDocument();
     });
   });
@@ -372,14 +372,14 @@ describe('UserTypesList', () => {
     await user.click(deleteButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getByText('Delete User Type')).toBeInTheDocument();
+      expect(screen.getByText('Delete user type')).toBeInTheDocument();
     });
 
     const cancelButton = screen.getByRole('button', {name: /Cancel/i});
     await user.click(cancelButton);
 
     await waitFor(() => {
-      expect(screen.queryByText('Delete User Type')).not.toBeInTheDocument();
+      expect(screen.queryByText('Delete user type')).not.toBeInTheDocument();
     });
   });
 
@@ -393,7 +393,7 @@ describe('UserTypesList', () => {
     await user.click(deleteButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getByText('Delete User Type')).toBeInTheDocument();
+      expect(screen.getByText('Delete user type')).toBeInTheDocument();
     });
 
     const confirmButton = screen.getByRole('button', {name: /delete/i});
@@ -485,7 +485,7 @@ describe('UserTypesList', () => {
     await user.click(deleteButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getByText('Delete User Type')).toBeInTheDocument();
+      expect(screen.getByText('Delete user type')).toBeInTheDocument();
     });
 
     const confirmButton = screen.getByRole('button', {name: /delete/i});
@@ -494,7 +494,7 @@ describe('UserTypesList', () => {
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith('schema1');
       // Dialog stays open so user can see error and retry
-      expect(screen.getByText('Delete User Type')).toBeInTheDocument();
+      expect(screen.getByText('Delete user type')).toBeInTheDocument();
     });
   });
 

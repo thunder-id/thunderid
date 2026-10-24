@@ -134,7 +134,7 @@ var (
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
 		AllowedUserTypes:          []string{"authz-test-person"},
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+			"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
 		},
 	}
 
@@ -314,15 +314,15 @@ func (ts *FlowAuthzTestSuite) TearDownSuite() {
 		}
 	}
 
-	if authzTestOUID != "" {
-		if err := testutils.DeleteOrganizationUnit(authzTestOUID); err != nil {
-			ts.T().Logf("Failed to delete test organization unit during teardown: %v", err)
-		}
-	}
-
 	if authzEntityTypeID != "" {
 		if err := testutils.DeleteUserType(authzEntityTypeID); err != nil {
 			ts.T().Logf("Failed to delete user type during teardown: %v", err)
+		}
+	}
+
+	if authzTestOUID != "" {
+		if err := testutils.DeleteOrganizationUnit(authzTestOUID); err != nil {
+			ts.T().Logf("Failed to delete test organization unit during teardown: %v", err)
 		}
 	}
 }

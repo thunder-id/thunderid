@@ -6,28 +6,14 @@ package i18n
 import "net/http"
 
 // These tests lock in the behaviour of the `notification` namespace: a first-class namespace
-// hardcoded in backend/internal/system/i18n/mgt/constants.go whose default keys/values are
-// seeded from the bootstrap translation resource
-// (backend/cmd/server/bootstrap/01-default-resources.yaml). They assert that:
-//   1. the bootstrap-seeded defaults resolve over the (public) resolve endpoint, and
-//   2. further keys/values can be added to the namespace through the management API,
-//      both per-key and in bulk, and round-trip through resolve.
+// hardcoded in backend/internal/system/i18n/mgt/constants.go. They assert that keys/values can be
+// added to the namespace through the management API, both per-key and in bulk, and round-trip
+// through resolve.
 //
-// Writes target testLanguage (fr-CA), which SetupTest/TearDownSuite clear, so they never
-// disturb the en-US bootstrap seed that the first test reads.
+// Writes target testLanguage (fr-CA), which SetupTest/TearDownSuite clear.
 
 // notificationNamespace mirrors mgt.NotificationNamespace.
 const notificationNamespace = "notification"
-
-// TestNotificationNamespaceServesBootstrapSeededDefaults verifies that a key seeded via the
-// bootstrap translation resource resolves for the system language.
-func (suite *I18nMgtAPITestSuite) TestNotificationNamespaceServesBootstrapSeededDefaults() {
-	resolved := suite.resolveLanguage(systemLanguage, notificationNamespace)
-
-	seeded := resolved.Translations[notificationNamespace]
-	suite.Require().NotEmpty(seeded, "expected notification namespace to carry bootstrap-seeded defaults")
-	suite.Equal("Notification Templates", seeded["templates.list.title"])
-}
 
 // TestNotificationNamespaceAcceptsSingleKeyViaAPI adds one new key through the single-key write
 // endpoint and reads it back through the single-key resolve endpoint.
