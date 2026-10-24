@@ -250,6 +250,21 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_Success() {
 	assert.Nil(suite.T(), result)
 }
 
+func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_MetadataDocumentClient() {
+	cimdApp := *suite.oauthApp
+	cimdApp.ClientIDMetadataDocument = true
+
+	ordinary := suite.createBasicTokenRequest("subject-token")
+	result := suite.handler.ValidateGrant(context.Background(), ordinary, &cimdApp)
+	suite.Require().NotNil(result)
+	assert.Equal(suite.T(), constants.ErrorUnauthorizedClient, result.Error)
+
+	idJag := suite.createBasicTokenRequest("subject-token")
+	idJag.SubjectTokenType = string(constants.TokenTypeIdentifierIDToken)
+	idJag.RequestedTokenType = string(constants.TokenTypeIdentifierIDJAG)
+	assert.Nil(suite.T(), suite.handler.ValidateGrant(context.Background(), idJag, &cimdApp))
+}
+
 func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_WrongGrantType() {
 	tokenRequest := &model.TokenRequest{
 		GrantType:        "authorization_code",

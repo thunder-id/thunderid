@@ -2288,10 +2288,13 @@ components:
         clientIdMetadataDocument:
           type: boolean
           description: >-
-            Whether the application was registered from a Client ID Metadata Document. When true,
-            `clientId` is the Client Identifier URL, the values are those returned by
+            Whether the application was registered from a Client ID Metadata Document. Fixed at creation.
+            When true, `clientId` is the Client Identifier URL, the values are those returned by
             `POST /cimd/preview` and must satisfy the document rules, and `clientSecret` must be omitted.
-            Fixed at creation.
+            Within the document rules, a `private_key_jwt` client may also hold the
+            `urn:ietf:params:oauth:grant-type:token-exchange` and `urn:ietf:params:oauth:grant-type:jwt-bearer`
+            grant types, which an administrator adds and preview never returns. Token exchange requires
+            `token.idJag.enabled` and serves only ID-JAG requests.
           example: false
           default: false
         scopes:
@@ -2423,10 +2426,13 @@ components:
         clientIdMetadataDocument:
           type: boolean
           description: >-
-            Whether the application was registered from a Client ID Metadata Document. When true,
-            `clientId` is the Client Identifier URL, the values are those returned by
+            Whether the application was registered from a Client ID Metadata Document. Fixed at creation.
+            When true, `clientId` is the Client Identifier URL, the values are those returned by
             `POST /cimd/preview` and must satisfy the document rules, and `clientSecret` must be omitted.
-            Fixed at creation.
+            Within the document rules, a `private_key_jwt` client may also hold the
+            `urn:ietf:params:oauth:grant-type:token-exchange` and `urn:ietf:params:oauth:grant-type:jwt-bearer`
+            grant types, which an administrator adds and preview never returns. Token exchange requires
+            `token.idJag.enabled` and serves only ID-JAG requests.
           example: false
           default: false
         scopes:

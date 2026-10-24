@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/cert"
+	"github.com/thunder-id/thunderid/internal/system/config"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -144,7 +145,8 @@ func fetchCIMDDocument(ctx context.Context, client syshttp.HTTPClientInterface, 
 }
 
 // buildCIMDOAuthConfig maps a document to the OAuth configuration of a CIMD application. Grants are
-// narrowed to authorization_code and refresh_token, never widened.
+// narrowed, never widened: the declared authorization_code and refresh_token grants are kept when the
+// deployment allows them. Any other grant the document rules permit is added by an administrator.
 func buildCIMDOAuthConfig(clientID string, doc *cimdDocument) (
 	*providers.OAuthConfigWithSecret, *tidcommon.ServiceError) {
 	method := providers.TokenEndpointAuthMethod(doc.TokenEndpointAuthMethod)
@@ -177,9 +179,13 @@ func buildCIMDOAuthConfig(clientID string, doc *cimdDocument) (
 	if !slices.Contains(declaredGrants, string(providers.GrantTypeAuthorizationCode)) {
 		return nil, &ErrorInvalidGrantTypes
 	}
-	grantTypes := []providers.GrantType{providers.GrantTypeAuthorizationCode}
-	if slices.Contains(declaredGrants, string(providers.GrantTypeRefreshToken)) {
-		grantTypes = append(grantTypes, providers.GrantTypeRefreshToken)
+	deploymentGrants := config.GetServerRuntime().Config.OAuth.AllowedGrantTypes
+	var grantTypes []providers.GrantType
+	for _, grantType := range documentGrantTypes {
+		if slices.Contains(declaredGrants, string(grantType)) &&
+			(len(deploymentGrants) == 0 || slices.Contains(deploymentGrants, string(grantType))) {
+			grantTypes = append(grantTypes, grantType)
+		}
 	}
 
 	return &providers.OAuthConfigWithSecret{
@@ -227,7 +233,8 @@ func validateCIMDRules(clientID string, p *providers.OAuthProfile, hasClientSecr
 			return &ErrorInvalidRedirectURI
 		}
 	}
-	switch providers.TokenEndpointAuthMethod(p.TokenEndpointAuthMethod) {
+	method := providers.TokenEndpointAuthMethod(p.TokenEndpointAuthMethod)
+	switch method {
 	case providers.TokenEndpointAuthMethodNone:
 	case providers.TokenEndpointAuthMethodPrivateKeyJWT:
 		if p.Certificate == nil ||
@@ -241,6 +248,8 @@ func validateCIMDRules(clientID string, p *providers.OAuthProfile, hasClientSecr
 			return &ErrorInvalidJWKSURI
 		case p.Certificate.Type == cert.CertificateTypeJWKS && !isValidCertificateValue(p.Certificate.Value):
 			return &ErrorInvalidKeySet
+		case p.Certificate.Type == cert.CertificateTypeJWKS && !isPublicKeySet(p.Certificate.Value):
+			return &ErrorPrivateKeySet
 		}
 	default:
 		return &ErrorInvalidAuthMethod
@@ -252,16 +261,52 @@ func validateCIMDRules(clientID string, p *providers.OAuthProfile, hasClientSecr
 		return &ErrorInvalidGrantTypes
 	}
 	for _, grantType := range p.GrantTypes {
-		if grantType != string(providers.GrantTypeAuthorizationCode) &&
-			grantType != string(providers.GrantTypeRefreshToken) {
+		if !isCIMDGrantAllowed(providers.GrantType(grantType), method) {
 			return &ErrorInvalidGrantTypes
 		}
+	}
+	if slices.Contains(p.GrantTypes, string(providers.GrantTypeTokenExchange)) &&
+		(p.Token == nil || p.Token.IDJAG == nil || !p.Token.IDJAG.Enabled) {
+		return &ErrorTokenExchangeRequiresIDJAG
 	}
 	// Every CIMD client uses the authorization code grant, so PKCE is required for confidential clients too.
 	if !p.PKCERequired {
 		return &ErrorPKCERequired
 	}
 	return nil
+}
+
+// isCIMDGrantAllowed reports whether a CIMD client that authenticates with method may hold grantType. The
+// token exchange and JWT bearer grants are permitted only to a client that proves its identity with
+// private_key_jwt.
+func isCIMDGrantAllowed(grantType providers.GrantType, method providers.TokenEndpointAuthMethod) bool {
+	switch {
+	case slices.Contains(documentGrantTypes, grantType):
+		return true
+	case grantType == providers.GrantTypeTokenExchange, grantType == providers.GrantTypeJWTBearer:
+		return method == providers.TokenEndpointAuthMethodPrivateKeyJWT
+	default:
+		return false
+	}
+}
+
+// isPublicKeySet reports whether an inline key set parses as a JWK Set and holds no private or symmetric
+// key material, which a published document must never carry.
+func isPublicKeySet(value string) bool {
+	var keySet struct {
+		Keys []map[string]json.RawMessage `json:"keys"`
+	}
+	if err := json.Unmarshal([]byte(value), &keySet); err != nil || len(keySet.Keys) == 0 {
+		return false
+	}
+	for _, key := range keySet.Keys {
+		for _, member := range privateJWKMembers {
+			if _, found := key[member]; found {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // isValidCertificateValue reports whether a certificate value has a length the certificate store accepts.
@@ -277,6 +322,7 @@ func ruleProfile(c *providers.OAuthConfigWithSecret) *providers.OAuthProfile {
 		TokenEndpointAuthMethod: string(c.TokenEndpointAuthMethod),
 		PKCERequired:            c.PKCERequired,
 		Certificate:             c.Certificate,
+		Token:                   c.Token,
 	}
 }
 

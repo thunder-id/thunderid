@@ -17,7 +17,7 @@ Use this when your application's users need to access an external, ID-JAG-aware 
 
 - A running <ProductName /> deployment. See [Get Started](../../../../../getting-started/get-thunderid).
 - Console access.
-- [An application](../../../../applications/manage-applications) that supports the authorization code grant and uses a confidential client. Public clients cannot issue identity assertions.
+- [An application](../../../../applications/manage-applications) that supports the authorization code grant and uses a confidential client. Public clients cannot issue identity assertions. An application registered from a [Client ID Metadata Document](../../../../mcp/mcp-clients/client-id-metadata-document) can issue them only when its document declares the `private_key_jwt` authentication method. For such a client, token exchange serves only identity assertion requests.
 
 ## How Issuance Works
 
@@ -66,6 +66,10 @@ export CLIENT_ID=<your client id>
 export CLIENT_SECRET=<your client secret>
 export REDIRECT_URI=<your registered redirect uri>
 ```
+
+:::note
+These examples authenticate the client with a client secret. A client that uses `private_key_jwt`, such as one registered from a Client ID Metadata Document, sends `client_id`, `client_assertion_type` and `client_assertion` in each token request instead of `-u`. See [Client Authentication Methods](../../client-authentication-methods). A client registered from a Client ID Metadata Document also uses PKCE: it sends `code_challenge` and `code_challenge_method=S256` to the authorize endpoint, and `code_verifier` with the code. See [PKCE](../../pkce).
+:::
 
 1. Send the user's browser to the authorize endpoint:
 

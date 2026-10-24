@@ -62,6 +62,8 @@ sequenceDiagram
 
 The client that presents ID-JAGs to <ProductName /> must be a confidential client, and its allowed grant types must include `urn:ietf:params:oauth:grant-type:jwt-bearer`.
 
+A client registered from a [Client ID Metadata Document](../../../../mcp/mcp-clients/client-id-metadata-document) qualifies only when its document declares the `private_key_jwt` authentication method. Its client ID is the document's URL, so the ID-JAG's `client_id` claim must carry that URL, and the client authenticates with a client assertion instead of a client secret. See [Client Authentication Methods](../../client-authentication-methods).
+
 ## What the Issuer Must Send
 
 The external identity provider's ID-JAG must satisfy these requirements for <ProductName /> to accept it:

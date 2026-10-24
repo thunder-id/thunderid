@@ -5,8 +5,6 @@ package token
 
 import (
 	"bytes"
-	"crypto"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,16 +18,15 @@ import (
 )
 
 const (
-	pkjServerURL                 = "https://localhost:8095"
-	pkjIssuer                    = "https://localhost:8095" // server issuer = required aud value
-	pkjResourceIdentifier        = "https://pkj-test.example.com"
-	pkjRSAClientID               = "pkj_rsa_client"
-	pkjECClientID                = "pkj_ec_client"
-	pkjPSClientID                = "pkj_ps_client"
-	pkjRSAKid                    = "pkj-rsa-kid"
-	pkjECKid                     = "pkj-ec-kid"
-	pkjPSKid                     = "pkj-ps-kid"
-	clientAssertionTypeJWTBearer = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+	pkjServerURL          = "https://localhost:8095"
+	pkjIssuer             = "https://localhost:8095" // server issuer = required aud value
+	pkjResourceIdentifier = "https://pkj-test.example.com"
+	pkjRSAClientID        = "pkj_rsa_client"
+	pkjECClientID         = "pkj_ec_client"
+	pkjPSClientID         = "pkj_ps_client"
+	pkjRSAKid             = "pkj-rsa-kid"
+	pkjECKid              = "pkj-ec-kid"
+	pkjPSKid              = "pkj-ps-kid"
 )
 
 type PrivateKeyJWTTestSuite struct {
@@ -84,11 +81,11 @@ func (ts *PrivateKeyJWTTestSuite) SetupSuite() {
 	ts.psKey = psKey
 
 	ts.rsaAppID = ts.createPrivateKeyJWTApp(pkjRSAClientID, "PrivateKeyJWTRSAApp",
-		buildJWKSFromKey(ts.rsaKey, pkjRSAKid))
+		ts.rsaKey.JWKS(pkjRSAKid))
 	ts.ecAppID = ts.createPrivateKeyJWTApp(pkjECClientID, "PrivateKeyJWTECApp",
-		buildJWKSFromKey(ts.ecKey, pkjECKid))
+		ts.ecKey.JWKS(pkjECKid))
 	ts.psAppID = ts.createPrivateKeyJWTApp(pkjPSClientID, "PrivateKeyJWTPSApp",
-		buildJWKSFromKey(ts.psKey, pkjPSKid))
+		ts.psKey.JWKS(pkjPSKid))
 }
 
 func (ts *PrivateKeyJWTTestSuite) TearDownSuite() {
@@ -111,20 +108,6 @@ func (ts *PrivateKeyJWTTestSuite) TearDownSuite() {
 			ts.T().Logf("Failed to delete test organization unit: %v", err)
 		}
 	}
-}
-
-// buildJWKSFromKey builds an inline JWKS JSON document from a DPoPKey's public JWK, tagged
-// with the given "kid" and "sig" usage.
-func buildJWKSFromKey(key *testutils.DPoPKey, kid string) string {
-	jwk := make(map[string]any)
-	for k, v := range key.JWK {
-		jwk[k] = v
-	}
-	jwk["kid"] = kid
-	jwk["use"] = "sig"
-	jwks := map[string]any{"keys": []map[string]any{jwk}}
-	jwksJSON, _ := json.Marshal(jwks)
-	return string(jwksJSON)
 }
 
 // createPrivateKeyJWTApp creates an OAuth2 application configured for private_key_jwt token
@@ -198,78 +181,6 @@ func (ts *PrivateKeyJWTTestSuite) deleteApplication(appID string) {
 	}
 }
 
-// clientAssertionOptions configures the JWT built by createClientAssertion.
-type clientAssertionOptions struct {
-	sub       string
-	aud       interface{} // string or []string for testing array aud rejection
-	jti       string
-	omitJTI   bool
-	exp       int64
-	omitExp   bool
-	iat       int64
-	kid       string
-	alg       string
-	key       crypto.Signer
-	tamperSig bool
-}
-
-// createClientAssertion builds and signs a private_key_jwt client assertion JWT from opts.
-func createClientAssertion(opts clientAssertionOptions) string {
-	header := map[string]interface{}{
-		"alg": opts.alg,
-		"kid": opts.kid,
-		"typ": "JWT",
-	}
-
-	now := time.Now().Unix()
-	exp := opts.exp
-	if exp == 0 {
-		exp = now + 300
-	}
-	iat := opts.iat
-	if iat == 0 {
-		iat = now
-	}
-
-	payload := map[string]interface{}{
-		"sub": opts.sub,
-		"aud": opts.aud,
-		"iss": opts.sub,
-		"iat": iat,
-	}
-	if !opts.omitExp {
-		payload["exp"] = exp
-	}
-	if !opts.omitJTI {
-		jti := opts.jti
-		if jti == "" {
-			jti = testutils.RandomJTI()
-		}
-		payload["jti"] = jti
-	}
-
-	headerJSON, err := json.Marshal(header)
-	if err != nil {
-		panic(err)
-	}
-	payloadJSON, err := json.Marshal(payload)
-	if err != nil {
-		panic(err)
-	}
-	signingInput := base64.RawURLEncoding.EncodeToString(headerJSON) + "." +
-		base64.RawURLEncoding.EncodeToString(payloadJSON)
-
-	sig, err := testutils.SignJWT(opts.key, opts.alg, signingInput)
-	if err != nil {
-		panic(err)
-	}
-	if opts.tamperSig && len(sig) > 0 {
-		sig[len(sig)-1] ^= 0x01
-	}
-
-	return signingInput + "." + base64.RawURLEncoding.EncodeToString(sig)
-}
-
 // makeTokenRequest builds a POST request to /oauth2/token with the given form values.
 func makeTokenRequest(formValues map[string]string) (*http.Request, error) {
 	form := url.Values{}
@@ -311,18 +222,18 @@ func (ts *PrivateKeyJWTTestSuite) assertTokenError(resp *http.Response, expected
 }
 
 func (ts *PrivateKeyJWTTestSuite) TestSuccess_RS256() {
-	assertion := createClientAssertion(clientAssertionOptions{
-		sub: pkjRSAClientID,
-		aud: pkjIssuer,
-		kid: pkjRSAKid,
-		alg: "RS256",
-		key: ts.rsaKey.Private,
+	assertion := testutils.CreateClientAssertion(testutils.ClientAssertionOptions{
+		Sub: pkjRSAClientID,
+		Aud: pkjIssuer,
+		Kid: pkjRSAKid,
+		Alg: "RS256",
+		Key: ts.rsaKey.Private,
 	})
 
 	req, err := makeTokenRequest(map[string]string{
 		"grant_type":            "client_credentials",
 		"resource":              pkjResourceIdentifier,
-		"client_assertion_type": clientAssertionTypeJWTBearer,
+		"client_assertion_type": testutils.ClientAssertionTypeJWTBearer,
 		"client_assertion":      assertion,
 	})
 	ts.Require().NoError(err)
@@ -335,18 +246,18 @@ func (ts *PrivateKeyJWTTestSuite) TestSuccess_RS256() {
 }
 
 func (ts *PrivateKeyJWTTestSuite) TestSuccess_ES256() {
-	assertion := createClientAssertion(clientAssertionOptions{
-		sub: pkjECClientID,
-		aud: pkjIssuer,
-		kid: pkjECKid,
-		alg: "ES256",
-		key: ts.ecKey.Private,
+	assertion := testutils.CreateClientAssertion(testutils.ClientAssertionOptions{
+		Sub: pkjECClientID,
+		Aud: pkjIssuer,
+		Kid: pkjECKid,
+		Alg: "ES256",
+		Key: ts.ecKey.Private,
 	})
 
 	req, err := makeTokenRequest(map[string]string{
 		"grant_type":            "client_credentials",
 		"resource":              pkjResourceIdentifier,
-		"client_assertion_type": clientAssertionTypeJWTBearer,
+		"client_assertion_type": testutils.ClientAssertionTypeJWTBearer,
 		"client_assertion":      assertion,
 	})
 	ts.Require().NoError(err)
@@ -359,18 +270,18 @@ func (ts *PrivateKeyJWTTestSuite) TestSuccess_ES256() {
 }
 
 func (ts *PrivateKeyJWTTestSuite) TestSuccess_PS256() {
-	assertion := createClientAssertion(clientAssertionOptions{
-		sub: pkjPSClientID,
-		aud: pkjIssuer,
-		kid: pkjPSKid,
-		alg: "PS256",
-		key: ts.psKey.Private,
+	assertion := testutils.CreateClientAssertion(testutils.ClientAssertionOptions{
+		Sub: pkjPSClientID,
+		Aud: pkjIssuer,
+		Kid: pkjPSKid,
+		Alg: "PS256",
+		Key: ts.psKey.Private,
 	})
 
 	req, err := makeTokenRequest(map[string]string{
 		"grant_type":            "client_credentials",
 		"resource":              pkjResourceIdentifier,
-		"client_assertion_type": clientAssertionTypeJWTBearer,
+		"client_assertion_type": testutils.ClientAssertionTypeJWTBearer,
 		"client_assertion":      assertion,
 	})
 	ts.Require().NoError(err)
@@ -383,18 +294,18 @@ func (ts *PrivateKeyJWTTestSuite) TestSuccess_PS256() {
 }
 
 func (ts *PrivateKeyJWTTestSuite) TestSuccess_WithClientIDInBody() {
-	assertion := createClientAssertion(clientAssertionOptions{
-		sub: pkjRSAClientID,
-		aud: pkjIssuer,
-		kid: pkjRSAKid,
-		alg: "RS256",
-		key: ts.rsaKey.Private,
+	assertion := testutils.CreateClientAssertion(testutils.ClientAssertionOptions{
+		Sub: pkjRSAClientID,
+		Aud: pkjIssuer,
+		Kid: pkjRSAKid,
+		Alg: "RS256",
+		Key: ts.rsaKey.Private,
 	})
 
 	req, err := makeTokenRequest(map[string]string{
 		"grant_type":            "client_credentials",
 		"resource":              pkjResourceIdentifier,
-		"client_assertion_type": clientAssertionTypeJWTBearer,
+		"client_assertion_type": testutils.ClientAssertionTypeJWTBearer,
 		"client_assertion":      assertion,
 		"client_id":             pkjRSAClientID,
 	})
@@ -408,19 +319,19 @@ func (ts *PrivateKeyJWTTestSuite) TestSuccess_WithClientIDInBody() {
 }
 
 func (ts *PrivateKeyJWTTestSuite) TestSuccess_WithScopes() {
-	assertion := createClientAssertion(clientAssertionOptions{
-		sub: pkjRSAClientID,
-		aud: pkjIssuer,
-		kid: pkjRSAKid,
-		alg: "RS256",
-		key: ts.rsaKey.Private,
+	assertion := testutils.CreateClientAssertion(testutils.ClientAssertionOptions{
+		Sub: pkjRSAClientID,
+		Aud: pkjIssuer,
+		Kid: pkjRSAKid,
+		Alg: "RS256",
+		Key: ts.rsaKey.Private,
 	})
 
 	req, err := makeTokenRequest(map[string]string{
 		"grant_type":            "client_credentials",
 		"resource":              pkjResourceIdentifier,
 		"scope":                 "some_scope",
-		"client_assertion_type": clientAssertionTypeJWTBearer,
+		"client_assertion_type": testutils.ClientAssertionTypeJWTBearer,
 		"client_assertion":      assertion,
 	})
 	ts.Require().NoError(err)
@@ -436,7 +347,7 @@ func (ts *PrivateKeyJWTTestSuite) TestMissingClientAssertion() {
 	req, err := makeTokenRequest(map[string]string{
 		"grant_type":            "client_credentials",
 		"resource":              pkjResourceIdentifier,
-		"client_assertion_type": clientAssertionTypeJWTBearer,
+		"client_assertion_type": testutils.ClientAssertionTypeJWTBearer,
 	})
 	ts.Require().NoError(err)
 
@@ -448,12 +359,12 @@ func (ts *PrivateKeyJWTTestSuite) TestMissingClientAssertion() {
 }
 
 func (ts *PrivateKeyJWTTestSuite) TestMissingClientAssertionType() {
-	assertion := createClientAssertion(clientAssertionOptions{
-		sub: pkjRSAClientID,
-		aud: pkjIssuer,
-		kid: pkjRSAKid,
-		alg: "RS256",
-		key: ts.rsaKey.Private,
+	assertion := testutils.CreateClientAssertion(testutils.ClientAssertionOptions{
+		Sub: pkjRSAClientID,
+		Aud: pkjIssuer,
+		Kid: pkjRSAKid,
+		Alg: "RS256",
+		Key: ts.rsaKey.Private,
 	})
 
 	req, err := makeTokenRequest(map[string]string{
@@ -471,12 +382,12 @@ func (ts *PrivateKeyJWTTestSuite) TestMissingClientAssertionType() {
 }
 
 func (ts *PrivateKeyJWTTestSuite) TestUnsupportedAssertionType() {
-	assertion := createClientAssertion(clientAssertionOptions{
-		sub: pkjRSAClientID,
-		aud: pkjIssuer,
-		kid: pkjRSAKid,
-		alg: "RS256",
-		key: ts.rsaKey.Private,
+	assertion := testutils.CreateClientAssertion(testutils.ClientAssertionOptions{
+		Sub: pkjRSAClientID,
+		Aud: pkjIssuer,
+		Kid: pkjRSAKid,
+		Alg: "RS256",
+		Key: ts.rsaKey.Private,
 	})
 
 	req, err := makeTokenRequest(map[string]string{
@@ -498,7 +409,7 @@ func (ts *PrivateKeyJWTTestSuite) TestMalformedJWT() {
 	req, err := makeTokenRequest(map[string]string{
 		"grant_type":            "client_credentials",
 		"resource":              pkjResourceIdentifier,
-		"client_assertion_type": clientAssertionTypeJWTBearer,
+		"client_assertion_type": testutils.ClientAssertionTypeJWTBearer,
 		"client_assertion":      "not-a-valid-jwt",
 	})
 	ts.Require().NoError(err)
@@ -511,18 +422,18 @@ func (ts *PrivateKeyJWTTestSuite) TestMalformedJWT() {
 }
 
 func (ts *PrivateKeyJWTTestSuite) TestEmptySub() {
-	assertion := createClientAssertion(clientAssertionOptions{
-		sub: "",
-		aud: pkjIssuer,
-		kid: pkjRSAKid,
-		alg: "RS256",
-		key: ts.rsaKey.Private,
+	assertion := testutils.CreateClientAssertion(testutils.ClientAssertionOptions{
+		Sub: "",
+		Aud: pkjIssuer,
+		Kid: pkjRSAKid,
+		Alg: "RS256",
+		Key: ts.rsaKey.Private,
 	})
 
 	req, err := makeTokenRequest(map[string]string{
 		"grant_type":            "client_credentials",
 		"resource":              pkjResourceIdentifier,
-		"client_assertion_type": clientAssertionTypeJWTBearer,
+		"client_assertion_type": testutils.ClientAssertionTypeJWTBearer,
 		"client_assertion":      assertion,
 	})
 	ts.Require().NoError(err)
@@ -540,18 +451,18 @@ func (ts *PrivateKeyJWTTestSuite) TestWrongSigningKey() {
 
 	// Sign with the unregistered key but present the registered kid, so the server resolves
 	// the correct public key from the app's JWKS and signature verification must fail.
-	assertion := createClientAssertion(clientAssertionOptions{
-		sub: pkjRSAClientID,
-		aud: pkjIssuer,
-		kid: pkjRSAKid,
-		alg: "RS256",
-		key: otherKey.Private,
+	assertion := testutils.CreateClientAssertion(testutils.ClientAssertionOptions{
+		Sub: pkjRSAClientID,
+		Aud: pkjIssuer,
+		Kid: pkjRSAKid,
+		Alg: "RS256",
+		Key: otherKey.Private,
 	})
 
 	req, err := makeTokenRequest(map[string]string{
 		"grant_type":            "client_credentials",
 		"resource":              pkjResourceIdentifier,
-		"client_assertion_type": clientAssertionTypeJWTBearer,
+		"client_assertion_type": testutils.ClientAssertionTypeJWTBearer,
 		"client_assertion":      assertion,
 	})
 	ts.Require().NoError(err)
@@ -564,19 +475,19 @@ func (ts *PrivateKeyJWTTestSuite) TestWrongSigningKey() {
 }
 
 func (ts *PrivateKeyJWTTestSuite) TestExpiredAssertion() {
-	assertion := createClientAssertion(clientAssertionOptions{
-		sub: pkjRSAClientID,
-		aud: pkjIssuer,
-		kid: pkjRSAKid,
-		alg: "RS256",
-		key: ts.rsaKey.Private,
-		exp: time.Now().Unix() - 3600,
+	assertion := testutils.CreateClientAssertion(testutils.ClientAssertionOptions{
+		Sub: pkjRSAClientID,
+		Aud: pkjIssuer,
+		Kid: pkjRSAKid,
+		Alg: "RS256",
+		Key: ts.rsaKey.Private,
+		Exp: time.Now().Unix() - 3600,
 	})
 
 	req, err := makeTokenRequest(map[string]string{
 		"grant_type":            "client_credentials",
 		"resource":              pkjResourceIdentifier,
-		"client_assertion_type": clientAssertionTypeJWTBearer,
+		"client_assertion_type": testutils.ClientAssertionTypeJWTBearer,
 		"client_assertion":      assertion,
 	})
 	ts.Require().NoError(err)
@@ -605,21 +516,21 @@ func (ts *PrivateKeyJWTTestSuite) TestAssertionTimestampPolicyViolations() {
 
 	for _, tc := range cases {
 		ts.Run(tc.name, func() {
-			assertion := createClientAssertion(clientAssertionOptions{
-				sub:     pkjRSAClientID,
-				aud:     pkjIssuer,
-				kid:     pkjRSAKid,
-				alg:     "RS256",
-				key:     ts.rsaKey.Private,
-				iat:     tc.iat,
-				exp:     tc.exp,
-				omitExp: tc.omitExp,
+			assertion := testutils.CreateClientAssertion(testutils.ClientAssertionOptions{
+				Sub:     pkjRSAClientID,
+				Aud:     pkjIssuer,
+				Kid:     pkjRSAKid,
+				Alg:     "RS256",
+				Key:     ts.rsaKey.Private,
+				IAT:     tc.iat,
+				Exp:     tc.exp,
+				OmitExp: tc.omitExp,
 			})
 
 			req, err := makeTokenRequest(map[string]string{
 				"grant_type":            "client_credentials",
 				"resource":              pkjResourceIdentifier,
-				"client_assertion_type": clientAssertionTypeJWTBearer,
+				"client_assertion_type": testutils.ClientAssertionTypeJWTBearer,
 				"client_assertion":      assertion,
 			})
 			ts.Require().NoError(err)
@@ -634,18 +545,18 @@ func (ts *PrivateKeyJWTTestSuite) TestAssertionTimestampPolicyViolations() {
 }
 
 func (ts *PrivateKeyJWTTestSuite) TestWrongAudience() {
-	assertion := createClientAssertion(clientAssertionOptions{
-		sub: pkjRSAClientID,
-		aud: "https://wrong-issuer.example.com",
-		kid: pkjRSAKid,
-		alg: "RS256",
-		key: ts.rsaKey.Private,
+	assertion := testutils.CreateClientAssertion(testutils.ClientAssertionOptions{
+		Sub: pkjRSAClientID,
+		Aud: "https://wrong-issuer.example.com",
+		Kid: pkjRSAKid,
+		Alg: "RS256",
+		Key: ts.rsaKey.Private,
 	})
 
 	req, err := makeTokenRequest(map[string]string{
 		"grant_type":            "client_credentials",
 		"resource":              pkjResourceIdentifier,
-		"client_assertion_type": clientAssertionTypeJWTBearer,
+		"client_assertion_type": testutils.ClientAssertionTypeJWTBearer,
 		"client_assertion":      assertion,
 	})
 	ts.Require().NoError(err)
@@ -660,18 +571,18 @@ func (ts *PrivateKeyJWTTestSuite) TestWrongAudience() {
 func (ts *PrivateKeyJWTTestSuite) TestArrayAudience() {
 	// FAPI 2.0 Security Profile Section 5.3.2.1 requires the 'aud' claim to be a single string;
 	// an array value, even with the correct issuer as its only element, must be rejected.
-	assertion := createClientAssertion(clientAssertionOptions{
-		sub: pkjRSAClientID,
-		aud: []string{pkjIssuer},
-		kid: pkjRSAKid,
-		alg: "RS256",
-		key: ts.rsaKey.Private,
+	assertion := testutils.CreateClientAssertion(testutils.ClientAssertionOptions{
+		Sub: pkjRSAClientID,
+		Aud: []string{pkjIssuer},
+		Kid: pkjRSAKid,
+		Alg: "RS256",
+		Key: ts.rsaKey.Private,
 	})
 
 	req, err := makeTokenRequest(map[string]string{
 		"grant_type":            "client_credentials",
 		"resource":              pkjResourceIdentifier,
-		"client_assertion_type": clientAssertionTypeJWTBearer,
+		"client_assertion_type": testutils.ClientAssertionTypeJWTBearer,
 		"client_assertion":      assertion,
 	})
 	ts.Require().NoError(err)
@@ -684,19 +595,19 @@ func (ts *PrivateKeyJWTTestSuite) TestArrayAudience() {
 }
 
 func (ts *PrivateKeyJWTTestSuite) TestMissingJTI() {
-	assertion := createClientAssertion(clientAssertionOptions{
-		sub:     pkjRSAClientID,
-		aud:     pkjIssuer,
-		kid:     pkjRSAKid,
-		alg:     "RS256",
-		key:     ts.rsaKey.Private,
-		omitJTI: true,
+	assertion := testutils.CreateClientAssertion(testutils.ClientAssertionOptions{
+		Sub:     pkjRSAClientID,
+		Aud:     pkjIssuer,
+		Kid:     pkjRSAKid,
+		Alg:     "RS256",
+		Key:     ts.rsaKey.Private,
+		OmitJTI: true,
 	})
 
 	req, err := makeTokenRequest(map[string]string{
 		"grant_type":            "client_credentials",
 		"resource":              pkjResourceIdentifier,
-		"client_assertion_type": clientAssertionTypeJWTBearer,
+		"client_assertion_type": testutils.ClientAssertionTypeJWTBearer,
 		"client_assertion":      assertion,
 	})
 	ts.Require().NoError(err)
@@ -709,19 +620,19 @@ func (ts *PrivateKeyJWTTestSuite) TestMissingJTI() {
 }
 
 func (ts *PrivateKeyJWTTestSuite) TestReplayedAssertion() {
-	assertion := createClientAssertion(clientAssertionOptions{
-		sub: pkjRSAClientID,
-		aud: pkjIssuer,
-		kid: pkjRSAKid,
-		alg: "RS256",
-		key: ts.rsaKey.Private,
-		jti: testutils.RandomJTI(),
+	assertion := testutils.CreateClientAssertion(testutils.ClientAssertionOptions{
+		Sub: pkjRSAClientID,
+		Aud: pkjIssuer,
+		Kid: pkjRSAKid,
+		Alg: "RS256",
+		Key: ts.rsaKey.Private,
+		JTI: testutils.RandomJTI(),
 	})
 
 	formValues := map[string]string{
 		"grant_type":            "client_credentials",
 		"resource":              pkjResourceIdentifier,
-		"client_assertion_type": clientAssertionTypeJWTBearer,
+		"client_assertion_type": testutils.ClientAssertionTypeJWTBearer,
 		"client_assertion":      assertion,
 	}
 
@@ -741,18 +652,18 @@ func (ts *PrivateKeyJWTTestSuite) TestReplayedAssertion() {
 }
 
 func (ts *PrivateKeyJWTTestSuite) TestKidNotInJWKS() {
-	assertion := createClientAssertion(clientAssertionOptions{
-		sub: pkjRSAClientID,
-		aud: pkjIssuer,
-		kid: "unknown-kid-12345",
-		alg: "RS256",
-		key: ts.rsaKey.Private,
+	assertion := testutils.CreateClientAssertion(testutils.ClientAssertionOptions{
+		Sub: pkjRSAClientID,
+		Aud: pkjIssuer,
+		Kid: "unknown-kid-12345",
+		Alg: "RS256",
+		Key: ts.rsaKey.Private,
 	})
 
 	req, err := makeTokenRequest(map[string]string{
 		"grant_type":            "client_credentials",
 		"resource":              pkjResourceIdentifier,
-		"client_assertion_type": clientAssertionTypeJWTBearer,
+		"client_assertion_type": testutils.ClientAssertionTypeJWTBearer,
 		"client_assertion":      assertion,
 	})
 	ts.Require().NoError(err)
@@ -765,18 +676,18 @@ func (ts *PrivateKeyJWTTestSuite) TestKidNotInJWKS() {
 }
 
 func (ts *PrivateKeyJWTTestSuite) TestClientIDMismatch() {
-	assertion := createClientAssertion(clientAssertionOptions{
-		sub: pkjRSAClientID,
-		aud: pkjIssuer,
-		kid: pkjRSAKid,
-		alg: "RS256",
-		key: ts.rsaKey.Private,
+	assertion := testutils.CreateClientAssertion(testutils.ClientAssertionOptions{
+		Sub: pkjRSAClientID,
+		Aud: pkjIssuer,
+		Kid: pkjRSAKid,
+		Alg: "RS256",
+		Key: ts.rsaKey.Private,
 	})
 
 	req, err := makeTokenRequest(map[string]string{
 		"grant_type":            "client_credentials",
 		"resource":              pkjResourceIdentifier,
-		"client_assertion_type": clientAssertionTypeJWTBearer,
+		"client_assertion_type": testutils.ClientAssertionTypeJWTBearer,
 		"client_assertion":      assertion,
 		"client_id":             "different_client_id",
 	})
@@ -790,18 +701,18 @@ func (ts *PrivateKeyJWTTestSuite) TestClientIDMismatch() {
 }
 
 func (ts *PrivateKeyJWTTestSuite) TestWithBasicAuth() {
-	assertion := createClientAssertion(clientAssertionOptions{
-		sub: pkjRSAClientID,
-		aud: pkjIssuer,
-		kid: pkjRSAKid,
-		alg: "RS256",
-		key: ts.rsaKey.Private,
+	assertion := testutils.CreateClientAssertion(testutils.ClientAssertionOptions{
+		Sub: pkjRSAClientID,
+		Aud: pkjIssuer,
+		Kid: pkjRSAKid,
+		Alg: "RS256",
+		Key: ts.rsaKey.Private,
 	})
 
 	req, err := makeTokenRequest(map[string]string{
 		"grant_type":            "client_credentials",
 		"resource":              pkjResourceIdentifier,
-		"client_assertion_type": clientAssertionTypeJWTBearer,
+		"client_assertion_type": testutils.ClientAssertionTypeJWTBearer,
 		"client_assertion":      assertion,
 	})
 	ts.Require().NoError(err)
@@ -815,18 +726,18 @@ func (ts *PrivateKeyJWTTestSuite) TestWithBasicAuth() {
 }
 
 func (ts *PrivateKeyJWTTestSuite) TestWithClientSecretInBody() {
-	assertion := createClientAssertion(clientAssertionOptions{
-		sub: pkjRSAClientID,
-		aud: pkjIssuer,
-		kid: pkjRSAKid,
-		alg: "RS256",
-		key: ts.rsaKey.Private,
+	assertion := testutils.CreateClientAssertion(testutils.ClientAssertionOptions{
+		Sub: pkjRSAClientID,
+		Aud: pkjIssuer,
+		Kid: pkjRSAKid,
+		Alg: "RS256",
+		Key: ts.rsaKey.Private,
 	})
 
 	req, err := makeTokenRequest(map[string]string{
 		"grant_type":            "client_credentials",
 		"resource":              pkjResourceIdentifier,
-		"client_assertion_type": clientAssertionTypeJWTBearer,
+		"client_assertion_type": testutils.ClientAssertionTypeJWTBearer,
 		"client_assertion":      assertion,
 		"client_secret":         "some-secret",
 	})

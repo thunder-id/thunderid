@@ -139,6 +139,17 @@ func (h *tokenExchangeGrantHandler) ValidateGrant(ctx context.Context, tokenRequ
 		}
 	}
 
+	// A client registered from a metadata document belongs to a third party, so token exchange serves it
+	// only for ID-JAG requests.
+	if oauthApp.ClientIDMetadataDocument &&
+		constants.TokenTypeIdentifier(tokenRequest.RequestedTokenType) != constants.TokenTypeIdentifierIDJAG {
+		return &model.ErrorResponse{
+			Error: constants.ErrorUnauthorizedClient,
+			ErrorDescription: "A client registered from a metadata document can use token exchange only " +
+				"to request ID-JAGs",
+		}
+	}
+
 	return nil
 }
 

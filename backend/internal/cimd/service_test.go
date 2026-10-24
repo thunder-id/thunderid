@@ -81,6 +81,13 @@ func publicCIMDConfig() *providers.OAuthConfigWithSecret {
 	}
 }
 
+// makeConfidential turns a CIMD configuration into a private_key_jwt client with a JWKS URI.
+func makeConfidential(c *providers.OAuthConfigWithSecret) {
+	c.TokenEndpointAuthMethod = providers.TokenEndpointAuthMethodPrivateKeyJWT
+	c.PublicClient = false
+	c.Certificate = &providers.Certificate{Type: cert.CertificateTypeJWKSURI, Value: "https://x/jwks"}
+}
+
 func (s *CIMDServiceTestSuite) TestParseClientIdentifierURL() {
 	cases := []struct {
 		name  string
@@ -195,19 +202,96 @@ func (s *CIMDServiceTestSuite) TestBuildCIMDOAuthConfig_PrivateKeyJWT() {
 	})
 }
 
+// setAllowedGrantTypes restarts the server runtime with the given oauth.allowed_grant_types allow-list.
+func (s *CIMDServiceTestSuite) setAllowedGrantTypes(allowed []string) {
+	config.ResetServerRuntime()
+	cfg := &config.Config{}
+	cfg.OAuth.AllowedGrantTypes = allowed
+	s.Require().NoError(config.InitializeServerRuntime("/tmp/test", cfg))
+}
+
+func (s *CIMDServiceTestSuite) TestIsCIMDGrantAllowed() {
+	cases := []struct {
+		grantType         providers.GrantType
+		none              bool
+		privateKeyJWT     bool
+		clientSecretBasic bool
+	}{
+		{providers.GrantTypeAuthorizationCode, true, true, true},
+		{providers.GrantTypeRefreshToken, true, true, true},
+		{providers.GrantTypeTokenExchange, false, true, false},
+		{providers.GrantTypeJWTBearer, false, true, false},
+		{providers.GrantTypeClientCredentials, false, false, false},
+		{providers.GrantTypeCIBA, false, false, false},
+	}
+	for _, tc := range cases {
+		s.Run(string(tc.grantType), func() {
+			s.Equal(tc.none, isCIMDGrantAllowed(tc.grantType, providers.TokenEndpointAuthMethodNone))
+			s.Equal(tc.privateKeyJWT, isCIMDGrantAllowed(tc.grantType, providers.TokenEndpointAuthMethodPrivateKeyJWT))
+			s.Equal(tc.clientSecretBasic,
+				isCIMDGrantAllowed(tc.grantType, providers.TokenEndpointAuthMethodClientSecretBasic))
+		})
+	}
+}
+
 func (s *CIMDServiceTestSuite) TestBuildCIMDOAuthConfig_GrantTypes() {
-	s.Run("narrowed", func() {
-		doc := &cimdDocument{TokenEndpointAuthMethod: "none", GrantTypes: []string{
-			"authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"}}
-		cfg, svcErr := buildCIMDOAuthConfig(testCIMDClientID, doc)
-		s.Require().Nil(svcErr)
-		s.Equal([]providers.GrantType{
-			providers.GrantTypeAuthorizationCode, providers.GrantTypeRefreshToken}, cfg.GrantTypes)
-	})
+	allGrants := []string{"urn:ietf:params:oauth:grant-type:jwt-bearer", "urn:openid:params:grant-type:ciba",
+		"urn:ietf:params:oauth:grant-type:token-exchange", "refresh_token", "client_credentials",
+		"authorization_code", "urn:ietf:params:oauth:grant-type:device_code"}
+	confidential := func(grants []string) *cimdDocument {
+		return &cimdDocument{TokenEndpointAuthMethod: "private_key_jwt", JWKSURI: "https://client.example.com/jwks",
+			GrantTypes: grants}
+	}
+	cases := []struct {
+		name    string
+		doc     *cimdDocument
+		allowed []string
+		want    []providers.GrantType
+	}{
+		{"public document keeps only authorization_code and refresh_token",
+			&cimdDocument{TokenEndpointAuthMethod: "none", GrantTypes: allGrants}, nil,
+			[]providers.GrantType{providers.GrantTypeAuthorizationCode, providers.GrantTypeRefreshToken}},
+		{"confidential document keeps only authorization_code and refresh_token", confidential(allGrants), nil,
+			[]providers.GrantType{providers.GrantTypeAuthorizationCode, providers.GrantTypeRefreshToken}},
+		{"duplicates collapse", confidential([]string{"refresh_token", "authorization_code", "authorization_code",
+			"refresh_token"}), nil,
+			[]providers.GrantType{providers.GrantTypeAuthorizationCode, providers.GrantTypeRefreshToken}},
+		{"absent grants default to authorization_code", &cimdDocument{TokenEndpointAuthMethod: "none"}, nil,
+			[]providers.GrantType{providers.GrantTypeAuthorizationCode}},
+		{"empty grants default to authorization_code",
+			&cimdDocument{TokenEndpointAuthMethod: "none", GrantTypes: []string{}}, nil,
+			[]providers.GrantType{providers.GrantTypeAuthorizationCode}},
+		{"grants the deployment does not allow are dropped", confidential(allGrants),
+			[]string{"authorization_code", "urn:ietf:params:oauth:grant-type:jwt-bearer", "client_credentials"},
+			[]providers.GrantType{providers.GrantTypeAuthorizationCode}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.setAllowedGrantTypes(tc.allowed)
+			cfg, svcErr := buildCIMDOAuthConfig(testCIMDClientID, tc.doc)
+			s.Require().Nil(svcErr)
+			s.Equal(tc.want, cfg.GrantTypes)
+		})
+	}
 	s.Run("without authorization_code", func() {
+		s.setAllowedGrantTypes(nil)
 		doc := &cimdDocument{TokenEndpointAuthMethod: "none", GrantTypes: []string{"client_credentials"}}
 		_, svcErr := buildCIMDOAuthConfig(testCIMDClientID, doc)
 		s.Equal(&ErrorInvalidGrantTypes, svcErr)
+	})
+	s.Run("JWT bearer only", func() {
+		s.setAllowedGrantTypes(nil)
+		_, svcErr := buildCIMDOAuthConfig(testCIMDClientID,
+			confidential([]string{"urn:ietf:params:oauth:grant-type:jwt-bearer"}))
+		s.Equal(&ErrorInvalidGrantTypes, svcErr)
+	})
+	s.Run("deployment that does not allow authorization_code", func() {
+		s.setAllowedGrantTypes([]string{"refresh_token"})
+		doc := &cimdDocument{TokenEndpointAuthMethod: "none", RedirectURIs: []string{"http://127.0.0.1/callback"},
+			GrantTypes: []string{"authorization_code", "refresh_token"}}
+		cfg, svcErr := buildCIMDOAuthConfig(testCIMDClientID, doc)
+		s.Require().Nil(svcErr)
+		s.Equal(&ErrorInvalidGrantTypes, checkCIMDRules(cfg))
 	})
 }
 
@@ -304,8 +388,71 @@ func (s *CIMDServiceTestSuite) TestValidateCIMDRules() {
 			c.PublicClient = false
 			c.Certificate = &providers.Certificate{Type: cert.CertificateTypeJWKS, Value: `{"keys":[{"kty":"EC"}]}`}
 		}, nil},
+		{"inline JWKS with a private key", func(c *providers.OAuthConfigWithSecret) {
+			makeConfidential(c)
+			c.Certificate = &providers.Certificate{Type: cert.CertificateTypeJWKS,
+				Value: `{"keys":[{"kty":"RSA","n":"modulus","e":"AQAB","d":"private-exponent"}]}`}
+		}, &ErrorPrivateKeySet},
+		{"inline JWKS with a symmetric key", func(c *providers.OAuthConfigWithSecret) {
+			makeConfidential(c)
+			c.Certificate = &providers.Certificate{Type: cert.CertificateTypeJWKS,
+				Value: `{"keys":[{"kty":"oct","k":"c2hhcmVkLXNlY3JldA"}]}`}
+		}, &ErrorPrivateKeySet},
+		{"inline JWKS that is not a key set", func(c *providers.OAuthConfigWithSecret) {
+			makeConfidential(c)
+			c.Certificate = &providers.Certificate{Type: cert.CertificateTypeJWKS, Value: "not a key set"}
+		}, &ErrorPrivateKeySet},
+		{"inline JWKS that is a bare private key", func(c *providers.OAuthConfigWithSecret) {
+			makeConfidential(c)
+			c.Certificate = &providers.Certificate{Type: cert.CertificateTypeJWKS,
+				Value: `{"kty":"EC","crv":"P-256","x":"x-coordinate","y":"y-coordinate","d":"private"}`}
+		}, &ErrorPrivateKeySet},
+		{"inline JWKS with no keys", func(c *providers.OAuthConfigWithSecret) {
+			makeConfidential(c)
+			c.Certificate = &providers.Certificate{Type: cert.CertificateTypeJWKS, Value: `{"keys":null}`}
+		}, &ErrorPrivateKeySet},
 		{"widened grants", func(c *providers.OAuthConfigWithSecret) {
 			c.GrantTypes = append(c.GrantTypes, providers.GrantTypeClientCredentials)
+		}, &ErrorInvalidGrantTypes},
+		{"public client with refresh_token", func(c *providers.OAuthConfigWithSecret) {
+			c.GrantTypes = append(c.GrantTypes, providers.GrantTypeRefreshToken)
+		}, nil},
+		{"public client with token exchange", func(c *providers.OAuthConfigWithSecret) {
+			c.GrantTypes = append(c.GrantTypes, providers.GrantTypeTokenExchange)
+		}, &ErrorInvalidGrantTypes},
+		{"public client with JWT bearer", func(c *providers.OAuthConfigWithSecret) {
+			c.GrantTypes = append(c.GrantTypes, providers.GrantTypeJWTBearer)
+		}, &ErrorInvalidGrantTypes},
+		{"confidential client with token exchange and JWT bearer", func(c *providers.OAuthConfigWithSecret) {
+			makeConfidential(c)
+			c.GrantTypes = append(c.GrantTypes, providers.GrantTypeRefreshToken, providers.GrantTypeTokenExchange,
+				providers.GrantTypeJWTBearer)
+			c.Token = &providers.OAuthTokenConfig{IDJAG: &providers.IDJAGConfig{Enabled: true}}
+		}, nil},
+		{"confidential client with JWT bearer only", func(c *providers.OAuthConfigWithSecret) {
+			makeConfidential(c)
+			c.GrantTypes = append(c.GrantTypes, providers.GrantTypeJWTBearer)
+		}, nil},
+		{"confidential client with token exchange but ID-JAG off", func(c *providers.OAuthConfigWithSecret) {
+			makeConfidential(c)
+			c.GrantTypes = append(c.GrantTypes, providers.GrantTypeTokenExchange)
+			c.Token = &providers.OAuthTokenConfig{IDJAG: &providers.IDJAGConfig{Enabled: false}}
+		}, &ErrorTokenExchangeRequiresIDJAG},
+		{"confidential client with token exchange and no token settings", func(c *providers.OAuthConfigWithSecret) {
+			makeConfidential(c)
+			c.GrantTypes = append(c.GrantTypes, providers.GrantTypeTokenExchange)
+		}, &ErrorTokenExchangeRequiresIDJAG},
+		{"confidential client with client_credentials", func(c *providers.OAuthConfigWithSecret) {
+			makeConfidential(c)
+			c.GrantTypes = append(c.GrantTypes, providers.GrantTypeClientCredentials)
+		}, &ErrorInvalidGrantTypes},
+		{"confidential client with CIBA", func(c *providers.OAuthConfigWithSecret) {
+			makeConfidential(c)
+			c.GrantTypes = append(c.GrantTypes, providers.GrantTypeCIBA)
+		}, &ErrorInvalidGrantTypes},
+		{"confidential client with JWT bearer but no authorization_code", func(c *providers.OAuthConfigWithSecret) {
+			makeConfidential(c)
+			c.GrantTypes = []providers.GrantType{providers.GrantTypeJWTBearer}
 		}, &ErrorInvalidGrantTypes},
 	}
 	for _, tc := range cases {
@@ -529,5 +676,34 @@ func (s *CIMDServiceTestSuite) TestPreview() {
 		svc.httpClient = s.stubCIMDHTTPClient(document(`,"grant_types":["client_credentials"]`), nil)
 		_, svcErr := svc.Preview(context.Background(), testCIMDClientID)
 		s.Equal(&ErrorInvalidGrantTypes, svcErr)
+	})
+	idJagGrants := `,"grant_types":["authorization_code","urn:ietf:params:oauth:grant-type:token-exchange",` +
+		`"urn:ietf:params:oauth:grant-type:jwt-bearer"]`
+	s.Run("public document drops the ID-JAG grants", func() {
+		svc := newTestCIMDService()
+		svc.httpClient = s.stubCIMDHTTPClient(document(idJagGrants), nil)
+		preview, svcErr := svc.Preview(context.Background(), testCIMDClientID)
+		s.Require().Nil(svcErr)
+		s.Equal([]providers.GrantType{providers.GrantTypeAuthorizationCode},
+			preview.InboundAuthConfig[0].OAuthConfig.GrantTypes)
+	})
+	s.Run("confidential document drops the ID-JAG grants", func() {
+		svc := newTestCIMDService()
+		svc.httpClient = s.stubCIMDHTTPClient(cimdResponse(http.StatusOK, "application/json", `{"client_id":"`+
+			testCIMDClientID+`","redirect_uris":["https://client.example.com/callback"],`+
+			`"token_endpoint_auth_method":"private_key_jwt","jwks_uri":"https://client.example.com/jwks.json"`+
+			idJagGrants+`}`), nil)
+		preview, svcErr := svc.Preview(context.Background(), testCIMDClientID)
+		s.Require().Nil(svcErr)
+		s.Equal([]providers.GrantType{providers.GrantTypeAuthorizationCode},
+			preview.InboundAuthConfig[0].OAuthConfig.GrantTypes)
+	})
+	s.Run("inline key set with a private key", func() {
+		svc := newTestCIMDService()
+		svc.httpClient = s.stubCIMDHTTPClient(cimdResponse(http.StatusOK, "application/json", `{"client_id":"`+
+			testCIMDClientID+`","redirect_uris":["https://client.example.com/callback"],`+
+			`"token_endpoint_auth_method":"private_key_jwt","jwks":{"keys":[{"kty":"EC","d":"private-scalar"}]}}`), nil)
+		_, svcErr := svc.Preview(context.Background(), testCIMDClientID)
+		s.Equal(&ErrorPrivateKeySet, svcErr)
 	})
 }

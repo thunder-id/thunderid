@@ -79,6 +79,13 @@ type AndroidAttestationConfig struct {
 type OAuthTokenConfig struct {
 	AccessToken *AccessTokenConfig `json:"accessToken,omitempty"`
 	IDToken     *IDTokenConfig     `json:"idToken,omitempty"`
+	IDJag       *IDJagConfig       `json:"idJag,omitempty"`
+}
+
+// IDJagConfig represents the identity assertion (ID-JAG) issuance configuration.
+type IDJagConfig struct {
+	Enabled          bool     `json:"enabled"`
+	AllowedAudiences []string `json:"allowedAudiences,omitempty"`
 }
 
 // UserInfoConfig represents the UserInfo endpoint configuration.

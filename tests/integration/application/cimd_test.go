@@ -20,6 +20,8 @@ const (
 	// cimdConfidentialClientID is longer than 36 characters, so storing its certificate needs the
 	// widened CERTIFICATE.REF_ID column.
 	cimdConfidentialClientID = "https://cimd-confidential.example.com/oauth/client-metadata.json"
+	cimdTokenExchangeGrant   = "urn:ietf:params:oauth:grant-type:token-exchange"
+	cimdJWTBearerGrant       = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 )
 
 var cimdOU = testutils.OrganizationUnit{
@@ -75,6 +77,13 @@ func (ts *CIMDTestSuite) publicCIMDApp(name string) Application {
 			},
 		}},
 	}
+}
+
+// makeConfidentialCIMD turns a CIMD configuration into a private_key_jwt client with a JWKS URI.
+func makeConfidentialCIMD(c *OAuthAppConfig) {
+	c.TokenEndpointAuthMethod = "private_key_jwt"
+	c.PublicClient = false
+	c.Certificate = &ApplicationCert{Type: "JWKS_URI", Value: "https://cimd-public.example.com/jwks"}
 }
 
 // sendJSON sends a JSON request and returns the status code, and the error code and description key from
@@ -181,6 +190,35 @@ func (ts *CIMDTestSuite) TestConfidentialCIMDApplication() {
 	ts.Require().NotNil(oauthConfig.Certificate)
 	ts.Equal("JWKS_URI", oauthConfig.Certificate.Type)
 	ts.Equal("https://cimd-confidential.example.com/oauth/jwks.json", oauthConfig.Certificate.Value)
+
+	withIDJAGGrants := app
+	widened := *app.InboundAuthConfig[0].OAuthAppConfig
+	widened.GrantTypes = []string{"authorization_code", "refresh_token", cimdTokenExchangeGrant, cimdJWTBearerGrant}
+	widened.Token = &OAuthTokenConfig{IDJag: &IDJagConfig{Enabled: true,
+		AllowedAudiences: []string{"https://as.cimd-confidential.example.com"}}}
+	withIDJAGGrants.InboundAuthConfig = []InboundAuthConfig{{Type: "oauth2", OAuthAppConfig: &widened}}
+	ts.Require().NoError(updateApplication(appID, withIDJAGGrants))
+	got, err = getApplicationByID(appID)
+	ts.Require().NoError(err)
+	stored := got.InboundAuthConfig[0].OAuthAppConfig
+	ts.ElementsMatch(widened.GrantTypes, stored.GrantTypes)
+	ts.Require().NotNil(stored.Token)
+	ts.Require().NotNil(stored.Token.IDJag)
+	ts.True(stored.Token.IDJag.Enabled)
+
+	idJagOff := withIDJAGGrants
+	idJagOffConfig := widened
+	idJagOffConfig.Token = &OAuthTokenConfig{IDJag: &IDJagConfig{Enabled: false}}
+	idJagOff.InboundAuthConfig = []InboundAuthConfig{{Type: "oauth2", OAuthAppConfig: &idJagOffConfig}}
+	ts.requireRuleViolation(http.MethodPut, "/applications/"+appID, idJagOff, "token_exchange_requires_idjag")
+
+	madePublic := withIDJAGGrants
+	publicConfig := widened
+	publicConfig.TokenEndpointAuthMethod = "none"
+	publicConfig.PublicClient = true
+	publicConfig.Certificate = nil
+	madePublic.InboundAuthConfig = []InboundAuthConfig{{Type: "oauth2", OAuthAppConfig: &publicConfig}}
+	ts.requireRuleViolation(http.MethodPut, "/applications/"+appID, madePublic, "invalid_grant_types")
 }
 
 func (ts *CIMDTestSuite) TestCreateRejectsRuleViolations() {
@@ -241,6 +279,33 @@ func (ts *CIMDTestSuite) TestCreateRejectsRuleViolations() {
 		}, "invalid_redirect_uri"},
 		{"widened grants", func(c *OAuthAppConfig) {
 			c.GrantTypes = []string{"authorization_code", "client_credentials"}
+		}, "invalid_grant_types"},
+		{"public client with token exchange", func(c *OAuthAppConfig) {
+			c.GrantTypes = []string{"authorization_code", cimdTokenExchangeGrant}
+		}, "invalid_grant_types"},
+		{"public client with JWT bearer", func(c *OAuthAppConfig) {
+			c.GrantTypes = []string{"authorization_code", cimdJWTBearerGrant}
+		}, "invalid_grant_types"},
+		{"confidential client with client credentials", func(c *OAuthAppConfig) {
+			makeConfidentialCIMD(c)
+			c.GrantTypes = []string{"authorization_code", "client_credentials"}
+		}, "invalid_grant_types"},
+		{"confidential client with CIBA", func(c *OAuthAppConfig) {
+			makeConfidentialCIMD(c)
+			c.GrantTypes = []string{"authorization_code", "urn:openid:params:grant-type:ciba"}
+		}, "invalid_grant_types"},
+		{"confidential client with token exchange but no ID-JAG", func(c *OAuthAppConfig) {
+			makeConfidentialCIMD(c)
+			c.GrantTypes = []string{"authorization_code", cimdTokenExchangeGrant}
+		}, "token_exchange_requires_idjag"},
+		{"inline JWKS with a private key", func(c *OAuthAppConfig) {
+			makeConfidentialCIMD(c)
+			c.Certificate = &ApplicationCert{Type: "JWKS",
+				Value: `{"keys":[{"kty":"EC","crv":"P-256","x":"x-coordinate","y":"y-coordinate","d":"private"}]}`}
+		}, "private_key_set"},
+		{"confidential client with JWT bearer but no authorization code", func(c *OAuthAppConfig) {
+			makeConfidentialCIMD(c)
+			c.GrantTypes = []string{cimdJWTBearerGrant}
 		}, "invalid_grant_types"},
 	}
 	for _, tc := range cases {

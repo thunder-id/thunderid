@@ -1498,6 +1498,15 @@ func (k *DPoPKey) MakeUnsignedDPoPProof(htm, htu string) (string, error) {
 		base64.RawURLEncoding.EncodeToString(pb) + ".", nil
 }
 
+// JWKS returns an inline JWKS document holding the key's public JWK, tagged with kid and "sig" usage.
+func (k *DPoPKey) JWKS(kid string) string {
+	jwk := cloneJWK(k.JWK)
+	jwk["kid"] = kid
+	jwk["use"] = "sig"
+	jwksJSON, _ := json.Marshal(map[string]any{"keys": []map[string]any{jwk}})
+	return string(jwksJSON)
+}
+
 func signProof(priv crypto.Signer, alg, signingInput string) ([]byte, error) {
 	switch alg {
 	case "ES256", "ES384", "ES512":
@@ -1618,4 +1627,80 @@ func RandomJTI() string {
 // Supported algorithms: ES256, ES384, ES512, PS256, RS256, EdDSA.
 func SignJWT(priv crypto.Signer, alg, signingInput string) ([]byte, error) {
 	return signProof(priv, alg, signingInput)
+}
+
+// ClientAssertionTypeJWTBearer is the client_assertion_type of a private_key_jwt client assertion.
+const ClientAssertionTypeJWTBearer = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+
+// ClientAssertionOptions configures the JWT built by CreateClientAssertion.
+type ClientAssertionOptions struct {
+	Sub       string
+	Aud       any // string or []string for testing array aud rejection
+	JTI       string
+	OmitJTI   bool
+	Exp       int64
+	OmitExp   bool
+	IAT       int64
+	Kid       string
+	Alg       string
+	Key       crypto.Signer
+	TamperSig bool
+}
+
+// CreateClientAssertion builds and signs a private_key_jwt client assertion JWT from opts. The issuer
+// is the subject, a missing exp is five minutes from now, and a missing jti is random.
+func CreateClientAssertion(opts ClientAssertionOptions) string {
+	header := map[string]any{
+		"alg": opts.Alg,
+		"kid": opts.Kid,
+		"typ": "JWT",
+	}
+
+	now := time.Now().Unix()
+	exp := opts.Exp
+	if exp == 0 {
+		exp = now + 300
+	}
+	iat := opts.IAT
+	if iat == 0 {
+		iat = now
+	}
+
+	payload := map[string]any{
+		"sub": opts.Sub,
+		"aud": opts.Aud,
+		"iss": opts.Sub,
+		"iat": iat,
+	}
+	if !opts.OmitExp {
+		payload["exp"] = exp
+	}
+	if !opts.OmitJTI {
+		jti := opts.JTI
+		if jti == "" {
+			jti = randomJTI()
+		}
+		payload["jti"] = jti
+	}
+
+	headerJSON, err := json.Marshal(header)
+	if err != nil {
+		panic(err)
+	}
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		panic(err)
+	}
+	signingInput := base64.RawURLEncoding.EncodeToString(headerJSON) + "." +
+		base64.RawURLEncoding.EncodeToString(payloadJSON)
+
+	sig, err := SignJWT(opts.Key, opts.Alg, signingInput)
+	if err != nil {
+		panic(err)
+	}
+	if opts.TamperSig && len(sig) > 0 {
+		sig[len(sig)-1] ^= 0x01
+	}
+
+	return signingInput + "." + base64.RawURLEncoding.EncodeToString(sig)
 }

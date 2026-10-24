@@ -82,6 +82,10 @@ Content-Type: application/json
 </TabItem>
 </Tabs>
 
+:::note
+A client registered from a [Client ID Metadata Document](../../../mcp/mcp-clients/client-id-metadata-document) can use token exchange only to request [identity assertions (ID-JAG)](../identity-assertion-grant/issue-identity-assertions). <ProductName /> refuses any other exchange from such a client with `unauthorized_client`.
+:::
+
 ### Exchange a Token
 
 ```bash

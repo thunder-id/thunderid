@@ -1,7 +1,7 @@
 # CIMD Client Registration Specification
 
 - **Status:** Draft
-- **Version:** 0.1
+- **Version:** 0.2
 - **Related documents:** [MCP authorization specification 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization), [OAuth Client ID Metadata Document](https://datatracker.ietf.org/doc/draft-ietf-oauth-client-id-metadata-document/)
 
 ## Summary
@@ -10,7 +10,7 @@ Clients such as Claude, Claude Code, VS Code and ChatGPT identify themselves wit
 
 ThunderID treats CIMD as a way to register an ordinary application. An administrator enters the Client Identifier URL, reviews what the document declares, and confirms. ThunderID stores an application whose `client_id` is that URL, with the redirect URIs, authentication method and key source taken from the document. From then on the client signs in as any other application does. Registration is offered in two places: a CIMD template for any client, and an option inside the MCP Client template. For agents, CIMD registration will come with agent templates, reusing the same preview and document rules.
 
-ThunderID retrieves a document only when an administrator previews one. Creating or updating the application takes the values the administrator reviewed, so what is approved is exactly what is stored. Public clients (`none`) and confidential clients (`private_key_jwt`, handled as DCR handles them) are supported. Redirect URIs match exactly, as for any application. Out of scope are clients that authenticate with a secret, an enterprise's own clients, which it registers as normal applications, and native clients that rely on an ephemeral loopback port, such as Claude Code. Open registration, where ThunderID registers an unregistered CIMD client the first time it authorizes so that a public MCP server can accept any client, is future work.
+ThunderID retrieves a document only when an administrator previews one. Creating or updating the application takes the values the administrator reviewed, so what is approved is exactly what is stored. Public clients (`none`) and confidential clients (`private_key_jwt`, handled as DCR handles them) are supported. A confidential client can also use ID-JAG once an administrator adds the grants: it can request identity assertions with the token exchange grant and redeem them with the JWT bearer grant. Redirect URIs match exactly, as for any application. Out of scope are clients that authenticate with a secret, an enterprise's own clients, which it registers as normal applications, and native clients that rely on an ephemeral loopback port, such as Claude Code. Open registration, where ThunderID registers an unregistered CIMD client the first time it authorizes so that a public MCP server can accept any client, is future work.
 
 ## Architecture
 
@@ -39,7 +39,7 @@ flowchart LR
 - **Known client** registration, offered by the MCP Client template, runs preview and create in one action. Choosing a listed client is the administrator's approval: the Console previews its document and creates the application with the returned values, named from the document, with no further steps. The application page then shows the stored values.
 - **Re-fetch** is a preview of the application's URL followed by an application update with the reviewed values. The Console shows what would change before the administrator applies it, and copies the presentation fields only on request.
 - There is no single operation that creates an application from a URL alone. API callers preview, then create with the returned values, as the Console does.
-- The CIMD marker and `client_id` are fixed at creation. Everything else is edited as for any application.
+- The CIMD marker and `client_id` are fixed at creation. Everything else is edited as for any application, within the document rules.
 - Declarative resources carry the stored values, so loading them retrieves nothing.
 
 Create and update check the submitted values, not the live document. ThunderID therefore guarantees that a CIMD application's values satisfy the document rules and were supplied by an administrator, not that they match what the publisher serves at that moment.
@@ -74,12 +74,12 @@ The MCP Client template lists the known MCP clients above and shows them as tile
 | `redirect_uris` | `oauth2.redirectUris` | Copied. See the document rules |
 | `token_endpoint_auth_method` | `oauth2.tokenEndpointAuthMethod`, `oauth2.publicClient` | `none` is public, `private_key_jwt` is confidential |
 | `jwks_uri` or `jwks` | `oauth2.certificate` (`JWKS_URI` or `JWKS`) | `private_key_jwt` only, stored as DCR stores it |
-| `grant_types` | `oauth2.grantTypes` | Narrowed, never widened: the document's grants intersected with `authorization_code` and `refresh_token`. Absent means `authorization_code` |
+| `grant_types` | `oauth2.grantTypes` | Narrowed, never widened: the document's `authorization_code` and `refresh_token`, among the grants `oauth.allowed_grant_types` allows. Absent means `authorization_code` |
 | `response_types` | `oauth2.responseTypes` | Always `code` |
 | `client_name`, `client_uri`, `tos_uri`, `policy_uri`, `contacts` | `name`, `url`, `tosUri`, `policyUri`, `contacts` | Editable defaults. The name falls back to the URL's host |
 | `logo_uri`, scopes, token settings, other fields | None | Ignored |
 
-ThunderID also sets `pkceRequired: true` and the `clientIdMetadataDocument` marker. Client secrets are never permitted. Scopes, the login flow, allowed user types and token settings are set by the administrator, as for any application.
+ThunderID also sets `pkceRequired: true` and the `clientIdMetadataDocument` marker. Client secrets are never permitted. Scopes, the login flow, allowed user types and token settings are set by the administrator, as for any application. For a confidential client, the administrator can also add the token exchange and JWT bearer grants to use ID-JAG. Preview never returns them, even when the document declares them, so registering a listed client never grants them. Token exchange serves a CIMD client only for ID-JAG requests: the token endpoint refuses any other exchange with `unauthorized_client`, and a CIMD client holds the grant only while identity assertions (`token.idJag.enabled`) are on.
 
 ### Document rules
 
@@ -88,8 +88,8 @@ These rules apply to a document at preview, and to the submitted values when a C
 - its `client_id` equals the URL it was retrieved from;
 - it lists at least one redirect URI, and each is either `https` on the same origin as the Client Identifier URL, or `http` on `localhost`, `127.0.0.1` or `[::1]`;
 - `token_endpoint_auth_method` is `none`, or is `private_key_jwt` with exactly one of `jwks_uri` or `jwks`. An absent method means `client_secret_basic`, as in RFC 7591, and is rejected;
-- it declares no `client_secret`;
-- its grants include `authorization_code`, and the values stored hold no grant other than `authorization_code` and `refresh_token`.
+- it declares no `client_secret`, and an inline `jwks` is a JSON key set of public keys, with no private or symmetric key members such as `d` or `k`;
+- its grants include `authorization_code`, and the values stored hold no grant other than `authorization_code` and `refresh_token`, plus `urn:ietf:params:oauth:grant-type:token-exchange` and `urn:ietf:params:oauth:grant-type:jwt-bearer` for a `private_key_jwt` client. These two grants need a client that proves its identity, so a public client cannot hold them. The token exchange grant also needs identity assertions turned on, because it serves a CIMD client only for ID-JAG requests. Because `authorization_code` is required, a client that only redeems ID-JAGs, with the JWT bearer grant and no `authorization_code`, is rejected.
 
 The Client Identifier URL must be an `https` URL with a DNS host and a path, with no user information, fragment or dot segments, and at most 2048 bytes. A `client_id` in an OAuth request must match the registered value byte for byte.
 
@@ -111,7 +111,7 @@ The MCP authorization specification says an authorization server SHOULD fetch th
 
 ### API
 
-The application API's `oauth2` configuration gains `clientIdMetadataDocument`. When it is `true`, `clientId` must be a Client Identifier URL, the other values are those returned by preview, and they must satisfy the document rules. `clientSecret` must be omitted.
+The application API's `oauth2` configuration gains `clientIdMetadataDocument`. When it is `true`, `clientId` must be a Client Identifier URL, the other values are those returned by preview, and they must satisfy the document rules. `clientSecret` must be omitted. Within the document rules, a `private_key_jwt` client may also hold the token exchange and JWT bearer grants, which an administrator adds and preview never returns.
 
 ```json
 {
@@ -164,11 +164,11 @@ A rejected document shows the rule it broke, next to the URL.
 
 ![MCP Client identity step](assets/cimd-mcp-client-identity.png)
 
-**Application details.** The values taken from the document are read-only: a Metadata document tab for the standalone template, and the Connect tab for an MCP client. The Credentials tab and the redirect URI editor are hidden.
+**Application details.** The values taken from the document are read-only: a Metadata document tab for the standalone template, and the Connect tab for an MCP client. The Credentials tab and the redirect URI editor are hidden. On the Advanced tab, the authentication method, Public client and PKCE come from the document and cannot be changed. The grant picker offers only the grants the document rules permit: authorization code, which cannot be removed, refresh token, JWT bearer, and token exchange, which follows the identity assertions (ID-JAG) toggle. For a public client, token exchange, JWT bearer and the ID-JAG toggle are disabled with the reason.
 
 ![Metadata document tab](assets/cimd-application-document-tab.png)
 
-**Re-fetch.** Re-fetching previews the application's URL and shows which redirect URIs would be added or removed, and any change to the authentication method. Applying the change updates the application with the values shown.
+**Re-fetch.** Re-fetching previews the application's URL and shows which redirect URIs and grants would be added or removed, and any change to the authentication method. Applying the change updates the values the document owns: the redirect URIs, the authentication method and its keys, PKCE, and the authorization code and refresh token grants it declares. The other grants the application already holds stay while the document rules still permit them for the document's authentication method. When the document no longer declares `private_key_jwt`, token exchange and JWT bearer are removed, and identity assertions are turned off with a warning. Every other setting stays as configured.
 
 ![Re-fetch dialog](assets/cimd-refetch-changes.png)
 
@@ -202,13 +202,15 @@ When CIMD is enabled, discovery publishes `client_id_metadata_document_supported
 - **AC1.1:** Given a URL that serves a valid document, when an administrator previews it, then ThunderID returns the values to store and stores nothing.
 - **AC1.2:** Given the preview of a valid `none` document, when an administrator creates a client with the returned values from the CIMD template, then ThunderID stores a public `custom` application with those values; and from the MCP Client template, a public `mcp` application.
 - **AC1.3:** Given the preview of a valid `private_key_jwt` document with a `jwks_uri`, when an administrator creates a CIMD application with the returned values, then ThunderID stores a confidential application with a JWKS URI certificate.
-- **AC1.4:** Given a document that declares `authorization_code`, `refresh_token` and `urn:ietf:params:oauth:grant-type:device_code`, when an administrator previews it, then the returned grants are `authorization_code` and `refresh_token`.
+- **AC1.4:** Given a `none` or `private_key_jwt` document that declares `authorization_code`, `refresh_token`, `urn:ietf:params:oauth:grant-type:token-exchange`, `urn:ietf:params:oauth:grant-type:jwt-bearer` and `urn:ietf:params:oauth:grant-type:device_code`, when an administrator previews it, then the returned grants are `authorization_code` and `refresh_token`. A grant that `oauth.allowed_grant_types` does not allow is never returned, and when it does not allow `authorization_code`, preview rejects the document with the grant rule.
 - **AC1.5:** Given a document that breaks a document rule or cannot be retrieved, when an administrator previews it, then ThunderID rejects it with the rule that failed.
 - **AC1.6:** Given a create or update of a CIMD application whose submitted values break a document rule, when it is submitted, then ThunderID rejects it with `400` and stores nothing.
 - **AC1.7:** Given a publisher that serves a different document after the preview, when the administrator creates or updates the application with the reviewed values, then ThunderID stores the reviewed values and retrieves nothing.
-- **AC1.8:** Given a changed document, when an administrator re-fetches and applies the change, then the application takes the redirect URIs, authentication method, grants and key source shown in the preview.
+- **AC1.8:** Given a changed document, when an administrator re-fetches and applies the change, then the application takes the redirect URIs, authentication method, key source and grants shown in the preview, keeps the other grants it holds while the document rules still permit them, and keeps every setting the document does not own; and given a document that no longer declares `private_key_jwt`, then token exchange and JWT bearer are removed and identity assertions are turned off.
 - **AC1.9:** Given CIMD is disabled, when an administrator previews, or creates or updates a CIMD application, then ThunderID rejects it without retrieving a document.
 - **AC1.10:** Given the MCP Client template lists a client in `metadataDocumentClients`, when an administrator chooses it, then ThunderID previews its document and creates the application with the returned values and the document's name, with no further steps; given its document fails validation, then the failure is shown and nothing is created; and given a template that lists none, no known clients are shown.
+- **AC1.11:** Given a create or update of a `private_key_jwt` CIMD application, when its grants add the token exchange or JWT bearer grant to `authorization_code`, then ThunderID stores them; and given a `none` CIMD application with either grant, any CIMD application with `client_credentials` or CIBA, or one with the token exchange grant while identity assertions are off, then ThunderID rejects it with `400`.
+- **AC1.12:** Given a document or submitted values whose inline `jwks` is not a JSON key set, or holds a private or symmetric key, when it is previewed, created or updated, then ThunderID rejects it with `CIMD-1014`.
 
 ### R2. Authorize a registered CIMD client
 
@@ -230,6 +232,7 @@ When CIMD is enabled, discovery publishes `client_id_metadata_document_supported
 - **AC3.1:** Given a confidential CIMD application, when a token request carries a valid client assertion signed with a key from its JWKS URI, then ThunderID authenticates it; and without a valid assertion, ThunderID rejects it.
 - **AC3.2:** Given a public CIMD application and the default refresh token settings, when a refresh token is used, then ThunderID issues a new one and revokes the presented one.
 - **AC3.3:** Given a CIMD application is deleted or CIMD is disabled, when a refresh token is presented, then ThunderID rejects it.
+- **AC3.4:** Given a `private_key_jwt` CIMD application with ID-JAG enabled and the token exchange and JWT bearer grants, when it signs a user in, requests an ID-JAG and redeems one, authenticating each token request with a client assertion, then ThunderID issues the ID-JAG with the Client Identifier URL as its `client_id`, and redeems it for an access token; and given the same application requests any other token exchange, then ThunderID refuses it with `unauthorized_client`.
 
 ### R4. Restrict retrieval
 
@@ -244,3 +247,4 @@ When CIMD is enabled, discovery publishes `client_id_metadata_document_supported
 | Version | Date | Change |
 |---|---|---|
 | 0.1 | 2026-09-28 | Initial specification. |
+| 0.2 | 2026-10-22 | Confidential clients can hold the token exchange and JWT bearer grants an administrator adds for ID-JAG, token exchange serves them only for ID-JAG requests, inline key sets must hold only public keys, preview drops grants the deployment does not allow, and the Console offers only the grants the document rules permit and keeps them on re-fetch (#5918). |
