@@ -322,14 +322,19 @@ func (ts *UserSharingAPITestSuite) TestSharingPolicyRefusals() {
 	ts.expectError(status, raw, http.StatusNotFound, "USR-1030")
 }
 
+// TestResharingBelongsToTheIssuingUnit verifies a reshare is recorded as the issuing unit's
+// decision, beneath the share it extends. On this server an administrator holding system:user acts
+// for every organization unit in the deployment, so the request names the issuing unit, not the
+// caller's own unit.
 func (ts *UserSharingAPITestSuite) TestResharingBelongsToTheIssuingUnit() {
 	parentPolicy := ts.share(ts.parentClient, ts.sharedUserID, namedChild(ts.childOUID, "unit"))
 	defer ts.do(ts.rootClient, http.MethodDelete, policyPath(ts.sharedUserID, parentPolicy.ID), nil)
 	path := "/users/" + ts.sharedUserID + "/sharing-policies"
 
-	// The child holds the user but cannot speak for the owner.
+	// A request naming no issuing unit speaks for the owner, whose policy already exists, whichever
+	// unit's administrator sends it.
 	status, raw := ts.do(ts.childClient, http.MethodPost, path, namedChild(ts.grandchildOUID, "unit"))
-	ts.expectError(status, raw, http.StatusForbidden, "SSE-4030")
+	ts.expectError(status, raw, http.StatusConflict, "USR-1031")
 
 	reshareBody := namedChild(ts.grandchildOUID, "unit")
 	reshareBody["initiatingOuId"] = ts.childOUID
@@ -340,29 +345,14 @@ func (ts *UserSharingAPITestSuite) TestResharingBelongsToTheIssuingUnit() {
 	status, raw = ts.do(ts.rootClient, http.MethodGet, overlayPath(ts.sharedUserID, ts.grandchildOUID), nil)
 	ts.Require().Equal(http.StatusOK, status, string(raw))
 
-	// Neither unit can change the other's decision.
-	edit := namedChild(ts.childOUID, "subtree")
-	edit["version"] = parentPolicy.Version
-	status, raw = ts.do(ts.childClient, http.MethodPut, policyPath(ts.sharedUserID, parentPolicy.ID), edit)
-	ts.expectError(status, raw, http.StatusForbidden, "SSE-4030")
-	status, raw = ts.do(ts.childClient, http.MethodDelete, policyPath(ts.sharedUserID, parentPolicy.ID), nil)
-	ts.expectError(status, raw, http.StatusForbidden, "SSE-4030")
-	status, raw = ts.do(ts.parentClient, http.MethodDelete, policyPath(ts.sharedUserID, reshare.ID), nil)
-	ts.expectError(status, raw, http.StatusForbidden, "SSE-4030")
-
-	// The owner lists every decision about its user; the child lists its own.
-	status, raw = ts.do(ts.parentClient, http.MethodGet, path, nil)
-	ts.Require().Equal(http.StatusOK, status, string(raw))
-	var parentList sharingPolicyList
-	ts.Require().NoError(json.Unmarshal(raw, &parentList))
-	ts.Equal(2, parentList.TotalResults)
-
-	status, raw = ts.do(ts.childClient, http.MethodGet, path, nil)
-	ts.Require().Equal(http.StatusOK, status, string(raw))
-	var childList sharingPolicyList
-	ts.Require().NoError(json.Unmarshal(raw, &childList))
-	ts.Require().Equal(1, childList.TotalResults)
-	ts.Equal(reshare.ID, childList.Policies[0].ID)
+	// Every administrator in the deployment lists every decision about the user.
+	for _, client := range []*http.Client{ts.parentClient, ts.childClient} {
+		status, raw = ts.do(client, http.MethodGet, path, nil)
+		ts.Require().Equal(http.StatusOK, status, string(raw))
+		var list sharingPolicyList
+		ts.Require().NoError(json.Unmarshal(raw, &list))
+		ts.Equal(2, list.TotalResults)
+	}
 
 	// Taking the share away takes the reshare beneath it.
 	status, _ = ts.do(ts.parentClient, http.MethodDelete, policyPath(ts.sharedUserID, parentPolicy.ID), nil)

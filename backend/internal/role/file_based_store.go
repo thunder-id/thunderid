@@ -437,7 +437,7 @@ func (f *fileBasedStore) CheckRoleNameExistsExcludingID(
 // GetAllPermissionsForAssignees returns every permission granted to the entity and/or groups by
 // declarative roles assigned to them, grouped by resource server.
 func (f *fileBasedStore) GetAllPermissionsForAssignees(
-	ctx context.Context, entityID string, groupIDs []string,
+	ctx context.Context, entityID string, groupIDs []string, ouID string,
 ) ([]ResourcePermissions, error) {
 	if entityID == "" && len(groupIDs) == 0 {
 		return []ResourcePermissions{}, nil
@@ -466,6 +466,9 @@ func (f *fileBasedStore) GetAllPermissionsForAssignees(
 			return nil, fmt.Errorf("declarative role %q could not be parsed while enumerating "+
 				"permissions: %w", item.ID.ID, err)
 		}
+		if ouID != "" && roleData.OUID != ouID {
+			continue
+		}
 		if !matchesAssignee(roleData.Assignments, entityID, groupSet) {
 			continue
 		}
@@ -486,6 +489,7 @@ func (f *fileBasedStore) GetAuthorizedPermissionsByResourceServer(
 	groupIDs, roleIDs []string,
 	resourceServerID string,
 	requestPermissions []string,
+	ouID string,
 ) ([]string, error) {
 	if len(requestPermissions) == 0 {
 		return []string{}, nil
@@ -522,6 +526,9 @@ func (f *fileBasedStore) GetAuthorizedPermissionsByResourceServer(
 			log.GetLogger().Warn(ctx, "Skipping malformed role in GetAuthorizedPermissions",
 				log.String("roleID", item.ID.ID),
 				log.Error(err))
+			continue
+		}
+		if ouID != "" && roleData.OUID != ouID {
 			continue
 		}
 		// A role named directly in roleIDs counts even with no matching assignment, the same way

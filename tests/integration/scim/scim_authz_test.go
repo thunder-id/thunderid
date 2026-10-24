@@ -6,8 +6,10 @@ package scim
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -15,10 +17,13 @@ import (
 )
 
 // SCIMAuthzTestSuite validates that the SCIM Users and Groups endpoints
-// enforce the same OU-scoped authz as the plain management API
+// enforce the same deployment-bounded authz as the plain management API
 // (tests/integration/user's UserAuthzTestSuite), since backend/internal/scim
-// delegates every mutation to internal/user and internal/group, which own
-// the actual OU boundary check.
+// delegates every operation to internal/user and internal/group, which own
+// the actual authz check. A granted scope applies to every OU in the
+// deployment: the caller's own OU does not limit which OU it can act on, and
+// list endpoints return resources from every OU. Scopes still limit what the
+// caller may do. The OU-bounded variant lives in SCIMAuthzDPTestSuite.
 //
 // The product ships only the root "system" scope by default. This suite creates a custom
 // resource server (mirroring backend/internal/system/security/permissions.go's naming) that
@@ -34,15 +39,18 @@ import (
 // Fixture topology:
 //
 //	OU1 (handle: scim-authz-ou1) ← scim-manager and its own users/groups live here
-//	OU2 (handle: scim-authz-ou2) ← sibling OU with its own user/group, out of reach
+//	OU2 (handle: scim-authz-ou2) ← sibling OU with its own user/group, still in reach
 //
 // One asymmetry worth calling out: SCIM Users are OU-bound through the
 // usertype's own schema (a create payload names the extension schema, which
 // carries its OU), so "create in another OU" is reachable by targeting OU2's
-// extension URN. SCIM Groups carry no OU field on the wire at all — Group
-// creation always lands in the caller's own OU (security.GetOUID(ctx)), so
+// extension URN. SCIM Groups carry no OU field on the wire at all, so Group
+// creation always lands in the caller's own OU (security.GetOUID(ctx)) and
 // there is no create-in-another-OU case to test; only read/replace/patch/delete
-// against a group that already exists in a foreign OU can be denied.
+// against a group that already exists in another OU apply.
+//
+// Writes against OU2 use a dedicated user or group created inside the test, so
+// the shared OU2 fixtures stay intact for the other tests.
 type SCIMAuthzTestSuite struct {
 	suite.Suite
 
@@ -69,7 +77,7 @@ type SCIMAuthzTestSuite struct {
 	targetGroupOU2ID    string
 
 	// scopedClient carries the scim-manager's system:user/system:group scoped
-	// token, restricted to OU1.
+	// token, issued to a user in OU1.
 	scopedClient *http.Client
 }
 
@@ -325,6 +333,47 @@ func (ts *SCIMAuthzTestSuite) doSCIM(method, path string, body []byte) (int, []b
 	return resp.StatusCode, respBody
 }
 
+// listUserIDsByEmail lists users matching the given email via the scoped client.
+func (ts *SCIMAuthzTestSuite) listUserIDsByEmail(email string) []string {
+	ts.T().Helper()
+
+	filter := url.QueryEscape(`emails.value eq "` + email + `"`)
+	status, body := ts.doSCIM(http.MethodGet, "/Users?filter="+filter, nil)
+	ts.Require().Equal(http.StatusOK, status, "list users should succeed: %s", body)
+
+	var list scimUserListResponse
+	ts.Require().NoError(json.Unmarshal(body, &list))
+
+	ids := make([]string, 0, len(list.Resources))
+	for _, u := range list.Resources {
+		ids = append(ids, u.ID)
+	}
+	return ids
+}
+
+// listAllGroupIDs pages through every group visible to the scoped client.
+// Groups reject the filter parameter, so the full list is collected instead.
+func (ts *SCIMAuthzTestSuite) listAllGroupIDs() []string {
+	ts.T().Helper()
+
+	ids := make([]string, 0)
+	for startIndex := 1; ; {
+		status, body := ts.doSCIM(http.MethodGet,
+			fmt.Sprintf("/Groups?startIndex=%d&count=100", startIndex), nil)
+		ts.Require().Equal(http.StatusOK, status, "list groups should succeed: %s", body)
+
+		var list scimGroupListResponse
+		ts.Require().NoError(json.Unmarshal(body, &list))
+		for _, g := range list.Resources {
+			ids = append(ids, g.ID)
+		}
+		startIndex += len(list.Resources)
+		if len(list.Resources) == 0 || startIndex > list.TotalResults {
+			return ids
+		}
+	}
+}
+
 // buildUserPayload handles build user payload.
 func (ts *SCIMAuthzTestSuite) buildUserPayload(extensionURN, email string) []byte {
 	payload := map[string]interface{}{
@@ -340,20 +389,12 @@ func (ts *SCIMAuthzTestSuite) buildUserPayload(extensionURN, email string) []byt
 // Tests — SCIM Users, READ (system:user:view)
 // ---------------------------------------------------------------------------
 
-// TestListUsersOnlyReturnsOwnOU verifies listing users only returns users from the caller's own OU.
-func (ts *SCIMAuthzTestSuite) TestListUsersOnlyReturnsOwnOU() {
-	status, body := ts.doSCIM(http.MethodGet, "/Users", nil)
-	ts.Require().Equal(http.StatusOK, status, "list users should succeed: %s", body)
-
-	var list scimUserListResponse
-	ts.Require().NoError(json.Unmarshal(body, &list))
-
-	ids := make([]string, 0, len(list.Resources))
-	for _, u := range list.Resources {
-		ids = append(ids, u.ID)
-	}
-	ts.Contains(ids, ts.targetUserOU1ID, "list must include the target user in OU1")
-	ts.NotContains(ids, ts.targetUserOU2ID, "list must NOT include the sibling OU2 user")
+// TestListUsersReturnsAllOUs verifies listing users returns users from every OU.
+func (ts *SCIMAuthzTestSuite) TestListUsersReturnsAllOUs() {
+	ts.Contains(ts.listUserIDsByEmail("scim-authz-target-ou1@example.com"), ts.targetUserOU1ID,
+		"list must include the target user in OU1")
+	ts.Contains(ts.listUserIDsByEmail("scim-authz-target-ou2@example.com"), ts.targetUserOU2ID,
+		"list must include the sibling OU2 user")
 }
 
 // TestGetUserInOwnOUAllowed verifies the caller can read a user in their own OU.
@@ -362,10 +403,10 @@ func (ts *SCIMAuthzTestSuite) TestGetUserInOwnOUAllowed() {
 	ts.Equal(http.StatusOK, status, "scim-manager should read a user in its own OU: %s", body)
 }
 
-// TestGetUserInOtherOUForbidden verifies the caller is denied reading a user in another OU.
-func (ts *SCIMAuthzTestSuite) TestGetUserInOtherOUForbidden() {
-	status, _ := ts.doSCIM(http.MethodGet, "/Users/"+ts.targetUserOU2ID, nil)
-	ts.Equal(http.StatusForbidden, status, "scim-manager must be denied a user in a different OU")
+// TestGetUserInOtherOUAllowed verifies the caller can read a user in another OU.
+func (ts *SCIMAuthzTestSuite) TestGetUserInOtherOUAllowed() {
+	status, body := ts.doSCIM(http.MethodGet, "/Users/"+ts.targetUserOU2ID, nil)
+	ts.Equal(http.StatusOK, status, "scim-manager should read a user in a different OU: %s", body)
 }
 
 // ---------------------------------------------------------------------------
@@ -386,11 +427,19 @@ func (ts *SCIMAuthzTestSuite) TestCreateUserInOwnOUAllowed() {
 	}
 }
 
-// TestCreateUserInOtherOUForbidden verifies the caller is denied creating a user in another OU.
-func (ts *SCIMAuthzTestSuite) TestCreateUserInOtherOUForbidden() {
+// TestCreateUserInOtherOUAllowed verifies the caller can create a user in another OU.
+func (ts *SCIMAuthzTestSuite) TestCreateUserInOtherOUAllowed() {
 	body := ts.buildUserPayload(ts.extensionURNOU2, "scim-authz-created-ou2@example.com")
-	status, _ := ts.doSCIM(http.MethodPost, "/Users", body)
-	ts.Equal(http.StatusForbidden, status, "scim-manager must not create a user in a different OU")
+	status, respBody := ts.doSCIM(http.MethodPost, "/Users", body)
+	ts.Require().Equal(http.StatusCreated, status,
+		"scim-manager should create a user in a different OU: %s", respBody)
+
+	var created map[string]interface{}
+	if err := json.Unmarshal(respBody, &created); err == nil {
+		if id, _ := created["id"].(string); id != "" {
+			_ = testutils.DeleteUser(id)
+		}
+	}
 }
 
 // TestReplaceUserInOwnOUAllowed verifies the caller can replace a user in their own OU.
@@ -400,11 +449,19 @@ func (ts *SCIMAuthzTestSuite) TestReplaceUserInOwnOUAllowed() {
 	ts.Equal(http.StatusOK, status, "scim-manager should replace a user in its own OU: %s", respBody)
 }
 
-// TestReplaceUserInOtherOUForbidden verifies the caller is denied replacing a user in another OU.
-func (ts *SCIMAuthzTestSuite) TestReplaceUserInOtherOUForbidden() {
-	body := ts.buildUserPayload(ts.extensionURNOU2, "scim-authz-target-ou2@example.com")
-	status, _ := ts.doSCIM(http.MethodPut, "/Users/"+ts.targetUserOU2ID, body)
-	ts.Equal(http.StatusForbidden, status, "scim-manager must not replace a user in a different OU")
+// TestReplaceUserInOtherOUAllowed verifies the caller can replace a user in another OU.
+func (ts *SCIMAuthzTestSuite) TestReplaceUserInOtherOUAllowed() {
+	id, err := testutils.CreateUser(testutils.User{
+		Type:       ts.entityTypeOU2Name,
+		OUID:       ts.ou2ID,
+		Attributes: json.RawMessage(`{"email": "scim-authz-replace-ou2@example.com"}`),
+	})
+	ts.Require().NoError(err, "create replaceable user in OU2")
+	defer func() { _ = testutils.DeleteUser(id) }()
+
+	body := ts.buildUserPayload(ts.extensionURNOU2, "scim-authz-replaced-ou2@example.com")
+	status, respBody := ts.doSCIM(http.MethodPut, "/Users/"+id, body)
+	ts.Equal(http.StatusOK, status, "scim-manager should replace a user in a different OU: %s", respBody)
 }
 
 // TestDeleteUserInOwnOUAllowed verifies the caller can delete a user in their own OU.
@@ -414,30 +471,31 @@ func (ts *SCIMAuthzTestSuite) TestDeleteUserInOwnOUAllowed() {
 	ts.deletableUserOU1ID = ""
 }
 
-// TestDeleteUserInOtherOUForbidden verifies the caller is denied deleting a user in another OU.
-func (ts *SCIMAuthzTestSuite) TestDeleteUserInOtherOUForbidden() {
-	status, _ := ts.doSCIM(http.MethodDelete, "/Users/"+ts.targetUserOU2ID, nil)
-	ts.Equal(http.StatusForbidden, status, "scim-manager must not delete a user in a different OU")
+// TestDeleteUserInOtherOUAllowed verifies the caller can delete a user in another OU.
+func (ts *SCIMAuthzTestSuite) TestDeleteUserInOtherOUAllowed() {
+	id, err := testutils.CreateUser(testutils.User{
+		Type:       ts.entityTypeOU2Name,
+		OUID:       ts.ou2ID,
+		Attributes: json.RawMessage(`{"email": "scim-authz-deletable-ou2@example.com"}`),
+	})
+	ts.Require().NoError(err, "create deletable user in OU2")
+
+	status, body := ts.doSCIM(http.MethodDelete, "/Users/"+id, nil)
+	if status != http.StatusNoContent {
+		_ = testutils.DeleteUser(id)
+	}
+	ts.Equal(http.StatusNoContent, status, "scim-manager should delete a user in a different OU: %s", body)
 }
 
 // ---------------------------------------------------------------------------
 // Tests — SCIM Groups, READ (system:group:view)
 // ---------------------------------------------------------------------------
 
-// TestListGroupsOnlyReturnsOwnOU verifies listing groups only returns groups from the caller's own OU.
-func (ts *SCIMAuthzTestSuite) TestListGroupsOnlyReturnsOwnOU() {
-	status, body := ts.doSCIM(http.MethodGet, "/Groups", nil)
-	ts.Require().Equal(http.StatusOK, status, "list groups should succeed: %s", body)
-
-	var list scimGroupListResponse
-	ts.Require().NoError(json.Unmarshal(body, &list))
-
-	ids := make([]string, 0, len(list.Resources))
-	for _, g := range list.Resources {
-		ids = append(ids, g.ID)
-	}
+// TestListGroupsReturnsAllOUs verifies listing groups returns groups from every OU.
+func (ts *SCIMAuthzTestSuite) TestListGroupsReturnsAllOUs() {
+	ids := ts.listAllGroupIDs()
 	ts.Contains(ids, ts.targetGroupOU1ID, "list must include the target group in OU1")
-	ts.NotContains(ids, ts.targetGroupOU2ID, "list must NOT include the sibling OU2 group")
+	ts.Contains(ids, ts.targetGroupOU2ID, "list must include the sibling OU2 group")
 }
 
 // TestGetGroupInOwnOUAllowed verifies the caller can read a group in their own OU.
@@ -446,10 +504,10 @@ func (ts *SCIMAuthzTestSuite) TestGetGroupInOwnOUAllowed() {
 	ts.Equal(http.StatusOK, status, "scim-manager should read a group in its own OU: %s", body)
 }
 
-// TestGetGroupInOtherOUForbidden verifies the caller is denied reading a group in another OU.
-func (ts *SCIMAuthzTestSuite) TestGetGroupInOtherOUForbidden() {
-	status, _ := ts.doSCIM(http.MethodGet, "/Groups/"+ts.targetGroupOU2ID, nil)
-	ts.Equal(http.StatusForbidden, status, "scim-manager must be denied a group in a different OU")
+// TestGetGroupInOtherOUAllowed verifies the caller can read a group in another OU.
+func (ts *SCIMAuthzTestSuite) TestGetGroupInOtherOUAllowed() {
+	status, body := ts.doSCIM(http.MethodGet, "/Groups/"+ts.targetGroupOU2ID, nil)
+	ts.Equal(http.StatusOK, status, "scim-manager should read a group in a different OU: %s", body)
 }
 
 // ---------------------------------------------------------------------------
@@ -493,16 +551,23 @@ func (ts *SCIMAuthzTestSuite) TestReplaceGroupInOwnOUAllowed() {
 	ts.Equal(http.StatusOK, status, "scim-manager should replace a group in its own OU: %s", respBody)
 }
 
-// TestReplaceGroupInOtherOUForbidden verifies the caller is denied replacing a group in another OU.
-func (ts *SCIMAuthzTestSuite) TestReplaceGroupInOtherOUForbidden() {
+// TestReplaceGroupInOtherOUAllowed verifies the caller can replace a group in another OU.
+func (ts *SCIMAuthzTestSuite) TestReplaceGroupInOtherOUAllowed() {
+	id, err := testutils.CreateGroup(testutils.Group{
+		Name: "scim-authz-replace-group-ou2",
+		OUID: ts.ou2ID,
+	})
+	ts.Require().NoError(err, "create replaceable group in OU2")
+	defer func() { _ = testutils.DeleteGroup(id) }()
+
 	body, err := json.Marshal(map[string]interface{}{
 		"schemas":     []string{scimCoreGroupSchemaURN},
-		"displayName": "scim-authz-target-group-ou2",
+		"displayName": "scim-authz-replaced-group-ou2",
 	})
 	ts.Require().NoError(err)
 
-	status, _ := ts.doSCIM(http.MethodPut, "/Groups/"+ts.targetGroupOU2ID, body)
-	ts.Equal(http.StatusForbidden, status, "scim-manager must not replace a group in a different OU")
+	status, respBody := ts.doSCIM(http.MethodPut, "/Groups/"+id, body)
+	ts.Equal(http.StatusOK, status, "scim-manager should replace a group in a different OU: %s", respBody)
 }
 
 // TestPatchGroupInOwnOUAllowed verifies the caller can PATCH a group in their own OU.
@@ -521,20 +586,27 @@ func (ts *SCIMAuthzTestSuite) TestPatchGroupInOwnOUAllowed() {
 	ts.Equal(http.StatusOK, status, "scim-manager should patch a group in its own OU: %s", respBody)
 }
 
-// TestPatchGroupInOtherOUForbidden verifies the caller is denied patching a group in another OU.
-func (ts *SCIMAuthzTestSuite) TestPatchGroupInOtherOUForbidden() {
+// TestPatchGroupInOtherOUAllowed verifies the caller can PATCH a group in another OU.
+func (ts *SCIMAuthzTestSuite) TestPatchGroupInOtherOUAllowed() {
+	id, err := testutils.CreateGroup(testutils.Group{
+		Name: "scim-authz-patch-group-ou2",
+		OUID: ts.ou2ID,
+	})
+	ts.Require().NoError(err, "create patchable group in OU2")
+	defer func() { _ = testutils.DeleteGroup(id) }()
+
 	body, err := json.Marshal(scimPatchRequest{
 		Schemas: []string{scimPatchOpSchemaURN},
 		Operations: []scimPatchOp{{
 			Op:    "replace",
 			Path:  "displayName",
-			Value: "should-not-apply",
+			Value: "scim-authz-patch-group-ou2-renamed",
 		}},
 	})
 	ts.Require().NoError(err)
 
-	status, _ := ts.doSCIM(http.MethodPatch, "/Groups/"+ts.targetGroupOU2ID, body)
-	ts.Equal(http.StatusForbidden, status, "scim-manager must not patch a group in a different OU")
+	status, respBody := ts.doSCIM(http.MethodPatch, "/Groups/"+id, body)
+	ts.Equal(http.StatusOK, status, "scim-manager should patch a group in a different OU: %s", respBody)
 }
 
 // TestDeleteGroupInOwnOUAllowed verifies the caller can delete a group in their own OU.
@@ -544,8 +616,17 @@ func (ts *SCIMAuthzTestSuite) TestDeleteGroupInOwnOUAllowed() {
 	ts.deletableGroupOU1ID = ""
 }
 
-// TestDeleteGroupInOtherOUForbidden verifies the caller is denied deleting a group in another OU.
-func (ts *SCIMAuthzTestSuite) TestDeleteGroupInOtherOUForbidden() {
-	status, _ := ts.doSCIM(http.MethodDelete, "/Groups/"+ts.targetGroupOU2ID, nil)
-	ts.Equal(http.StatusForbidden, status, "scim-manager must not delete a group in a different OU")
+// TestDeleteGroupInOtherOUAllowed verifies the caller can delete a group in another OU.
+func (ts *SCIMAuthzTestSuite) TestDeleteGroupInOtherOUAllowed() {
+	id, err := testutils.CreateGroup(testutils.Group{
+		Name: "scim-authz-deletable-group-ou2",
+		OUID: ts.ou2ID,
+	})
+	ts.Require().NoError(err, "create deletable group in OU2")
+
+	status, body := ts.doSCIM(http.MethodDelete, "/Groups/"+id, nil)
+	if status != http.StatusNoContent {
+		_ = testutils.DeleteGroup(id)
+	}
+	ts.Equal(http.StatusNoContent, status, "scim-manager should delete a group in a different OU: %s", body)
 }

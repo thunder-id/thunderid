@@ -31,6 +31,8 @@ type SecurityContext struct {
 	establishedAt       time.Time
 	permissions         []string
 	attributes          map[string]interface{}
+	// isManagementAPIKeyCaller marks a caller authenticated by the management API key rather than a token.
+	isManagementAPIKeyCaller bool
 }
 
 // newSecurityContext creates a new immutable SecurityContext.
@@ -132,6 +134,13 @@ func GetAttribute(ctx context.Context, key string) interface{} {
 		// Immutable types (string, int, bool, etc.) are safe to return directly
 		return value
 	}
+}
+
+// IsManagementAPIKeyCaller reports whether the caller authenticated with the management API key.
+// Only the management API key authenticator sets this, so no token can claim it.
+func IsManagementAPIKeyCaller(ctx context.Context) bool {
+	authCtx := getSecurityContext(ctx)
+	return authCtx != nil && authCtx.isManagementAPIKeyCaller
 }
 
 // WithSecurityContext attaches sc to ctx, so GetSubject, GetOUID, GetPermissions, and GetAttribute

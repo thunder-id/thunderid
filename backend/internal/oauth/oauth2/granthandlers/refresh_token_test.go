@@ -2200,7 +2200,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_DropsScopesNoLon
 
 	suite.mockActorProvider.On("GetActorGroups", testRefreshTokenUserID).
 		Return([]providers.EntityGroup{}, nil)
-	mockEvaluateAccessBatch(suite.mockAuthzService, testRefreshTokenUserID, testRefreshTokenAudience,
+	mockEvaluateAccessBatch(suite.mockAuthzService, testRefreshTokenUserID, "", testRefreshTokenAudience,
 		[]string{"read", "write"}, []string{"read"})
 
 	var grantedScopes []string
@@ -2234,7 +2234,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RotatedRefreshTo
 
 	suite.mockActorProvider.On("GetActorGroups", testRefreshTokenUserID).
 		Return([]providers.EntityGroup{}, nil)
-	mockEvaluateAccessBatch(suite.mockAuthzService, testRefreshTokenUserID, testRefreshTokenAudience,
+	mockEvaluateAccessBatch(suite.mockAuthzService, testRefreshTokenUserID, "", testRefreshTokenAudience,
 		[]string{"read", "write"}, []string{"read"})
 
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
@@ -2305,7 +2305,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_OIDCScopesSurviv
 
 	suite.mockActorProvider.On("GetActorGroups", testRefreshTokenUserID).
 		Return([]providers.EntityGroup{}, nil)
-	mockEvaluateAccessBatch(suite.mockAuthzService, testRefreshTokenUserID, testRefreshTokenAudience,
+	mockEvaluateAccessBatch(suite.mockAuthzService, testRefreshTokenUserID, "", testRefreshTokenAudience,
 		[]string{"read"}, []string{})
 
 	var grantedScopes []string

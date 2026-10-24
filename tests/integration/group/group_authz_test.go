@@ -15,7 +15,8 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-// GroupAuthzTestSuite validates that group CRUD operations respect OU-scoped authz.
+// GroupAuthzTestSuite validates group CRUD authorization under the deployment boundary, where a
+// token's scope applies to every OU in the deployment.
 //
 // Permission model:
 //
@@ -25,11 +26,10 @@ import (
 // A user-manager living in OU1 holds the system:group permission. The suite
 // verifies that:
 //
-//   - Read operations on groups in OU1 are allowed (200)
-//   - Read operations on groups in OU2 (sibling) are denied (403)
-//   - Write operations on groups in OU1 are allowed (201/200/204)
-//   - Write operations on groups in OU2 are denied (403)
-//   - Listing groups only returns groups from the accessible OU
+//   - Read operations on groups in OU1 and in OU2 (sibling) are allowed (200)
+//   - Write operations on groups in OU1 and in OU2 are allowed (201/200/204)
+//   - Listing groups returns groups from every OU in the deployment
+//   - Adding a member to a group conferring permissions the caller lacks is denied (403)
 //
 // Fixture topology:
 //
@@ -64,16 +64,16 @@ type GroupAuthzTestSuite struct {
 	memberUserOU2ID   string
 	memberSchemaOU2ID string
 
-	// An OU holding no groups, plus a manager scoped to it, to verify a listing restricted to an
-	// empty scope returns nothing instead of falling back to an unrestricted list.
+	// An OU holding no groups, plus a manager living in it, to verify the manager's listing still
+	// spans the deployment.
 	emptyOUID        string
 	emptyOUSchemaID  string
 	emptyOUMgrUserID string
 	emptyOUMgrRoleID string
 	emptyOUMgrClient *http.Client
 
-	// A manager scoped to the declarative OU, used to verify that an OU-restricted listing reaches
-	// the file-based store and not only the database.
+	// A manager living in the declarative OU, used to verify that the listing reaches the file-based
+	// store and not only the database.
 	declOUSchemaID  string
 	declOUMgrUserID string
 	declOUMgrRoleID string
@@ -311,11 +311,11 @@ func (ts *GroupAuthzTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create librarian role")
 	ts.librarianRoleID = librarianRoleID
 
-	// ---- 9. Create an OU with no groups and a manager scoped to it ----
+	// ---- 9. Create an OU with no groups and a manager living in it ----
 	emptyOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
 		Handle:      emptyOUHandle,
 		Name:        "Group Authz Empty OU",
-		Description: "OU holding no groups, for empty-scope listing checks",
+		Description: "OU holding no groups, for listing checks",
 	})
 	ts.Require().NoError(err, "create empty OU")
 	ts.emptyOUID = emptyOUID
@@ -375,7 +375,7 @@ func (ts *GroupAuthzTestSuite) SetupSuite() {
 
 	ts.emptyOUMgrClient = testutils.GetHTTPClientWithToken(emptyMgrToken.AccessToken)
 
-	// ---- 10. Create a manager scoped to the declarative OU ----
+	// ---- 10. Create a manager living in the declarative OU ----
 	declSchemaID, err := testutils.CreateUserType(testutils.UserType{
 		Handle:      declOUSchemaName,
 		DisplayName: "Authz Decl Ou Schema",
@@ -560,29 +560,55 @@ func (ts *GroupAuthzTestSuite) doGroup(method, path string, body []byte) *http.R
 	return resp
 }
 
+// listGroupsPage fetches one page of GET /groups with the given client, requiring a 200.
+func (ts *GroupAuthzTestSuite) listGroupsPage(client *http.Client, limit, offset int) GroupListResponse {
+	ts.T().Helper()
+
+	req, err := http.NewRequest(http.MethodGet,
+		fmt.Sprintf("%s/groups?limit=%d&offset=%d", groupAuthzServerURL, limit, offset), nil)
+	ts.Require().NoError(err)
+
+	resp, err := client.Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, "list groups should succeed")
+
+	var listResp GroupListResponse
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
+	return listResp
+}
+
+// listAllGroupIDs pages through GET /groups with the given client and returns every group ID, so
+// assertions hold however many groups the deployment holds.
+func (ts *GroupAuthzTestSuite) listAllGroupIDs(client *http.Client) []string {
+	ts.T().Helper()
+
+	var ids []string
+	for offset := 0; ; {
+		page := ts.listGroupsPage(client, 100, offset)
+		for _, g := range page.Groups {
+			ids = append(ids, g.Id)
+		}
+		offset += page.Count
+		if page.Count == 0 || offset >= page.TotalResults {
+			return ids
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Tests — READ operations (system:group:view implied by system:group)
 // ---------------------------------------------------------------------------
 
-// TestListGroups verifies the list contains groups from the accessible OU only.
+// TestListGroups verifies the list contains groups from every OU in the deployment.
 func (ts *GroupAuthzTestSuite) TestListGroups() {
-	resp := ts.doGroup(http.MethodGet, "/groups", nil)
-	defer resp.Body.Close()
-
-	ts.Equal(http.StatusOK, resp.StatusCode, "list groups should succeed")
-
-	var listResp GroupListResponse
-	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
-
-	ids := make([]string, 0, len(listResp.Groups))
-	for _, g := range listResp.Groups {
-		ids = append(ids, g.Id) // Id (uppercase I lowercase d) based on the testutils structure.
-	}
+	ids := ts.listAllGroupIDs(ts.groupAdminClient)
 
 	ts.Containsf(ids, ts.targetGroupOU1ID,
 		"list must include target group in OU1, got IDs: %v", ids)
-	ts.NotContainsf(ids, ts.targetGroupOU2ID,
-		"list must NOT include target group in OU2 (sibling), got IDs: %v", ids)
+	ts.Containsf(ids, ts.targetGroupOU2ID,
+		"list must include target group in OU2 (sibling), got IDs: %v", ids)
 }
 
 // TestGetGroupInOwnOU verifies the group-manager can read a group in their own OU.
@@ -594,13 +620,17 @@ func (ts *GroupAuthzTestSuite) TestGetGroupInOwnOU() {
 		"group-manager should be able to read a group in their own OU")
 }
 
-// TestGetGroupInOtherOU verifies the group-manager is denied reading a group in OU2.
+// TestGetGroupInOtherOU verifies the group-manager can read a group in OU2.
 func (ts *GroupAuthzTestSuite) TestGetGroupInOtherOU() {
 	resp := ts.doGroup(http.MethodGet, "/groups/"+ts.targetGroupOU2ID, nil)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"group-manager must be denied access to a group in a different OU")
+	ts.Require().Equal(http.StatusOK, resp.StatusCode,
+		"group-manager should be able to read a group in a different OU")
+
+	var group Group
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&group))
+	ts.Equal(ts.groupOU2ID, group.OUID)
 }
 
 // ---------------------------------------------------------------------------
@@ -631,20 +661,31 @@ func (ts *GroupAuthzTestSuite) TestCreateGroupInOwnOU() {
 	}
 }
 
-// TestCreateGroupInOtherOU verifies the group-manager is denied creating a group in OU2.
+// TestCreateGroupInOtherOU verifies the group-manager can create a group in OU2.
 func (ts *GroupAuthzTestSuite) TestCreateGroupInOtherOU() {
 	payload, err := json.Marshal(map[string]interface{}{
 		"ouId":        ts.groupOU2ID,
-		"name":        "authz-denied-group",
-		"description": "Denied Group",
+		"name":        "authz-created-group-ou2",
+		"description": "Created Group in OU2",
 	})
 	ts.Require().NoError(err)
 
 	resp := ts.doGroup(http.MethodPost, "/groups", payload)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"group-manager must not create a group in a different OU")
+	ts.Equal(http.StatusCreated, resp.StatusCode,
+		"group-manager should be able to create a group in a different OU")
+
+	var created Group
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&created))
+	if created.Id != "" {
+		defer func() {
+			if delErr := testutils.DeleteGroup(created.Id); delErr != nil {
+				ts.T().Logf("cleanup: failed to delete created group %s: %v", created.Id, delErr)
+			}
+		}()
+	}
+	ts.Equal(ts.groupOU2ID, created.OUID, "the group must be created in OU2")
 }
 
 // TestUpdateGroupInOwnOU verifies the group-manager can update a group in their own OU.
@@ -663,19 +704,36 @@ func (ts *GroupAuthzTestSuite) TestUpdateGroupInOwnOU() {
 		"group-manager should be able to update a group in their own OU")
 }
 
-// TestUpdateGroupInOtherOU verifies the group-manager is denied updating a group in OU2.
+// TestUpdateGroupInOtherOU verifies the group-manager can update a group in OU2.
 func (ts *GroupAuthzTestSuite) TestUpdateGroupInOtherOU() {
+	updatableID, err := testutils.CreateGroup(testutils.Group{
+		Name:        "authz-updatable-ou2",
+		Description: "Group used to verify cross-OU updates",
+		OUID:        ts.groupOU2ID,
+	})
+	ts.Require().NoError(err, "create updatable group in OU2")
+	defer func() {
+		if delErr := testutils.DeleteGroup(updatableID); delErr != nil {
+			ts.T().Logf("cleanup: delete updatable group %s: %v", updatableID, delErr)
+		}
+	}()
+
 	payload, err := json.Marshal(map[string]interface{}{
-		"ouId": ts.groupOU2ID,
-		"name": "Should Not Update",
+		"ouId":        ts.groupOU2ID,
+		"name":        "authz-updatable-ou2",
+		"description": "Updated Description",
 	})
 	ts.Require().NoError(err)
 
-	resp := ts.doGroup(http.MethodPut, "/groups/"+ts.targetGroupOU2ID, payload)
+	resp := ts.doGroup(http.MethodPut, "/groups/"+updatableID, payload)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"group-manager must not update a group in a different OU")
+	ts.Require().Equal(http.StatusOK, resp.StatusCode,
+		"group-manager should be able to update a group in a different OU")
+
+	var updated Group
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&updated))
+	ts.Equal("Updated Description", updated.Description)
 }
 
 // TestDeleteGroupInOwnOU verifies the group-manager can delete a group in their own OU.
@@ -690,21 +748,33 @@ func (ts *GroupAuthzTestSuite) TestDeleteGroupInOwnOU() {
 	ts.deletableGroupOU1ID = ""
 }
 
-// TestDeleteGroupInOtherOU verifies the group-manager is denied deleting a group in OU2.
+// TestDeleteGroupInOtherOU verifies the group-manager can delete a group in OU2.
 func (ts *GroupAuthzTestSuite) TestDeleteGroupInOtherOU() {
-	resp := ts.doGroup(http.MethodDelete, "/groups/"+ts.targetGroupOU2ID, nil)
+	deletableID, err := testutils.CreateGroup(testutils.Group{
+		Name:        "authz-deletable-ou2",
+		Description: "Group used to verify cross-OU deletes",
+		OUID:        ts.groupOU2ID,
+	})
+	ts.Require().NoError(err, "create deletable group in OU2")
+
+	resp := ts.doGroup(http.MethodDelete, "/groups/"+deletableID, nil)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"group-manager must not delete a group in a different OU")
+	ts.Equal(http.StatusNoContent, resp.StatusCode,
+		"group-manager should be able to delete a group in a different OU")
+
+	if resp.StatusCode != http.StatusNoContent {
+		if delErr := testutils.DeleteGroup(deletableID); delErr != nil {
+			ts.T().Logf("cleanup: delete deletable group %s: %v", deletableID, delErr)
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
 // Tests — MEMBER operations (system:group)
 // ---------------------------------------------------------------------------
 
-// TestAddMemberFromOtherOU verifies the group-manager is denied adding a user from OU2 to a group in OU1.
-// Run before TestAddMemberFromOwnOU / TestRemoveMemberFromGroupInOwnOU (alphabetical order).
+// TestAddMemberFromOtherOU verifies the group-manager can add a user from OU2 to a group in OU1.
 func (ts *GroupAuthzTestSuite) TestAddMemberFromOtherOU() {
 	payload, err := json.Marshal(MembersRequest{
 		Members: []Member{
@@ -716,8 +786,13 @@ func (ts *GroupAuthzTestSuite) TestAddMemberFromOtherOU() {
 	resp := ts.doGroup(http.MethodPost, "/groups/"+ts.targetGroupOU1ID+"/members/add", payload)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"group-manager must not add a user from OU2 to a group in OU1")
+	ts.Equal(http.StatusOK, resp.StatusCode,
+		"group-manager should be able to add a user from OU2 to a group in OU1")
+
+	// Remove the member again so the shared OU1 target group keeps its original membership.
+	removeResp := ts.doGroup(http.MethodPost, "/groups/"+ts.targetGroupOU1ID+"/members/remove", payload)
+	defer removeResp.Body.Close()
+	ts.Equal(http.StatusOK, removeResp.StatusCode, "cleanup: remove the OU2 member from the OU1 group")
 }
 
 // TestAddMemberFromOwnOU verifies the group-manager can add a user from OU1 to a group in OU1.
@@ -746,6 +821,11 @@ func (ts *GroupAuthzTestSuite) TestRemoveMemberFromGroupInOwnOU() {
 	})
 	ts.Require().NoError(err)
 
+	addResp := ts.doGroup(http.MethodPost, "/groups/"+ts.targetGroupOU1ID+"/members/add", payload)
+	defer addResp.Body.Close()
+	ts.Require().Equal(http.StatusOK, addResp.StatusCode,
+		"group-manager should be able to add a user before removing it")
+
 	resp := ts.doGroup(http.MethodPost, "/groups/"+ts.targetGroupOU1ID+"/members/remove", payload)
 	defer resp.Body.Close()
 
@@ -754,18 +834,27 @@ func (ts *GroupAuthzTestSuite) TestRemoveMemberFromGroupInOwnOU() {
 }
 
 // ---------------------------------------------------------------------------
-// Tests — OU-scoped denials on the remaining group routes
+// Tests: cross-OU access on the remaining group routes
 // ---------------------------------------------------------------------------
 
-// TestListGroupsByPathInOtherOU verifies the path-based listing is denied for a sibling OU. The
-// denial is raised by the OU lookup that resolves the handle path, before the group authorization
-// check is reached, so a caller outside the OU cannot even enumerate it.
+// TestListGroupsByPathInOtherOU verifies the path-based listing works for a sibling OU, since the
+// manager's scope covers every OU in the deployment.
 func (ts *GroupAuthzTestSuite) TestListGroupsByPathInOtherOU() {
 	resp := ts.doGroup(http.MethodGet, "/groups/tree/"+groupAuthzOU2Handle, nil)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"group-manager must not list groups under an OU it holds no group permission for")
+	ts.Require().Equal(http.StatusOK, resp.StatusCode,
+		"group-manager should be able to list groups under a different OU")
+
+	var listResp GroupListResponse
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
+
+	ids := make([]string, 0, len(listResp.Groups))
+	for _, g := range listResp.Groups {
+		ids = append(ids, g.Id)
+	}
+	ts.Containsf(ids, ts.targetGroupOU2ID, "tree listing must include the OU2 target group, got %v", ids)
+	ts.NotContainsf(ids, ts.targetGroupOU1ID, "tree listing must only hold groups under OU2, got %v", ids)
 }
 
 // TestListGroupsByPathInOwnOU verifies the same route still works for the manager's own OU.
@@ -786,31 +875,60 @@ func (ts *GroupAuthzTestSuite) TestListGroupsByPathInOwnOU() {
 	ts.Containsf(ids, ts.targetGroupOU1ID, "tree listing must include the OU1 target group, got %v", ids)
 }
 
-// TestCreateGroupByPathInOtherOU verifies the group-manager cannot create a group under OU2 through
-// the path-based route, closing it as an alternative to the denied POST /groups route.
+// TestCreateGroupByPathInOtherOU verifies the group-manager can create a group under OU2 through
+// the path-based route.
 func (ts *GroupAuthzTestSuite) TestCreateGroupByPathInOtherOU() {
 	payload := ts.mustMarshal(map[string]any{
-		"name":        "authz-denied-tree-group",
-		"description": "Denied Group via tree route",
+		"name":        "authz-created-tree-group-ou2",
+		"description": "Created Group via tree route",
 	})
 
 	resp := ts.doGroup(http.MethodPost, "/groups/tree/"+groupAuthzOU2Handle, payload)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"group-manager must not create a group under an OU it holds no group permission for")
+	ts.Equal(http.StatusCreated, resp.StatusCode,
+		"group-manager should be able to create a group under a different OU")
+
+	var created Group
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&created))
+	if created.Id != "" {
+		defer func() {
+			if delErr := testutils.DeleteGroup(created.Id); delErr != nil {
+				ts.T().Logf("cleanup: failed to delete created group %s: %v", created.Id, delErr)
+			}
+		}()
+	}
+	ts.Equal(ts.groupOU2ID, created.OUID, "the group must be created under OU2")
 }
 
-// TestGetGroupMembersInOtherOU verifies the members of a group in OU2 are not readable.
+// TestGetGroupMembersInOtherOU verifies the members of a group in OU2 are readable.
 func (ts *GroupAuthzTestSuite) TestGetGroupMembersInOtherOU() {
-	resp := ts.doGroup(http.MethodGet, "/groups/"+ts.targetGroupOU2ID+"/members", nil)
+	groupID, err := testutils.CreateGroup(testutils.Group{
+		Name:        "authz-members-ou2",
+		Description: "Group used to verify cross-OU member reads",
+		OUID:        ts.groupOU2ID,
+		Members:     []testutils.Member{{Id: ts.memberUserOU2ID, Type: "user"}},
+	})
+	ts.Require().NoError(err, "create group with a member in OU2")
+	defer func() {
+		if delErr := testutils.DeleteGroup(groupID); delErr != nil {
+			ts.T().Logf("cleanup: delete group %s: %v", groupID, delErr)
+		}
+	}()
+
+	resp := ts.doGroup(http.MethodGet, "/groups/"+groupID+"/members", nil)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"group-manager must not read the members of a group in a different OU")
+	ts.Require().Equal(http.StatusOK, resp.StatusCode,
+		"group-manager should be able to read the members of a group in a different OU")
+
+	var membersResp MemberListResponse
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&membersResp))
+	ts.Require().Len(membersResp.Members, 1)
+	ts.Equal(ts.memberUserOU2ID, membersResp.Members[0].Id)
 }
 
-// TestAddMemberToGroupInOtherOU verifies members cannot be added to a group in OU2.
+// TestAddMemberToGroupInOtherOU verifies members can be added to a group in OU2.
 func (ts *GroupAuthzTestSuite) TestAddMemberToGroupInOtherOU() {
 	payload := ts.mustMarshal(MembersRequest{
 		Members: []Member{
@@ -821,16 +939,21 @@ func (ts *GroupAuthzTestSuite) TestAddMemberToGroupInOtherOU() {
 	resp := ts.doGroup(http.MethodPost, "/groups/"+ts.targetGroupOU2ID+"/members/add", payload)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"group-manager must not add members to a group in a different OU")
+	ts.Equal(http.StatusOK, resp.StatusCode,
+		"group-manager should be able to add members to a group in a different OU")
+
+	// Remove the member again so the shared OU2 target group keeps its original membership.
+	removeResp := ts.doGroup(http.MethodPost, "/groups/"+ts.targetGroupOU2ID+"/members/remove", payload)
+	defer removeResp.Body.Close()
+	ts.Equal(http.StatusOK, removeResp.StatusCode, "cleanup: remove the member from the OU2 group")
 }
 
-// TestMoveGroupToOtherOU verifies a group cannot be relocated into an OU the caller does not
-// administer, even though the caller may update the group in its current OU.
+// TestMoveGroupToOtherOU verifies a group can be relocated into a sibling OU, since the manager's
+// scope covers both the source and the target OU.
 func (ts *GroupAuthzTestSuite) TestMoveGroupToOtherOU() {
 	movableID, err := testutils.CreateGroup(testutils.Group{
 		Name:        "authz-movable-ou1",
-		Description: "Group used to verify cross-OU moves are denied",
+		Description: "Group used to verify cross-OU moves",
 		OUID:        ts.groupOU1ID,
 	})
 	ts.Require().NoError(err, "create movable group in OU1")
@@ -843,16 +966,16 @@ func (ts *GroupAuthzTestSuite) TestMoveGroupToOtherOU() {
 	payload := ts.mustMarshal(map[string]any{
 		"ouId":        ts.groupOU2ID,
 		"name":        "authz-movable-ou1",
-		"description": "Attempted move into OU2",
+		"description": "Moved into OU2",
 	})
 
 	resp := ts.doGroup(http.MethodPut, "/groups/"+movableID, payload)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"group-manager must not move a group into an OU they do not administer")
+	ts.Require().Equal(http.StatusOK, resp.StatusCode,
+		"group-manager should be able to move a group into a different OU")
 
-	// The group must remain in OU1 after the rejected move.
+	// The group must now live in OU2.
 	getResp := ts.doGroup(http.MethodGet, "/groups/"+movableID, nil)
 	defer getResp.Body.Close()
 
@@ -860,20 +983,25 @@ func (ts *GroupAuthzTestSuite) TestMoveGroupToOtherOU() {
 
 	var group Group
 	ts.Require().NoError(json.NewDecoder(getResp.Body).Decode(&group))
-	ts.Equal(ts.groupOU1ID, group.OUID, "the rejected move must not have changed the group's OU")
+	ts.Equal(ts.groupOU2ID, group.OUID, "the move must have changed the group's OU")
 }
 
-// TestListGroupsWithEmptyScopeReturnsNothing verifies a manager whose scope holds no groups gets an
-// empty listing rather than falling back to an unrestricted one.
-func (ts *GroupAuthzTestSuite) TestListGroupsWithEmptyScopeReturnsNothing() {
-	req, err := http.NewRequest(http.MethodGet, groupAuthzServerURL+"/groups?limit=100", nil)
+// TestListGroupsByManagerInEmptyOU verifies a manager whose own OU holds no groups still lists the
+// groups of every other OU, while the path-based listing of that OU stays empty.
+func (ts *GroupAuthzTestSuite) TestListGroupsByManagerInEmptyOU() {
+	ids := ts.listAllGroupIDs(ts.emptyOUMgrClient)
+
+	ts.Containsf(ids, ts.targetGroupOU1ID, "listing must include the OU1 target group, got %v", ids)
+	ts.Containsf(ids, ts.targetGroupOU2ID, "listing must include the OU2 target group, got %v", ids)
+
+	req, err := http.NewRequest(http.MethodGet, groupAuthzServerURL+"/groups/tree/"+emptyOUHandle, nil)
 	ts.Require().NoError(err)
 
 	resp, err := ts.emptyOUMgrClient.Do(req)
 	ts.Require().NoError(err)
 	defer resp.Body.Close()
 
-	ts.Require().Equal(http.StatusOK, resp.StatusCode, "listing should succeed for an empty scope")
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, "listing the empty OU by path should succeed")
 
 	var listResp GroupListResponse
 	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
@@ -884,10 +1012,9 @@ func (ts *GroupAuthzTestSuite) TestListGroupsWithEmptyScopeReturnsNothing() {
 	ts.Empty(listResp.Links, "an empty listing carries no pagination links")
 }
 
-// TestOUScopedListingIncludesDeclarativeGroups verifies an OU-restricted listing draws from the
-// file-based store as well as the database, so a manager scoped to the declarative OU sees the
-// YAML-declared groups alongside any runtime group in the same OU.
-func (ts *GroupAuthzTestSuite) TestOUScopedListingIncludesDeclarativeGroups() {
+// TestListingIncludesDeclarativeGroups verifies the listing draws from the file-based store as well
+// as the database, so the YAML-declared groups appear alongside runtime groups from every OU.
+func (ts *GroupAuthzTestSuite) TestListingIncludesDeclarativeGroups() {
 	runtimeGroupID, err := testutils.CreateGroup(testutils.Group{
 		Name:        "authz-runtime-in-decl-ou",
 		Description: "Runtime group in the declarative OU",
@@ -900,65 +1027,28 @@ func (ts *GroupAuthzTestSuite) TestOUScopedListingIncludesDeclarativeGroups() {
 		}
 	}()
 
-	req, err := http.NewRequest(http.MethodGet, groupAuthzServerURL+"/groups?limit=100", nil)
-	ts.Require().NoError(err)
+	ids := ts.listAllGroupIDs(ts.declOUMgrClient)
 
-	resp, err := ts.declOUMgrClient.Do(req)
-	ts.Require().NoError(err)
-	defer resp.Body.Close()
-
-	ts.Require().Equal(http.StatusOK, resp.StatusCode)
-
-	var listResp GroupListResponse
-	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
-
-	ids := make([]string, 0, len(listResp.Groups))
-	for _, g := range listResp.Groups {
-		ids = append(ids, g.Id)
-	}
-
-	ts.Containsf(ids, declGroupID, "scoped listing must include the declarative group, got %v", ids)
-	ts.Containsf(ids, declNestedGroupID, "scoped listing must include the nested declarative group, got %v", ids)
-	ts.Containsf(ids, runtimeGroupID, "scoped listing must include the runtime group, got %v", ids)
-	ts.NotContainsf(ids, ts.targetGroupOU1ID, "scoped listing must exclude groups from other OUs, got %v", ids)
+	ts.Containsf(ids, declGroupID, "listing must include the declarative group, got %v", ids)
+	ts.Containsf(ids, declNestedGroupID, "listing must include the nested declarative group, got %v", ids)
+	ts.Containsf(ids, runtimeGroupID, "listing must include the runtime group, got %v", ids)
+	ts.Containsf(ids, ts.targetGroupOU1ID, "listing must include groups from other OUs, got %v", ids)
 }
 
-// TestOUScopedListingPaginatesAcrossBothStores verifies pagination applies to the merged result of
-// the database and file-based stores rather than to either store alone.
-func (ts *GroupAuthzTestSuite) TestOUScopedListingPaginatesAcrossBothStores() {
-	// The declarative OU holds two YAML groups; a runtime group is needed as well, otherwise the
-	// paging below never crosses a store boundary.
-	runtimeGroupID, err := testutils.CreateGroup(testutils.Group{
-		Name:        "authz-paginated-in-decl-ou",
-		Description: "Runtime group used to page across both stores",
-		OUID:        declGroupOUID,
-	})
-	ts.Require().NoError(err, "create runtime group in the declarative OU")
-	defer func() {
-		if delErr := testutils.DeleteGroup(runtimeGroupID); delErr != nil {
-			ts.T().Logf("cleanup: delete runtime group %s: %v", runtimeGroupID, delErr)
-		}
-	}()
+// TestListingPaginatesAcrossBothStores verifies pagination applies to the merged result of the
+// database and file-based stores rather than to either store alone.
+func (ts *GroupAuthzTestSuite) TestListingPaginatesAcrossBothStores() {
+	const pageSize = 3
+
+	total := ts.listGroupsPage(ts.declOUMgrClient, 1, 0).TotalResults
+	ts.Require().Positive(total)
 
 	seen := make(map[string]bool)
-	for offset := 0; offset < 3; offset++ {
-		req, err := http.NewRequest(http.MethodGet,
-			fmt.Sprintf("%s/groups?limit=1&offset=%d", groupAuthzServerURL, offset), nil)
-		ts.Require().NoError(err)
+	for offset := 0; offset < total; offset += pageSize {
+		listResp := ts.listGroupsPage(ts.declOUMgrClient, pageSize, offset)
 
-		resp, err := ts.declOUMgrClient.Do(req)
-		ts.Require().NoError(err)
-
-		ts.Require().Equal(http.StatusOK, resp.StatusCode)
-
-		var listResp GroupListResponse
-		decodeErr := json.NewDecoder(resp.Body).Decode(&listResp)
-		resp.Body.Close()
-		ts.Require().NoError(decodeErr)
-
-		ts.Require().Equal(3, listResp.TotalResults,
-			"the declarative OU holds the two declared groups plus the runtime one")
-		ts.LessOrEqual(listResp.Count, 1, "a page must not exceed the requested limit")
+		ts.Require().Equal(total, listResp.TotalResults, "the total must not change across pages")
+		ts.LessOrEqual(listResp.Count, pageSize, "a page must not exceed the requested limit")
 		ts.Equal(offset+1, listResp.StartIndex)
 
 		for _, g := range listResp.Groups {
@@ -967,8 +1057,8 @@ func (ts *GroupAuthzTestSuite) TestOUScopedListingPaginatesAcrossBothStores() {
 		}
 	}
 
-	ts.Len(seen, 3, "paging through the scoped listing must yield each group exactly once")
-	ts.Truef(seen[runtimeGroupID], "paging must surface the runtime group, got %v", seen)
+	ts.Len(seen, total, "paging through the listing must yield each group exactly once")
+	ts.Truef(seen[ts.targetGroupOU1ID], "paging must surface the runtime group, got %v", seen)
 	ts.Truef(seen[declGroupID], "paging must surface the declarative group, got %v", seen)
 }
 
@@ -997,6 +1087,36 @@ func (ts *GroupAuthzTestSuite) TestAddSelfToPrivilegedGroupIsForbidden() {
 
 	ts.Equalf(http.StatusForbidden, resp.StatusCode,
 		"adding self to a group conferring system:user must be forbidden, got %d", resp.StatusCode)
+}
+
+// A permission held only through a role in another OU never reaches the caller's tokens, so it
+// must not let the caller grant it either. The group-manager lives in OU1 and holds system:user
+// only through an OU2 role, so joining the librarian group stays forbidden.
+func (ts *GroupAuthzTestSuite) TestAddSelfToPrivilegedGroupIsForbiddenWhenHeldOnlyInAnotherOU() {
+	otherOURoleID, err := testutils.CreateRole(testutils.Role{
+		Name: "authz-librarian-role-ou2",
+		OUID: ts.groupOU2ID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: ts.scopedRSID, Permissions: []string{"system:user"}},
+		},
+		Assignments: []testutils.Assignment{{ID: ts.groupMgrUserID, Type: "user"}},
+	})
+	ts.Require().NoError(err, "create OU2 role granting system:user to the group-manager")
+	defer func() {
+		if err := testutils.DeleteRole(otherOURoleID); err != nil {
+			ts.T().Logf("delete OU2 role: %v", err)
+		}
+	}()
+
+	payload := ts.mustMarshal(map[string]any{
+		"members": []map[string]string{{"id": ts.groupMgrUserID, "type": "user"}},
+	})
+
+	resp := ts.doGroup(http.MethodPost, "/groups/"+ts.librarianGroupID+"/members/add", payload)
+	defer resp.Body.Close()
+
+	ts.Equalf(http.StatusForbidden, resp.StatusCode,
+		"system:user held only in OU2 must not let the OU1 manager grant it, got %d", resp.StatusCode)
 }
 
 // Escalation on behalf of someone else is the same defect; the guard is actor-relative.

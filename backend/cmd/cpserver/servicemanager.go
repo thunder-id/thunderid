@@ -147,7 +147,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize i18n service")
 	exporters = append(exporters, i18nExporter)
 
-	ouAuthzService, err := sysauthz.Initialize()
+	// A control plane token names the business organization unit that selects the deployment, not an
+	// organization unit of this plane, so every caller acts across the whole deployment.
+	ouAuthzService, err := sysauthz.InitializeDeploymentBoundedAuthorization()
 	fatalOnError(ctx, logger, err, "Failed to initialize system authorization service")
 
 	ouService, ouHierarchyResolver, ouEnumerator, ouExporter, err := ou.Initialize(

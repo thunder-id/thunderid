@@ -39,6 +39,7 @@ const (
 	m2mChildCOUID      = "decl-m2m-child-c"
 	m2mGrandchildAOUID = "decl-m2m-grandchild-a"
 
+	m2mAllOUsAppID        = "decl-m2m-all-ous"
 	m2mAllOUsClientID     = "decl-m2m-all-ous-client"
 	m2mAllOUsSecret       = "decl-m2m-all-ous-secret"
 	m2mSubtreeClientID    = "decl-m2m-subtree-client"
@@ -56,9 +57,23 @@ func (suite *M2MOUScopedTokenTestSuite) requestToken(
 	ouID, clientID, clientSecret string,
 ) (int, map[string]interface{}) {
 	suite.T().Helper()
+	return suite.requestScopedToken(ouID, clientID, clientSecret, "", "")
+}
+
+// requestScopedToken requests a client credentials token, naming the scope and the resource when given.
+func (suite *M2MOUScopedTokenTestSuite) requestScopedToken(
+	ouID, clientID, clientSecret, scope, resource string,
+) (int, map[string]interface{}) {
+	suite.T().Helper()
 
 	form := url.Values{}
 	form.Set("grant_type", "client_credentials")
+	if scope != "" {
+		form.Set("scope", scope)
+	}
+	if resource != "" {
+		form.Set("resource", resource)
+	}
 
 	endpoint := testutils.TestServerURL + "/oauth2/token"
 	if ouID != "" {
@@ -280,4 +295,33 @@ func (suite *M2MOUScopedTokenTestSuite) TestWrongSecretFailsAsInvalidClient() {
 
 	suite.Equal(http.StatusUnauthorized, status, "body: %v", body)
 	suite.Equal("invalid_client", body["error"])
+}
+
+// TestOUScopedTokenCarriesTheClientsOwnPermissions proves a client's permissions come from its own
+// roles, in the organization unit that owns it, when the token is requested for another unit.
+func (suite *M2MOUScopedTokenTestSuite) TestOUScopedTokenCarriesTheClientsOwnPermissions() {
+	const identifier = "https://m2m-ou-scoped.example.com/api"
+	rsID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name:       "M2M OU Scoped API",
+		Identifier: identifier,
+		OUID:       m2mRootOUID,
+	}, []testutils.Action{{Name: "Read", Handle: "read", Description: "Read access"}})
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(testutils.DeleteResourceServerWithChildren(rsID)) }()
+
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name: "M2M OU Scoped Reader",
+		OUID: m2mRootOUID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: rsID, Permissions: []string{"read"}},
+		},
+		Assignments: []testutils.Assignment{{ID: m2mAllOUsAppID, Type: "app"}},
+	})
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(testutils.DeleteRole(roleID)) }()
+
+	status, body := suite.requestScopedToken(m2mChildAOUID, m2mAllOUsClientID, m2mAllOUsSecret, "read", identifier)
+	suite.Require().Equal(http.StatusOK, status, "body: %v", body)
+	suite.Equal("read", body["scope"], "the client's own role must grant the scope on behalf of another unit")
+	suite.Equal(m2mChildAOUID, suite.decodeAccessTokenClaims(body)["ouId"])
 }

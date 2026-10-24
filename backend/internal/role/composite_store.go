@@ -439,19 +439,20 @@ func (c *compositeRoleStore) GetAuthorizedPermissionsByResourceServer(
 	groupIDs, roleIDs []string,
 	resourceServerID string,
 	requestPermissions []string,
+	ouID string,
 ) ([]string, error) {
 	if len(requestPermissions) == 0 {
 		return []string{}, nil
 	}
 
 	dbPerms, err := c.dbStore.GetAuthorizedPermissionsByResourceServer(
-		ctx, entityID, groupIDs, roleIDs, resourceServerID, requestPermissions)
+		ctx, entityID, groupIDs, roleIDs, resourceServerID, requestPermissions, ouID)
 	if err != nil {
 		return nil, err
 	}
 
 	filePerms, err := c.fileStore.GetAuthorizedPermissionsByResourceServer(
-		ctx, entityID, groupIDs, roleIDs, resourceServerID, requestPermissions)
+		ctx, entityID, groupIDs, roleIDs, resourceServerID, requestPermissions, ouID)
 	if err != nil {
 		return nil, err
 	}
@@ -459,7 +460,7 @@ func (c *compositeRoleStore) GetAuthorizedPermissionsByResourceServer(
 	// roleIDs are resolved directly, not through an entity/group assignment, so the cross-store
 	// (DB assignment + file-defined role) case does not apply to them.
 	crossStorePerms, err := c.crossStoreAuthorizedPermissions(
-		ctx, entityID, groupIDs, resourceServerID, requestPermissions)
+		ctx, entityID, groupIDs, resourceServerID, requestPermissions, ouID)
 	if err != nil {
 		return nil, err
 	}
@@ -477,6 +478,7 @@ func (c *compositeRoleStore) crossStoreAuthorizedPermissions(
 	groupIDs []string,
 	resourceServerID string,
 	requestPermissions []string,
+	ouID string,
 ) ([]string, error) {
 	if entityID == "" && len(groupIDs) == 0 {
 		return []string{}, nil
@@ -521,6 +523,9 @@ func (c *compositeRoleStore) crossStoreAuthorizedPermissions(
 				log.String("roleID", id), log.Error(err))
 			return nil, fmt.Errorf("composite role store: load declarative role %q: %w", id, err)
 		}
+		if ouID != "" && role.OUID != ouID {
+			continue
+		}
 		for _, rp := range role.Permissions {
 			if resourceServerID != "" && rp.ResourceServerID != resourceServerID {
 				continue
@@ -547,23 +552,23 @@ func (c *compositeRoleStore) crossStoreAuthorizedPermissions(
 // assignment, a declarative role with a YAML-declared assignment, and a declarative role whose
 // assignment was added at runtime. The third case is why no single store can answer this.
 func (c *compositeRoleStore) GetAllPermissionsForAssignees(
-	ctx context.Context, entityID string, groupIDs []string,
+	ctx context.Context, entityID string, groupIDs []string, ouID string,
 ) ([]ResourcePermissions, error) {
 	if entityID == "" && len(groupIDs) == 0 {
 		return []ResourcePermissions{}, nil
 	}
 
-	dbPerms, err := c.dbStore.GetAllPermissionsForAssignees(ctx, entityID, groupIDs)
+	dbPerms, err := c.dbStore.GetAllPermissionsForAssignees(ctx, entityID, groupIDs, ouID)
 	if err != nil {
 		return nil, err
 	}
 
-	filePerms, err := c.fileStore.GetAllPermissionsForAssignees(ctx, entityID, groupIDs)
+	filePerms, err := c.fileStore.GetAllPermissionsForAssignees(ctx, entityID, groupIDs, ouID)
 	if err != nil {
 		return nil, err
 	}
 
-	crossStorePerms, err := c.crossStoreAllPermissions(ctx, entityID, groupIDs)
+	crossStorePerms, err := c.crossStoreAllPermissions(ctx, entityID, groupIDs, ouID)
 	if err != nil {
 		return nil, err
 	}
@@ -576,7 +581,7 @@ func (c *compositeRoleStore) GetAllPermissionsForAssignees(
 // confers nothing and is skipped, while a corrupt one is returned as an error, since its contents
 // are unknown.
 func (c *compositeRoleStore) crossStoreAllPermissions(
-	ctx context.Context, entityID string, groupIDs []string,
+	ctx context.Context, entityID string, groupIDs []string, ouID string,
 ) ([]ResourcePermissions, error) {
 	roleIDs, err := c.dbStore.GetEntityRoleIDs(ctx, entityID, groupIDs)
 	if err != nil {
@@ -605,6 +610,9 @@ func (c *compositeRoleStore) crossStoreAllPermissions(
 				"Failed to load declarative role for cross-store permission enumeration",
 				log.String("roleID", id), log.Error(err))
 			return nil, fmt.Errorf("composite role store: load declarative role %q: %w", id, err)
+		}
+		if ouID != "" && role.OUID != ouID {
+			continue
 		}
 		for _, rp := range role.Permissions {
 			byResourceServer[rp.ResourceServerID] = append(
