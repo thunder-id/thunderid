@@ -214,6 +214,7 @@ After connecting, ask your agent to use the <ProductName /> MCP server for tasks
 | `organization_units` | List organization units |
 | `user_types` | List user types and self-registration settings |
 | `react_sdk` | Get tailored integration code for the <ProductName /> React SDK |
+| `deployments` | List gateways and configuration versions, capture a version, and deploy, promote, or roll back a gateway |
 
 **Example prompts:**
 
@@ -222,6 +223,8 @@ After connecting, ask your agent to use the <ProductName /> MCP server for tasks
 - "Add a second factor step to the default login flow"
 - "What colors and typography does the default theme use?"
 - "Integrate authentication with <ProductName /> for this application"
+- "Capture the configuration and show me what deploying it to the staging gateway would change"
+- "Promote what staging runs to production"
 
 ## Use Cases
 
@@ -246,6 +249,23 @@ After integrating login, add a registration page:
 > "Integrate a signup page in the application and enable signup"
 
 The assistant enables self-registration on your <ProductName /> application and generates a signup page wired to the registration flow. New users can register directly from your application and appear in the <ProductName /> Console under **User Management**.
+
+### Deploy Configuration to Gateways
+
+The `deployments` tools move configuration from <ProductName /> to the gateways it administers, as the Console's **Deploy** page does. See [Configuration Versions](../../guides/declarative-configurations/configuration-versions) for how versions, deploys, and rollbacks work.
+
+| Tool | What it does |
+|------|--------------|
+| `thunderid_list_gateways` | Lists the gateways, each with the version it runs and the version a rollback returns it to |
+| `thunderid_list_configuration_versions` | Lists the captured versions, newest first |
+| `thunderid_capture_configuration_version` | Captures the configuration as it is now as a version |
+| `thunderid_deploy_version` | Deploys a version to a gateway |
+| `thunderid_promote_gateway` | Deploys the version one gateway runs to another, leaving out the changes the source holds back |
+| `thunderid_rollback_gateway` | Returns a gateway to the version it ran before its last deploy |
+
+The deploy, promote, and rollback tools take `dryRun`. Ask the agent to run a dry run first: it reports what would be added, updated, and removed, and any variables or secrets the gateway is missing, without changing the gateway. A deploy that would remove more resources than the deployment's threshold is refused unless `confirmRemovals` is set, which the agent sets only after you have seen the removals.
+
+A completed deploy lists the resources the gateway refused, such as an agent whose owner the gateway does not hold. The rest of the version is applied. Fix the cause, then deploy the same version again to retry them.
 
 ## Test and Debug with MCP Inspector
 
