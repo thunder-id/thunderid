@@ -340,7 +340,7 @@ func placeRoleAssignments(
 		case a.Type == AssigneeTypeGroup && isGroup:
 			belongs = g.OUID == a.OUID
 		case a.Type != AssigneeTypeGroup && isEntity && e.OUID != a.OUID:
-			shared, svcErr := isEntitySharedWithOU(ctx, sharingSvc, e, a.OUID)
+			shared, svcErr := isEntitySharedWithOU(ctx, entitySvc, sharingSvc, e, a.OUID)
 			if svcErr != nil {
 				return fmt.Errorf("failed to check whether '%s' is shared with organization unit '%s': %s",
 					a.ID, a.OUID, svcErr.Error.DefaultValue)

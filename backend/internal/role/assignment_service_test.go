@@ -53,9 +53,21 @@ func TestRoleAssignmentServiceTestSuite(t *testing.T) {
 	suite.Run(t, new(RoleAssignmentServiceTestSuite))
 }
 
+// registerSharedCategories answers the shared resource type lookup as the server does: users and
+// applications are shareable, agents are not.
+func registerSharedCategories(entitySvc *entitymock.EntityServiceInterfaceMock) {
+	entitySvc.On("GetSharedResourceType", providers.EntityCategoryUser).
+		Return(sharing.ResourceType("user"), true).Maybe()
+	entitySvc.On("GetSharedResourceType", providers.EntityCategoryApp).
+		Return(sharing.ResourceType("application"), true).Maybe()
+	entitySvc.On("GetSharedResourceType", providers.EntityCategoryAgent).
+		Return(sharing.ResourceType(""), false).Maybe()
+}
+
 func (suite *RoleAssignmentServiceTestSuite) SetupTest() {
 	suite.mockStore = newRoleStoreInterfaceMock(suite.T())
 	suite.mockEntityService = entitymock.NewEntityServiceInterfaceMock(suite.T())
+	registerSharedCategories(suite.mockEntityService)
 	suite.mockGroupService = groupmock.NewGroupServiceInterfaceMock(suite.T())
 	suite.mockEntityTypeService = entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
 	suite.transactioner = &fakeTransactioner{}
@@ -1036,6 +1048,37 @@ func (suite *RoleAssignmentServiceTestSuite) TestCascadeDeleteDependencies_Store
 
 	suite.Error(err)
 	suite.Equal(0, deleted)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestHasGroupRoleAssignments() {
+	suite.Run("group assigned a role", func() {
+		suite.mockStore.On("HasAssigneeAssignments", mock.Anything, string(AssigneeTypeGroup), "grp-1").
+			Return(true, nil).Once()
+
+		found, err := suite.service.HasGroupRoleAssignments(context.Background(), "grp-1")
+
+		suite.Nil(err)
+		suite.True(found)
+	})
+	suite.Run("group assigned no role", func() {
+		suite.mockStore.On("HasAssigneeAssignments", mock.Anything, string(AssigneeTypeGroup), "grp-2").
+			Return(false, nil).Once()
+
+		found, err := suite.service.HasGroupRoleAssignments(context.Background(), "grp-2")
+
+		suite.Nil(err)
+		suite.False(found)
+	})
+	suite.Run("store error", func() {
+		suite.mockStore.On("HasAssigneeAssignments", mock.Anything, string(AssigneeTypeGroup), "grp-3").
+			Return(false, errors.New("db error")).Once()
+
+		found, err := suite.service.HasGroupRoleAssignments(context.Background(), "grp-3")
+
+		suite.Require().NotNil(err)
+		suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+		suite.False(found)
+	})
 }
 
 func (suite *RoleAssignmentServiceTestSuite) TestCascadeDeleteDependencies_Group_DeletesAssignments() {

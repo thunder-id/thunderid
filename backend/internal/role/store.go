@@ -41,6 +41,7 @@ type roleStoreInterface interface {
 	DeleteAssignmentsByRoleID(ctx context.Context, id string) error
 	DeleteAssignmentsInOU(ctx context.Context, id, ouID string) error
 	DeleteAssignmentsByAssignee(ctx context.Context, assigneeType, assigneeID string) (int64, error)
+	HasAssigneeAssignments(ctx context.Context, assigneeType, assigneeID string) (bool, error)
 	AddAssignments(ctx context.Context, id string, assignments []RoleAssignment) error
 	RemoveAssignments(ctx context.Context, id string, assignments []RoleAssignment) error
 	// The mandated assignment methods write the rows a sharing policy owns. Direct assignments and
@@ -558,6 +559,23 @@ func (s *roleStore) DeleteAssignmentsByAssignee(
 		return 0, fmt.Errorf("failed to delete assignments for assignee: %w", err)
 	}
 	return rowsAffected, nil
+}
+
+// HasAssigneeAssignments reports whether the assignee holds any role assignment.
+func (s *roleStore) HasAssigneeAssignments(
+	ctx context.Context, assigneeType, assigneeID string) (bool, error) {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return false, err
+	}
+
+	countResults, err := dbClient.QueryContext(
+		ctx, queryCountAssigneeAssignments, assigneeType, assigneeID, s.scope(ctx))
+	if err != nil {
+		return false, fmt.Errorf("failed to count assignments for assignee: %w", err)
+	}
+
+	return parseBoolFromCount(countResults)
 }
 
 // GetReferencedPermissions returns the distinct permissions referenced by any role, grouped by

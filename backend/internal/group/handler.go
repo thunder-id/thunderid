@@ -412,7 +412,8 @@ func (gh *groupHandler) handleError(ctx context.Context, w http.ResponseWriter, 
 			ErrorInvalidRequestFormat.Code, ErrorMissingGroupID.Code,
 			ErrorInvalidLimit.Code, ErrorInvalidOffset.Code, ErrorInvalidFilter.Code,
 			ErrorEmptyMembers.Code, ErrorInvalidMemberType.Code,
-			ErrorInvalidMemberID.Code, ErrorInvalidGroupMemberID.Code:
+			ErrorInvalidMemberID.Code, ErrorInvalidGroupMemberID.Code,
+			ErrorMemberOUMismatch.Code, ErrorGroupOUChangeNotAllowed.Code:
 			statusCode = http.StatusBadRequest
 		case tidcommon.ErrorUnauthorized.Code, sysauthz.ErrorGrantNotPermitted.Code:
 			statusCode = http.StatusForbidden

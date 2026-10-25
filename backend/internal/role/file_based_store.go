@@ -402,6 +402,31 @@ func (f *fileBasedStore) DeleteAssignmentsByAssignee(
 	return 0, nil
 }
 
+// HasAssigneeAssignments reports whether a declared role assigns the assignee.
+func (f *fileBasedStore) HasAssigneeAssignments(
+	ctx context.Context, assigneeType, assigneeID string) (bool, error) {
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return false, err
+	}
+
+	for _, item := range list {
+		roleData, err := roleFromDeclarativeData(item.ID.ID, item.Data)
+		if err != nil {
+			log.GetLogger().Warn(ctx, "Skipping malformed role in HasAssigneeAssignments",
+				log.String("roleID", item.ID.ID),
+				log.Error(err))
+			continue
+		}
+		for _, a := range declaredAssignments(roleData, "", assigneeType) {
+			if a.ID == assigneeID {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
 // GetReferencedPermissions returns no permissions for the file-based store: declarative role
 // permissions are immutable, so they are never pruned.
 func (f *fileBasedStore) GetReferencedPermissions(_ context.Context) ([]ResourcePermissions, error) {

@@ -142,7 +142,7 @@ func (suite *DeclarativeModeGroupServiceTestSuite) TestGroupMemberMutations_Allo
 
 			suite.store.On("GetGroup", mock.Anything, "group-1").Return(grpDAO, nil)
 			suite.entityService.On("GetEntitiesByIDs", mock.Anything, []string{"user-1"}).
-				Return([]providers.Entity{{ID: "user-1", Category: providers.EntityCategoryUser}}, nil)
+				Return([]providers.Entity{{ID: "user-1", Category: providers.EntityCategoryUser, OUID: "ou-1"}}, nil)
 			suite.store.On(tc.method, mock.Anything, "group-1", normalizedMembers).Return(nil)
 
 			grp, err := tc.invoke([]Member{{ID: "user-1", Type: MemberTypeUser}})

@@ -247,6 +247,40 @@ func (suite *CompositeRoleStoreTestSuite) TestGetRoleList_FileRolesListError() {
 	suite.Equal(testErr, err)
 }
 
+func (suite *CompositeRoleStoreTestSuite) TestHasAssigneeAssignments_FoundInDBStore() {
+	suite.mockDBStore.On("HasAssigneeAssignments", mock.Anything, "group", "grp1").
+		Return(true, nil)
+
+	found, err := suite.store.HasAssigneeAssignments(context.Background(), "group", "grp1")
+
+	suite.NoError(err)
+	suite.True(found)
+	suite.mockFileStore.AssertNotCalled(suite.T(), "HasAssigneeAssignments",
+		mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestHasAssigneeAssignments_FoundInFileStore() {
+	suite.mockDBStore.On("HasAssigneeAssignments", mock.Anything, "group", "grp1").
+		Return(false, nil)
+	suite.mockFileStore.On("HasAssigneeAssignments", mock.Anything, "group", "grp1").
+		Return(true, nil)
+
+	found, err := suite.store.HasAssigneeAssignments(context.Background(), "group", "grp1")
+
+	suite.NoError(err)
+	suite.True(found)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestHasAssigneeAssignments_DBStoreError() {
+	testErr := errors.New("test error")
+	suite.mockDBStore.On("HasAssigneeAssignments", mock.Anything, "group", "grp1").
+		Return(false, testErr)
+
+	_, err := suite.store.HasAssigneeAssignments(context.Background(), "group", "grp1")
+
+	suite.Equal(testErr, err)
+}
+
 func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignmentsCount_DBStoreError() {
 	testErr := errors.New("test error")
 	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).Return(0, testErr)
