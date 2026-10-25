@@ -252,6 +252,7 @@ type ExecutorDependencies struct {
 	ExtensionHTTPClient    httpservice.HTTPClientInterface
 	ObservabilitySvc       providers.ObservabilityProvider
 	IdentityGovernance     providers.IdentityGovernanceProvider
+	AttributeVerification  providers.AttributeVerificationProvider
 	ArtifactLifetime       artifactLifetimeResolver
 	AuthzDetailProvider    providers.AuthorizationDetailProvider
 	tokenLeeway            time.Duration
@@ -359,7 +360,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameConsent: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameConsent, newConsentExecutor(
-				deps.FlowFactory, deps.ConsentEnforcer, deps.AuthnProvider))
+				deps.FlowFactory, deps.ConsentEnforcer, deps.AuthnProvider, deps.EntityTypeService))
 		},
 		ExecutorNameOUResolver: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOUResolver, newOUResolverExecutor(deps.FlowFactory, deps.OUService))
@@ -429,6 +430,11 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameOwnerResolver: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOwnerResolver, newOwnerResolver(
 				deps.FlowFactory, deps.EntityProvider))
+		},
+		ExecutorNameAttributeVerification: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameAttributeVerification, newAttributeVerificationExecutor(
+				deps.FlowFactory, deps.AttributeVerification, deps.AuthnProvider,
+				newAccessGuard(deps.IdentityGovernance)))
 		},
 		ExecutorNameIdentityGovernance: func(reg ExecutorRegistryInterface,
 			deps ExecutorDependencies) {

@@ -22,6 +22,7 @@ func Initialize(
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	ouService ou.OrganizationUnitServiceInterface,
 	sharingService sharing.SharingServiceInterface,
+	observabilitySvc providers.ObservabilityProvider,
 ) (EntityServiceInterface, error) {
 	store, transactioner, err := initializeStore(cacheManager)
 	if err != nil {
@@ -29,7 +30,7 @@ func Initialize(
 	}
 
 	svc := newEntityService(store, newEntityRuntimeDBStore(), hashService, entityTypeService, ouService,
-		transactioner, sharingService)
+		transactioner, sharingService, observabilitySvc)
 	return svc, nil
 }
 

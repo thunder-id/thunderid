@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,8 @@ import (
 
 	consentauthn "github.com/thunder-id/thunderid/internal/authn/consent"
 	authzdetail "github.com/thunder-id/thunderid/internal/authzdetail/common"
+	"github.com/thunder-id/thunderid/internal/entitytype"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -29,9 +32,10 @@ import (
 // prompts if not, and records the user's decisions after they are collected by the prompt node.
 type consentExecutor struct {
 	providers.Executor
-	consentEnforcer providers.ConsentProvider
-	authnProvider   providers.AuthnProviderManager
-	logger          *log.Logger
+	consentEnforcer   providers.ConsentProvider
+	authnProvider     providers.AuthnProviderManager
+	entityTypeService entitytype.EntityTypeServiceInterface
+	logger            *log.Logger
 }
 
 var _ providers.Executor = (*consentExecutor)(nil)
@@ -41,6 +45,7 @@ func newConsentExecutor(
 	flowFactory core.FlowFactoryInterface,
 	consentEnforcer providers.ConsentProvider,
 	authnProvider providers.AuthnProviderManager,
+	entityTypeService entitytype.EntityTypeServiceInterface,
 ) *consentExecutor {
 	logger := log.GetLogger().With(
 		log.String(log.LoggerKeyComponentName, "ConsentExecutor"),
@@ -70,10 +75,11 @@ func newConsentExecutor(
 		})
 
 	return &consentExecutor{
-		Executor:        base,
-		consentEnforcer: consentEnforcer,
-		authnProvider:   authnProvider,
-		logger:          logger,
+		Executor:          base,
+		consentEnforcer:   consentEnforcer,
+		authnProvider:     authnProvider,
+		entityTypeService: entityTypeService,
+		logger:            logger,
 	}
 }
 
@@ -141,6 +147,10 @@ func (e *consentExecutor) checkConsent(ctx *providers.NodeContext, execResp *pro
 	essentialAttributes, optionalAttributes := e.getRequiredAttributes(ctx)
 	authorizedPermissions := strings.Fields(ctx.RuntimeData["authorized_permissions"])
 	availableAttributes := e.buildAugmentedAvailableAttributes(availableAttrResp, entityRef)
+	requested := append(slices.Clone(essentialAttributes), optionalAttributes...)
+	if err := e.offerVerificationClaims(ctx.Context, requested, availableAttributes, entityRef); err != nil {
+		return nil, err
+	}
 	appName := ctx.Application.Name
 	forceReprompt := ctx.RuntimeData[common.RuntimeKeyForceConsentReprompt] == "true"
 	authorizationDetails, err := requestedAuthorizationDetails(ctx)
@@ -449,6 +459,29 @@ func (e *consentExecutor) buildAugmentedAvailableAttributes(
 		Attributes:    augmented,
 		Verifications: baseVerifications,
 	}
+}
+
+// offerVerificationClaims makes each verification claim the server issues for the user's type available
+// with its contact. The schema is read only when a verification claim is requested.
+func (e *consentExecutor) offerVerificationClaims(ctx context.Context, requested []string,
+	available *providers.AttributesResponse, entityRef *providers.EntityReference) error {
+	if available == nil || !slices.ContainsFunc(requested, entitytypemodel.IsVerificationClaimName) {
+		return nil
+	}
+
+	contacts, err := verificationClaimContacts(ctx, e.entityTypeService, entityRef.EntityCategory,
+		entityRef.EntityType)
+	if err != nil {
+		return err
+	}
+
+	for name, contact := range contacts {
+		if _, offered := available.Attributes[contact]; offered {
+			available.Attributes[name] = &providers.AttributeResponse{}
+		}
+	}
+
+	return nil
 }
 
 // collectApprovedElementsByPurposeName returns a list of element names that are approved by the user for a

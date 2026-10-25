@@ -145,8 +145,9 @@ func lockAppliesAt(plane providers.AccessPlane, method providers.AuthenticationM
 	case providers.AccessPlaneRecovery:
 		return heldAtRecovery[method]
 	default:
-		// Locks never apply at the session, issuance or application planes, so failed logins cannot
-		// end sessions. Unknown planes do not enforce locks.
+		// Locks never apply at the session, issuance, application or verification planes, so failed
+		// logins cannot end sessions and a locked user can still verify a contact. Unknown planes do
+		// not enforce locks.
 		return false
 	}
 }

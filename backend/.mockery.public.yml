@@ -1,4 +1,4 @@
-# Copyright 2025 The ThunderID Authors
+# Copyright 2025-2026 The ThunderID Authors
 # SPDX-License-Identifier: Apache-2.0
 
 # Mockery configuration file for generating public mocks
@@ -627,6 +627,15 @@ packages:
           pkgname: identitygovernancemock
           filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/attributeverification:
+    interfaces:
+      AttributeVerificationServiceInterface:
+        config:
+          dir: tests/mocks/attributeverificationmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: attributeverificationmock
+          filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/pkg/thunderidengine/providers:
     interfaces:
       AuthnProviderManager:
@@ -640,6 +649,12 @@ packages:
           dir: tests/mocks/identitygovernanceprovidermock
           structname: '{{.InterfaceName}}Mock'
           pkgname: identitygovernanceprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
+      AttributeVerificationProvider:
+        config:
+          dir: tests/mocks/attributeverificationprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: attributeverificationprovidermock
           filename: "{{.InterfaceName}}_mock.go"
       AuthnProviderInterface:
         config:

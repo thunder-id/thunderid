@@ -1555,6 +1555,9 @@ components:
           type: string
         email_verified:
           type: boolean
+          description: |
+            Whether the user verified the `email` in this response, as recorded at sign-in. Released only with
+            `email`.
         gender:
           type: string
         birthdate:
@@ -1567,6 +1570,7 @@ components:
           type: string
         phone_number_verified:
           type: boolean
+          description: Whether the user verified the `phone_number` in this response, as `email_verified` describes.
         updated_at:
           type: integer
           format: int64

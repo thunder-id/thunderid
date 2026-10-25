@@ -22,6 +22,7 @@ const (
 	ExecutorNameIdentifying                  = "IdentifyingExecutor"
 	ExecutorNameAuthAssert                   = "AuthAssertExecutor"
 	ExecutorNameProvisioning                 = "ProvisioningExecutor"
+	ExecutorNameAttributeVerification        = "AttributeVerificationExecutor"
 	ExecutorNameAttributeCollect             = "AttributeCollector"
 	ExecutorNameAuthorization                = "AuthorizationExecutor"
 	ExecutorNamePermissionValidator          = "PermissionValidator"
@@ -82,4 +83,7 @@ const (
 	ExecutorModeUnlock    = "unlock"
 	ExecutorModeSuspend   = "suspend"
 	ExecutorModeUnsuspend = "unsuspend"
+
+	ExecutorModePrepare = "prepare"
+	ExecutorModeRecord  = "record"
 )

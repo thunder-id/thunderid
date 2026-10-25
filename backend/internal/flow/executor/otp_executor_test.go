@@ -4,6 +4,8 @@
 package executor
 
 import (
+	"context"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -143,7 +145,7 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_Success_UserIdentifiedAnd
 		UserInputs: map[string]string{
 			common.AttributeMobileNumber: "+1234567890",
 		},
-		RuntimeData: map[string]string{},
+		RuntimeData: map[string]string{common.RuntimeKeyOTPFailedVerifyCount: "2"},
 	}
 
 	resp, err := suite.executor.Execute(ctx)
@@ -152,6 +154,9 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_Success_UserIdentifiedAnd
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.Equal(suite.T(), "session-tok-1", resp.RuntimeData[common.RuntimeKeyOTPSessionToken])
 	assert.Equal(suite.T(), "1", resp.RuntimeData[common.RuntimeKeyOTPAttemptCount])
+	failedCount, reset := resp.RuntimeData[common.RuntimeKeyOTPFailedVerifyCount]
+	assert.True(suite.T(), reset, "a new code must reset the wrong-code count")
+	assert.Equal(suite.T(), "", failedCount)
 	assert.Equal(suite.T(), "6", resp.AdditionalData[common.DataOTPLength])
 	assert.Equal(suite.T(), "true", resp.AdditionalData[common.DataOTPNumericOnly])
 	fwdData, ok := resp.ForwardedData[common.ForwardedDataKeyTemplateData].(map[string]interface{})
@@ -635,7 +640,7 @@ func (suite *OTPExecutorTestSuite) TestExecuteVerify_RefusalsRepromptWithTheirEr
 	}
 }
 
-func (suite *OTPExecutorTestSuite) TestExecuteVerify_MissingSessionToken_ReturnsError() {
+func (suite *OTPExecutorTestSuite) TestExecuteVerify_MissingSessionToken_AsksForTheCodeAgain() {
 	ctx := &providers.NodeContext{
 		ExecutionID:  "exec-9",
 		FlowType:     providers.FlowTypeAuthentication,
@@ -648,8 +653,12 @@ func (suite *OTPExecutorTestSuite) TestExecuteVerify_MissingSessionToken_Returns
 
 	resp, err := suite.executor.Execute(ctx)
 
-	assert.Error(suite.T(), err)
-	assert.NotNil(suite.T(), resp)
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecUserInputRequired, resp.Status)
+	suite.Require().NotNil(resp.Error)
+	suite.Equal(ErrInvalidOTP.Code, resp.Error.Code)
+	suite.mockAuthnProvider.AssertNotCalled(suite.T(), "AuthenticateUser", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (suite *OTPExecutorTestSuite) TestExecuteVerify_PrerequisiteNotMet_ReturnsFailure() {
@@ -1408,4 +1417,375 @@ func (suite *OTPExecutorTestSuite) TestResolveOTPProperties_FractionalValidity()
 	cfg := suite.executor.resolveOTPProperties(ctx)
 
 	suite.Nil(cfg)
+}
+
+// --- pinned contact tests ---
+
+// signedInUser is an AuthUser a CALLed sign-in left on the flow.
+func signedInUser() providers.AuthUser {
+	authUser := providers.AuthUser{}
+	authUser.SetStateFor("default", providers.AuthState{
+		EntityReference: &providers.EntityReference{EntityID: "someone-else"},
+		Attributes:      &providers.AttributesResponse{},
+	})
+	return authUser
+}
+
+func (suite *OTPExecutorTestSuite) decodedOTPEvidence(resp *providers.ExecutorResponse) *verificationEvidence {
+	return evidenceIn(suite.T(), resp.SharedRuntimeData)
+}
+
+// A new code for a pinned contact must be passed again: a pass of an earlier code no longer counts,
+// and a proof not yet passed is left as it is.
+func (suite *OTPExecutorTestSuite) TestExecuteGenerate_PinnedContactResetsAPassedProof() {
+	for name, test := range map[string]struct {
+		passed bool
+		want   *verificationEvidence
+	}{
+		"passed":     {true, &verificationEvidence{Pin: emailPin()}},
+		"not passed": {false, nil},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			suite.mockOTPService.On("GenerateOTP", mock.Anything, testOTPUserID,
+				authnprovidercm.UserAttributeUserID, mock.Anything).
+				Return("session-new", "221100", int64(300), (*tidcommon.ServiceError)(nil)).Once()
+
+			resp, err := suite.executor.Execute(&providers.NodeContext{
+				Context:           context.Background(),
+				ExecutionID:       "exec-pin-generate",
+				FlowType:          providers.FlowTypeSelf,
+				ExecutorMode:      ExecutorModeGenerate,
+				UserInputs:        map[string]string{},
+				RuntimeData:       map[string]string{userAttributeUserID: testOTPUserID},
+				SharedRuntimeData: pinnedEmailEvidence(suite.T(), test.passed),
+			})
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecComplete, resp.Status)
+			suite.Equal("session-new", resp.RuntimeData[common.RuntimeKeyOTPSessionToken])
+			if test.want == nil {
+				suite.Nil(resp.SharedRuntimeData)
+				return
+			}
+			suite.Equal(test.want, suite.decodedOTPEvidence(resp))
+		})
+	}
+}
+
+// A pinned contact's code is checked at the verification plane, where a lock on the one-time password
+// gives way, so a locked user still receives it.
+func (suite *OTPExecutorTestSuite) TestExecuteGenerate_PinnedContactIsCheckedAtTheVerificationPlane() {
+	suite.executor.accessGuard = newAccessGuard(expectAccess(suite.T(), testOTPUserID,
+		providers.AccessPlaneVerification, providers.AuthenticationMethodOTP,
+		providers.AccessDecision{Admitted: true}, nil))
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, testOTPUserID,
+		authnprovidercm.UserAttributeUserID, mock.Anything).
+		Return("session-new", "221100", int64(300), (*tidcommon.ServiceError)(nil)).Once()
+
+	resp, err := suite.executor.Execute(&providers.NodeContext{
+		Context:           context.Background(),
+		ExecutionID:       "exec-pin-locked",
+		FlowType:          providers.FlowTypeSelf,
+		ExecutorMode:      ExecutorModeGenerate,
+		UserInputs:        map[string]string{},
+		RuntimeData:       map[string]string{userAttributeUserID: testOTPUserID},
+		SharedRuntimeData: pinnedEmailEvidence(suite.T(), false),
+	})
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal("session-new", resp.RuntimeData[common.RuntimeKeyOTPSessionToken])
+	suite.NotEqual(dataValueTrue, resp.RuntimeData[common.RuntimeKeySkipDelivery])
+}
+
+func (suite *OTPExecutorTestSuite) TestExecuteGenerate_PinnedContactOfASuspendedUserIsRefused() {
+	suite.executor.accessGuard = newAccessGuard(expectAccess(suite.T(), testOTPUserID,
+		providers.AccessPlaneVerification, providers.AuthenticationMethodOTP,
+		providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended}, nil))
+
+	resp, err := suite.executor.Execute(&providers.NodeContext{
+		Context:           context.Background(),
+		ExecutionID:       "exec-pin-suspended",
+		FlowType:          providers.FlowTypeSelf,
+		ExecutorMode:      ExecutorModeGenerate,
+		UserInputs:        map[string]string{},
+		RuntimeData:       map[string]string{userAttributeUserID: testOTPUserID},
+		SharedRuntimeData: pinnedEmailEvidence(suite.T(), true),
+	})
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrAccountSuspended.Code, resp.Error.Code)
+	suite.Empty(resp.SharedRuntimeData)
+	suite.mockOTPService.AssertNotCalled(suite.T(), "GenerateOTP",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *OTPExecutorTestSuite) TestExecuteGenerate_WithoutPinWritesNoEvidence() {
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, testOTPUserID,
+		authnprovidercm.UserAttributeUserID, mock.Anything).
+		Return("session-1", "221100", int64(300), (*tidcommon.ServiceError)(nil)).Once()
+
+	resp, err := suite.executor.Execute(&providers.NodeContext{
+		Context:      context.Background(),
+		ExecutionID:  "exec-no-pin-generate",
+		FlowType:     providers.FlowTypeAuthentication,
+		ExecutorMode: ExecutorModeGenerate,
+		UserInputs:   map[string]string{},
+		RuntimeData:  map[string]string{userAttributeUserID: testOTPUserID},
+	})
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Empty(resp.SharedRuntimeData)
+}
+
+func (suite *OTPExecutorTestSuite) TestExecute_CorruptEvidenceIsAnError() {
+	for _, mode := range []string{ExecutorModeGenerate, ExecutorModeVerify} {
+		suite.Run(mode, func() {
+			suite.SetupTest()
+			_, err := suite.executor.Execute(&providers.NodeContext{
+				Context:      context.Background(),
+				ExecutionID:  "exec-corrupt",
+				FlowType:     providers.FlowTypeSelf,
+				ExecutorMode: mode,
+				UserInputs:   map[string]string{userInputOTP: "654321"},
+				RuntimeData: map[string]string{userAttributeUserID: testOTPUserID,
+					common.RuntimeKeyOTPSessionToken: "session-1"},
+				SharedRuntimeData: map[string]string{common.RuntimeKeyAttributeVerificationEvidence: "{"},
+			})
+
+			suite.Error(err)
+		})
+	}
+}
+
+// A pinned contact's code is checked as a contact proof: it passes the proof, and it neither signs
+// anyone in nor adds the authenticated claims, even when a CALLed sign-in left a user on the flow.
+func (suite *OTPExecutorTestSuite) TestExecuteVerify_PinnedContactPassesWithoutSigningIn() {
+	for _, flowType := range []providers.FlowType{providers.FlowTypeSelf, providers.FlowTypeAuthentication} {
+		suite.Run(string(flowType), func() {
+			suite.SetupTest()
+			flowUser := signedInUser()
+			suite.mockAuthnProvider.On("AuthenticateUser",
+				mock.MatchedBy(authnprovidercm.IsContactProof), mock.Anything,
+				map[string]interface{}{authnprovidercm.CredentialTypeOTP: map[string]interface{}{
+					"sessionToken": "session-1", "otp": "654321"}},
+				mock.Anything, mock.Anything, flowUser).
+				Return(providers.AuthUser{}, providers.AuthenticatedClaims{userAttributeUserID: testOTPUserID},
+					(*tidcommon.ServiceError)(nil)).Once()
+
+			resp, err := suite.executor.Execute(&providers.NodeContext{
+				Context:           context.Background(),
+				ExecutionID:       "exec-pin-verify",
+				FlowType:          flowType,
+				ExecutorMode:      ExecutorModeVerify,
+				AuthUser:          flowUser,
+				UserInputs:        map[string]string{userInputOTP: "654321"},
+				RuntimeData:       map[string]string{common.RuntimeKeyOTPSessionToken: "session-1"},
+				SharedRuntimeData: pinnedEmailEvidence(suite.T(), false),
+			})
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecComplete, resp.Status)
+			suite.Equal(flowUser, resp.AuthUser, "a contact proof must not change the flow's user")
+			suite.NotContains(resp.RuntimeData, userAttributeUserID)
+			suite.Equal("", resp.RuntimeData[common.RuntimeKeyOTPSessionToken])
+			suite.Equal(&verificationEvidence{Pin: emailPin(), Passed: true}, suite.decodedOTPEvidence(resp))
+		})
+	}
+}
+
+func (suite *OTPExecutorTestSuite) TestExecuteVerify_PinnedContactWrongCodeDoesNotPass() {
+	suite.mockAuthnProvider.On("AuthenticateUser",
+		mock.MatchedBy(authnprovidercm.IsContactProof), mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, providers.AuthenticatedClaims(nil),
+			&authnprovidermgr.ErrorAuthenticationFailed).Once()
+
+	resp, err := suite.executor.Execute(&providers.NodeContext{
+		Context:           context.Background(),
+		ExecutionID:       "exec-pin-wrong",
+		FlowType:          providers.FlowTypeSelf,
+		ExecutorMode:      ExecutorModeVerify,
+		UserInputs:        map[string]string{userInputOTP: "000000"},
+		RuntimeData:       map[string]string{common.RuntimeKeyOTPSessionToken: "session-1"},
+		SharedRuntimeData: pinnedEmailEvidence(suite.T(), false),
+	})
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecUserInputRequired, resp.Status)
+	suite.Equal(ErrInvalidOTP.Code, resp.Error.Code)
+	suite.Empty(resp.SharedRuntimeData)
+}
+
+// With maxAttempts on the verify node, a wrong code is counted, and the one that reaches the cap answers
+// that the code is void.
+func (suite *OTPExecutorTestSuite) TestExecuteVerify_WrongCodesAreCountedUpToMaxAttempts() {
+	for failures, wantCode := range map[int]string{0: ErrInvalidOTP.Code, 1: ErrInvalidOTP.Code,
+		2: ErrMaxOTPAttemptsReached.Code} {
+		suite.Run(strconv.Itoa(failures), func() {
+			suite.SetupTest()
+			suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything, mock.Anything).
+				Return(providers.AuthUser{}, providers.AuthenticatedClaims(nil),
+					&authnprovidermgr.ErrorAuthenticationFailed).Once()
+
+			resp, err := suite.executor.Execute(cappedVerifyContext("000000", 3, strconv.Itoa(failures)))
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecUserInputRequired, resp.Status)
+			suite.Equal(wantCode, resp.Error.Code)
+			suite.Equal(strconv.Itoa(failures+1), resp.RuntimeData[common.RuntimeKeyOTPFailedVerifyCount])
+		})
+	}
+}
+
+// After the cap, the code is no longer checked, even when it is right, until a new code is generated.
+func (suite *OTPExecutorTestSuite) TestExecuteVerify_VoidCodeIsNotChecked() {
+	resp, err := suite.executor.Execute(cappedVerifyContext("654321", 3, "3"))
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecUserInputRequired, resp.Status)
+	suite.Equal(ErrMaxOTPAttemptsReached.Code, resp.Error.Code)
+	suite.mockAuthnProvider.AssertNotCalled(suite.T(), "AuthenticateUser",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// Without maxAttempts on the verify node, wrong codes are neither counted nor capped.
+func (suite *OTPExecutorTestSuite) TestExecuteVerify_WithoutMaxAttemptsWrongCodesAreNotCounted() {
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, providers.AuthenticatedClaims(nil),
+			&authnprovidermgr.ErrorAuthenticationFailed).Once()
+
+	resp, err := suite.executor.Execute(cappedVerifyContext("000000", 0, "7"))
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecUserInputRequired, resp.Status)
+	suite.Equal(ErrInvalidOTP.Code, resp.Error.Code)
+	suite.NotContains(resp.RuntimeData, common.RuntimeKeyOTPFailedVerifyCount)
+}
+
+// A request without a code asks for it and counts nothing.
+func (suite *OTPExecutorTestSuite) TestExecuteVerify_MissingCodeIsNotCounted() {
+	resp, err := suite.executor.Execute(cappedVerifyContext("", 3, "1"))
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecUserInputRequired, resp.Status)
+	suite.NotContains(resp.RuntimeData, common.RuntimeKeyOTPFailedVerifyCount)
+}
+
+func (suite *OTPExecutorTestSuite) TestExecuteVerify_UnreadableWrongCodeCountIsAnError() {
+	_, err := suite.executor.Execute(cappedVerifyContext("000000", 3, "many"))
+
+	suite.Error(err)
+}
+
+// cappedVerifyContext returns a sign-in verify request with the code, maxAttempts on the node (none when
+// zero) and the wrong codes already entered for the current code.
+func cappedVerifyContext(code string, maxAttempts int, failures string) *providers.NodeContext {
+	inputs := map[string]string{}
+	if code != "" {
+		inputs[userInputOTP] = code
+	}
+	properties := map[string]interface{}{}
+	if maxAttempts > 0 {
+		properties[common.NodePropertyMaxAttempts] = maxAttempts
+	}
+
+	return &providers.NodeContext{
+		Context:        context.Background(),
+		ExecutionID:    "exec-capped",
+		FlowType:       providers.FlowTypeAuthentication,
+		ExecutorMode:   ExecutorModeVerify,
+		NodeProperties: properties,
+		UserInputs:     inputs,
+		RuntimeData: map[string]string{common.RuntimeKeyOTPSessionToken: "session-1",
+			common.RuntimeKeyOTPFailedVerifyCount: failures},
+	}
+}
+
+// Without a pin a self flow generates and checks a code as any other flow does: the code is a
+// sign-in and no evidence is written.
+func (suite *OTPExecutorTestSuite) TestExecute_SelfFlowWithoutPinBehavesAsBefore() {
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, testOTPUserID,
+		authnprovidercm.UserAttributeUserID, mock.Anything).
+		Return("session-1", "221100", int64(300), (*tidcommon.ServiceError)(nil)).Once()
+	signedIn := signedInUser()
+	suite.mockAuthnProvider.On("AuthenticateUser",
+		mock.MatchedBy(func(ctx context.Context) bool { return !authnprovidercm.IsContactProof(ctx) }),
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(signedIn, providers.AuthenticatedClaims{}, (*tidcommon.ServiceError)(nil)).Once()
+	ctx := &providers.NodeContext{
+		Context:      context.Background(),
+		ExecutionID:  "exec-no-pin",
+		FlowType:     providers.FlowTypeSelf,
+		ExecutorMode: ExecutorModeGenerate,
+		UserInputs:   map[string]string{},
+		RuntimeData:  map[string]string{userAttributeUserID: testOTPUserID},
+	}
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Empty(resp.SharedRuntimeData)
+
+	ctx.ExecutorMode = ExecutorModeVerify
+	ctx.UserInputs = map[string]string{userInputOTP: "221100"}
+	ctx.RuntimeData[common.RuntimeKeyOTPSessionToken] = "session-1"
+	resp, err = suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal(signedIn, resp.AuthUser)
+	suite.Empty(resp.SharedRuntimeData)
+}
+
+func (suite *OTPExecutorTestSuite) TestExecuteGenerate_PinnedContactGenerateErrorLeavesEvidence() {
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, testOTPUserID,
+		authnprovidercm.UserAttributeUserID, mock.Anything).
+		Return("", "", int64(0), &tidcommon.InternalServerError).Once()
+
+	resp, err := suite.executor.Execute(&providers.NodeContext{
+		Context:           context.Background(),
+		ExecutionID:       "exec-pin-generate-error",
+		FlowType:          providers.FlowTypeSelf,
+		ExecutorMode:      ExecutorModeGenerate,
+		UserInputs:        map[string]string{},
+		RuntimeData:       map[string]string{userAttributeUserID: testOTPUserID},
+		SharedRuntimeData: pinnedEmailEvidence(suite.T(), true),
+	})
+
+	suite.Require().Error(err)
+	suite.Empty(resp.SharedRuntimeData)
+	suite.Empty(resp.RuntimeData[common.RuntimeKeyOTPSessionToken])
+}
+
+// A code in another flow type is a sign-in as before: no contact marker, the user is signed in and
+// the claims are kept.
+func (suite *OTPExecutorTestSuite) TestExecuteVerify_SignInIsNotAContactProof() {
+	signedIn := signedInUser()
+	suite.mockAuthnProvider.On("AuthenticateUser",
+		mock.MatchedBy(func(ctx context.Context) bool { return !authnprovidercm.IsContactProof(ctx) }),
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(signedIn, providers.AuthenticatedClaims{userAttributeUserID: testOTPUserID},
+			(*tidcommon.ServiceError)(nil)).Once()
+
+	resp, err := suite.executor.Execute(&providers.NodeContext{
+		Context:      context.Background(),
+		ExecutionID:  "exec-sign-in",
+		FlowType:     providers.FlowTypeAuthentication,
+		ExecutorMode: ExecutorModeVerify,
+		UserInputs:   map[string]string{userInputOTP: "654321"},
+		RuntimeData:  map[string]string{common.RuntimeKeyOTPSessionToken: "session-1"},
+	})
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal(signedIn, resp.AuthUser)
+	suite.Equal(testOTPUserID, resp.RuntimeData[userAttributeUserID])
+	suite.Empty(resp.SharedRuntimeData)
 }

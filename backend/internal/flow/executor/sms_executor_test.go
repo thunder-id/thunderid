@@ -12,9 +12,11 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	notifcm "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
+	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
 )
@@ -87,6 +89,8 @@ func (suite *SMSExecutorTestSuite) TestExecute_SendMode_Success() {
 	suite.NoError(err)
 	suite.Equal(providers.ExecComplete, resp.Status)
 	suite.Equal(dataValueTrue, resp.AdditionalData[common.DataSMSSent])
+	suite.Equal(map[string]string{common.RuntimeKeyDeliveredRecipients: deliveredTo(suite.T(), "+94714627887")},
+		resp.SharedRuntimeData, "a send must record where it went")
 }
 
 func (suite *SMSExecutorTestSuite) TestExecute_SendMode_RecipientFromRuntimeData() {
@@ -330,6 +334,7 @@ func (suite *SMSExecutorTestSuite) TestExecute_SendMode_SkipDelivery() {
 	suite.NoError(err)
 	suite.Equal(providers.ExecComplete, resp.Status)
 	suite.Equal(dataValueTrue, resp.AdditionalData[common.DataSMSSent])
+	suite.Nil(resp.SharedRuntimeData, "a skipped send must record no send")
 	suite.mockSMSSenderSvc.AssertNotCalled(suite.T(), "SendMessage",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
@@ -406,6 +411,7 @@ func (suite *SMSExecutorTestSuite) TestExecute_SendMode_UserOnboarding_ClientErr
 	suite.NoError(err)
 	suite.Equal(providers.ExecFailure, resp.Status)
 	suite.Equal(ErrSMSProviderNotConfigured.Error.DefaultValue, resp.Error.Error.DefaultValue)
+	suite.Nil(resp.SharedRuntimeData, "a failed send must record no send")
 }
 
 func (suite *SMSExecutorTestSuite) TestExecute_SendMode_UserOnboarding_ServerError_ReturnsError() {
@@ -678,4 +684,160 @@ func (suite *SMSExecutorTestSuite) TestResolveTemplateData_ExternalClaims() {
 
 func TestSMSExecutorSuite(t *testing.T) {
 	suite.Run(t, new(SMSExecutorTestSuite))
+}
+
+// A mobile recipient an earlier node set wins over every other source of the number, and the send records
+// it. A cleared recipient, or one set for another recipient type, leaves the number to the other sources.
+func (suite *SMSExecutorTestSuite) TestExecute_SendMode_RecipientSetByAnEarlierNodeWins() {
+	for name, test := range map[string]struct {
+		recipient string
+		arrange   func(ctx *providers.NodeContext)
+		want      string
+	}{
+		"over a user input": {testPinnedMobile, func(ctx *providers.NodeContext) {
+			ctx.UserInputs[common.AttributeMobileNumber] = "+94770000000"
+		}, testPinnedMobile},
+		"over runtime data": {testPinnedMobile, func(ctx *providers.NodeContext) {
+			ctx.RuntimeData[common.AttributeMobileNumber] = "+94770000000"
+		}, testPinnedMobile},
+		// The entity provider mock fails the test if the profile is read.
+		"over the profile": {testPinnedMobile, func(ctx *providers.NodeContext) {
+			ctx.RuntimeData[userAttributeUserID] = "test-user-id"
+		}, testPinnedMobile},
+		"cleared": {"", func(ctx *providers.NodeContext) {
+			ctx.UserInputs[common.AttributeMobileNumber] = "+94770000000"
+		}, "+94770000000"},
+		"set for an email recipient": {"user@example.com", func(ctx *providers.NodeContext) {
+			ctx.RuntimeData[common.RuntimeKeyRecipientType] = entitytypemodel.TypeEmail
+			ctx.UserInputs[common.AttributeMobileNumber] = "+94770000000"
+		}, "+94770000000"},
+		"set without a recipient type": {testPinnedMobile, func(ctx *providers.NodeContext) {
+			delete(ctx.RuntimeData, common.RuntimeKeyRecipientType)
+			ctx.UserInputs[common.AttributeMobileNumber] = "+94770000000"
+		}, "+94770000000"},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			suite.executor.entityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
+			ctx := &providers.NodeContext{
+				ExecutionID:  "test-flow-id",
+				FlowType:     providers.FlowTypeSelf,
+				ExecutorMode: ExecutorModeSend,
+				UserInputs:   map[string]string{},
+				RuntimeData: map[string]string{common.RuntimeKeyRecipientType: entitytypemodel.TypeMobile,
+					common.RuntimeKeyExpectedRecipient: test.recipient},
+				NodeProperties: map[string]interface{}{
+					propertyKeyNotificationSenderID: "sender-uuid-001",
+					propertyKeySMSTemplate:          smsSelfRegistrationProperty,
+				},
+			}
+			test.arrange(ctx)
+			suite.expectSMS(test.want)
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecComplete, resp.Status)
+			suite.Equal(dataValueTrue, resp.AdditionalData[common.DataSMSSent])
+			suite.Equal(map[string]string{common.RuntimeKeyDeliveredRecipients: deliveredTo(suite.T(), test.want)},
+				resp.SharedRuntimeData, "the send must record where it went")
+		})
+	}
+}
+
+// In a self flow, an unresolved or unknown sender fails the node as an unconfigured provider, and
+// records no send.
+func (suite *SMSExecutorTestSuite) TestExecute_SendMode_SelfFlow_ClientError_ReturnsExecFailure() {
+	for _, senderID := range []string{"{{SENDER_ID}}", "unknown-sender"} {
+		suite.Run(senderID, func() {
+			suite.SetupTest()
+			suite.mockTemplateRenderer.On("Resolve", mock.Anything, notificationtemplate.ChannelTypeSMS,
+				smsSelfRegistrationHandle, mock.Anything).
+				Return(&notificationtemplate.ResolvedContent{Body: testRenderedSMSBody}, nil).Once()
+			suite.mockSMSSenderSvc.On("SendMessage", mock.Anything, notifcm.ChannelTypeSMS, senderID, mock.Anything).
+				Return(&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "MNS-1001"}).Once()
+			ctx := &providers.NodeContext{
+				FlowType:     providers.FlowTypeSelf,
+				ExecutorMode: ExecutorModeSend,
+				RuntimeData: map[string]string{common.RuntimeKeyRecipientType: entitytypemodel.TypeMobile,
+					common.RuntimeKeyExpectedRecipient: testPinnedMobile},
+				NodeProperties: map[string]interface{}{
+					propertyKeyNotificationSenderID: senderID,
+					propertyKeySMSTemplate:          smsSelfRegistrationProperty,
+				},
+			}
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecFailure, resp.Status)
+			suite.Equal(ErrSMSProviderNotConfigured.Code, resp.Error.Code)
+			suite.NotEqual(dataValueTrue, resp.AdditionalData[common.DataSMSSent])
+			suite.Nil(resp.SharedRuntimeData, "a failed send must record no send")
+		})
+	}
+}
+
+// expectSMS expects one SMS to the given number.
+func (suite *SMSExecutorTestSuite) expectSMS(recipient string) {
+	suite.mockTemplateRenderer.On("Resolve", mock.Anything, notificationtemplate.ChannelTypeSMS,
+		smsSelfRegistrationHandle, mock.Anything).
+		Return(&notificationtemplate.ResolvedContent{Body: testRenderedSMSBody}, nil).Once()
+	suite.mockSMSSenderSvc.On("SendMessage", mock.Anything, mock.Anything, "sender-uuid-001",
+		notifcm.MessageData{Recipient: recipient, Body: testRenderedSMSBody}).Return(nil).Once()
+}
+
+// A send adds its recipient to the recipients sent to before it, once, and a list that does not decode
+// fails the node before anything is sent.
+func (suite *SMSExecutorTestSuite) TestSendAddsToTheDeliveredRecipients() {
+	for name, test := range map[string]struct{ earlier, want string }{
+		"a new recipient": {deliveredTo(suite.T(), "user@example.com"),
+			deliveredTo(suite.T(), "user@example.com", testPinnedMobile)},
+		"a recipient already sent to": {deliveredTo(suite.T(), testPinnedMobile),
+			deliveredTo(suite.T(), testPinnedMobile)},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			suite.mockTemplateRenderer.On("Resolve", mock.Anything, notificationtemplate.ChannelTypeSMS,
+				smsSelfRegistrationHandle, mock.Anything).
+				Return(&notificationtemplate.ResolvedContent{Body: testRenderedSMSBody}, nil).Once()
+			suite.mockSMSSenderSvc.On("SendMessage", mock.Anything, mock.Anything, "sender-uuid-001",
+				notifcm.MessageData{Recipient: testPinnedMobile, Body: testRenderedSMSBody}).Return(nil).Once()
+
+			resp, err := suite.executor.Execute(suite.deliveryContext(test.earlier))
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecComplete, resp.Status)
+			suite.Equal(map[string]string{common.RuntimeKeyDeliveredRecipients: test.want}, resp.SharedRuntimeData)
+		})
+	}
+
+	suite.Run("a list that does not decode", func() {
+		suite.SetupTest()
+		suite.mockTemplateRenderer.On("Resolve", mock.Anything, notificationtemplate.ChannelTypeSMS,
+			smsSelfRegistrationHandle, mock.Anything).
+			Return(&notificationtemplate.ResolvedContent{Body: testRenderedSMSBody}, nil).Maybe()
+
+		resp, err := suite.executor.Execute(suite.deliveryContext(testPinnedMobile))
+
+		suite.Error(err)
+		suite.Nil(resp)
+		suite.mockSMSSenderSvc.AssertNotCalled(suite.T(), "SendMessage", mock.Anything, mock.Anything,
+			mock.Anything, mock.Anything)
+	})
+}
+
+// deliveryContext is a send to the pinned mobile after earlier sends recorded as the delivered recipients.
+func (suite *SMSExecutorTestSuite) deliveryContext(delivered string) *providers.NodeContext {
+	return &providers.NodeContext{
+		ExecutionID:       "test-flow-id",
+		ExecutorMode:      ExecutorModeSend,
+		UserInputs:        map[string]string{common.AttributeMobileNumber: testPinnedMobile},
+		RuntimeData:       map[string]string{},
+		SharedRuntimeData: map[string]string{common.RuntimeKeyDeliveredRecipients: delivered},
+		NodeProperties: map[string]interface{}{
+			propertyKeyNotificationSenderID: "sender-uuid-001",
+			propertyKeySMSTemplate:          smsSelfRegistrationProperty,
+		},
+	}
 }

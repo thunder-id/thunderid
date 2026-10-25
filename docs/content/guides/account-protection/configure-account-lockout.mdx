@@ -18,7 +18,7 @@ Set how many failed sign-in attempts lock a user or an agent, and for how long, 
 
 ## What Counts Toward a Lock
 
-Only failed stored credentials, such as passwords or PINs, and failed one-time passwords count toward a lock. Passkeys, magic links, federated sign-in, and verifiable presentations never form a lock, but a lock on every sign-in method refuses them too. OAuth client secret authentication is not counted, so an agent's or application's client secret never locks.
+Only failed stored credentials, such as passwords or PINs, and failed one-time passwords count toward a lock. Passkeys, magic links, federated sign-in, and verifiable presentations never form a lock, but a lock on every sign-in method refuses them too. OAuth client secret authentication is not counted, so an agent's or application's client secret never locks. A one-time password that verifies an email address or mobile number is not counted either; see [Email Address and Mobile Number Verification](../../users/manage-users#email-address-and-mobile-number-verification).
 
 <ProductName /> ships a policy for users and one for agents, and every lockable sign-in method in a category uses that category's policy:
 

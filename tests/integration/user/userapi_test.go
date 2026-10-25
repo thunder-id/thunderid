@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package user
@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
@@ -922,4 +924,146 @@ func deleteGroup(groupID string) error {
 	}
 
 	return nil
+}
+
+// verificationContactUser is a user whose type declares email as a contact, with its token client.
+type verificationContactUser struct {
+	id, typeHandle, username, email, password string
+	client                                    *http.Client
+}
+
+// newVerificationContactUser creates, with supplied verification, a user whose type declares email as a
+// contact, and removes both when the test ends. Supplied verification could only take effect on such an
+// attribute.
+func (ts *UserAPITestSuite) newVerificationContactUser(name string) verificationContactUser {
+	ts.T().Helper()
+
+	user := verificationContactUser{typeHandle: "verification-contact-" + name,
+		username: "verification." + name, email: "verification." + name + "@example.com",
+		password: "Verification-P@ssw0rd1"}
+	typeID, err := testutils.CreateUserType(testutils.UserType{
+		Handle: user.typeHandle, DisplayName: "Verification Contact " + name, OUID: testOUID,
+		Schema: map[string]interface{}{
+			"username": map[string]interface{}{"type": "string", "required": true, "unique": true},
+			"password": map[string]interface{}{"type": "string", "credential": true},
+			"email":    map[string]interface{}{"type": "email"},
+		},
+	})
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() { ts.NoError(testutils.DeleteUserType(typeID)) })
+
+	status, body := sendUserRequest(ts.T(), testutils.GetHTTPClient(), http.MethodPost, "/users",
+		map[string]interface{}{
+			"ouId": testOUID, "type": user.typeHandle,
+			"attributes": map[string]interface{}{"username": user.username, "password": user.password,
+				"email": user.email},
+			"verifiedAttributes":    suppliedVerification(),
+			"attributeVerification": suppliedVerification(),
+			"systemAttributes":      map[string]interface{}{"attributeVerification": suppliedVerification()},
+		})
+	ts.Require().Equal(http.StatusCreated, status, "%s", body)
+	var created testutils.User
+	ts.Require().NoError(json.Unmarshal(body, &created))
+	user.id = created.ID
+	ts.T().Cleanup(func() { ts.NoError(deleteUser(user.id)) })
+	ts.Empty(verifiedAttributesIn(ts.T(), body), "the create response must report nothing verified")
+
+	user.client, err = testutils.GetHTTPClientForUser(user.username, user.password)
+	ts.Require().NoError(err)
+	return user
+}
+
+// requireNothingVerified checks that every read of the user, by ID, in a filtered list and the user's
+// own, reports verifiedAttributes as an empty object.
+func (ts *UserAPITestSuite) requireNothingVerified(user verificationContactUser) {
+	ts.T().Helper()
+
+	_, byID := sendUserRequest(ts.T(), testutils.GetHTTPClient(), http.MethodGet, "/users/"+user.id, nil)
+	ts.Empty(verifiedAttributesIn(ts.T(), byID), "GET /users/{id} must report nothing verified")
+
+	filter := url.QueryEscape(fmt.Sprintf(`username eq "%s"`, user.username))
+	status, list := sendUserRequest(ts.T(), testutils.GetHTTPClient(), http.MethodGet, "/users?filter="+filter,
+		nil)
+	ts.Require().Equal(http.StatusOK, status, "%s", list)
+	var listed struct {
+		Users []json.RawMessage `json:"users"`
+	}
+	ts.Require().NoError(json.Unmarshal(list, &listed))
+	ts.Require().Len(listed.Users, 1, "the filter must find exactly the user: %s", list)
+	ts.Empty(verifiedAttributesIn(ts.T(), listed.Users[0]), "GET /users must report nothing verified")
+
+	_, own := sendUserRequest(ts.T(), user.client, http.MethodGet, "/users/me", nil)
+	ts.Empty(verifiedAttributesIn(ts.T(), own), "GET /users/me must report nothing verified")
+}
+
+// TestUserCreateCannotSetVerification checks that verification supplied with a create is ignored.
+func (ts *UserAPITestSuite) TestUserCreateCannotSetVerification() {
+	ts.requireNothingVerified(ts.newVerificationContactUser("create"))
+}
+
+// TestUserUpdateCannotSetVerification checks that verification supplied with an administrator's or the
+// user's own update is ignored.
+func (ts *UserAPITestSuite) TestUserUpdateCannotSetVerification() {
+	user := ts.newVerificationContactUser("update")
+	attributes := map[string]interface{}{"username": user.username, "email": user.email}
+
+	status, body := sendUserRequest(ts.T(), testutils.GetHTTPClient(), http.MethodPut, "/users/"+user.id,
+		map[string]interface{}{
+			"ouId": testOUID, "type": user.typeHandle, "attributes": attributes,
+			"verifiedAttributes": suppliedVerification(),
+			"systemAttributes":   map[string]interface{}{"attributeVerification": suppliedVerification()},
+		})
+	ts.Require().Equal(http.StatusOK, status, "%s", body)
+	ts.Empty(verifiedAttributesIn(ts.T(), body), "the administrator's update must report nothing verified")
+
+	status, body = sendUserRequest(ts.T(), user.client, http.MethodPut, "/users/me",
+		map[string]interface{}{"attributes": attributes, "verifiedAttributes": suppliedVerification()})
+	ts.Require().Equal(http.StatusOK, status, "%s", body)
+	ts.Empty(verifiedAttributesIn(ts.T(), body), "the self update must report nothing verified")
+
+	ts.requireNothingVerified(user)
+}
+
+// suppliedVerification is what a client might send to claim a verified email.
+func suppliedVerification() map[string]interface{} {
+	return map[string]interface{}{"email": map[string]interface{}{"verifiedAt": "2026-01-01T00:00:00Z"}}
+}
+
+// verifiedAttributesIn decodes the verifiedAttributes object of a user response, requiring it present
+// and an object, not null.
+func verifiedAttributesIn(t *testing.T, body []byte) map[string]testutils.VerifiedAttribute {
+	t.Helper()
+
+	var response struct {
+		VerifiedAttributes *map[string]testutils.VerifiedAttribute `json:"verifiedAttributes"`
+	}
+	require.NoError(t, json.Unmarshal(body, &response), "%s", body)
+	require.NotNil(t, response.VerifiedAttributes, "a user response must carry verifiedAttributes: %s", body)
+	require.NotNil(t, *response.VerifiedAttributes, "verifiedAttributes must be an object: %s", body)
+	return *response.VerifiedAttributes
+}
+
+// sendUserRequest sends a JSON request and returns the status and body.
+func sendUserRequest(t *testing.T, client *http.Client, method, path string,
+	payload interface{}) (int, []byte) {
+	t.Helper()
+
+	var reader io.Reader
+	if payload != nil {
+		encoded, err := json.Marshal(payload)
+		require.NoError(t, err)
+		reader = bytes.NewReader(encoded)
+	}
+	req, err := http.NewRequest(method, testServerURL+path, reader)
+	require.NoError(t, err)
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	return resp.StatusCode, body
 }

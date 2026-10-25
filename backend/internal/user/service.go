@@ -18,6 +18,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"github.com/thunder-id/thunderid/internal/attributeverification"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
@@ -86,6 +87,7 @@ type userService struct {
 	authzService       sysauthz.SystemAuthorizationServiceInterface
 	entityService      entity.EntityServiceInterface
 	governance         identitygovernance.IdentityGovernanceServiceInterface
+	verification       attributeverification.AttributeVerificationServiceInterface
 	ouService          oupkg.OrganizationUnitServiceInterface
 	entityTypeService  entitytype.EntityTypeServiceInterface
 	uuidGenerator      func() (string, error)
@@ -102,6 +104,7 @@ func newUserService(
 	ouService oupkg.OrganizationUnitServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	governance identitygovernance.IdentityGovernanceServiceInterface,
+	verification attributeverification.AttributeVerificationServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
 	sharingService sharing.SharingServiceInterface,
 ) *userService {
@@ -109,6 +112,7 @@ func newUserService(
 		authzService:      authzService,
 		entityService:     entityService,
 		governance:        governance,
+		verification:      verification,
 		ouService:         ouService,
 		entityTypeService: entityTypeService,
 		uuidGenerator:     utils.GenerateUUIDv7,
@@ -366,6 +370,8 @@ func (us *userService) CreateUser(
 
 	// Sync cleaned attributes back — entity service removed credential fields from Attributes.
 	user.Attributes = created.Attributes
+	// A new user has no verified attributes: the entity service drops them on create.
+	user.VerifiedAttributes = map[string]providers.VerifiedAttribute{}
 	us.captureSubmittedCredentials(ctx, user, submitted)
 
 	logger.Debug(ctx, "Successfully created user", log.MaskedString(log.LoggerKeyUserID, user.ID))
@@ -440,6 +446,7 @@ func (us *userService) GetUser(
 	access := us.governance.ReadEntityAccess(ctx, *e)
 	user.Status = &access.Status
 	user.LastLoginAt = access.LastLoginAt
+	user.VerifiedAttributes = us.verification.GetVerifiedAttributes(ctx, *e)
 
 	if includeDisplay {
 		displayAttrPaths := entitytype.ResolveDisplayAttributePaths(
@@ -648,6 +655,7 @@ func (us *userService) UpdateUser(
 	access := us.governance.ReadEntityAccess(ctx, *updated)
 	user.Status = &access.Status
 	user.LastLoginAt = access.LastLoginAt
+	user.VerifiedAttributes = us.verification.GetVerifiedAttributes(ctx, *updated)
 	logger.Debug(ctx, "Successfully updated user", log.MaskedString(log.LoggerKeyUserID, userID))
 	return user, nil
 }
@@ -731,6 +739,15 @@ func (us *userService) UpdateUserAttributes(
 			log.MaskedString(log.LoggerKeyUserID, userID))
 	}
 
+	// Return attributes and verification from the same stored snapshot.
+	if stored, err := us.entityService.GetEntity(ctx, userID); err == nil {
+		existingEntity = stored
+		existingUser = entityToUser(stored)
+		existingUser.VerifiedAttributes = us.verification.GetVerifiedAttributes(ctx, *stored)
+	} else {
+		logger.Warn(ctx, "Failed to read the updated user",
+			log.MaskedString(log.LoggerKeyUserID, userID), log.Error(err))
+	}
 	access := us.governance.ReadEntityAccess(ctx, *existingEntity)
 	existingUser.Status = &access.Status
 	existingUser.LastLoginAt = access.LastLoginAt
@@ -1185,13 +1202,14 @@ func markOwned(users []providers.User, owned bool) {
 }
 
 // usersWithAccess converts entities to users with the access facts governance derived for each, in one
-// read.
+// read, and the verified contacts of each.
 func (us *userService) usersWithAccess(ctx context.Context, entities []providers.Entity) []providers.User {
 	reads := us.governance.ReadAccess(ctx, entities)
 	users := entitiesToUsers(entities)
 	for i := range users {
 		users[i].Status = &reads[i].Status
 		users[i].LastLoginAt = reads[i].LastLoginAt
+		users[i].VerifiedAttributes = us.verification.GetVerifiedAttributes(ctx, entities[i])
 	}
 	return users
 }
