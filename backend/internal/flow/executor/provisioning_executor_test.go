@@ -1379,12 +1379,13 @@ func (suite *ProvisioningExecutorTestSuite) TestGetEntityType() {
 	}
 }
 
-// The mode property names the entity category to provision into, and a node that sets no mode
-// keeps provisioning the default category.
+// The category a type resolver put in the runtime data wins, the mode property names it when no
+// resolver ran, and a node with neither keeps the default category.
 func (suite *ProvisioningExecutorTestSuite) TestResolveCategory() {
 	tests := []struct {
 		name           string
 		nodeProperties map[string]interface{}
+		runtimeData    map[string]string
 		expected       entitytype.TypeCategory
 		expectErr      bool
 	}{
@@ -1409,12 +1410,40 @@ func (suite *ProvisioningExecutorTestSuite) TestResolveCategory() {
 			nodeProperties: map[string]interface{}{propertyKeyProvisioningMode: "machine"},
 			expectErr:      true,
 		},
+		{
+			name:        "RuntimeCategory",
+			runtimeData: map[string]string{categoryNameKey: "agent"},
+			expected:    entitytype.TypeCategoryAgent,
+		},
+		{
+			name:           "RuntimeCategoryWinsOverMode",
+			nodeProperties: map[string]interface{}{propertyKeyProvisioningMode: "user"},
+			runtimeData:    map[string]string{categoryNameKey: "agent"},
+			expected:       entitytype.TypeCategoryAgent,
+		},
+		{
+			name:           "EmptyRuntimeCategoryFallsBackToMode",
+			nodeProperties: map[string]interface{}{propertyKeyProvisioningMode: "agent"},
+			runtimeData:    map[string]string{categoryNameKey: ""},
+			expected:       entitytype.TypeCategoryAgent,
+		},
+		{
+			name:        "UnknownRuntimeCategory",
+			runtimeData: map[string]string{categoryNameKey: "machine"},
+			expectErr:   true,
+		},
+		{
+			name:           "UnknownRuntimeCategoryIsNotReplacedByMode",
+			nodeProperties: map[string]interface{}{propertyKeyProvisioningMode: "user"},
+			runtimeData:    map[string]string{categoryNameKey: "machine"},
+			expectErr:      true,
+		},
 	}
 
 	for _, tt := range tests {
 		suite.Run(tt.name, func() {
-			category, err := categoryFromMode(
-				&providers.NodeContext{NodeProperties: tt.nodeProperties})
+			category, err := categoryFromContext(
+				&providers.NodeContext{NodeProperties: tt.nodeProperties, RuntimeData: tt.runtimeData})
 
 			if tt.expectErr {
 				assert.Error(suite.T(), err)

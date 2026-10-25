@@ -146,6 +146,8 @@ func (suite *ServiceTestSuite) setupTestService() (
 	epNotFound := entity.ErrEntityNotFound
 	var noEPErr error
 	mockEntityService.On("IdentifyEntity", mock.Anything, mock.Anything).Maybe().Return((*string)(nil), epNotFound)
+	mockEntityService.On("IdentifyEntityInCategory", mock.Anything, mock.Anything, mock.Anything).
+		Maybe().Return((*string)(nil), epNotFound)
 	mockEntityService.On("GetEntity", mock.Anything, mock.Anything).
 		Maybe().Return((*providers.Entity)(nil), epNotFound)
 	mockEntityService.On("GetEntityProfile", mock.Anything, mock.Anything).
@@ -245,6 +247,12 @@ func (recordingDepRegistry) ValidateReferenceUpdate(
 // so a test can register a specific expectation without conflict.
 func resetIdentifyEntity(service *applicationService) *entitymock.EntityServiceInterfaceMock {
 	return resetEntityServiceMethod(service, "IdentifyEntity")
+}
+
+// resetIdentifyEntityInCategory removes broad IdentifyEntityInCategory expectations from the entity
+// service mock so a test can register a specific expectation without conflict.
+func resetIdentifyEntityInCategory(service *applicationService) *entitymock.EntityServiceInterfaceMock {
+	return resetEntityServiceMethod(service, "IdentifyEntityInCategory")
 }
 
 // resetEntityServiceMethod removes any broad expectation for the named method on the
@@ -634,6 +642,51 @@ func (suite *ServiceTestSuite) TestValidateApplication_EmptyName() {
 	assert.NotNil(suite.T(), svcErr)
 }
 
+func (suite *ServiceTestSuite) TestIsIdentifierTaken_NameIsCheckedAmongApplications() {
+	service, _ := suite.setupTestService()
+	filters := map[string]interface{}{"name": "Foo"}
+	mockEP := resetIdentifyEntityInCategory(service)
+	mockEP.On("IdentifyEntityInCategory", mock.Anything, providers.EntityCategoryApp, filters).
+		Return((*string)(nil), entity.ErrEntityNotFound).Once()
+
+	taken, svcErr := service.isIdentifierTaken(context.Background(), fieldName, "Foo", "")
+
+	assert.Nil(suite.T(), svcErr)
+	assert.False(suite.T(), taken)
+	mockEP.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything, filters)
+}
+
+func (suite *ServiceTestSuite) TestIsIdentifierTaken_NameHeldByAnotherApplication() {
+	service, _ := suite.setupTestService()
+	filters := map[string]interface{}{"name": "Foo"}
+	otherID := "other-app"
+	mockEP := resetIdentifyEntityInCategory(service)
+	mockEP.On("IdentifyEntityInCategory", mock.Anything, providers.EntityCategoryApp, filters).
+		Return(&otherID, nil).Twice()
+
+	taken, svcErr := service.isIdentifierTaken(context.Background(), fieldName, "Foo", "")
+	assert.Nil(suite.T(), svcErr)
+	assert.True(suite.T(), taken)
+
+	taken, svcErr = service.isIdentifierTaken(context.Background(), fieldName, "Foo", otherID)
+	assert.Nil(suite.T(), svcErr)
+	assert.False(suite.T(), taken)
+}
+
+func (suite *ServiceTestSuite) TestIsIdentifierTaken_ClientIDIsCheckedAcrossCategories() {
+	service, _ := suite.setupTestService()
+	filters := map[string]interface{}{"clientId": "client-1"}
+	otherID := "agent-1"
+	mockEP := resetIdentifyEntity(service)
+	mockEP.On("IdentifyEntity", mock.Anything, filters).Return(&otherID, nil).Once()
+
+	taken, svcErr := service.isIdentifierTaken(context.Background(), fieldClientID, "client-1", "")
+
+	assert.Nil(suite.T(), svcErr)
+	assert.True(suite.T(), taken)
+	mockEP.AssertNotCalled(suite.T(), "IdentifyEntityInCategory", mock.Anything, mock.Anything, filters)
+}
+
 func (suite *ServiceTestSuite) TestValidateApplication_ExistingName() {
 	service, _ := suite.setupTestService()
 
@@ -642,9 +695,10 @@ func (suite *ServiceTestSuite) TestValidateApplication_ExistingName() {
 		OUID: testOUID,
 	}
 
-	mockEP := resetIdentifyEntity(service)
+	mockEP := resetIdentifyEntityInCategory(service)
 	existingID := "existing-id"
-	mockEP.On("IdentifyEntity", mock.Anything, map[string]interface{}{"name": "Existing App"}).
+	mockEP.On("IdentifyEntityInCategory", mock.Anything, providers.EntityCategoryApp,
+		map[string]interface{}{"name": "Existing App"}).
 		Return(
 			&existingID, nil)
 
@@ -808,7 +862,7 @@ func (suite *ServiceTestSuite) TestValidateApplicationForUpdate_NameConflict() {
 		Return(&inboundmodel.InboundClient{ID: testServiceAppID}, nil)
 	mockStore.On("GetOAuthProfileByEntityID", mock.Anything, testServiceAppID).
 		Return((*providers.OAuthProfile)(nil), nil)
-	mockEP := resetIdentifyEntity(service)
+	mockEP := resetIdentifyEntityInCategory(service)
 	mockEP.On("GetEntity", mock.Anything, testServiceAppID).Unset()
 	mockEP.On("GetEntity", mock.Anything, testServiceAppID).Return(
 		&providers.Entity{
@@ -817,7 +871,8 @@ func (suite *ServiceTestSuite) TestValidateApplicationForUpdate_NameConflict() {
 			SystemAttributes: sysAttrs,
 		}, nil)
 	conflictingID := testConflictingAppID
-	mockEP.On("IdentifyEntity", mock.Anything, map[string]interface{}{"name": "New Name"}).
+	mockEP.On("IdentifyEntityInCategory", mock.Anything, providers.EntityCategoryApp,
+		map[string]interface{}{"name": "New Name"}).
 		Return(
 			&conflictingID, nil)
 
@@ -853,8 +908,9 @@ func (suite *ServiceTestSuite) TestValidateApplicationForUpdate_NameCheckStoreEr
 	}
 
 	mockLoadFullApplication(mockStore, service, existingApp)
-	mockEP := resetIdentifyEntity(service)
-	mockEP.On("IdentifyEntity", mock.Anything, map[string]interface{}{"name": "New Name"}).
+	mockEP := resetIdentifyEntityInCategory(service)
+	mockEP.On("IdentifyEntityInCategory", mock.Anything, providers.EntityCategoryApp,
+		map[string]interface{}{"name": "New Name"}).
 		Return((*string)(nil),
 			errors.New("internal error"))
 
@@ -1466,8 +1522,9 @@ func (suite *ServiceTestSuite) TestValidateApplication_StoreErrorNonNotFound() {
 	}
 
 	// Return an entity provider error that's not EntityNotFound
-	mockEP := resetIdentifyEntity(service)
-	mockEP.On("IdentifyEntity", mock.Anything, map[string]interface{}{"name": "Test App"}).
+	mockEP := resetIdentifyEntityInCategory(service)
+	mockEP.On("IdentifyEntityInCategory", mock.Anything, providers.EntityCategoryApp,
+		map[string]interface{}{"name": "Test App"}).
 		Return((*string)(nil),
 			errors.New("internal error"))
 
@@ -1670,8 +1727,9 @@ func (suite *ServiceTestSuite) TestUpdateApplication_StoreErrorWhenCheckingName(
 
 	mockLoadFullApplication(mockStore, service, existingApp)
 	// Return an entity provider error when checking name uniqueness
-	mockEP := resetIdentifyEntity(service)
-	mockEP.On("IdentifyEntity", mock.Anything, map[string]interface{}{"name": "New App"}).
+	mockEP := resetIdentifyEntityInCategory(service)
+	mockEP.On("IdentifyEntityInCategory", mock.Anything, providers.EntityCategoryApp,
+		map[string]interface{}{"name": "New App"}).
 		Return((*string)(nil),
 			errors.New("internal error"))
 
@@ -2348,9 +2406,10 @@ func (suite *ServiceTestSuite) TestUpdateApplication_NameConflict() {
 	}
 
 	mockLoadFullApplication(mockStore, service, existingApp)
-	mockEP := resetIdentifyEntity(service)
+	mockEP := resetIdentifyEntityInCategory(service)
 	conflictingID := testConflictingAppID
-	mockEP.On("IdentifyEntity", mock.Anything, map[string]interface{}{"name": "New Name"}).
+	mockEP.On("IdentifyEntityInCategory", mock.Anything, providers.EntityCategoryApp,
+		map[string]interface{}{"name": "New Name"}).
 		Return(
 			&conflictingID, nil)
 

@@ -46,6 +46,7 @@ type entityStoreInterface interface {
 
 	// Query
 	IdentifyEntity(ctx context.Context, filters map[string]interface{}) (*string, error)
+	IdentifyEntityInCategory(ctx context.Context, category string, filters map[string]interface{}) (*string, error)
 	ResolveLinkedAccounts(ctx context.Context, idpID, sub string) ([]string, error)
 	SearchEntities(ctx context.Context, filters map[string]interface{}) ([]providers.Entity, error)
 	GetEntityListCount(ctx context.Context, category string,
@@ -438,8 +439,21 @@ func (es *entityDBStore) syncAttributeIdentifiers(ctx context.Context, entityID 
 	return nil
 }
 
-// IdentifyEntity identifies an entity with the given filters.
+// IdentifyEntity identifies an entity of any category with the given filters.
 func (es *entityDBStore) IdentifyEntity(ctx context.Context,
+	filters map[string]interface{}) (*string, error) {
+	return es.identifyEntity(ctx, "", filters)
+}
+
+// IdentifyEntityInCategory identifies an entity of the given category with the given filters.
+// An empty category matches any category.
+func (es *entityDBStore) IdentifyEntityInCategory(ctx context.Context, category string,
+	filters map[string]interface{}) (*string, error) {
+	return es.identifyEntity(ctx, category, filters)
+}
+
+// identifyEntity runs the lookup, limited to category when it is not empty.
+func (es *entityDBStore) identifyEntity(ctx context.Context, category string,
 	filters map[string]interface{}) (*string, error) {
 	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
@@ -466,7 +480,7 @@ func (es *entityDBStore) IdentifyEntity(ctx context.Context,
 	// Fast path: try indexed identifier store first for all lookups.
 	// This covers both schema-indexed attributes (email, username) and
 	// system identifiers without requiring config.
-	identifyQuery, args, err := buildIdentifyQueryFromIdentifiers(filters, es.scope(ctx))
+	identifyQuery, args, err := buildIdentifyQueryFromIdentifiers(filters, category, es.scope(ctx))
 	if err == nil && allHaveIdentifierRows {
 		results, qErr := dbClient.QueryContext(ctx, identifyQuery, args...)
 		if qErr == nil && len(results) == 1 {
@@ -488,14 +502,15 @@ func (es *entityDBStore) IdentifyEntity(ctx context.Context,
 
 	if len(indexedFilters) > 0 && len(nonIndexedFilters) > 0 {
 		// Mixed: identifier table for indexed filters + JSON for non-indexed filters.
-		fallbackQuery, fallbackArgs, err = buildIdentifyQueryHybrid(indexedFilters, nonIndexedFilters, es.scope(ctx))
+		fallbackQuery, fallbackArgs, err = buildIdentifyQueryHybrid(
+			indexedFilters, nonIndexedFilters, category, es.scope(ctx))
 		if err != nil {
 			return nil, fmt.Errorf("failed to build hybrid query: %w", err)
 		}
 	} else {
 		// All-indexed: fast path already tried the identifier table; fall back to JSON search.
 		// All non-indexed: always use JSON search.
-		fallbackQuery, fallbackArgs, err = buildIdentifyQuery(filters, es.scope(ctx))
+		fallbackQuery, fallbackArgs, err = buildIdentifyQuery(filters, category, es.scope(ctx))
 		if err != nil {
 			return nil, fmt.Errorf("failed to build identify query: %w", err)
 		}

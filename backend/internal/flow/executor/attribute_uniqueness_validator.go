@@ -37,16 +37,16 @@ func newAttributeUniquenessValidator(
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, ExecutorNameAttributeUniquenessValidator))
 	prerequisites := []providers.Input{
 		{
+			Identifier: categoryNameKey,
+			Required:   true,
+		},
+		{
 			Identifier: categoryTypeKey,
 			Required:   true,
 		},
 	}
 	base := flowFactory.CreateExecutor(ExecutorNameAttributeUniquenessValidator, providers.ExecutorTypeUtility,
-		[]providers.Input{}, prerequisites, &providers.ExecutorMeta{
-			SupportedProperties: []providers.ExecutorSupportedProperties{
-				{Property: propertyKeyProvisioningMode},
-			},
-		})
+		[]providers.Input{}, prerequisites, &providers.ExecutorMeta{})
 	return &attributeUniquenessValidator{
 		Executor:          base,
 		entityTypeService: entityTypeService,
@@ -69,13 +69,13 @@ func (e *attributeUniquenessValidator) Execute(ctx *providers.NodeContext) (*pro
 		RuntimeData:    make(map[string]string),
 	}
 
-	category, err := categoryFromMode(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	if !e.ValidatePrerequisites(ctx, execResp, e.authnProvider) {
 		return execResp, nil
+	}
+
+	category := entitytype.TypeCategory(ctx.RuntimeData[categoryNameKey])
+	if !category.IsValid() {
+		return nil, fmt.Errorf("invalid category: %s", category)
 	}
 
 	entityType := ctx.RuntimeData[categoryTypeKey]
@@ -98,7 +98,8 @@ func (e *attributeUniquenessValidator) Execute(ctx *providers.NodeContext) (*pro
 			continue
 		}
 
-		userID, svcErr := e.entityProvider.IdentifyEntity(map[string]interface{}{attr: value})
+		userID, svcErr := e.entityProvider.IdentifyEntityInCategory(
+			providers.EntityCategory(category), map[string]interface{}{attr: value})
 		if svcErr != nil {
 			if svcErr.Code == entityprovider.ErrorCodeEntityNotFound {
 				continue

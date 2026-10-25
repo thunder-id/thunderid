@@ -485,6 +485,30 @@ func (s *CacheBackedEntityStoreTestSuite) TestIdentifyEntity_CacheMiss_Cacheable
 	s.Equal(entityID, *cachedID)
 }
 
+func (s *CacheBackedEntityStoreTestSuite) TestIdentifyEntityInCategory_BypassesCache() {
+	entityID := testEntityID
+	cachedID := "other-category-id"
+	s.entityIDByIdentifierData["clientId:client-1"] = &cachedID
+	filters := map[string]interface{}{"clientId": "client-1"}
+	s.mockStore.On("IdentifyEntityInCategory", mock.Anything, "app", filters).Return(&entityID, nil).Once()
+
+	result, err := s.cachedStore.IdentifyEntityInCategory(context.Background(), "app", filters)
+	s.Nil(err)
+	s.Equal(entityID, *result)
+	s.mockStore.AssertExpectations(s.T())
+	s.Equal(&cachedID, s.entityIDByIdentifierData["clientId:client-1"])
+}
+
+func (s *CacheBackedEntityStoreTestSuite) TestIdentifyEntityInCategory_StoreError() {
+	storeErr := errors.New("store failure")
+	filters := map[string]interface{}{"name": "Foo"}
+	s.mockStore.On("IdentifyEntityInCategory", mock.Anything, "agent", filters).Return(nil, storeErr).Once()
+
+	result, err := s.cachedStore.IdentifyEntityInCategory(context.Background(), "agent", filters)
+	s.Nil(result)
+	s.ErrorIs(err, storeErr)
+}
+
 func (s *CacheBackedEntityStoreTestSuite) TestIdentifyEntity_MultipleFilters_BypassesCache() {
 	entityID := testEntityID
 	s.entityIDByIdentifierData["clientId:client-1"] = &entityID

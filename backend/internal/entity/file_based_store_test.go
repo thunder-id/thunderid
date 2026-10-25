@@ -162,6 +162,49 @@ func (s *FileBasedStoreTestSuite) TestIdentifyEntity_MultipleMatches() {
 	s.Error(err)
 }
 
+func (s *FileBasedStoreTestSuite) seedFooEntity(id string, category providers.EntityCategory) {
+	attrs, _ := json.Marshal(map[string]interface{}{"name": "Foo"})
+	s.seedEntity(providers.Entity{ID: id, Category: category, Attributes: attrs})
+}
+
+func (s *FileBasedStoreTestSuite) TestIdentifyEntityInCategory_IgnoresOtherCategory() {
+	s.seedFooEntity("u1", providers.EntityCategoryUser)
+	s.seedFooEntity("a1", providers.EntityCategoryAgent)
+
+	id, err := s.store.IdentifyEntityInCategory(s.ctx, string(providers.EntityCategoryAgent),
+		map[string]interface{}{"name": "Foo"})
+	s.NoError(err)
+	s.Equal("a1", *id)
+
+	_, err = s.store.IdentifyEntity(s.ctx, map[string]interface{}{"name": "Foo"})
+	s.ErrorIs(err, ErrAmbiguousEntity)
+}
+
+func (s *FileBasedStoreTestSuite) TestIdentifyEntityInCategory_NotFoundInCategory() {
+	s.seedFooEntity("u1", providers.EntityCategoryUser)
+
+	_, err := s.store.IdentifyEntityInCategory(s.ctx, string(providers.EntityCategoryAgent),
+		map[string]interface{}{"name": "Foo"})
+	s.ErrorIs(err, ErrEntityNotFound)
+}
+
+func (s *FileBasedStoreTestSuite) TestIdentifyEntityInCategory_MultipleInCategory_Ambiguous() {
+	s.seedFooEntity("a1", providers.EntityCategoryAgent)
+	s.seedFooEntity("a2", providers.EntityCategoryAgent)
+
+	_, err := s.store.IdentifyEntityInCategory(s.ctx, string(providers.EntityCategoryAgent),
+		map[string]interface{}{"name": "Foo"})
+	s.ErrorIs(err, ErrAmbiguousEntity)
+}
+
+func (s *FileBasedStoreTestSuite) TestIdentifyEntityInCategory_EmptyCategory_MatchesAnyCategory() {
+	s.seedFooEntity("u1", providers.EntityCategoryUser)
+
+	id, err := s.store.IdentifyEntityInCategory(s.ctx, "", map[string]interface{}{"name": "Foo"})
+	s.NoError(err)
+	s.Equal("u1", *id)
+}
+
 func (s *FileBasedStoreTestSuite) seedLinkedEntity(id, linkedIDs string) {
 	s.seedEntity(providers.Entity{ID: id, Category: providers.EntityCategoryUser,
 		SystemAttributes: json.RawMessage(`{"linkedIds":` + linkedIDs + `}`)})

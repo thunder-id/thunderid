@@ -802,6 +802,98 @@ func (ts *AgentAPITestSuite) TestCreateAgent_DuplicateName() {
 	ts.Assert().Equal("AGT-1014", errorCode(resp))
 }
 
+func (ts *AgentAPITestSuite) TestCreateAgent_NameSharedWithApplication() {
+	const sharedName = "agent-name-shared-with-app"
+	appID, err := testutils.CreateApplication(testutils.Application{
+		Name:         sharedName,
+		Description:  "Application that shares an agent name",
+		OUID:         testOUID,
+		ClientID:     "agent-name-shared-app-client",
+		ClientSecret: "agent-name-shared-app-secret",
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteApplication(appID) }()
+
+	agentID, err := createAgent(Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs(sharedName, nil)})
+	ts.Require().NoError(err, "an application name must not block an agent name")
+	defer func() { _ = deleteAgent(agentID) }()
+
+	resp, err := doPost(testServerURL+agentBasePath,
+		Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs(sharedName, nil)})
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Assert().Equal(http.StatusConflict, resp.StatusCode, "a second agent must still conflict")
+	ts.Assert().Equal("AGT-1014", errorCode(resp))
+}
+
+func (ts *AgentAPITestSuite) TestCreateAgent_NameSharedWithUser() {
+	const sharedName = "agent-name-shared-with-user"
+	userTypeID, err := testutils.CreateUserType(testutils.UserType{
+		Handle:      "agent-name-share-user",
+		DisplayName: "Agent Name Share User",
+		OUID:        testOUID,
+		Schema:      map[string]interface{}{"name": map[string]interface{}{"type": "string"}},
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteUserType(userTypeID) }()
+
+	userID, err := testutils.CreateUser(testutils.User{
+		Type:       "agent-name-share-user",
+		OUID:       testOUID,
+		Attributes: json.RawMessage(fmt.Sprintf(`{"name":%q}`, sharedName)),
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteUser(userID) }()
+
+	agentID, err := createAgent(Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs(sharedName, nil)})
+	ts.Require().NoError(err, "a user attribute must not block an agent name")
+	defer func() { _ = deleteAgent(agentID) }()
+}
+
+func (ts *AgentAPITestSuite) TestCreateApplication_NameSharedWithAgent() {
+	const sharedName = "app-name-shared-with-agent"
+	agentID, err := createAgent(Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs(sharedName, nil)})
+	ts.Require().NoError(err)
+	defer func() { _ = deleteAgent(agentID) }()
+
+	appID, err := testutils.CreateApplication(testutils.Application{
+		Name:         sharedName,
+		Description:  "Application that shares an agent name",
+		OUID:         testOUID,
+		ClientID:     "app-name-shared-agent-client",
+		ClientSecret: "app-name-shared-agent-secret",
+	})
+	ts.Require().NoError(err, "an agent name must not block an application name")
+	defer func() { _ = testutils.DeleteApplication(appID) }()
+}
+
+func (ts *AgentAPITestSuite) TestAgentUpdate_UnchangedNameSharedWithApplication() {
+	const sharedName = "agent-update-name-shared-with-app"
+	agentID, err := createAgent(Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs(sharedName, nil)})
+	ts.Require().NoError(err)
+	defer func() { _ = deleteAgent(agentID) }()
+
+	appID, err := testutils.CreateApplication(testutils.Application{
+		Name:         sharedName,
+		Description:  "Application that shares an agent name",
+		OUID:         testOUID,
+		ClientID:     "agent-update-shared-app-client",
+		ClientSecret: "agent-update-shared-app-secret",
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteApplication(appID) }()
+
+	resp, err := putAgentRaw(agentID, map[string]interface{}{
+		"ouId":        testOUID,
+		"type":        "default",
+		"attributes":  json.RawMessage(agentAttrs(sharedName, nil)),
+		"description": "updated while an application shares the name",
+	})
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Assert().Equal(http.StatusOK, resp.StatusCode, "unchanged name must not conflict with an application")
+}
+
 // --- group membership ---
 
 func (ts *AgentAPITestSuite) TestAgentGroups_EmptyMembership() {

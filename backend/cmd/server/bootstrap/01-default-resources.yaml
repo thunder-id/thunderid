@@ -3050,8 +3050,6 @@ nodes:
       y: 711
 - id: agent_attribute_uniqueness
   type: TASK_EXECUTION
-  properties:
-    mode: agent
   executor:
     name: AttributeUniquenessValidator
   onSuccess: provisioning

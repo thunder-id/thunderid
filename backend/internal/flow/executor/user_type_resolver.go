@@ -218,6 +218,7 @@ func (u *userTypeResolver) resolveUserTypeFromInput(ctx context.Context, execRes
 		}
 
 		// Add userType and ouID to runtime data
+		execResp.RuntimeData[categoryNameKey] = string(entitytype.TypeCategoryUser)
 		execResp.RuntimeData[categoryTypeKey] = userType
 		execResp.RuntimeData[defaultOUIDKey] = ouID
 
@@ -250,6 +251,7 @@ func (u *userTypeResolver) resolveUserTypeFromSingleAllowed(ctx context.Context,
 	logger.Debug(ctx, "User type resolved from allowed list", log.String(categoryTypeKey, allowedUserType))
 
 	// Add userType and ouID to runtime data
+	execResp.RuntimeData[categoryNameKey] = string(entitytype.TypeCategoryUser)
 	execResp.RuntimeData[categoryTypeKey] = allowedUserType
 	execResp.RuntimeData[defaultOUIDKey] = ouID
 
@@ -291,6 +293,7 @@ func (u *userTypeResolver) resolveUserTypeFromMultipleAllowed(ctx context.Contex
 		logger.Debug(ctx, "User type auto-selected", log.String(categoryTypeKey, record.entityType.Handle))
 
 		// Add userType and ouID to runtime data
+		execResp.RuntimeData[categoryNameKey] = string(entitytype.TypeCategoryUser)
 		execResp.RuntimeData[categoryTypeKey] = record.entityType.Handle
 		execResp.RuntimeData[defaultOUIDKey] = record.ouID
 

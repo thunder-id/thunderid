@@ -1000,6 +1000,98 @@ func (s *ServiceTestSuite) TestIdentifyEntity_Delegates() {
 	s.Equal(&id, got)
 }
 
+func (s *ServiceTestSuite) TestIdentifyEntityInCategory_Delegates() {
+	filters := map[string]interface{}{"name": "Foo"}
+	id := "found-id"
+	s.store.On("IdentifyEntityInCategory", mock.Anything, "agent", filters).Return(&id, nil)
+	got, err := s.svc.IdentifyEntityInCategory(s.ctx, providers.EntityCategoryAgent, filters)
+	s.NoError(err)
+	s.Equal(&id, got)
+}
+
+// uniquenessCallback returns the lookup callback validateEntityType gives the entity type service
+// to decide whether a unique attribute value is taken.
+func (s *ServiceTestSuite) uniquenessCallback(category providers.EntityCategory,
+	excludeEntityID string) func(map[string]interface{}) (bool, error) {
+	svc, ets := s.newSvcWithEntityType()
+	attrs := json.RawMessage(`{"name":"Foo"}`)
+	var exists func(map[string]interface{}) (bool, error)
+	ets.On("ValidateEntity", mock.Anything, mock.Anything, "default", attrs, false).Return(true, nil)
+	ets.On("ValidateEntityUniqueness", mock.Anything, mock.Anything, "default", attrs, mock.Anything).
+		Run(func(args mock.Arguments) {
+			exists = args.Get(4).(func(map[string]interface{}) (bool, error))
+		}).Return(true, nil)
+
+	s.Require().NoError(svc.validateEntityType(s.ctx, category, "default", attrs, excludeEntityID, false))
+	s.Require().NotNil(exists)
+	return exists
+}
+
+func (s *ServiceTestSuite) TestValidateEntityType_Uniqueness_LooksUpWithinTheEntityCategory() {
+	filters := map[string]interface{}{"name": "Foo"}
+	exists := s.uniquenessCallback(providers.EntityCategoryAgent, "")
+	s.store.On("IdentifyEntityInCategory", mock.Anything, "agent", filters).
+		Return((*string)(nil), ErrEntityNotFound).Once()
+
+	taken, err := exists(filters)
+	s.NoError(err)
+	s.False(taken)
+}
+
+func (s *ServiceTestSuite) TestValidateEntityType_Uniqueness_UserCategoryIsScopedToUsers() {
+	filters := map[string]interface{}{"username": "alice"}
+	exists := s.uniquenessCallback(providers.EntityCategoryUser, "")
+	s.store.On("IdentifyEntityInCategory", mock.Anything, "user", filters).
+		Return((*string)(nil), ErrEntityNotFound).Once()
+
+	taken, err := exists(filters)
+	s.NoError(err)
+	s.False(taken)
+}
+
+func (s *ServiceTestSuite) TestValidateEntityType_Uniqueness_AnotherEntityHoldsTheValue() {
+	filters := map[string]interface{}{"name": "Foo"}
+	other := "agent-2"
+	exists := s.uniquenessCallback(providers.EntityCategoryAgent, "agent-1")
+	s.store.On("IdentifyEntityInCategory", mock.Anything, "agent", filters).Return(&other, nil).Once()
+
+	taken, err := exists(filters)
+	s.NoError(err)
+	s.True(taken)
+}
+
+func (s *ServiceTestSuite) TestValidateEntityType_Uniqueness_ExcludesTheEntityItself() {
+	filters := map[string]interface{}{"name": "Foo"}
+	self := "agent-1"
+	exists := s.uniquenessCallback(providers.EntityCategoryAgent, "agent-1")
+	s.store.On("IdentifyEntityInCategory", mock.Anything, "agent", filters).Return(&self, nil).Once()
+
+	taken, err := exists(filters)
+	s.NoError(err)
+	s.False(taken)
+}
+
+func (s *ServiceTestSuite) TestValidateEntityType_Uniqueness_AmbiguousIsAConflict() {
+	filters := map[string]interface{}{"name": "Foo"}
+	exists := s.uniquenessCallback(providers.EntityCategoryAgent, "agent-1")
+	s.store.On("IdentifyEntityInCategory", mock.Anything, "agent", filters).
+		Return((*string)(nil), ErrAmbiguousEntity).Once()
+
+	taken, err := exists(filters)
+	s.NoError(err)
+	s.True(taken)
+}
+
+func (s *ServiceTestSuite) TestValidateEntityType_Uniqueness_LookupErrorIsReturned() {
+	filters := map[string]interface{}{"name": "Foo"}
+	exists := s.uniquenessCallback(providers.EntityCategoryAgent, "")
+	s.store.On("IdentifyEntityInCategory", mock.Anything, "agent", filters).
+		Return((*string)(nil), s.testErr).Once()
+
+	_, err := exists(filters)
+	s.ErrorIs(err, s.testErr)
+}
+
 func (s *ServiceTestSuite) TestGetEntityListCount_Delegates() {
 	s.store.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(5, nil)
 	count, err := s.svc.GetEntityListCount(s.ctx, providers.EntityCategoryUser, nil)

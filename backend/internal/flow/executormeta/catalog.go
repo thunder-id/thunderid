@@ -27,12 +27,8 @@ var catalog = map[string]providers.ExecutorMeta{
 	ExecutorNameApplicationDelete: {
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
 	},
-	ExecutorNameAttributeCollect: {},
-	ExecutorNameAttributeUniquenessValidator: {
-		SupportedProperties: []providers.ExecutorSupportedProperties{
-			{Property: "mode"},
-		},
-	},
+	ExecutorNameAttributeCollect:             {},
+	ExecutorNameAttributeUniquenessValidator: {},
 	ExecutorNameAuthAssert: {
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "callbackType"},

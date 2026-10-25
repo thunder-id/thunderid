@@ -705,6 +705,76 @@ func (_c *EntityProviderInterfaceMock_IdentifyEntity_Call) RunAndReturn(run func
 	return _c
 }
 
+// IdentifyEntityInCategory provides a mock function for the type EntityProviderInterfaceMock
+func (_mock *EntityProviderInterfaceMock) IdentifyEntityInCategory(category providers.EntityCategory, filters map[string]interface{}) (*string, *entityprovider.EntityProviderError) {
+	ret := _mock.Called(category, filters)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IdentifyEntityInCategory")
+	}
+
+	var r0 *string
+	var r1 *entityprovider.EntityProviderError
+	if returnFunc, ok := ret.Get(0).(func(providers.EntityCategory, map[string]interface{}) (*string, *entityprovider.EntityProviderError)); ok {
+		return returnFunc(category, filters)
+	}
+	if returnFunc, ok := ret.Get(0).(func(providers.EntityCategory, map[string]interface{}) *string); ok {
+		r0 = returnFunc(category, filters)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(providers.EntityCategory, map[string]interface{}) *entityprovider.EntityProviderError); ok {
+		r1 = returnFunc(category, filters)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*entityprovider.EntityProviderError)
+		}
+	}
+	return r0, r1
+}
+
+// EntityProviderInterfaceMock_IdentifyEntityInCategory_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IdentifyEntityInCategory'
+type EntityProviderInterfaceMock_IdentifyEntityInCategory_Call struct {
+	*mock.Call
+}
+
+// IdentifyEntityInCategory is a helper method to define mock.On call
+//   - category providers.EntityCategory
+//   - filters map[string]interface{}
+func (_e *EntityProviderInterfaceMock_Expecter) IdentifyEntityInCategory(category any, filters any) *EntityProviderInterfaceMock_IdentifyEntityInCategory_Call {
+	return &EntityProviderInterfaceMock_IdentifyEntityInCategory_Call{Call: _e.mock.On("IdentifyEntityInCategory", category, filters)}
+}
+
+func (_c *EntityProviderInterfaceMock_IdentifyEntityInCategory_Call) Run(run func(category providers.EntityCategory, filters map[string]interface{})) *EntityProviderInterfaceMock_IdentifyEntityInCategory_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 providers.EntityCategory
+		if args[0] != nil {
+			arg0 = args[0].(providers.EntityCategory)
+		}
+		var arg1 map[string]interface{}
+		if args[1] != nil {
+			arg1 = args[1].(map[string]interface{})
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityProviderInterfaceMock_IdentifyEntityInCategory_Call) Return(s *string, entityProviderError *entityprovider.EntityProviderError) *EntityProviderInterfaceMock_IdentifyEntityInCategory_Call {
+	_c.Call.Return(s, entityProviderError)
+	return _c
+}
+
+func (_c *EntityProviderInterfaceMock_IdentifyEntityInCategory_Call) RunAndReturn(run func(category providers.EntityCategory, filters map[string]interface{}) (*string, *entityprovider.EntityProviderError)) *EntityProviderInterfaceMock_IdentifyEntityInCategory_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SearchEntities provides a mock function for the type EntityProviderInterfaceMock
 func (_mock *EntityProviderInterfaceMock) SearchEntities(filters map[string]interface{}) ([]*providers.Entity, *entityprovider.EntityProviderError) {
 	ret := _mock.Called(filters)

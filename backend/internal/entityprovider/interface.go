@@ -15,6 +15,10 @@ type EntityProviderInterface interface {
 	// IdentifyEntity resolves an entity ID from indexed attribute filters (e.g., email, clientId).
 	IdentifyEntity(filters map[string]interface{}) (*string, *EntityProviderError)
 
+	// IdentifyEntityInCategory resolves an entity ID from attribute filters, limited to the given category.
+	IdentifyEntityInCategory(category providers.EntityCategory,
+		filters map[string]interface{}) (*string, *EntityProviderError)
+
 	// SearchEntities searches for all entities matching the given filters.
 	SearchEntities(filters map[string]interface{}) ([]*providers.Entity, *EntityProviderError)
 

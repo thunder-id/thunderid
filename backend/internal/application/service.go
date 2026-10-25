@@ -1054,11 +1054,20 @@ func (as *applicationService) ValidateReferenceUpdate(
 }
 
 // isIdentifierTaken checks if an entity with the given identifier already exists.
+// A name is unique among applications, while any other identifier, such as the client ID,
+// is shared with agents and is checked across categories.
 // If excludeID is non-empty, the entity with that ID is excluded from the check
 // (used during declarative loading and updates where the entity already exists).
 func (as *applicationService) isIdentifierTaken(
 	ctx context.Context, key, value, excludeID string) (bool, *tidcommon.ServiceError) {
-	entityID, entErr := as.entityService.IdentifyEntity(ctx, map[string]interface{}{key: value})
+	filters := map[string]interface{}{key: value}
+	var entityID *string
+	var entErr error
+	if key == fieldName {
+		entityID, entErr = as.entityService.IdentifyEntityInCategory(ctx, providers.EntityCategoryApp, filters)
+	} else {
+		entityID, entErr = as.entityService.IdentifyEntity(ctx, filters)
+	}
 	if entErr != nil {
 		if errors.Is(entErr, entity.ErrEntityNotFound) {
 			return false, nil

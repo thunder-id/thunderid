@@ -5,7 +5,6 @@ import {Stack} from '@wso2/oxygen-ui';
 import {useCallback, useMemo, type ReactNode} from 'react';
 import AccessChangeValidatorProperties from './execution-properties/AccessChangeValidatorProperties';
 import AgentTypeResolverProperties from './execution-properties/AgentTypeResolverProperties';
-import AttributeUniquenessValidatorProperties from './execution-properties/AttributeUniquenessValidatorProperties';
 import ConsentProperties from './execution-properties/ConsentProperties';
 import {EXECUTOR_TO_IDP_TYPE_MAP, EXECUTORS_WITH_FIXED_INPUTS} from './execution-properties/constants';
 import CriteriaRevocationProperties from './execution-properties/CriteriaRevocationProperties';
@@ -145,8 +144,6 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
       executorSpecificProperties = <SessionSignOutProperties resource={resource} onChange={onChange} />;
       break;
     case ExecutionTypes.AttributeUniquenessValidator:
-      executorSpecificProperties = <AttributeUniquenessValidatorProperties resource={resource} onChange={onChange} />;
-      break;
     case ExecutionTypes.CredentialSetter:
     case ExecutionTypes.IdentityGovernance:
     case ExecutionTypes.Session:

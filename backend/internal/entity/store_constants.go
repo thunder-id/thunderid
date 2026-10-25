@@ -398,8 +398,10 @@ func buildSystemAttributeConditions(
 
 // buildIdentifyQuery constructs a query to identify an entity based on the provided filters.
 // It searches both ATTRIBUTES and SYSTEM_ATTRIBUTES columns so that any entity can be found
-// regardless of which column holds the filter key.
-func buildIdentifyQuery(filters map[string]interface{}, deploymentID string) (model.DBQuery, []interface{}, error) {
+// regardless of which column holds the filter key. A non-empty category limits the match to it.
+func buildIdentifyQuery(
+	filters map[string]interface{}, category, deploymentID string,
+) (model.DBQuery, []interface{}, error) {
 	if len(filters) == 0 {
 		return model.DBQuery{}, nil, fmt.Errorf("filters cannot be empty")
 	}
@@ -424,7 +426,15 @@ func buildIdentifyQuery(filters map[string]interface{}, deploymentID string) (mo
 		args = append(args, filters[key])
 	}
 
-	pgQuery += fmt.Sprintf(" AND DEPLOYMENT_ID = $%d", len(keys)+1)
+	paramIndex := len(keys) + 1
+	if category != "" {
+		pgQuery += fmt.Sprintf(" AND CATEGORY = $%d", paramIndex)
+		sqQuery += " AND CATEGORY = ?"
+		args = append(args, category)
+		paramIndex++
+	}
+
+	pgQuery += fmt.Sprintf(" AND DEPLOYMENT_ID = $%d", paramIndex)
 	sqQuery += " AND DEPLOYMENT_ID = ?"
 	args = append(args, deploymentID)
 
@@ -603,10 +613,10 @@ func buildEntityCountQuery(
 	return QueryGetEntityCount, []interface{}{category, deploymentID}, nil
 }
 
-// buildIdentifyQueryFromIdentifiers constructs a query to identify
-// an entity using only indexed identifiers.
+// buildIdentifyQueryFromIdentifiers constructs a query to identify an entity using only indexed
+// identifiers. The identifier table carries no category, so a non-empty category joins ENTITY.
 func buildIdentifyQueryFromIdentifiers(
-	filters map[string]interface{}, deploymentID string,
+	filters map[string]interface{}, category, deploymentID string,
 ) (model.DBQuery, []interface{}, error) {
 	if len(filters) == 0 {
 		return model.DBQuery{}, nil, fmt.Errorf("filters cannot be empty")
@@ -646,10 +656,23 @@ func buildIdentifyQueryFromIdentifiers(
 		paramIndex += 2
 	}
 
-	pgQueryString := pgBase + " WHERE " + strings.Join(pgConditions, " AND ") +
-		fmt.Sprintf(" AND ia1.DEPLOYMENT_ID = $%d", paramIndex)
-	sqQueryString := sqBase + " WHERE " + strings.Join(sqConditions, " AND ") +
-		" AND ia1.DEPLOYMENT_ID = ?"
+	if category != "" {
+		entityJoin := ` INNER JOIN "ENTITY" e ON ia1.ENTITY_ID = e.ID AND ia1.DEPLOYMENT_ID = e.DEPLOYMENT_ID`
+		pgBase += entityJoin
+		sqBase += entityJoin
+	}
+
+	pgQueryString := pgBase + " WHERE " + strings.Join(pgConditions, " AND ")
+	sqQueryString := sqBase + " WHERE " + strings.Join(sqConditions, " AND ")
+	if category != "" {
+		pgQueryString += fmt.Sprintf(" AND e.CATEGORY = $%d", paramIndex)
+		sqQueryString += " AND e.CATEGORY = ?"
+		args = append(args, category)
+		paramIndex++
+	}
+
+	pgQueryString += fmt.Sprintf(" AND ia1.DEPLOYMENT_ID = $%d", paramIndex)
+	sqQueryString += " AND ia1.DEPLOYMENT_ID = ?"
 	args = append(args, deploymentID)
 
 	return model.DBQuery{
@@ -660,11 +683,11 @@ func buildIdentifyQueryFromIdentifiers(
 	}, args, nil
 }
 
-// buildIdentifyQueryHybrid constructs a query using indexed identifiers
-// for initial filtering, then JSON attributes for remaining filters.
+// buildIdentifyQueryHybrid constructs a query using indexed identifiers for initial filtering, then
+// JSON attributes for remaining filters. A non-empty category limits the match to it.
 func buildIdentifyQueryHybrid(
 	indexedFilters, nonIndexedFilters map[string]interface{},
-	deploymentID string,
+	category, deploymentID string,
 ) (model.DBQuery, []interface{}, error) {
 	if len(indexedFilters) == 0 {
 		return model.DBQuery{}, nil, fmt.Errorf("indexed filters cannot be empty for hybrid query")
@@ -724,6 +747,13 @@ func buildIdentifyQueryHybrid(
 		postgresQuery += pg
 		sqliteQuery += sq
 		args = append(args, nonIndexedFilters[key])
+		paramIndex++
+	}
+
+	if category != "" {
+		postgresQuery += fmt.Sprintf(" AND e.CATEGORY = $%d", paramIndex)
+		sqliteQuery += " AND e.CATEGORY = ?"
+		args = append(args, category)
 		paramIndex++
 	}
 

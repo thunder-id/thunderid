@@ -29,6 +29,12 @@ func (p *disabledEntityProvider) IdentifyEntity(
 	return nil, errNotImplemented
 }
 
+// IdentifyEntityInCategory returns the not-implemented error.
+func (p *disabledEntityProvider) IdentifyEntityInCategory(
+	_ providers.EntityCategory, _ map[string]interface{}) (*string, *EntityProviderError) {
+	return nil, errNotImplemented
+}
+
 func (p *disabledEntityProvider) SearchEntities(
 	_ map[string]interface{}) ([]*providers.Entity, *EntityProviderError) {
 	return nil, errNotImplemented
