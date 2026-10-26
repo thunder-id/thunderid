@@ -65,12 +65,11 @@ const (
 	shippedSignInAction = "action_001"
 )
 
-// The console the root operator signs in to, and the bootstrap organization unit and system resource
-// server the root permission lives in.
+// The console the root operator signs in to, and the bootstrap organization unit the root role lives
+// in.
 const (
 	boundaryConsoleURI     = "https://localhost:8095/console"
 	bootstrapOUID          = "01900000-0000-7000-8000-000000000001"
-	systemResourceServerID = "01900000-0000-7000-8000-000000000020"
 )
 
 // suspensionCutoffLeeway is jwt.leeway as every suite in this package runs it, shorter than the shipped
@@ -589,6 +588,8 @@ func runAdministrationFlowAs(t *testing.T, token, handle string, inputs map[stri
 func newRootOperator(t *testing.T, users *userFixture) (userID, username, password, accessToken string) {
 	t.Helper()
 	userID, username, password = users.newUser(t, "root", nil)
+	systemResourceServerID, err := testutils.GetResourceServerByIdentifier(testutils.SystemResourceIdentifier)
+	require.NoError(t, err, "failed to resolve the System resource server")
 	roleID, err := testutils.CreateRole(testutils.Role{
 		Name: "Governance Root " + users.suffix,
 		OUID: bootstrapOUID,
