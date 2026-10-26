@@ -87,7 +87,7 @@ func resolveGrantTypes(
 // resolvePersonalAssistantGrantTypes applies the grant rules of an agent of the personal assistant kind: it may
 // hold only the personal grants, and gets the authorization code grant when it asks for none. Client credentials
 // are never added, so it cannot act on its own authority. With the authorization code grant it gets response
-// type code and PKCE.
+// type code and PKCE; without it, neither.
 func resolvePersonalAssistantGrantTypes(oauthConfig *providers.OAuthConfigWithSecret) *tidcommon.ServiceError {
 	grantTypes := slices.Clone(oauthConfig.GrantTypes)
 	if len(grantTypes) == 0 {
@@ -96,6 +96,7 @@ func resolvePersonalAssistantGrantTypes(oauthConfig *providers.OAuthConfigWithSe
 	if svcErr := validatePersonalAgentGrantTypes(grantTypes); svcErr != nil {
 		return svcErr
 	}
+	oauthConfig.ResponseTypes, oauthConfig.PKCERequired = nil, false
 	if slices.Contains(grantTypes, providers.GrantTypeAuthorizationCode) {
 		oauthConfig.ResponseTypes = []providers.ResponseType{providers.ResponseTypeCode}
 		oauthConfig.PKCERequired = true

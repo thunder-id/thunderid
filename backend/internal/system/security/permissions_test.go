@@ -803,6 +803,26 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 			wantPerm: "",
 		},
 		{
+			name:   "GET /users/me/agents self-service",
+			method: http.MethodGet, path: "/users/me/agents", wantPerm: "",
+		},
+		{
+			name:   "PUT /users/me/agents/{id} self-service",
+			method: http.MethodPut, path: "/users/me/agents/agent-1", wantPerm: "",
+		},
+		{
+			name:   "DELETE /users/me/agents/{id} self-service",
+			method: http.MethodDelete, path: "/users/me/agents/agent-1", wantPerm: "",
+		},
+		{
+			name:   "DELETE deeper under /users/me/agents keeps the user delete rule",
+			method: http.MethodDelete, path: "/users/me/agents/agent-1/extra", wantPerm: p.UserDelete,
+		},
+		{
+			name:   "DELETE /users/{id} keeps the user delete rule",
+			method: http.MethodDelete, path: "/users/user-1", wantPerm: p.UserDelete,
+		},
+		{
 			name:   "GET /register/passkey/start self-service",
 			method: http.MethodGet, path: "/register/passkey/start", wantPerm: "",
 		},
@@ -1230,8 +1250,8 @@ func TestRouteTableUsesCatalogPermissions(t *testing.T) {
 
 	selfService := map[string]bool{
 		"GET /users/me": true, "PUT /users/me": true, "GET /users/me/**": true, "PUT /users/me/**": true,
-		"POST /users/me/update-credentials": true,
-		"GET /register/passkey/**":          true, "POST /register/passkey/**": true,
+		"POST /users/me/update-credentials": true, "DELETE /users/me/agents/*": true,
+		"GET /register/passkey/**": true, "POST /register/passkey/**": true,
 		"* /mcp/**":       true,
 		"GET /scim/v2/Me": true, "PUT /scim/v2/Me": true,
 		"GET /scim/v2/Schemas": true, "GET /scim/v2/Schemas/**": true,
