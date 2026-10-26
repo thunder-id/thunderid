@@ -765,6 +765,20 @@ var (
 			DefaultValue: "A token issued to a client acting for the user cannot manage the user's agents",
 		},
 	}
+
+	// ErrorOwnerSuspended is returned when creating a personal agent for a user whose account is suspended.
+	ErrorOwnerSuspended = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1062",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.owner_suspended",
+			DefaultValue: "Owner suspended",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.owner_suspended_description",
+			DefaultValue: "A personal agent cannot be created for a user whose account is suspended",
+		},
+	}
 )
 
 // errInvalidDeclarativeLifespan is returned when a declarative agent's validUntil is not an RFC 3339

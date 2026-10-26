@@ -389,7 +389,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	agentService, agentExporter, err := agent.Initialize(mux, mcpServer, entityService, sharingService,
 		inboundClientService, ouService, roleService, resourceService, flowMgtService, ouAuthzService,
 		governanceService, valueCapture, entityTypeService, dbprovider.GetDBProvider(), observabilitySvc,
-		projectService, auditBus)
+		projectService, auditBus, nil, nil)
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)
 	// The control plane creates agents directly. The data plane creates them through its agent
@@ -415,6 +415,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		notifTemplate:  notifTemplateSvc,
 		httpConnection: httpConnectionService,
 		entityType:     entityTypeService,
+		governance:     governanceService,
 	}, applicationService, agentService, flowMgtService, roleAssignmentService, roleService,
 		groupService, ouService, ouUserResolver, ouGroupResolver, entityTypeService, resourceService,
 		sharingService, notifTemplateSvc, ouDependencyProvider)
@@ -521,6 +522,7 @@ type dependencyConsumers struct {
 	notifTemplate  notificationtemplate.NotificationTemplateServiceInterface
 	httpConnection httpconnection.HTTPConnectionServiceInterface
 	entityType     entitytype.EntityTypeServiceInterface
+	governance     identitygovernance.IdentityGovernanceServiceInterface
 }
 
 // registerDependencyRegistry builds the dependency registry from the given providers and wires it
@@ -541,6 +543,7 @@ func registerDependencyRegistry(consumers dependencyConsumers, providers ...reso
 	consumers.notifTemplate.SetDependencyRegistry(registry)
 	consumers.httpConnection.SetDependencyRegistry(registry)
 	consumers.entityType.SetDependencyRegistry(registry)
+	consumers.governance.SetDependencyRegistry(registry)
 }
 
 // unregisterServices unregisters all services that require cleanup during shutdown.

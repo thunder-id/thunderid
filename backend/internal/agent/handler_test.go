@@ -184,6 +184,30 @@ func (s *InlineStubAgentService) DeleteOwnedAgent(
 	return nil
 }
 
+func (s *InlineStubAgentService) SuspendOwnedAgent(
+	ctx context.Context, ownerID, agentID string, kind providers.AgentKind,
+) *tidcommon.ServiceError {
+	return nil
+}
+
+func (s *InlineStubAgentService) UnsuspendOwnedAgent(
+	ctx context.Context, ownerID, agentID string, kind providers.AgentKind,
+) *tidcommon.ServiceError {
+	return nil
+}
+
+func (s *InlineStubAgentService) CascadeDeleteDependencies(
+	ctx context.Context, resourceType, id string,
+) (int, error) {
+	return 0, nil
+}
+
+func (s *InlineStubAgentService) SuspendOwnedAgents(
+	ctx context.Context, ownerID string, kind providers.AgentKind,
+) (int, *tidcommon.ServiceError) {
+	return 0, nil
+}
+
 func TestHandleAgentPostRequest_Success(t *testing.T) {
 	stubService := &InlineStubAgentService{
 		OnCreateAgent: func(
@@ -923,4 +947,79 @@ func TestHandleAgentRolesRequest_ServiceError(t *testing.T) {
 	handler.HandleAgentRolesRequest(w, req)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 	assert.Contains(t, w.Body.String(), ErrorAgentNotFound.Code)
+}
+
+// The owner's suspension routes pass the caller and the fixed kind, answer 204 for one agent and the count for
+// all, and refuse a delegated token before the service.
+func TestHandleOwnedAgentSuspensionRequests(t *testing.T) {
+	svc := agentmock.NewAgentServiceInterfaceMock(t)
+	svc.EXPECT().SuspendOwnedAgent(mock.Anything, "user-1", "agent-1", providers.AgentKindPersonalAssistant).
+		Return(nil).Once()
+	svc.EXPECT().UnsuspendOwnedAgent(mock.Anything, "user-1", "agent-1", providers.AgentKindPersonalAssistant).
+		Return(nil).Once()
+	svc.EXPECT().SuspendOwnedAgents(mock.Anything, "user-1", providers.AgentKindPersonalAssistant).
+		Return(2, nil).Once()
+	handler := newAgentHandler(svc)
+
+	for name, handle := range map[string]http.HandlerFunc{
+		"suspend":   handler.HandleOwnedAgentSuspendRequest,
+		"unsuspend": handler.HandleOwnedAgentUnsuspendRequest,
+	} {
+		req := ownerRequestWithBody(http.MethodPost, "/users/me/agents/agent-1/"+name, "", "user-1", false)
+		req.SetPathValue("id", "agent-1")
+		w := httptest.NewRecorder()
+		handle(w, req)
+		assert.Equal(t, http.StatusNoContent, w.Code, name)
+
+		req = ownerRequestWithBody(http.MethodPost, "/users/me/agents/agent-1/"+name, "", "user-1", true)
+		req.SetPathValue("id", "agent-1")
+		w = httptest.NewRecorder()
+		handle(w, req)
+		assert.Equal(t, http.StatusForbidden, w.Code, name)
+	}
+
+	w := httptest.NewRecorder()
+	handler.HandleOwnedAgentsSuspendRequest(w,
+		ownerRequestWithBody(http.MethodPost, "/users/me/agents/suspend", "", "user-1", false))
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.JSONEq(t, `{"suspendedCount":2}`, w.Body.String())
+
+	w = httptest.NewRecorder()
+	handler.HandleOwnedAgentsSuspendRequest(w,
+		ownerRequestWithBody(http.MethodPost, "/users/me/agents/suspend", "", "", false))
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+// A service refusal is answered as the service says.
+func TestHandleOwnedAgentSuspendRequest_NotFound(t *testing.T) {
+	svc := agentmock.NewAgentServiceInterfaceMock(t)
+	svc.EXPECT().SuspendOwnedAgent(mock.Anything, "user-1", "agent-1", providers.AgentKindPersonalAssistant).
+		Return(&ErrorAgentNotFound).Once()
+
+	req := ownerRequestWithBody(http.MethodPost, "/users/me/agents/agent-1/suspend", "", "user-1", false)
+	req.SetPathValue("id", "agent-1")
+	w := httptest.NewRecorder()
+	newAgentHandler(svc).HandleOwnedAgentSuspendRequest(w, req)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+// A service failure on unsuspending one agent or suspending all is answered as the service says.
+func TestHandleOwnedAgentSuspensionRequests_ServiceErrors(t *testing.T) {
+	svc := agentmock.NewAgentServiceInterfaceMock(t)
+	svc.EXPECT().UnsuspendOwnedAgent(mock.Anything, "user-1", "agent-1", providers.AgentKindPersonalAssistant).
+		Return(&ErrorAgentNotFound).Once()
+	svc.EXPECT().SuspendOwnedAgents(mock.Anything, "user-1", providers.AgentKindPersonalAssistant).
+		Return(0, &tidcommon.InternalServerError).Once()
+	handler := newAgentHandler(svc)
+
+	req := ownerRequestWithBody(http.MethodPost, "/users/me/agents/agent-1/unsuspend", "", "user-1", false)
+	req.SetPathValue("id", "agent-1")
+	w := httptest.NewRecorder()
+	handler.HandleOwnedAgentUnsuspendRequest(w, req)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+
+	w = httptest.NewRecorder()
+	handler.HandleOwnedAgentsSuspendRequest(w,
+		ownerRequestWithBody(http.MethodPost, "/users/me/agents/suspend", "", "user-1", false))
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }

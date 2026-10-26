@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
@@ -26,6 +27,11 @@ const (
 	paSeededUserType   = "person"
 	// paSuiteAgentName is the name the suite's agent is registered with.
 	paSuiteAgentName = "pa_suite_assistant"
+	// paCodeVerifier is a PKCE verifier for authorization requests that are not redeemed.
+	paCodeVerifier = "pa-code-verifier-pa-code-verifier-pa-code-verifier"
+	// paSuspensionCutoffLeeway is jwt.leeway as the integration deployment runs it. A suspension's revocation
+	// cutoff is its time plus this allowance, so a code issued before then is still refused.
+	paSuspensionCutoffLeeway = 30 * time.Second
 	// paSignInAction submits the sign-in prompt of the personal agent login flow the agent authorizes through.
 	paSignInAction       = "action_001"
 	paConsentDecisions   = "consent_decisions"
@@ -609,6 +615,303 @@ func (ts *PersonalAgentTestSuite) TestOwnerUsagesListThePersonalAgent() {
 	ts.NotContains(usageIDs(ts.otherID), ts.agentID)
 }
 
+// --- owner suspension ---
+
+// introspectAsSuiteApp reports whether a token is still active, asked by the suite's own application rather
+// than the agent, whose client is refused while it is suspended.
+func (ts *PersonalAgentTestSuite) introspectAsSuiteApp(token string) bool {
+	ts.T().Helper()
+	active, err := testutils.IntrospectToken(token, "pa_agent_suite_app_client", "pa_agent_suite_app_secret")
+	ts.Require().NoError(err)
+	return active
+}
+
+// signInStarts reports whether an authorization request by the agent with clientID starts the owner's sign-in.
+// A suspended agent is refused before that.
+func (ts *PersonalAgentTestSuite) signInStarts(clientID string) bool {
+	ts.T().Helper()
+	resp, err := testutils.InitiateAuthorizationFlowWithPKCE(clientID, paRedirectURI, "code", paScope,
+		"pa-state", paResourceIdentifier, testutils.GenerateCodeChallenge(paCodeVerifier), "S256")
+	ts.Require().NoError(err)
+	resp.Body.Close()
+	return strings.Contains(resp.Header.Get("Location"), "executionId")
+}
+
+// The owner suspends their agent: its tokens fail, it cannot sign the owner in or refresh, and its client is
+// refused. Lifting the suspension lets it sign the owner in again with the same credentials, and get tokens
+// once the suspension's revocation cutoff (now plus the JWT leeway) has passed. Repeating either changes
+// nothing.
+func (ts *PersonalAgentTestSuite) TestOwnerSuspendsTheirAgent() {
+	ownerToken := ts.userToken(ts.ownerUsername)
+	agent := ts.createOwnedAgent("authorization_code", "refresh_token")
+	defer func() { _ = deleteAgent(agent.id) }()
+	restore := ts.actAs(agent)
+	defer restore()
+	token := ts.obtainToken(ts.ownerUsername)
+	ts.Require().NotEmpty(token.RefreshToken)
+	path := "/users/me/agents/" + agent.id
+
+	for range 2 {
+		status, body := ts.selfServiceCall(http.MethodPost, path+"/suspend", ownerToken, "")
+		ts.Require().Equal(http.StatusNoContent, status, body)
+	}
+
+	ts.False(ts.introspectAsSuiteApp(token.AccessToken), "the agent's access token no longer works")
+	status, body := ts.postToken(url.Values{"grant_type": {"refresh_token"}, "refresh_token": {token.RefreshToken}})
+	ts.NotEqual(http.StatusOK, status, "a suspended agent cannot refresh: %s", body)
+	ts.False(ts.signInStarts(agent.clientID), "a suspended agent cannot sign its owner in")
+
+	for range 2 {
+		status, body = ts.selfServiceCall(http.MethodPost, path+"/unsuspend", ownerToken, "")
+		ts.Require().Equal(http.StatusNoContent, status, body)
+	}
+	ts.True(ts.signInStarts(agent.clientID), "the agent signs its owner in again")
+	ts.True(ts.tokenWorksOnceCutoffPasses(ts.ownerUsername), "the agent works again with the same credentials")
+}
+
+// tokenWorksOnceCutoffPasses keeps requesting a token for username until one is active, or until twice the
+// suspension's revocation cutoff leeway has passed. A token issued before the cutoff is still revoked.
+func (ts *PersonalAgentTestSuite) tokenWorksOnceCutoffPasses(username string) bool {
+	ts.T().Helper()
+	deadline := time.Now().Add(2 * paSuspensionCutoffLeeway)
+	for {
+		code, verifier := ts.obtainCode(username)
+		if status, body := ts.exchangeCode(code, verifier); status == http.StatusOK {
+			var token testutils.TokenResponse
+			ts.Require().NoError(json.Unmarshal([]byte(body), &token))
+			if ts.introspectAsSuiteApp(token.AccessToken) {
+				return true
+			}
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(2 * time.Second)
+	}
+}
+
+// The owner suspends all their agents at once and is told how many; each is refused. Agents already suspended by
+// the owner are not counted again. A separate owner keeps the suite's agent out of it.
+func (ts *PersonalAgentTestSuite) TestOwnerSuspendsAllTheirAgents() {
+	ownerID, username := ts.createUser(ts.seededPersonType(), "pa_bulk_owner")
+	agents := []ownedAgent{ts.createAgentFor(ownerID, "authorization_code"),
+		ts.createAgentFor(ownerID, "authorization_code")}
+	defer func() {
+		for _, agent := range agents {
+			_ = deleteAgent(agent.id)
+		}
+		_ = testutils.DeleteUser(ownerID)
+	}()
+	ownerToken := ts.userToken(username)
+
+	status, body := ts.selfServiceCall(http.MethodPost, "/users/me/agents/suspend", ownerToken, "")
+	ts.Require().Equal(http.StatusOK, status, body)
+	ts.JSONEq(`{"suspendedCount":2}`, body)
+	for _, agent := range agents {
+		ts.False(ts.signInStarts(agent.clientID), "every agent of the owner is suspended")
+	}
+	ts.True(ts.signInStarts(ts.clientID), "another owner's agent is untouched")
+
+	status, body = ts.selfServiceCall(http.MethodPost, "/users/me/agents/suspend", ownerToken, "")
+	ts.Require().Equal(http.StatusOK, status, body)
+	ts.JSONEq(`{"suspendedCount":0}`, body, "agents already suspended by the owner are not counted again")
+}
+
+// runAdministrationFlow runs a shipped administration flow on subject as the administrator, with an optional
+// operator note, and requires it to complete.
+func (ts *PersonalAgentTestSuite) runAdministrationFlow(handle, subject, note string) {
+	ts.T().Helper()
+	flowID, err := testutils.GetFlowIDByHandle(handle, "ADMINISTRATION")
+	ts.Require().NoError(err)
+	token, err := testutils.GetAccessToken()
+	ts.Require().NoError(err)
+	inputs := map[string]string{"subject": subject}
+	if note != "" {
+		inputs["operatorNote"] = note
+	}
+	status, raw, err := testutils.ExecuteFlowRaw(nil, token, map[string]interface{}{"flowId": flowID, "inputs": inputs})
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	var step struct {
+		FlowStatus string `json:"flowStatus"`
+	}
+	ts.Require().NoError(json.Unmarshal(raw, &step))
+	ts.Require().Equal("COMPLETE", step.FlowStatus, string(raw))
+}
+
+// ownedAgentStatus is the status on the owner's read of an agent.
+type ownedAgentStatus struct {
+	Value   string `json:"value"`
+	Details *struct {
+		Reason       string   `json:"reason"`
+		Since        string   `json:"since"`
+		AppliedBy    []string `json:"appliedBy"`
+		OperatorNote string   `json:"operatorNote"`
+	} `json:"details"`
+}
+
+// ownerReadsStatus returns the status the owner reads for agentID, and the raw read.
+func (ts *PersonalAgentTestSuite) ownerReadsStatus(ownerToken, agentID string) (ownedAgentStatus, string) {
+	ts.T().Helper()
+	status, body := ts.selfServiceGet("/users/me/agents/"+agentID, ownerToken)
+	ts.Require().Equal(http.StatusOK, status, body)
+	var read struct {
+		Status ownedAgentStatus `json:"status"`
+	}
+	ts.Require().NoError(json.Unmarshal([]byte(body), &read))
+	return read.Status, body
+}
+
+// The organization suspends an owner's agent through governance's flow: the agent is refused and its tokens fail,
+// the owner sees who suspended it, when and the operator's note, and cannot lift it. The owner's own
+// suspension is held apart: lifting either leaves the other in force, and the agent is back once both are lifted.
+// The owner's own token and their other agents are untouched.
+func (ts *PersonalAgentTestSuite) TestOrganizationSuspensionOfAPersonalAgent() {
+	ownerToken := ts.userToken(ts.ownerUsername)
+	agent := ts.createOwnedAgent("authorization_code")
+	defer func() { _ = deleteAgent(agent.id) }()
+	restore := ts.actAs(agent)
+	token := ts.obtainToken(ts.ownerUsername)
+	restore()
+	path := "/users/me/agents/" + agent.id
+
+	ts.runAdministrationFlow("default-agent-suspend-flow", agent.id, "Security advisory for this agent")
+	ts.False(ts.introspectAsSuiteApp(token.AccessToken), "the suspended agent's tokens fail")
+	ts.False(ts.signInStarts(agent.clientID), "the suspended agent cannot sign its owner in")
+	ts.True(ts.signInStarts(ts.clientID), "the owner's other agents keep working")
+	status, body := ts.selfServiceGet("/users/me/agents", ownerToken)
+	ts.Equal(http.StatusOK, status, "the owner's own token keeps working: %s", body)
+
+	read, _ := ts.ownerReadsStatus(ownerToken, agent.id)
+	ts.Equal("SUSPENDED", read.Value)
+	ts.Require().NotNil(read.Details)
+	ts.Equal("ADMINISTRATIVE_SUSPENSION", read.Details.Reason)
+	ts.Equal([]string{"organization"}, read.Details.AppliedBy)
+	ts.NotEmpty(read.Details.Since)
+	ts.Equal("Security advisory for this agent", read.Details.OperatorNote, "the owner reads the operator's note")
+	ts.Contains(body, agent.id, "the owner's list carries the agent")
+	adminRead, err := testutils.GetAccessStatus("agents", agent.id)
+	ts.Require().NoError(err)
+	ts.Equal("Security advisory for this agent", adminRead.Details.OperatorNote, "administrators see the note")
+
+	status, body = ts.selfServiceCall(http.MethodPost, path+"/unsuspend", ownerToken, "")
+	ts.Require().Equal(http.StatusNoContent, status, body)
+	read, _ = ts.ownerReadsStatus(ownerToken, agent.id)
+	ts.Equal("SUSPENDED", read.Value, "the owner cannot lift the organization's suspension")
+
+	status, body = ts.selfServiceCall(http.MethodPost, path+"/suspend", ownerToken, "")
+	ts.Require().Equal(http.StatusNoContent, status, body)
+	read, _ = ts.ownerReadsStatus(ownerToken, agent.id)
+	ts.Equal([]string{"organization", "owner"}, read.Details.AppliedBy, "both suspensions are held")
+
+	ts.runAdministrationFlow("default-agent-unsuspend-flow", agent.id, "")
+	read, _ = ts.ownerReadsStatus(ownerToken, agent.id)
+	ts.Equal("SUSPENDED", read.Value, "the owner's suspension outlasts the organization's")
+	ts.Equal("OWNER_SUSPENSION", read.Details.Reason)
+	ts.Equal([]string{"owner"}, read.Details.AppliedBy)
+	ts.False(ts.signInStarts(agent.clientID), "still suspended by the owner")
+
+	status, body = ts.selfServiceCall(http.MethodPost, path+"/unsuspend", ownerToken, "")
+	ts.Require().Equal(http.StatusNoContent, status, body)
+	read, _ = ts.ownerReadsStatus(ownerToken, agent.id)
+	ts.Equal("ACTIVE", read.Value)
+	ts.Nil(read.Details)
+	ts.True(ts.signInStarts(agent.clientID), "the agent is back once both suspensions are lifted")
+}
+
+// --- owner deletion ---
+
+// ownerWithAgent creates an owner holding the suite's role, gives them a personal agent, and signs them in to it,
+// returning the owner, the agent and the agent's token for them.
+func (ts *PersonalAgentTestSuite) ownerWithAgent(prefix string) (string, ownedAgent, *testutils.TokenResponse) {
+	ts.T().Helper()
+	ownerID, username := ts.createUser(ts.seededPersonType(), prefix)
+	resp, err := doPost(testServerURL+"/roles/"+ts.roleID+"/assignments/add", map[string]interface{}{
+		"assignments": []map[string]string{{"id": ownerID, "type": "user"}},
+	})
+	ts.Require().NoError(err)
+	body := readBody(resp)
+	resp.Body.Close()
+	ts.Require().Equal(http.StatusNoContent, resp.StatusCode, body)
+
+	agent := ts.createAgentFor(ownerID, "authorization_code")
+	restore := ts.actAs(agent)
+	defer restore()
+	return ownerID, agent, ts.obtainToken(username)
+}
+
+// agentExists reports whether an administrator can still read the agent.
+func (ts *PersonalAgentTestSuite) agentExists(agentID string) bool {
+	ts.T().Helper()
+	resp, err := doGet(testServerURL + agentBasePath + "/" + agentID)
+	ts.Require().NoError(err)
+	resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
+
+// Deleting an owner, which runs the user deletion flow, deletes their personal agents after revoking the agents'
+// tokens.
+func (ts *PersonalAgentTestSuite) TestDeletingAnOwnerDeletesTheirPersonalAgents() {
+	ownerID, agent, token := ts.ownerWithAgent("pa_deleted_owner")
+	defer func() { _ = deleteAgent(agent.id) }()
+	ts.Require().True(ts.introspectAsSuiteApp(token.AccessToken), "the token works before the deletion")
+
+	ts.Require().NoError(testutils.DeleteUser(ownerID))
+
+	ts.False(ts.agentExists(agent.id), "the owner's personal agent is deleted with them")
+	ts.False(ts.introspectAsSuiteApp(token.AccessToken), "the deleted agent's token no longer works")
+}
+
+// createOrdinaryAgentFor creates an agent owned by ownerID that is not a personal agent, and returns its ID.
+func (ts *PersonalAgentTestSuite) createOrdinaryAgentFor(ownerID string) string {
+	ts.T().Helper()
+	ordinary := ts.personalAgentRequest(ownerID)
+	delete(ordinary, "kind")
+	ordinary["inboundAuthConfig"] = []map[string]interface{}{{
+		"type":   "oauth2",
+		"config": map[string]interface{}{"grantTypes": []string{"client_credentials"}},
+	}}
+	resp, err := doPost(testServerURL+agentBasePath, ordinary)
+	ts.Require().NoError(err)
+	body := readBody(resp)
+	resp.Body.Close()
+	ts.Require().Equal(http.StatusCreated, resp.StatusCode, body)
+	var created struct {
+		ID string `json:"id"`
+	}
+	ts.Require().NoError(json.Unmarshal([]byte(body), &created))
+	return created.ID
+}
+
+// An agent that is not a personal agent outlives its owner, so it still blocks the owner's deletion.
+func (ts *PersonalAgentTestSuite) TestAnOrdinaryAgentStillBlocksItsOwnersDeletion() {
+	ownerID, _ := ts.createUser(ts.seededPersonType(), "pa_ordinary_owner")
+	ordinaryID := ts.createOrdinaryAgentFor(ownerID)
+	defer func() {
+		_ = deleteAgent(ordinaryID)
+		_ = testutils.DeleteUser(ownerID)
+	}()
+
+	err := testutils.DeleteUser(ownerID)
+	ts.Require().Error(err, "the owner of an ordinary agent cannot be deleted")
+	ts.Contains(err.Error(), "USR-1027")
+	ts.True(ts.agentExists(ordinaryID), "the ordinary agent is kept")
+}
+
+// Another user cannot suspend the owner's agent, and neither can a token the agent holds for its owner.
+func (ts *PersonalAgentTestSuite) TestOwnerSuspensionGuards() {
+	path := "/users/me/agents/" + ts.agentID
+	for _, action := range []string{"/suspend", "/unsuspend"} {
+		status, body := ts.selfServiceCall(http.MethodPost, path+action, ts.userToken(ts.otherUsername), "")
+		ts.Equal(http.StatusNotFound, status, "%s by another user: %s", action, body)
+		status, body = ts.selfServiceCall(http.MethodPost, path+action, ts.obtainToken(ts.ownerUsername).AccessToken,
+			"")
+		ts.Equal(http.StatusForbidden, status, "%s with a delegated token: %s", action, body)
+	}
+	status, body := ts.selfServiceCall(http.MethodPost, "/users/me/agents/suspend", "", "")
+	ts.Equal(http.StatusUnauthorized, status, body)
+}
+
 // --- signing the owner in ---
 
 // The owner signs in, is always asked for consent, and the token names the owner as the subject and
@@ -706,7 +1009,13 @@ type ownedAgent struct {
 // createOwnedAgent creates another personal agent for the suite's owner with the given grants.
 func (ts *PersonalAgentTestSuite) createOwnedAgent(grants ...string) ownedAgent {
 	ts.T().Helper()
-	request := ts.personalAgentRequest(ts.ownerID, grants...)
+	return ts.createAgentFor(ts.ownerID, grants...)
+}
+
+// createAgentFor creates a personal agent for owner with the given grants.
+func (ts *PersonalAgentTestSuite) createAgentFor(owner string, grants ...string) ownedAgent {
+	ts.T().Helper()
+	request := ts.personalAgentRequest(owner, grants...)
 	resp, err := doPost(testServerURL+agentBasePath, request)
 	ts.Require().NoError(err)
 	defer resp.Body.Close()
@@ -1039,4 +1348,71 @@ func (ts *PersonalAgentTestSuite) postToken(form url.Values) (int, string) {
 	body, err := io.ReadAll(resp.Body)
 	ts.Require().NoError(err)
 	return resp.StatusCode, string(body)
+}
+
+// --- owner suspension ---
+
+// Suspending an owner suspends their personal agents alongside the organization's or the owner's own holds, and
+// unsuspending the owner lifts only that cascaded hold. The owner's other agents are not suspended.
+func (ts *PersonalAgentTestSuite) TestSuspendingAnOwnerSuspendsTheirPersonalAgents() {
+	ownerID, agent, token := ts.ownerWithAgent("pa_suspended_owner")
+	defer func() { _ = deleteAgent(agent.id) }()
+	held := ts.createAgentFor(ownerID, "authorization_code")
+	defer func() { _ = deleteAgent(held.id) }()
+	ordinaryID := ts.createOrdinaryAgentFor(ownerID)
+	defer func() { _ = deleteAgent(ordinaryID) }()
+	ts.runAdministrationFlow("default-agent-suspend-flow", held.id, "")
+
+	ts.runAdministrationFlow("default-user-suspend-flow", ownerID, "")
+	read, err := testutils.GetAccessStatus("agents", agent.id)
+	ts.Require().NoError(err)
+	ts.Equal("SUSPENDED", read.Value)
+	ts.Require().NotNil(read.Details)
+	ts.Equal("CASCADED_SUSPENSION", read.Details.Reason)
+	ts.Equal([]string{"cascade"}, read.Details.AppliedBy)
+	ts.False(ts.signInStarts(agent.clientID), "the suspended owner's agent is refused")
+	ts.False(ts.introspectAsSuiteApp(token.AccessToken), "the agent's token for the owner fails")
+	read, err = testutils.GetAccessStatus("agents", held.id)
+	ts.Require().NoError(err)
+	ts.Equal([]string{"organization", "cascade"}, read.Details.AppliedBy, "both suspensions are held")
+	read, err = testutils.GetAccessStatus("agents", ordinaryID)
+	ts.Require().NoError(err)
+	ts.Equal("ACTIVE", read.Value, "an agent that is not a personal agent is not suspended with its owner")
+
+	ts.runAdministrationFlow("default-user-unsuspend-flow", ownerID, "")
+	read, err = testutils.GetAccessStatus("agents", agent.id)
+	ts.Require().NoError(err)
+	ts.Equal("ACTIVE", read.Value)
+	ts.True(ts.signInStarts(agent.clientID), "the agent is back with its owner")
+	read, err = testutils.GetAccessStatus("agents", held.id)
+	ts.Require().NoError(err)
+	ts.Equal("SUSPENDED", read.Value, "the organization's suspension outlasts the owner's")
+	ts.Equal([]string{"organization"}, read.Details.AppliedBy)
+}
+
+// A personal agent cannot be created for a user whose account is suspended, since it would start active while its
+// owner's other personal agents are suspended with them. Once the owner is unsuspended, it can.
+func (ts *PersonalAgentTestSuite) TestNoPersonalAgentForASuspendedOwner() {
+	ownerID, _ := ts.createUser(ts.seededPersonType(), "pa_suspended_new_owner")
+	defer func() { _ = testutils.DeleteUser(ownerID) }()
+
+	ts.runAdministrationFlow("default-user-suspend-flow", ownerID, "")
+	resp, err := doPost(testServerURL+agentBasePath, ts.personalAgentRequest(ownerID))
+	ts.Require().NoError(err)
+	body := readBody(resp)
+	resp.Body.Close()
+	ts.Equal(http.StatusBadRequest, resp.StatusCode, body)
+	ts.Contains(body, "AGT-1062")
+
+	ts.runAdministrationFlow("default-user-unsuspend-flow", ownerID, "")
+	resp, err = doPost(testServerURL+agentBasePath, ts.personalAgentRequest(ownerID))
+	ts.Require().NoError(err)
+	body = readBody(resp)
+	resp.Body.Close()
+	ts.Require().Equal(http.StatusCreated, resp.StatusCode, body)
+	var created struct {
+		ID string `json:"id"`
+	}
+	ts.Require().NoError(json.Unmarshal([]byte(body), &created))
+	_ = deleteAgent(created.ID)
 }

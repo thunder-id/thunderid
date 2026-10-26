@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
+	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -42,6 +43,11 @@ import (
 //
 // bus is required: the service publishes the audit event of every agent it creates, updates or deletes
 // on it.
+//
+// revoker is optional. Without one, which is the control plane, owners cannot suspend their agents and those
+// routes are not registered.
+//
+// artifactLifetime is optional. Given one, a revocation of an agent's tokens is kept as long as they can live.
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,
@@ -60,6 +66,8 @@ func Initialize(
 	observabilitySvc observability.ObservabilityServiceInterface,
 	projectValidator projectOUValidator,
 	bus eventbus.EventBusInterface,
+	revoker revocation.CriteriaRevoker,
+	artifactLifetime artifactLifetimeResolver,
 ) (AgentServiceInterface, declarativeresource.ResourceExporter, error) {
 	if bus == nil {
 		return nil, nil, errNilEventBus
@@ -69,7 +77,8 @@ func Initialize(
 		return nil, nil, err
 	}
 	service := newAgentService(authzService, entityService, inboundClientService, ouService, roleService,
-		governance, valueCapturer, entityTypeService, transactioner, observabilitySvc, projectValidator, bus)
+		governance, valueCapturer, entityTypeService, transactioner, observabilitySvc, projectValidator, bus,
+		revoker, artifactLifetime)
 
 	if err := entityService.LoadIndexedAttributes(getAgentIndexedAttributes()); err != nil {
 		return nil, nil, err
@@ -105,6 +114,9 @@ func Initialize(
 			resourceService:   resourceService,
 			flowService:       flowService,
 		})
+	}
+	if revoker != nil {
+		registerOwnerSuspensionRoutes(mux, handler)
 	}
 
 	exporter := newAgentExporter(service, entityService, sharingService)
@@ -163,7 +175,7 @@ func registerRoutes(mux *http.ServeMux, h *agentHandler) {
 		}, ownedListOpts))
 
 	ownedItemOpts := middleware.CORSOptions{
-		AllowedMethods:   []string{"GET", "PUT", "DELETE"},
+		AllowedMethods:   []string{"GET", "PUT", "DELETE", "POST"},
 		AllowedHeaders:   middleware.DefaultAllowedHeaders,
 		AllowCredentials: true,
 		MaxAge:           600,
@@ -176,4 +188,19 @@ func registerRoutes(mux *http.ServeMux, h *agentHandler) {
 		func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}, ownedItemOpts))
+}
+
+// registerOwnerSuspensionRoutes registers the routes an owner suspends and unsuspends their agents with.
+func registerOwnerSuspensionRoutes(mux *http.ServeMux, h *agentHandler) {
+	opts := middleware.CORSOptions{
+		AllowedMethods:   []string{"POST"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("POST /users/me/agents/suspend", h.HandleOwnedAgentsSuspendRequest, opts))
+	mux.HandleFunc(middleware.WithCORS("POST /users/me/agents/{id}/suspend",
+		h.HandleOwnedAgentSuspendRequest, opts))
+	mux.HandleFunc(middleware.WithCORS("POST /users/me/agents/{id}/unsuspend",
+		h.HandleOwnedAgentUnsuspendRequest, opts))
 }

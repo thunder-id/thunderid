@@ -353,6 +353,7 @@ type AccessStatusDetails struct {
 	Reason        string         `json:"reason"`
 	Since         string         `json:"since"`
 	OperatorNote  string         `json:"operatorNote"`
+	AppliedBy     []string       `json:"appliedBy"`
 	LockedMethods []LockedMethod `json:"lockedMethods"`
 }
 

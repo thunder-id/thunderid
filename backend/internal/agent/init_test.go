@@ -6,6 +6,7 @@ package agent
 import (
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -22,6 +24,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
+	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/revocationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
@@ -106,7 +109,7 @@ func (suite *InitializeTestSuite) TestInitialize_EntityLoadError_AllDeclarativeM
 
 			svc, exporter, err := Initialize(http.NewServeMux(), nil, mockEntity, mockSharing, mockInbound, mockOU,
 				mockRole, nil, nil, newAllowAllAuthz(suite.T()), nil, nil, nil,
-				newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
+				newEntityDBProvider(suite.T()), nil, nil, discardingBus{}, nil, nil)
 
 			suite.EqualError(err, "entity load error")
 			suite.Nil(svc)
@@ -138,7 +141,7 @@ func (suite *InitializeTestSuite) TestInitialize_InboundLoadError_AllDeclarative
 			mux := http.NewServeMux()
 			svc, exporter, err := Initialize(
 				mux, nil, mockEntity, mockSharing, mockInbound, mockOU, mockRole, nil, nil, newAllowAllAuthz(suite.T()),
-				nil, nil, nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
+				nil, nil, nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{}, nil, nil)
 
 			suite.Error(err)
 			suite.Equal("inbound load error", err.Error())
@@ -168,7 +171,7 @@ func (suite *InitializeTestSuite) TestInitialize_DeclarativeMode_Success() {
 	mux := http.NewServeMux()
 	svc, exporter, err := Initialize(
 		mux, nil, mockEntity, mockSharing, mockInbound, mockOU, mockRole, nil, nil, newAllowAllAuthz(suite.T()),
-		nil, nil, nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
+		nil, nil, nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{}, nil, nil)
 
 	suite.NoError(err)
 	suite.NotNil(svc)
@@ -201,7 +204,8 @@ func (suite *InitializeTestSuite) TestInitialize_SharingLoadError_AllDeclarative
 
 			svc, exporter, err := Initialize(
 				http.NewServeMux(), nil, mockEntity, mockSharing, mockInbound, mockOU, mockRole, nil, nil,
-				newAllowAllAuthz(suite.T()), nil, nil, nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
+				newAllowAllAuthz(suite.T()), nil, nil, nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{},
+				nil, nil)
 
 			suite.EqualError(err, "sharing load error")
 			suite.Nil(svc)
@@ -223,7 +227,7 @@ func (suite *InitializeTestSuite) TestInitialize_MutableMode_SkipsDeclarativeLoa
 	mux := http.NewServeMux()
 	svc, exporter, err := Initialize(
 		mux, nil, mockEntity, mockSharing, mockInbound, mockOU, mockRole, nil, nil, newAllowAllAuthz(suite.T()),
-		nil, nil, nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
+		nil, nil, nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{}, nil, nil)
 
 	suite.NoError(err)
 	suite.NotNil(svc)
@@ -232,6 +236,38 @@ func (suite *InitializeTestSuite) TestInitialize_MutableMode_SkipsDeclarativeLoa
 	mockEntity.AssertNotCalled(suite.T(), "LoadDeclarativeResources")
 	mockInbound.AssertNotCalled(suite.T(), "LoadDeclarativeResources")
 	mockSharing.AssertNotCalled(suite.T(), "LoadDeclarativeResources")
+}
+
+// The owner's suspension routes are registered only with a revoker, which the control plane does not have.
+func (suite *InitializeTestSuite) TestInitialize_OwnerSuspensionRoutesNeedARevoker() {
+	setupAgentConfig(suite.T(), string(serverconst.StoreModeMutable), false)
+	for name, revoker := range map[string]revocation.CriteriaRevoker{
+		"with a revoker": revocationmock.NewCriteriaRevokerInterfaceMock(suite.T()),
+		"without one":    nil,
+	} {
+		suite.Run(name, func() {
+			mockEntity := entitymock.NewEntityServiceInterfaceMock(suite.T())
+			mockEntity.On("LoadIndexedAttributes", []string{"name"}).Return(nil).Once()
+			mux := http.NewServeMux()
+			_, _, err := Initialize(mux, nil, mockEntity, newAgentSharingRegistry(suite.T(), mockEntity),
+				inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T()),
+				oumock.NewOrganizationUnitServiceInterfaceMock(suite.T()),
+				rolemock.NewRoleServiceInterfaceMock(suite.T()), nil, nil,
+				newAllowAllAuthz(suite.T()), nil, nil, nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{},
+				revoker, nil)
+			suite.Require().NoError(err)
+
+			for _, target := range []string{"/users/me/agents/suspend", "/users/me/agents/agent-1/suspend",
+				"/users/me/agents/agent-1/unsuspend"} {
+				_, pattern := mux.Handler(httptest.NewRequest(http.MethodPost, target, nil))
+				if revoker != nil {
+					suite.NotEmpty(pattern, target)
+				} else {
+					suite.Empty(pattern, target)
+				}
+			}
+		})
+	}
 }
 
 func (suite *InitializeTestSuite) TestInitialize_IndexedAttributesLoadError() {
@@ -247,7 +283,7 @@ func (suite *InitializeTestSuite) TestInitialize_IndexedAttributesLoadError() {
 
 	svc, exporter, err := Initialize(
 		http.NewServeMux(), nil, mockEntity, mockSharing, mockInbound, mockOU, mockRole, nil, nil,
-		newAllowAllAuthz(suite.T()), nil, nil, nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
+		newAllowAllAuthz(suite.T()), nil, nil, nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{}, nil, nil)
 
 	suite.EqualError(err, "indexed load error")
 	suite.Nil(svc)
@@ -264,7 +300,7 @@ func (suite *InitializeTestSuite) TestInitialize_TransactionerError() {
 	svc, exporter, err := Initialize(http.NewServeMux(), nil, mockEntity, nil,
 		inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T()),
 		oumock.NewOrganizationUnitServiceInterfaceMock(suite.T()), rolemock.NewRoleServiceInterfaceMock(suite.T()), nil,
-		nil, newAllowAllAuthz(suite.T()), nil, nil, nil, dbProvider, nil, nil, discardingBus{})
+		nil, newAllowAllAuthz(suite.T()), nil, nil, nil, dbProvider, nil, nil, discardingBus{}, nil, nil)
 
 	suite.EqualError(err, "entity db unavailable")
 	suite.Nil(svc)
@@ -299,7 +335,7 @@ func newEntityDBProvider(t *testing.T) *providermock.DBProviderInterfaceMock {
 
 func (suite *InitializeTestSuite) TestInitialize_RefusesANilEventBus() {
 	svc, exporter, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		nil, nil, nil, nil)
+		nil, nil, nil, nil, nil, nil)
 
 	suite.ErrorIs(err, errNilEventBus)
 	suite.Nil(svc)

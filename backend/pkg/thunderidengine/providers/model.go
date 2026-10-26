@@ -752,10 +752,11 @@ type AccessLockedMethod struct {
 // when a suspension was placed. OperatorNote is never disclosed on a refusal. LockedMethods lists the
 // live automatic locks in registry order, and is empty unless the status is LOCKED.
 type AccessStatusDetails struct {
-	Reason        AccessHoldReason     `json:"reason,omitempty"       yaml:"-"`
-	Since         string               `json:"since,omitempty"        yaml:"-"`
-	OperatorNote  string               `json:"operatorNote,omitempty" yaml:"-"`
-	LockedMethods []AccessLockedMethod `json:"lockedMethods,omitempty" yaml:"-"`
+	Reason        AccessHoldReason      `json:"reason,omitempty"       yaml:"-"`
+	Since         string                `json:"since,omitempty"        yaml:"-"`
+	OperatorNote  string                `json:"operatorNote,omitempty" yaml:"-"`
+	AppliedBy     []SuspensionAppliedBy `json:"appliedBy,omitempty"    yaml:"-"`
+	LockedMethods []AccessLockedMethod  `json:"lockedMethods,omitempty" yaml:"-"`
 }
 
 // ApplicationStatusReport exposes only the application lifecycle status.

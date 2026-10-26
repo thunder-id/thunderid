@@ -385,6 +385,28 @@ const (
 
 	// AccessHoldReasonLifespanEnded is a lifespan that has reached its end.
 	AccessHoldReasonLifespanEnded AccessHoldReason = "LIFESPAN_ENDED"
+
+	// AccessHoldReasonOwnerSuspension is a suspension the owner of the identity placed, such as the owner of a
+	// personal agent.
+	AccessHoldReasonOwnerSuspension AccessHoldReason = "OWNER_SUSPENSION"
+
+	// AccessHoldReasonCascadedSuspension is a suspension carried from the identity it depends on, such as a personal
+	// agent suspended together with its owner.
+	AccessHoldReasonCascadedSuspension AccessHoldReason = "CASCADED_SUSPENSION"
+)
+
+// SuspensionAppliedBy says who placed a suspension.
+type SuspensionAppliedBy string
+
+const (
+	// SuspensionAppliedByOrganization is a suspension an administrator of the organization placed.
+	SuspensionAppliedByOrganization SuspensionAppliedBy = "organization"
+
+	// SuspensionAppliedByOwner is a suspension the owner of the identity placed.
+	SuspensionAppliedByOwner SuspensionAppliedBy = "owner"
+
+	// SuspensionAppliedByCascade is a suspension carried from the identity it depends on, such as its owner's.
+	SuspensionAppliedByCascade SuspensionAppliedBy = "cascade"
 )
 
 // String returns the string representation of the hold reason.

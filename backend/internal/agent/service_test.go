@@ -161,6 +161,7 @@ func (suite *AgentServiceTestSuite) setupService() (
 		Return(identitygovernance.AccessRead{
 			Status: providers.AccessStatusReport{Value: providers.AccessStatusActive},
 		}).Maybe()
+	governance.EXPECT().AccessHold(mock.Anything, mock.Anything).Return(providers.AccessRefusalReason(""), nil).Maybe()
 
 	svc := &agentService{
 		bus:                  discardingBus{},
@@ -210,6 +211,10 @@ func (noopDepRegistry) GetDependencies(
 
 func (r noopDepRegistry) CascadeDelete(context.Context, string, string) (int, error) {
 	return 0, r.cascadeErr
+}
+
+func (r noopDepRegistry) SuspensionDependents(context.Context, string, string) ([]string, error) {
+	return nil, nil
 }
 
 func (noopDepRegistry) ValidateReferenceUpdate(
@@ -1662,11 +1667,13 @@ func (suite *AgentServiceTestSuite) TestApplyPersonalAgentSetup_Refusals() {
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_PersonalAgent_OwnerRefusals() {
 	tests := []struct {
-		name     string
-		owner    *providers.AgentOwner
-		ownerEnt *providers.Entity
-		ownerErr error
-		wantCode string
+		name       string
+		owner      *providers.AgentOwner
+		ownerEnt   *providers.Entity
+		ownerErr   error
+		suspended  bool
+		suspendErr *tidcommon.ServiceError
+		wantCode   string
 	}{
 		{name: "missing owner", wantCode: ErrorOwnerNotFound.Code},
 		{name: "external owner", owner: externalOwner("user-1", providers.AgentOwnerIDTypeUUID),
@@ -1678,6 +1685,12 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_PersonalAgent_OwnerRefusals(
 			wantCode: ErrorOwnerNotFound.Code},
 		{name: "owner lookup fails", owner: localOwner("user-1"), ownerErr: errors.New("db down"),
 			wantCode: tidcommon.InternalServerError.Code},
+		{name: "owner is suspended", owner: localOwner("user-1"),
+			ownerEnt: &providers.Entity{ID: "user-1", Category: providers.EntityCategoryUser}, suspended: true,
+			wantCode: ErrorOwnerSuspended.Code},
+		{name: "owner suspension check fails", owner: localOwner("user-1"),
+			ownerEnt:   &providers.Entity{ID: "user-1", Category: providers.EntityCategoryUser},
+			suspendErr: &tidcommon.InternalServerError, wantCode: tidcommon.InternalServerError.Code},
 	}
 	for _, tc := range tests {
 		suite.Run(tc.name, func() {
@@ -1685,6 +1698,15 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_PersonalAgent_OwnerRefusals(
 			if tc.owner != nil && tc.owner.Local() {
 				clearMockCalls(mockEntity, "GetEntityProfile")
 				mockEntity.On("GetEntityProfile", mock.Anything, tc.owner.ID).Return(tc.ownerEnt, tc.ownerErr)
+			}
+			if tc.suspended || tc.suspendErr != nil {
+				governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+				hold := providers.AccessRefusalReason("")
+				if tc.suspended {
+					hold = providers.AccessRefusalReasonSuspended
+				}
+				governance.EXPECT().AccessHold(mock.Anything, tc.owner.ID).Return(hold, tc.suspendErr).Once()
+				svc.governance = governance
 			}
 			req := personalAgentCreateRequest("", providers.GrantTypeAuthorizationCode)
 			req.Owner = tc.owner
@@ -4995,8 +5017,6 @@ func (suite *AgentServiceTestSuite) TestUpdateOwnedAgent_EmptyGrantListRemovesEv
 func (suite *AgentServiceTestSuite) TestUpdateOwnedAgent_OtherKindGetsTheSharedGrantPolicy() {
 	svc, mockEntity, mockInbound := suite.setupOwnedAgentUpdate(nil)
 	ordinary := buildAgentEntityFixture(testAgentName, "", "alice", "cid-123")
-	clearMockCalls(mockEntity, "GetEntityProfile")
-	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(ordinary, nil)
 	clearMockCalls(mockEntity, "GetEntity")
 	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(ordinary, nil)
 	mockEntity.On("UpdateAttributes", mock.Anything, testAgentID, mock.Anything).Return(nil).Once()
@@ -5115,8 +5135,11 @@ func (suite *AgentServiceTestSuite) TestUpdateOwnedAgent_WriteFailures() {
 			_ *inboundclientmock.InboundClientServiceInterfaceMock) {
 			mockEntity.On("UpdateAttributes", mock.Anything, testAgentID, mock.Anything).Return(nil).Once()
 			mockEntity.On("UpdateSystemAttributes", mock.Anything, testAgentID, mock.Anything).Return(nil).Once()
-			clearMockCalls(mockEntity, "GetEntityProfile")
-			mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(nil, dbErr).Once()
+			clearMockCalls(mockEntity, "GetEntity")
+			mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(withKind(
+				buildAgentEntityFixture(testAgentName, "desc", "alice", "cid-123"),
+				providers.AgentKindPersonalAssistant), nil).Once()
+			mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(nil, dbErr).Once()
 		}, tidcommon.InternalServerError.Code},
 		{"response build fails", func(mockEntity *entitymock.EntityServiceInterfaceMock,
 			mockInbound *inboundclientmock.InboundClientServiceInterfaceMock) {
