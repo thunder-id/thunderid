@@ -1,0 +1,30 @@
+# Copyright 2026 The ThunderID Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# One container running the quickstart pack: auth-dp (signs operators into the Control Plane),
+# the managed Data Plane, and the Control Plane, already wired together. The first start runs
+# setup, which generates the keys and, for any password not set below, a password printed in the
+# log. State is kept in the thunderid-quickstart volume; remove it to start from scratch, and
+# after upgrading the image.
+services:
+  thunderid-quickstart:
+    image: ghcr.io/thunder-id/thunderid-quickstart:latest
+    ports:
+      # Data Plane and its Admin Console
+      - "8090:8090"
+      # auth-dp, the Control Plane's sign-in
+      - "8091:8091"
+      # Control Plane console
+      - "8095:8095"
+    environment:
+      # Optional. A password left unset is generated and printed in the log on first start.
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      SERVICE_DESK_USERNAME: ${SERVICE_DESK_USERNAME:-servicedeskadmin}
+      SERVICE_DESK_PASSWORD: ${SERVICE_DESK_PASSWORD:-}
+    volumes:
+      - thunderid-quickstart:/opt/thunderid-quickstart
+
+volumes:
+  thunderid-quickstart:
+    driver: local
