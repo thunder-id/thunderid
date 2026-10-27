@@ -203,7 +203,11 @@ export default function UserEditPage() {
   const submittingRef = useRef(false);
 
   const handleSave = useCallback(async () => {
+<<<<<<< HEAD
     if (submittingRef.current || !userId || !user?.ouId || !user.type) return;
+=======
+    if (!userId || !user?.ouId || !user.type) return;
+>>>>>>> a8304afb9 (Fix user organization unit reset when updating a user)
 
     // Drop stale optional attribute values so an untouched mismatch doesn't block the update.
     const attributes = dropNonConformingOptionalAttributes(
@@ -216,6 +220,7 @@ export default function UserEditPage() {
     submittingRef.current = true;
     setIsSubmitting(true);
     try {
+<<<<<<< HEAD
       if (hasUserChanges) {
         await updateUserMutation.mutateAsync({
           userId,
@@ -232,12 +237,26 @@ export default function UserEditPage() {
       if (organizationAccess.hasChanges) {
         await organizationAccess.save();
       }
+=======
+      await updateUserMutation.mutateAsync({
+        userId,
+        data: {
+          ouId: user.ouId,
+          type: user.type,
+          attributes,
+        },
+      });
+      setEditedUser({});
+      await refetch();
+      setAttributesResetKey((key) => key + 1);
+>>>>>>> a8304afb9 (Fix user organization unit reset when updating a user)
     } catch (err) {
       logger.error('Failed to update user', {error: err});
     } finally {
       submittingRef.current = false;
       setIsSubmitting(false);
     }
+<<<<<<< HEAD
   }, [
     user,
     userId,
@@ -249,6 +268,14 @@ export default function UserEditPage() {
     refetch,
     logger,
   ]);
+=======
+  }, [user, userId, editedUser, userTypeDetails, updateUserMutation, refetch, logger]);
+
+  const hasChanges = useMemo(
+    () => Object.entries(editedUser).some(([key, value]) => !isEqualIgnoringEmpty(value, user?.[key as keyof User])),
+    [editedUser, user],
+  );
+>>>>>>> a8304afb9 (Fix user organization unit reset when updating a user)
 
   const handleBack = async () => {
     await navigate(routes.list());

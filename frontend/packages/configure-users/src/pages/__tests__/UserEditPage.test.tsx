@@ -828,7 +828,11 @@ describe('UserEditPage', () => {
           userId: 'user123',
           data: {
             ouId: 'sub-ou',
+<<<<<<< HEAD
             type: 'employee',
+=======
+            type: 'Employee',
+>>>>>>> a8304afb9 (Fix user organization unit reset when updating a user)
             attributes: {department: 'sales'},
           },
         });
@@ -855,7 +859,11 @@ describe('UserEditPage', () => {
           userId: 'user123',
           data: {
             ouId: 'test-ou',
+<<<<<<< HEAD
             type: 'employee',
+=======
+            type: 'Employee',
+>>>>>>> a8304afb9 (Fix user organization unit reset when updating a user)
             attributes: {department: 'sales'},
           },
         });
