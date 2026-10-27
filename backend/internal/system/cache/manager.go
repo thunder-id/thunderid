@@ -359,6 +359,99 @@ func GetInMemoryCache[T any](cm CacheManagerInterface, cacheName string) CacheIn
 	return newCacheInst
 }
 
+// newGroupedCache builds the implementation behind a grouped cache, honoring the same disabled
+// switches and backend selection as newCache.
+func newGroupedCache[T any](cm CacheManagerInterface, cacheName string) GroupedCacheInterface[T] {
+	// Cache infrastructure logging has no request scope, so context.Background() is used.
+	ctx := context.Background()
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CacheManager"),
+		log.String("cacheName", cacheName))
+
+	disabled := &GroupedCache[T]{enabled: false, cacheName: cacheName, cacheImpl: nil}
+
+	cacheConfig := cm.getCacheConfig()
+	if cacheConfig.Disabled {
+		logger.Debug(ctx, "Caching is disabled, returning empty")
+		return disabled
+	}
+
+	cacheProperty := getCacheProperty(cacheConfig, cacheName)
+	if cacheProperty.Disabled {
+		logger.Debug(ctx, "Individual cache is disabled, returning empty")
+		return disabled
+	}
+
+	logger.Debug(ctx, "Initializing the grouped cache")
+
+	var internalCache GroupedCacheInterface[T]
+	switch getCacheType(cacheConfig) {
+	case cacheTypeRedis:
+		redisClient := cm.getRedisClient()
+		if redisClient == nil {
+			logger.Warn(ctx, "Redis client not available, disabling cache")
+			return disabled
+		}
+		keyPrefix := buildRedisKeyPrefix(cacheConfig.Redis.KeyPrefix, cm.getDeploymentID())
+		internalCache = newGroupedRedisCache[T](cacheName, !cacheProperty.Disabled, redisClient,
+			keyPrefix, cacheConfig, cacheProperty)
+	case cacheTypeInMemory:
+		internalCache = newGroupedInMemoryCache[T](cacheName, !cacheProperty.Disabled,
+			cacheConfig, cacheProperty)
+	default:
+		logger.Warn(ctx, "Unknown cache type, defaulting to in-memory cache")
+		internalCache = newGroupedInMemoryCache[T](cacheName, !cacheProperty.Disabled,
+			cacheConfig, cacheProperty)
+	}
+
+	return &GroupedCache[T]{enabled: true, cacheName: cacheName, cacheImpl: internalCache}
+}
+
+// GetGroupedCache returns a singleton cache whose entries can be invalidated a group at a time.
+//
+// Grouped caches share the manager's registry with the plain ones, so a name may be used by only
+// one of the two. Asking for a name the other kind already holds logs a type mismatch and returns
+// nil, exactly as asking a plain cache for the wrong value type does.
+func GetGroupedCache[T any](cm CacheManagerInterface, cacheName string) GroupedCacheInterface[T] {
+	// Cache infrastructure logging has no request scope, so context.Background() is used.
+	ctx := context.Background()
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CacheManager"))
+
+	var t T
+	typeName := reflect.TypeOf(t).String()
+	cacheKey := cacheName + ":grouped:" + typeName
+
+	// A registered cache of the wrong kind or value type cannot be served, and is reported the way
+	// GetCache reports one: a warning and a nil cache, which every caller already treats as absent.
+	existing := func(cache any) GroupedCacheInterface[T] {
+		if retCache, ok := cache.(GroupedCacheInterface[T]); ok {
+			return retCache
+		}
+		logger.Warn(ctx, "Type mismatch for cache", log.String("cacheName", cacheName),
+			log.String("expectedType", typeName), log.String("actualType", reflect.TypeOf(cache).String()))
+		return nil
+	}
+
+	cm.getMutex().RLock()
+	if cache, found := cm.getCache(cacheKey); found {
+		cm.getMutex().RUnlock()
+		return existing(cache)
+	}
+	cm.getMutex().RUnlock()
+
+	cm.getMutex().Lock()
+	defer cm.getMutex().Unlock()
+
+	if cache, found := cm.getCache(cacheKey); found {
+		return existing(cache)
+	}
+
+	logger.Debug(ctx, "Creating new grouped cache", log.String("cacheName", cacheName))
+	newCacheInst := newGroupedCache[T](cm, cacheName)
+	cm.addCache(cacheKey, newCacheInst)
+
+	return newCacheInst
+}
+
 // GetCache returns a singleton cache instance for the given type and cache name.
 func GetCache[T any](cm CacheManagerInterface, cacheName string) CacheInterface[T] {
 	// Cache infrastructure logging has no request scope, so context.Background() is used.
