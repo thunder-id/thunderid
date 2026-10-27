@@ -396,3 +396,77 @@ func (_c *TokenValidatorInterfaceMock_ValidateSubjectToken_Call) RunAndReturn(ru
 	_c.Call.Return(run)
 	return _c
 }
+
+// ValidateNativeSSOSubjectToken provides a mock function for the type TokenValidatorInterfaceMock
+func (_mock *TokenValidatorInterfaceMock) ValidateNativeSSOSubjectToken(ctx context.Context, token string, oauthApp *providers.OAuthClient) (*tokenservice.SubjectTokenClaims, error) {
+	ret := _mock.Called(ctx, token, oauthApp)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateNativeSSOSubjectToken")
+	}
+
+	var r0 *tokenservice.SubjectTokenClaims
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *providers.OAuthClient) (*tokenservice.SubjectTokenClaims, error)); ok {
+		return returnFunc(ctx, token, oauthApp)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *providers.OAuthClient) *tokenservice.SubjectTokenClaims); ok {
+		r0 = returnFunc(ctx, token, oauthApp)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*tokenservice.SubjectTokenClaims)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *providers.OAuthClient) error); ok {
+		r1 = returnFunc(ctx, token, oauthApp)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// TokenValidatorInterfaceMock_ValidateNativeSSOSubjectToken_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateNativeSSOSubjectToken'
+type TokenValidatorInterfaceMock_ValidateNativeSSOSubjectToken_Call struct {
+	*mock.Call
+}
+
+// ValidateNativeSSOSubjectToken is a helper method to define mock.On call
+//   - ctx context.Context
+//   - token string
+//   - oauthApp *providers.OAuthClient
+func (_e *TokenValidatorInterfaceMock_Expecter) ValidateNativeSSOSubjectToken(ctx interface{}, token interface{}, oauthApp interface{}) *TokenValidatorInterfaceMock_ValidateNativeSSOSubjectToken_Call {
+	return &TokenValidatorInterfaceMock_ValidateNativeSSOSubjectToken_Call{Call: _e.mock.On("ValidateNativeSSOSubjectToken", ctx, token, oauthApp)}
+}
+
+func (_c *TokenValidatorInterfaceMock_ValidateNativeSSOSubjectToken_Call) Run(run func(ctx context.Context, token string, oauthApp *providers.OAuthClient)) *TokenValidatorInterfaceMock_ValidateNativeSSOSubjectToken_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 *providers.OAuthClient
+		if args[2] != nil {
+			arg2 = args[2].(*providers.OAuthClient)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *TokenValidatorInterfaceMock_ValidateNativeSSOSubjectToken_Call) Return(subjectTokenClaims *tokenservice.SubjectTokenClaims, err error) *TokenValidatorInterfaceMock_ValidateNativeSSOSubjectToken_Call {
+	_c.Call.Return(subjectTokenClaims, err)
+	return _c
+}
+
+func (_c *TokenValidatorInterfaceMock_ValidateNativeSSOSubjectToken_Call) RunAndReturn(run func(ctx context.Context, token string, oauthApp *providers.OAuthClient) (*tokenservice.SubjectTokenClaims, error)) *TokenValidatorInterfaceMock_ValidateNativeSSOSubjectToken_Call {
+	_c.Call.Return(run)
+	return _c
+}

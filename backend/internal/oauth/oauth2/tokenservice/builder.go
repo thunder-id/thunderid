@@ -169,7 +169,7 @@ func (tb *tokenBuilder) buildAccessTokenClaims(
 	claims := make(map[string]interface{})
 
 	if len(ctx.Scopes) > 0 {
-		claims["scope"] = JoinScopes(ctx.Scopes)
+		claims["scope"] = JoinScopes(accessTokenScopeClaim(ctx.Scopes))
 	}
 
 	if ctx.ClientID != "" {
@@ -236,6 +236,21 @@ func (tb *tokenBuilder) buildAccessTokenClaims(
 }
 
 // buildActorClaim builds the actor claim for token exchange.
+// accessTokenScopeClaim returns the scopes an access token advertises in its scope claim. The
+// device_sso scope (OpenID Connect Native SSO for Mobile Apps 1.0) records that the grant carries a
+// device secret: it stays on the grant (the token response's scope, the refresh token) so that a
+// refresh keeps the secret alive, but it names no permission a resource server could honour, so it
+// never appears in an access token.
+func accessTokenScopeClaim(scopes []string) []string {
+	out := make([]string, 0, len(scopes))
+	for _, s := range scopes {
+		if s != constants.ScopeDeviceSSO {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 func (tb *tokenBuilder) buildActorClaim(actorClaims *SubjectTokenClaims) map[string]interface{} {
 	actClaim := map[string]interface{}{
 		"sub": actorClaims.Sub,
@@ -444,6 +459,13 @@ func (tb *tokenBuilder) buildIDTokenClaims(ctx *IDTokenBuildContext) map[string]
 
 	if ctx.CompletedACR != "" {
 		claims["acr"] = ctx.CompletedACR
+	}
+
+	if ctx.SessionID != "" {
+		claims["sid"] = ctx.SessionID
+	}
+	if ctx.DSHash != "" {
+		claims["ds_hash"] = ctx.DSHash
 	}
 
 	userAttributes := ctx.UserAttributes

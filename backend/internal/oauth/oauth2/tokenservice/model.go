@@ -107,6 +107,9 @@ type IDTokenBuildContext struct {
 	ClaimsRequest  *oauth2model.ClaimsRequest
 	Nonce          string
 	CompletedACR   string
+	DSHash         string
+	// SessionID, when set, is emitted as the `sid` claim.
+	SessionID string
 }
 
 // RefreshTokenClaims represents the validated claims from a refresh token.
@@ -151,6 +154,10 @@ type SubjectTokenClaims struct {
 	// TokenFamilyID is the subject token's token family id (tfid), if any. Token exchange may inherit
 	// it onto the exchanged token so the two share a revocation family.
 	TokenFamilyID string
+	// DSHash is the device secret hash (ds_hash) carried on the subject token (ID token) for Native SSO.
+	DSHash string
+	// SID is the session ID carried on the subject token, if any.
+	SID string
 }
 
 // IDJAGAssertionClaims represents the validated claims from an ID-JAG assertion presented on the

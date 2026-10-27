@@ -19,7 +19,7 @@ import (
 // ValidateAuthorizationRequestParams validates the common authorization request parameters
 // shared by both the standard authorize endpoint and the PAR endpoint.
 //
-// This validates: prompt, grant_type, response_type, PKCE, nonce, and dpop_jkt.
+// This validates: prompt, grant_type, response_type, PKCE, nonce, the device_sso scope, and dpop_jkt.
 // Callers are responsible for validating client_id and redirect_uri before calling this
 // function, since those validations have endpoint-specific error handling semantics
 // (e.g., the authorize endpoint must not redirect errors when the redirect_uri is invalid).
@@ -83,6 +83,13 @@ func ValidateAuthorizationRequestParams(
 	nonce := params.Get(constants.RequestParamNonce)
 	if nonce != "" && len(nonce) > constants.MaxNonceLength {
 		return constants.ErrorInvalidRequest, "nonce exceeds maximum allowed length"
+	}
+
+	// OpenID Connect Native SSO for Mobile Apps 1.0 §3.4: device_sso asks for a device secret that is
+	// issued together with an ID token, so it is meaningful only in an OpenID Connect request.
+	scopes := strings.Fields(params.Get(constants.RequestParamScope))
+	if slices.Contains(scopes, constants.ScopeDeviceSSO) && !slices.Contains(scopes, constants.ScopeOpenID) {
+		return constants.ErrorInvalidScope, "The device_sso scope requires the openid scope"
 	}
 
 	if dpopJktParam := params.Get(constants.RequestParamDPoPJkt); dpopJktParam != "" {

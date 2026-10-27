@@ -99,6 +99,7 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 		Audiences:          r.Form[constants.RequestParamAudience],
 		AuthReqID:          r.FormValue(constants.RequestParamAuthReqID),
 		Assertion:          r.FormValue(constants.RequestParamAssertion),
+		DeviceSecret:       r.FormValue(constants.RequestParamDeviceSecret),
 	}
 
 	// Delegate all business logic to the token service.
