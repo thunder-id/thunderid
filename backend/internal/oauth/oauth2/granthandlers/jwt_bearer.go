@@ -8,6 +8,7 @@ import (
 	"errors"
 	"slices"
 
+	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
@@ -24,6 +25,7 @@ type jwtBearerGrantHandler struct {
 	tokenBuilder    tokenservice.TokenBuilderInterface
 	tokenValidator  tokenservice.TokenValidatorInterface
 	resourceService providers.ResourceServerProvider
+	cfg             oauthconfig.Config
 }
 
 // newJWTBearerGrantHandler creates a new instance of jwtBearerGrantHandler.
@@ -31,11 +33,13 @@ func newJWTBearerGrantHandler(
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	tokenValidator tokenservice.TokenValidatorInterface,
 	resourceService providers.ResourceServerProvider,
+	cfg oauthconfig.Config,
 ) GrantHandlerInterface {
 	return &jwtBearerGrantHandler{
 		tokenBuilder:    tokenBuilder,
 		tokenValidator:  tokenValidator,
 		resourceService: resourceService,
+		cfg:             cfg,
 	}
 }
 
@@ -148,9 +152,9 @@ func (h *jwtBearerGrantHandler) HandleGrant(ctx context.Context, tokenRequest *m
 	var audiences []string
 	if targetRS == nil {
 		// OIDC-only assertion with no resource: the token is not bound to a resource server, so its
-		// audience is the app's configured default audiences (falling back to the client_id) and it
-		// carries only the OIDC scopes.
-		audiences = []string{oauthApp.ResolveDefaultAudience(tokenRequest.ClientID)}
+		// audience is the app's configured default audiences (falling back to the server issuer ID)
+		// and it carries only the OIDC scopes.
+		audiences = []string{oauthApp.ResolveDefaultAudience(h.cfg.JWT.Issuer)}
 		grantedScopes = oidcScopes
 	} else {
 		permissionScopes, errResp = resourceindicators.DownscopeToResourceServer(

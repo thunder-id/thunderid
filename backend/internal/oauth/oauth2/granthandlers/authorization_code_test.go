@@ -12,6 +12,8 @@ import (
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
+
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/stretchr/testify/assert"
@@ -178,7 +180,8 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) stubDefaultResourceServer()
 
 func (suite *AuthorizationCodeGrantHandlerTestSuite) TestNewAuthorizationCodeGrantHandler() {
 	handler := newAuthorizationCodeGrantHandler(
-		suite.mockAuthzService, suite.mockTokenBuilder, suite.mockAttrCacheService, suite.mockResourceService)
+		suite.mockAuthzService, suite.mockTokenBuilder, suite.mockAttrCacheService, suite.mockResourceService,
+		oauthconfig.Config{})
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
@@ -80,7 +81,7 @@ func (suite *JWTBearerGrantHandlerTestSuite) SetupTest() {
 
 func (suite *JWTBearerGrantHandlerTestSuite) TestNewJWTBearerGrantHandler() {
 	handler := newJWTBearerGrantHandler(suite.mockTokenBuilder, suite.mockTokenValidator,
-		suite.mockResourceService)
+		suite.mockResourceService, oauthconfig.Config{})
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
 }

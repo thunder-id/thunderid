@@ -98,6 +98,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) SetupTest() {
 		tokenBuilder:    suite.mockTokenBuilder,
 		tokenValidator:  suite.mockTokenValidator,
 		resourceService: suite.mockResourceService,
+		cfg:             oauthconfig.Config{JWT: engineconfig.JWTConfig{Issuer: testIDJAGServerIssuer}},
 	}
 
 	suite.oauthApp = &providers.OAuthClient{
@@ -709,7 +710,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_WithAct
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
 		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
 			return ctx.Subject == testUserID &&
-				len(ctx.Audiences) == 1 && ctx.Audiences[0] == testClientID &&
+				len(ctx.Audiences) == 1 && ctx.Audiences[0] == testIDJAGServerIssuer &&
 				ctx.ActorClaims != nil &&
 				ctx.ActorClaims.Sub == "service456" &&
 				ctx.ActorClaims.Iss == testCustomIssuer
@@ -894,7 +895,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_Preserv
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
 		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
 			return ctx.Subject == testUserID &&
-				len(ctx.Audiences) == 1 && ctx.Audiences[0] == testClientID &&
+				len(ctx.Audiences) == 1 && ctx.Audiences[0] == testIDJAGServerIssuer &&
 				ctx.SubjectAttributes["email"] == "user@example.com" &&
 				ctx.SubjectAttributes["name"] == "Test User"
 		})).Return(&model.TokenDTO{
@@ -3544,9 +3545,9 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_ScopesPas
 	assert.Equal(suite.T(), []string{"read", "delete"}, result.AccessToken.Scopes)
 }
 
-func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_OIDCOnly_NoResource_AudIsClientID() {
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_OIDCOnly_NoResource_AudIsServerIssuer() {
 	// Only OIDC scopes and no resource: the exchanged token is not bound to a resource server, so
-	// its audience is the client_id and it carries the OIDC scopes.
+	// its audience is the server issuer ID and it carries the OIDC scopes.
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
 		"sub": testUserID,
@@ -3565,7 +3566,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_OIDCOnly_NoReso
 		}, nil)
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
 		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
-			return len(ctx.Audiences) == 1 && ctx.Audiences[0] == testClientID &&
+			return len(ctx.Audiences) == 1 && ctx.Audiences[0] == testIDJAGServerIssuer &&
 				tokenservice.JoinScopes(ctx.Scopes) == "openid"
 		})).Return(&model.TokenDTO{Token: testTokenExchangeJWT, IssuedAt: now, ExpiresIn: 7200}, nil)
 
