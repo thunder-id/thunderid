@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/session"
@@ -101,6 +102,47 @@ func (suite *SSOCheckExecutorTestSuite) TestPresent() {
 	forwardedContext, ok := resp.ForwardedData[common.ForwardedDataKeySSOSessionContext].(*session.SessionContext)
 	suite.Require().True(ok, "the checkpoint context must be forwarded to the Session node")
 	suite.Equal("session", forwardedContext.CheckpointID)
+}
+
+// A client that requires one subject reuses only that subject's session. Another subject's session routes to
+// Authenticate, so the fresh sign-in enforces the rule; the handle is still shared, and the join does not attach
+// a checkpoint to a session of a different subject.
+func (suite *SSOCheckExecutorTestSuite) TestRequiredSubject() {
+	for name, tc := range map[string]struct {
+		required string
+		reused   bool
+	}{
+		"TheRequiredSubjectsSession": {required: "owner-1", reused: true},
+		"AnotherSubjectsSession":     {required: "owner-2", reused: false},
+		"NoSubjectRequired":          {required: "", reused: true},
+	} {
+		suite.Run(name, func() {
+			sso := sessionmock.NewServiceMock(suite.T())
+			live := liveSession()
+			live.SubjectID = "owner-1"
+			sso.EXPECT().Resolve(mock.Anything, "handle-abc", "flow-1", 3, mock.Anything).Return(live, nil)
+			if tc.reused {
+				sso.EXPECT().FindCheckpoint(mock.Anything, "sess-1", "session").
+					Return(&session.SessionContext{SessionID: "sess-1", CheckpointID: "session"}, nil)
+			}
+			ctx := ssoNodeContext()
+			ctx.Context = authnprovidercm.WithSubjectTypeConstraints(ctx.Context,
+				authnprovidercm.SubjectTypeConstraints{RequiredSubjectID: tc.required})
+
+			resp, err := suite.newExecutor(sso).Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal("handle-abc", resp.RuntimeData[common.RuntimeKeySSOSessionHandle])
+			if tc.reused {
+				suite.Equal(providers.ExecComplete, resp.Status)
+				return
+			}
+			suite.Equal(providers.ExecFailure, resp.Status)
+			suite.Equal("false",
+				resp.RuntimeData[common.SSOCheckpointKey(common.RuntimeKeySSOSessionPresent, "session")])
+			suite.Empty(resp.ForwardedData)
+		})
+	}
 }
 
 // TestAbsentCheckpointNotPresent covers a live session that lacks this checkpoint: the node routes to

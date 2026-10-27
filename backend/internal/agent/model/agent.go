@@ -15,6 +15,14 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
+// AgentSystemAttributes holds the agent fields kept in the entity SystemAttributes blob.
+type AgentSystemAttributes struct {
+	Description string
+	Owner       string
+	ClientID    string
+	Kind        providers.AgentKind
+}
+
 // AgentRequestWithID is the YAML-aware struct used for declarative resource loading.
 // Attributes uses map[string]interface{} (not json.RawMessage) so the YAML library can
 // deserialize nested maps; the entity parser converts it to json.RawMessage before storage.
@@ -28,6 +36,7 @@ type AgentRequestWithID struct {
 	Owner       string                 `json:"owner,omitempty"       yaml:"owner,omitempty"`
 	Attributes  map[string]interface{} `json:"attributes,omitempty"  yaml:"attributes,omitempty"`
 	ValidUntil  string                 `json:"validUntil,omitempty"  yaml:"validUntil,omitempty"`
+	Kind        providers.AgentKind    `json:"kind,omitempty" yaml:"kind,omitempty"`
 
 	inboundmodel.InboundAuthProfileReq `yaml:",inline"`
 	InboundAuthConfig                  []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
@@ -45,6 +54,8 @@ type CreateAgentRequest struct {
 	Delegated   bool            `json:"delegated,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
 	ValidUntil  *string         `json:"validUntil,omitempty"`
+
+	Kind providers.AgentKind `json:"kind,omitempty"`
 
 	inboundmodel.InboundAuthProfileReq
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
@@ -87,6 +98,8 @@ type AgentCompleteResponse struct {
 	ValidUntil  string    `json:"validUntil,omitempty"`
 	Lifespan    *Lifespan `json:"lifespan,omitempty"`
 
+	Kind providers.AgentKind `json:"kind,omitempty"`
+
 	inboundmodel.InboundAuthProfileReq
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
 }
@@ -115,6 +128,8 @@ type AgentGetResponse struct {
 	ValidUntil  string    `json:"validUntil,omitempty" yaml:"validUntil,omitempty"`
 	Lifespan    *Lifespan `json:"lifespan,omitempty"   yaml:"-"`
 
+	Kind providers.AgentKind `json:"kind,omitempty" yaml:"kind,omitempty"`
+
 	inboundmodel.InboundAuthProfileReq `yaml:",inline"`
 	InboundAuthConfig                  []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
 }
@@ -141,6 +156,8 @@ type BasicAgentResponse struct {
 	LastLoginAt string `json:"lastLoginAt,omitempty"`
 	// IsOwnedByOU says whether the listed organization unit owns the agent rather than being shared it.
 	IsOwnedByOU *bool `json:"isOwnedByOU,omitempty"`
+
+	Kind providers.AgentKind `json:"kind,omitempty"`
 }
 
 // Lifespan reports where an agent stands in its lifespan, derived on every read.
