@@ -97,4 +97,31 @@ func registerRoutes(mux *http.ServeMux, h *agentHandler) {
 		h.HandleAgentGroupsRequest, groupsOpts))
 	mux.HandleFunc(middleware.WithCORS("GET /agents/{id}/roles",
 		h.HandleAgentRolesRequest, groupsOpts))
+
+	ownedListOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("GET /users/me/agents", h.HandleOwnedAgentListRequest, ownedListOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /users/me/agents",
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, ownedListOpts))
+
+	ownedItemOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET", "PUT", "DELETE"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("GET /users/me/agents/{id}", h.HandleOwnedAgentGetRequest, ownedItemOpts))
+	mux.HandleFunc(middleware.WithCORS("PUT /users/me/agents/{id}", h.HandleOwnedAgentPutRequest, ownedItemOpts))
+	mux.HandleFunc(middleware.WithCORS("DELETE /users/me/agents/{id}",
+		h.HandleOwnedAgentDeleteRequest, ownedItemOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /users/me/agents/",
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, ownedItemOpts))
 }

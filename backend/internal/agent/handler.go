@@ -17,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/agent/model"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -85,6 +86,7 @@ func (h *agentHandler) HandleAgentPostRequest(w http.ResponseWriter, r *http.Req
 		Owner:       req.Owner,
 		Delegated:   req.Delegated,
 		Attributes:  req.Attributes,
+		Kind:        req.Kind,
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                req.AuthFlowID,
 			RegistrationFlowID:        req.RegistrationFlowID,
@@ -264,6 +266,107 @@ func parseFilterParams(query url.Values) (map[string]interface{}, *tidcommon.Ser
 	return map[string]interface{}{attr: val}, nil
 }
 
+// HandleOwnedAgentListRequest handles GET /users/me/agents: the caller's personal agents.
+func (h *agentHandler) HandleOwnedAgentListRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	callerID, svcErr := selfServiceCaller(ctx)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	limit, offset, svcErr := parsePaginationParams(r.URL.Query())
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+
+	resp, svcErr := h.service.GetOwnedAgents(ctx, callerID, providers.AgentKindPersonalAssistant, limit, offset)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, resp)
+}
+
+// HandleOwnedAgentGetRequest handles GET /users/me/agents/{id}: one of the caller's personal agents.
+func (h *agentHandler) HandleOwnedAgentGetRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	callerID, svcErr := selfServiceCaller(ctx)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	includeDisplay := r.URL.Query().Get(sysutils.QueryParamInclude) == sysutils.IncludeValueDisplay
+
+	resp, svcErr := h.service.GetAgent(ctx, r.PathValue("id"), includeDisplay)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	// The route serves only the caller's personal agents, whatever else the caller may read.
+	if resp.Owner != callerID || resp.Kind != providers.AgentKindPersonalAssistant {
+		writeServiceError(ctx, w, &ErrorAgentNotFound)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, resp)
+}
+
+// HandleOwnedAgentPutRequest handles PUT /users/me/agents/{id}: the owner changes what they may change on one of
+// their personal agents. Fields the body leaves out keep their stored values; any other field is refused.
+func (h *agentHandler) HandleOwnedAgentPutRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	callerID, svcErr := selfServiceCaller(ctx)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	req, err := sysutils.DecodeJSONBodyStrict[model.UpdateOwnedAgentRequest](r)
+	if err != nil {
+		writeServiceError(ctx, w, &ErrorInvalidRequestFormat)
+		return
+	}
+
+	resp, svcErr := h.service.UpdateOwnedAgent(ctx, callerID, r.PathValue("id"),
+		providers.AgentKindPersonalAssistant, req)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, resp)
+}
+
+// HandleOwnedAgentDeleteRequest handles DELETE /users/me/agents/{id}: the owner deletes one of their personal
+// agents.
+func (h *agentHandler) HandleOwnedAgentDeleteRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	callerID, svcErr := selfServiceCaller(ctx)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+
+	if svcErr := h.service.DeleteOwnedAgent(ctx, callerID, r.PathValue("id"),
+		providers.AgentKindPersonalAssistant); svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+}
+
+// selfServiceCaller returns the user an owner's request acts for: the subject of its token. A request without
+// one is refused, and so is a delegated token, so an agent cannot manage its owner's agents with the token it
+// holds for the owner.
+func selfServiceCaller(ctx context.Context) (string, *tidcommon.ServiceError) {
+	subject := security.GetSubject(ctx)
+	if subject == "" {
+		return "", &ErrorAuthenticationRequired
+	}
+	if security.IsDelegated(ctx) {
+		return "", &ErrorDelegatedTokenNotAllowed
+	}
+	return subject, nil
+}
+
 // writeServiceError converts a service error into the appropriate HTTP error response.
 func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.ServiceError) {
 	statusCode := http.StatusInternalServerError
@@ -271,10 +374,14 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 		switch svcErr.Code {
 		case ErrorAgentNotFound.Code:
 			statusCode = http.StatusNotFound
+		case ErrorAuthenticationRequired.Code:
+			statusCode = http.StatusUnauthorized
 		case ErrorAttributeConflict.Code,
 			ErrorAgentAlreadyExistsWithClientID.Code:
 			statusCode = http.StatusConflict
 		case ErrorCannotModifyDeclarativeResource.Code,
+			ErrorCannotUpdatePersonalAgent.Code,
+			ErrorDelegatedTokenNotAllowed.Code,
 			tidcommon.ErrorUnauthorized.Code:
 			statusCode = http.StatusForbidden
 		default:

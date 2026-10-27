@@ -1294,8 +1294,8 @@ var (
 		},
 	}
 
-	// ErrSelfRegNotSupportedForAgents is returned when a registration flow reaches the agent type
-	// resolver. An agent is provisioned on an administrator's behalf, never by itself.
+	// ErrSelfRegNotSupportedForAgents is returned when a registration flow provisions an agent that is not
+	// a personal agent. Any other agent is provisioned on an administrator's behalf, never by itself.
 	ErrSelfRegNotSupportedForAgents = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1091",
@@ -1305,7 +1305,7 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.self_reg_not_supported_for_agents_desc",
-			DefaultValue: "An agent is created by an administrator and cannot register itself",
+			DefaultValue: "A registration flow can register only a personal agent",
 		},
 	}
 
@@ -1608,6 +1608,21 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.account_suspended_description",
 			DefaultValue: "This account is suspended. Contact an administrator",
+		},
+	}
+
+	// ErrCannotRegisterForAnotherUser is returned when a personal agent registration selects another user
+	// as the owner and the caller may not register personal agents for other users.
+	ErrCannotRegisterForAnotherUser = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1115",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.cannot_register_for_another_user",
+			DefaultValue: "Cannot register for another user",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.cannot_register_for_another_user_desc",
+			DefaultValue: "Only an administrator can register a personal agent for another user",
 		},
 	}
 

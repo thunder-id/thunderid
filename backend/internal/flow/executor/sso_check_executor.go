@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/session"
@@ -82,6 +83,12 @@ func (e *ssoCheckExecutor) Execute(ctx *providers.NodeContext) (*providers.Execu
 	if resolved != nil && reauthRequired(ctx, resolved.AuthenticatedAt, logger) {
 		resolved = nil
 	}
+	// A client that accepts only one subject (a personal agent accepts only its owner) cannot reuse a session of
+	// anyone else. The fresh authentication enforces the rule, as it does for every sign-in.
+	if resolved != nil && !sessionSubjectPermitted(ctx, resolved.SubjectID) {
+		logger.Debug(ctx.Context, "The session's subject is not the one the client requires; not reusing it")
+		resolved = nil
+	}
 
 	var snapshot *session.SessionContext
 	if resolved != nil && checkpoint != "" {
@@ -153,6 +160,13 @@ func reauthRequired(ctx *providers.NodeContext, authenticatedAt time.Time, logge
 		return true
 	}
 	return false
+}
+
+// sessionSubjectPermitted reports whether the subject constraints of the client driving the flow accept the
+// session's subject. Without constraints on the context any subject is accepted.
+func sessionSubjectPermitted(ctx *providers.NodeContext, subjectID string) bool {
+	constraints, ok := authnprovidercm.SubjectTypeConstraintsFrom(ctx.Context)
+	return !ok || constraints.PermitsSubjectID(subjectID)
 }
 
 // checkpointRef returns the Session (join) node id this SSO-Check node guards, read from

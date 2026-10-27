@@ -537,8 +537,13 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Inject the design resolve service now that it exists (the translation resolver was passed at init).
 	notifTemplateRenderer.SetDesignResolver(designResolveService)
 
+	// The actor provider finds a client's runtime rules through the resolver of its entity category, so it does
+	// not depend on the packages that define them. Only agents have rules today.
+	clientRulesResolvers := map[providers.EntityCategory]actorprovider.ClientRulesResolver{
+		providers.EntityCategoryAgent: agentService,
+	}
 	actorProvider := actorprovider.Initialize(
-		inboundClientService, entityProvider, authnProvider, roleService, entityTypeService)
+		inboundClientService, entityProvider, authnProvider, roleService, entityTypeService, clientRulesResolvers)
 	// Two-phase initialization: inject the actor provider into the executors that resolve an actor's
 	// OAuth client.
 	fatalOnError(ctx, logger, executor.SetActorProvider(execRegistry, actorProvider),

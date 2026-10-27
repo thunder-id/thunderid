@@ -1845,6 +1845,386 @@ paths:
                   key: "error.internal_server_error_description"
                   defaultValue: "An unexpected error occurred while processing the request"
 
+  /users/me/agents:
+    get:
+      tags:
+        - Self
+      summary: List the caller's personal agents
+      description: |
+        Lists the personal agents the signed-in user owns, in every organization unit, with the same
+        summary `GET /agents` returns for each agent. The token must be the user's own: a delegated token is
+        refused.
+      security:
+        - OAuth2: []
+      parameters:
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/offsetQueryParam'
+      responses:
+        "200":
+          description: The caller's personal agents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnedAgentListResponse'
+        "400":
+          description: Invalid pagination parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          description: No user access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1052"
+                message:
+                  key: "error.agentservice.authentication_required"
+                  defaultValue: "Authentication required"
+                description:
+                  key: "error.agentservice.authentication_required_description"
+                  defaultValue: "The request needs a user access token"
+        "403":
+          description: |
+            A delegated token, one issued to a client acting for the user (it carries an `act` claim),
+            such as an agent's own token for its owner.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1053"
+                message:
+                  key: "error.agentservice.delegated_token_not_allowed"
+                  defaultValue: "Delegated token not allowed"
+                description:
+                  key: "error.agentservice.delegated_token_not_allowed_description"
+                  defaultValue: "A token issued to a client acting for the user cannot manage the user's agents"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
+  /users/me/agents/{id}:
+    get:
+      tags:
+        - Self
+      summary: Read one of the caller's personal agents
+      description: |
+        Returns a personal agent the signed-in user owns, as the same object `GET /agents/{id}` returns. An
+        agent that does not exist, is not a personal agent, or belongs to another user is not found, or refused
+        when the caller may not read it. The token must be the user's own: a delegated token is refused.
+      security:
+        - OAuth2: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "The agent ID"
+      responses:
+        "200":
+          description: The agent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnedAgentDetails'
+        "401":
+          description: No user access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1052"
+                message:
+                  key: "error.agentservice.authentication_required"
+                  defaultValue: "Authentication required"
+                description:
+                  key: "error.agentservice.authentication_required_description"
+                  defaultValue: "The request needs a user access token"
+        "403":
+          description: |
+            A delegated token, one issued to a client acting for the user (it carries an `act` claim), such
+            as an agent's own token for its owner (`AGT-1053`); or an agent the caller may not read, such as
+            another user's agent (`SSE-4030`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1053"
+                message:
+                  key: "error.agentservice.delegated_token_not_allowed"
+                  defaultValue: "Delegated token not allowed"
+                description:
+                  key: "error.agentservice.delegated_token_not_allowed_description"
+                  defaultValue: "A token issued to a client acting for the user cannot manage the user's agents"
+        "404":
+          description: Not one of the caller's personal agents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1004"
+                message:
+                  key: "error.agentservice.agent_not_found"
+                  defaultValue: "Agent not found"
+                description:
+                  key: "error.agentservice.agent_not_found_description"
+                  defaultValue: "The agent with the specified id does not exist"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
+    put:
+      tags:
+        - Self
+      summary: Update one of the caller's personal agents
+      description: |
+        Replaces the part of a personal agent its owner may change: the description, the schema attributes
+        (including the name), the grant types and the redirect URIs. `attributes`, `grantTypes` and
+        `redirectUris` are required; a `description` left out is cleared. Any other field is refused, so no flow
+        setting, owner or credential can be changed here. Read the agent first and send these fields back with
+        the changes.
+
+        Grant types must be a subset of `authorization_code`, `urn:openid:params:grant-type:ciba` and
+        `refresh_token`. An empty list removes every grant, so the agent gets no tokens until one is added.
+        With `authorization_code`, the agent uses response type `code` and PKCE, and needs at least one redirect
+        URI; without it, both are removed. A grant the owner removes is refused from then on, including for
+        outstanding refresh tokens.
+      security:
+        - OAuth2: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "The agent ID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OwnedAgentUpdateRequest'
+            example:
+              description: "Answers questions about my spending"
+              attributes:
+                name: "Spending assistant"
+              grantTypes: ["authorization_code", "refresh_token"]
+              redirectUris: ["https://assistant.example.com/callback"]
+      responses:
+        "200":
+          description: The updated agent, as the same object `PUT /agents/{id}` returns
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnedAgentUpdateResponse'
+        "400":
+          description: |
+            A required field missing, a field outside the editable set, a grant type outside the personal set, or a
+            combination the OAuth client rules refuse (for example the authorization code grant without a
+            redirect URI).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1048"
+                message:
+                  key: "error.agentservice.grant_type_not_allowed_for_personal_agent"
+                  defaultValue: "Grant type not allowed"
+                description:
+                  key: "error.agentservice.grant_type_not_allowed_for_personal_agent_description"
+                  defaultValue: "A personal agent can only use the authorization code, CIBA, and refresh token grants"
+        "401":
+          description: No user access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1052"
+                message:
+                  key: "error.agentservice.authentication_required"
+                  defaultValue: "Authentication required"
+                description:
+                  key: "error.agentservice.authentication_required_description"
+                  defaultValue: "The request needs a user access token"
+        "403":
+          description: |
+            A delegated token (one carrying an `act` claim, such as an agent's own token for its owner), or a
+            declarative agent, which cannot be changed at runtime.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                delegated-token:
+                  summary: A delegated token
+                  value:
+                    code: "AGT-1053"
+                    message:
+                      key: "error.agentservice.delegated_token_not_allowed"
+                      defaultValue: "Delegated token not allowed"
+                    description:
+                      key: "error.agentservice.delegated_token_not_allowed_description"
+                      defaultValue: "A token issued to a client acting for the user cannot manage the user's agents"
+                declarative-agent:
+                  summary: A declarative agent
+                  value:
+                    code: "AGT-1027"
+                    message:
+                      key: "error.agentservice.cannot_modify_declarative_resource"
+                      defaultValue: "Cannot modify declarative resource"
+                    description:
+                      key: "error.agentservice.cannot_modify_declarative_resource_description"
+                      defaultValue: "Declaratively managed agents cannot be modified via the API"
+        "404":
+          description: Not one of the caller's personal agents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1004"
+                message:
+                  key: "error.agentservice.agent_not_found"
+                  defaultValue: "Agent not found"
+                description:
+                  key: "error.agentservice.agent_not_found_description"
+                  defaultValue: "The agent with the specified id does not exist"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+    delete:
+      tags:
+        - Self
+      summary: Delete one of the caller's personal agents
+      security:
+        - OAuth2: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "The agent ID"
+      responses:
+        "204":
+          description: The agent was deleted
+        "401":
+          description: No user access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1052"
+                message:
+                  key: "error.agentservice.authentication_required"
+                  defaultValue: "Authentication required"
+                description:
+                  key: "error.agentservice.authentication_required_description"
+                  defaultValue: "The request needs a user access token"
+        "403":
+          description: |
+            A delegated token (one carrying an `act` claim, such as an agent's own token for its owner), or a
+            declarative agent, which cannot be changed at runtime.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                delegated-token:
+                  summary: A delegated token
+                  value:
+                    code: "AGT-1053"
+                    message:
+                      key: "error.agentservice.delegated_token_not_allowed"
+                      defaultValue: "Delegated token not allowed"
+                    description:
+                      key: "error.agentservice.delegated_token_not_allowed_description"
+                      defaultValue: "A token issued to a client acting for the user cannot manage the user's agents"
+                declarative-agent:
+                  summary: A declarative agent
+                  value:
+                    code: "AGT-1027"
+                    message:
+                      key: "error.agentservice.cannot_modify_declarative_resource"
+                      defaultValue: "Cannot modify declarative resource"
+                    description:
+                      key: "error.agentservice.cannot_modify_declarative_resource_description"
+                      defaultValue: "Declaratively managed agents cannot be modified via the API"
+        "404":
+          description: Not one of the caller's personal agents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1004"
+                message:
+                  key: "error.agentservice.agent_not_found"
+                  defaultValue: "Agent not found"
+                description:
+                  key: "error.agentservice.agent_not_found_description"
+                  defaultValue: "The agent with the specified id does not exist"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
   /users/me/update-credentials:
     post:
       tags:
@@ -3054,6 +3434,350 @@ components:
           items:
             $ref: '#/components/schemas/Link'
 
+    OwnedAgentSummary:
+      type: object
+      required: [id]
+      description: |
+        A personal agent in the caller's list: the same summary `GET /agents` returns for each agent. Never
+        includes a client secret.
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-0000-0000-0000-000000000001"
+        ouId:
+          type: string
+          format: uuid
+        ouHandle:
+          type: string
+          readOnly: true
+        type:
+          type: string
+          example: "default"
+        description:
+          type: string
+          example: "Answers questions about my spending"
+        logoUrl:
+          type: string
+        clientId:
+          type: string
+          example: "pa_7f3e9c2a"
+        owner:
+          type: string
+          format: uuid
+          description: The caller.
+        kind:
+          type: string
+          readOnly: true
+          example: "personal-assistant"
+        attributes:
+          type: object
+          additionalProperties: true
+          description: The agent's schema attributes, including its name.
+          example:
+            name: "Spending assistant"
+            software: "assistant-x"
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: Whether the agent is declarative, so it cannot be changed or deleted at runtime.
+          example: false
+        status:
+          type: object
+          readOnly: true
+          additionalProperties: true
+          description: The agent's effective access status, as in `GET /agents`.
+        lastLoginAt:
+          type: string
+          format: date-time
+          readOnly: true
+    OwnedAgentDetails:
+      type: object
+      description: |
+        A personal agent as its owner reads it: the same object `GET /agents/{id}` returns. Never includes a
+        client secret.
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-0000-0000-0000-000000000001"
+        ouId:
+          type: string
+          format: uuid
+        ouHandle:
+          type: string
+          readOnly: true
+          description: Populated only when `include=display` is used.
+        type:
+          type: string
+          example: "default"
+        display:
+          type: string
+          readOnly: true
+          description: The agent's display label. Populated only when `include=display` is used.
+        description:
+          type: string
+          example: "Answers questions about my spending"
+        logoUrl:
+          type: string
+        clientId:
+          type: string
+          example: "pa_7f3e9c2a"
+        owner:
+          type: string
+          format: uuid
+          description: The caller.
+        kind:
+          type: string
+          readOnly: true
+          example: "personal-assistant"
+        attributes:
+          type: object
+          additionalProperties: true
+          description: The agent's schema attributes, including its name.
+          example:
+            name: "Spending assistant"
+            software: "assistant-x"
+        authFlowId:
+          type: string
+        registrationFlowId:
+          type: string
+        isRegistrationFlowEnabled:
+          type: boolean
+        themeId:
+          type: string
+          format: uuid
+        layoutId:
+          type: string
+          format: uuid
+        assertion:
+          type: object
+          additionalProperties: true
+          description: The agent's assertion settings, as in `GET /agents/{id}`.
+        loginConsent:
+          type: object
+          additionalProperties: true
+          description: The agent's login consent settings, as in `GET /agents/{id}`.
+        allowedUserTypes:
+          type: array
+          items:
+            type: string
+        allowedAgentTypes:
+          type: array
+          items:
+            type: string
+        inboundAuthConfig:
+          type: array
+          description: The agent's OAuth settings, as in `GET /agents/{id}`, without secrets.
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [oauth2]
+              config:
+                type: object
+                additionalProperties: true
+                properties:
+                  clientId:
+                    type: string
+                  grantTypes:
+                    type: array
+                    items:
+                      type: string
+                    example: ["authorization_code"]
+                  redirectUris:
+                    type: array
+                    items:
+                      type: string
+                    example: ["https://assistant.example.com/callback"]
+                  tokenEndpointAuthMethod:
+                    type: string
+                    example: "private_key_jwt"
+        status:
+          type: object
+          readOnly: true
+          description: The agent's effective access status, as in `GET /agents/{id}`.
+          properties:
+            value:
+              type: string
+              enum: [ACTIVE, LOCKED, SUSPENDED]
+            details:
+              type: object
+              description: Why the status applies. Absent for `ACTIVE`.
+              properties:
+                reason:
+                  type: string
+                  enum: [FAILED_ATTEMPTS, ADMINISTRATIVE_SUSPENSION]
+                since:
+                  type: string
+                  format: date-time
+                operatorNote:
+                  type: string
+                  description: The note the operator entered when placing the hold, if any.
+                lockedMethods:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      method:
+                        type: string
+                      expiresAt:
+                        type: string
+                        format: date-time
+        lastLoginAt:
+          type: string
+          format: date-time
+          readOnly: true
+    OwnedAgentUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [attributes, grantTypes, redirectUris]
+      description: The whole part of a personal agent its owner may change.
+      properties:
+        description:
+          type: string
+          description: Left out or empty clears the description.
+        attributes:
+          type: object
+          additionalProperties: true
+          description: The agent's schema attributes, including its name.
+        grantTypes:
+          type: array
+          items:
+            type: string
+          description: |
+            For a personal agent, a subset of `authorization_code`, `urn:openid:params:grant-type:ciba` and
+            `refresh_token`. An empty list removes every grant, so the agent gets no tokens until one is added.
+        redirectUris:
+          type: array
+          items:
+            type: string
+          description: At least one when `grantTypes` holds `authorization_code`.
+    OwnedAgentUpdateResponse:
+      type: object
+      description: |
+        A personal agent after its owner's update: the same object `PUT /agents/{id}` returns. The owner's
+        update never issues a client secret, so none is included.
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-0000-0000-0000-000000000001"
+        ouId:
+          type: string
+          format: uuid
+        ouHandle:
+          type: string
+          readOnly: true
+        type:
+          type: string
+          example: "default"
+        description:
+          type: string
+          example: "Answers questions about my spending"
+        logoUrl:
+          type: string
+        owner:
+          type: string
+          format: uuid
+          description: The caller.
+        kind:
+          type: string
+          readOnly: true
+          example: "personal-assistant"
+        attributes:
+          type: object
+          additionalProperties: true
+          description: The agent's schema attributes, including its name.
+          example:
+            name: "Spending assistant"
+            software: "assistant-x"
+        status:
+          type: object
+          readOnly: true
+          additionalProperties: true
+          description: The agent's effective access status after the update, as in `PUT /agents/{id}`.
+        lastLoginAt:
+          type: string
+          format: date-time
+          readOnly: true
+        authFlowId:
+          type: string
+        registrationFlowId:
+          type: string
+        isRegistrationFlowEnabled:
+          type: boolean
+        themeId:
+          type: string
+          format: uuid
+        layoutId:
+          type: string
+          format: uuid
+        assertion:
+          type: object
+          additionalProperties: true
+          description: The agent's assertion settings, as in `PUT /agents/{id}`.
+        loginConsent:
+          type: object
+          additionalProperties: true
+          description: The agent's login consent settings, as in `PUT /agents/{id}`.
+        allowedUserTypes:
+          type: array
+          items:
+            type: string
+        allowedAgentTypes:
+          type: array
+          items:
+            type: string
+        inboundAuthConfig:
+          type: array
+          description: The agent's OAuth settings, as in `PUT /agents/{id}`, without secrets.
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [oauth2]
+              config:
+                type: object
+                additionalProperties: true
+                properties:
+                  clientId:
+                    type: string
+                  grantTypes:
+                    type: array
+                    items:
+                      type: string
+                    example: ["authorization_code"]
+                  redirectUris:
+                    type: array
+                    items:
+                      type: string
+                    example: ["https://assistant.example.com/callback"]
+                  tokenEndpointAuthMethod:
+                    type: string
+                    example: "private_key_jwt"
+    OwnedAgentListResponse:
+      type: object
+      properties:
+        totalResults:
+          type: integer
+          example: 1
+        startIndex:
+          type: integer
+          example: 1
+        count:
+          type: integer
+          example: 1
+        agents:
+          type: array
+          items:
+            $ref: '#/components/schemas/OwnedAgentSummary'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/Link'
     Link:
       type: object
       properties:

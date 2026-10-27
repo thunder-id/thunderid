@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strings"
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -20,6 +22,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/agent/model"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/tests/mocks/agentmock"
 )
@@ -116,6 +119,30 @@ func (s *InlineStubAgentService) GetResourceDependencies(
 }
 
 func (s *InlineStubAgentService) SetDependencyRegistry(resourcedependency.Registry) {}
+
+func (s *InlineStubAgentService) GetClientRules(
+	ctx context.Context, agentID string,
+) (*providers.ClientRules, *tidcommon.ServiceError) {
+	return nil, nil
+}
+
+func (s *InlineStubAgentService) GetOwnedAgents(
+	ctx context.Context, ownerID string, kind providers.AgentKind, limit, offset int,
+) (*model.AgentListResponse, *tidcommon.ServiceError) {
+	return nil, nil
+}
+
+func (s *InlineStubAgentService) UpdateOwnedAgent(
+	ctx context.Context, ownerID, agentID string, kind providers.AgentKind, req *model.UpdateOwnedAgentRequest,
+) (*model.AgentCompleteResponse, *tidcommon.ServiceError) {
+	return nil, nil
+}
+
+func (s *InlineStubAgentService) DeleteOwnedAgent(
+	ctx context.Context, ownerID, agentID string, kind providers.AgentKind,
+) *tidcommon.ServiceError {
+	return nil
+}
 
 func TestHandleAgentPostRequest_Success(t *testing.T) {
 	stubService := &InlineStubAgentService{
@@ -275,6 +302,51 @@ func TestHandleAgentPutRequest_InvalidJSONFormat(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+// The handler forwards the kind as given; the agent service refuses an unknown kind and applies the rules
+// for a personal agent (an owner that is a user, and the personal grant types).
+func TestHandleAgentPostRequest_KindForwarded(t *testing.T) {
+	for _, kind := range []providers.AgentKind{providers.AgentKindPersonalAssistant, "personal_assistant"} {
+		t.Run(string(kind), func(t *testing.T) {
+			var forwarded providers.AgentKind
+			stubService := &InlineStubAgentService{
+				OnCreateAgent: func(
+					ctx context.Context, agent *providers.Agent,
+				) (*model.AgentCompleteResponse, *tidcommon.ServiceError) {
+					forwarded = agent.Kind
+					return &model.AgentCompleteResponse{}, nil
+				},
+			}
+			handler := newAgentHandler(stubService)
+			body := `{"ouId": "ou-123", "type": "worker", "attributes": {"name": "Valid Agent Name"},
+				"kind": "` + string(kind) + `"}`
+			req := httptest.NewRequest(http.MethodPost, "/agents", bytes.NewBufferString(body))
+			w := httptest.NewRecorder()
+
+			handler.HandleAgentPostRequest(w, req)
+			assert.Equal(t, http.StatusCreated, w.Code)
+			assert.Equal(t, kind, forwarded)
+		})
+	}
+}
+
+func TestHandleAgentPutRequest_PersonalAgentForbidden(t *testing.T) {
+	stubService := &InlineStubAgentService{
+		OnUpdateAgent: func(
+			ctx context.Context, id string, req *model.UpdateAgentRequest,
+		) (*model.AgentCompleteResponse, *tidcommon.ServiceError) {
+			return nil, &ErrorCannotUpdatePersonalAgent
+		},
+	}
+	handler := newAgentHandler(stubService)
+	req := httptest.NewRequest(http.MethodPut, "/agents/agent-123",
+		bytes.NewBufferString(`{"attributes": {"name": "Updated Valid Name"}}`))
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentPutRequest(w, req)
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
 func TestHandleAgentGetRequest_Success(t *testing.T) {
 	stubService := &InlineStubAgentService{}
 	handler := newAgentHandler(stubService)
@@ -338,6 +410,161 @@ func TestHandleAgentListRequest_InvalidFilter(t *testing.T) {
 	handler.HandleAgentListRequest(w, req)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), ErrorInvalidFilter.Code)
+}
+
+// ownerRequest returns a GET request whose token is for subject, delegated to an actor when delegated is set.
+func ownerRequest(target, subject string, delegated bool) *http.Request {
+	return ownerRequestWithBody(http.MethodGet, target, "", subject, delegated)
+}
+
+// ownerRequestWithBody returns a request with the given method and JSON body whose token is for subject,
+// delegated to an actor when delegated is set.
+func ownerRequestWithBody(method, target, body, subject string, delegated bool) *http.Request {
+	var attributes map[string]interface{}
+	if delegated {
+		attributes = map[string]interface{}{"act": map[string]interface{}{"sub": "agent-1"}}
+	}
+	req := httptest.NewRequest(method, target, strings.NewReader(body))
+	if subject == "" {
+		return req
+	}
+	return req.WithContext(security.WithSecurityContextTest(req.Context(),
+		security.NewSecurityContextForTest(subject, "", "token", nil, attributes)))
+}
+
+// The owner routes need a user's own token: none is 401, and a delegated one, such as an agent's token for its
+// owner, is 403. Neither reaches the service.
+func TestHandleOwnedAgentRequests_CallerGuards(t *testing.T) {
+	handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t))
+	cases := []struct {
+		name      string
+		subject   string
+		delegated bool
+		status    int
+		code      string
+	}{
+		{"no token", "", false, http.StatusUnauthorized, ErrorAuthenticationRequired.Code},
+		{"delegated token", "user-1", true, http.StatusForbidden, ErrorDelegatedTokenNotAllowed.Code},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			handler.HandleOwnedAgentListRequest(w, ownerRequest("/users/me/agents",
+				tc.subject, tc.delegated))
+			assert.Equal(t, tc.status, w.Code)
+			assert.Contains(t, w.Body.String(), tc.code)
+
+			w = httptest.NewRecorder()
+			req := ownerRequest("/users/me/agents/agent-1", tc.subject, tc.delegated)
+			req.SetPathValue("id", "agent-1")
+			handler.HandleOwnedAgentGetRequest(w, req)
+			assert.Equal(t, tc.status, w.Code)
+			assert.Contains(t, w.Body.String(), tc.code)
+		})
+	}
+}
+
+// The owner routes serve the caller's personal agents: the caller is the owner and the kind is fixed.
+func TestHandleOwnedAgentRequests_PassTheCallerAndKind(t *testing.T) {
+	svc := agentmock.NewAgentServiceInterfaceMock(t)
+	svc.EXPECT().GetOwnedAgents(mock.Anything, "user-1", providers.AgentKindPersonalAssistant, 5, 10).
+		Return(&model.AgentListResponse{TotalResults: 1}, nil).Once()
+	svc.EXPECT().GetAgent(mock.Anything, "agent-1", false).Return(&model.AgentGetResponse{
+		ID: "agent-1", Owner: "user-1", Kind: providers.AgentKindPersonalAssistant}, nil).Once()
+	handler := newAgentHandler(svc)
+
+	w := httptest.NewRecorder()
+	handler.HandleOwnedAgentListRequest(w,
+		ownerRequest("/users/me/agents?limit=5&offset=10", "user-1", false))
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	w = httptest.NewRecorder()
+	req := ownerRequest("/users/me/agents/agent-1", "user-1", false)
+	req.SetPathValue("id", "agent-1")
+	handler.HandleOwnedAgentGetRequest(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `"id":"agent-1"`)
+}
+
+// The owner's update passes the body through; a field outside the editable set is refused before the service.
+func TestHandleOwnedAgentPutRequest(t *testing.T) {
+	svc := agentmock.NewAgentServiceInterfaceMock(t)
+	svc.EXPECT().UpdateOwnedAgent(mock.Anything, "user-1", "agent-1", providers.AgentKindPersonalAssistant,
+		mock.MatchedBy(func(req *model.UpdateOwnedAgentRequest) bool {
+			return req.Description == "new" &&
+				slices.Equal(req.GrantTypes, []providers.GrantType{providers.GrantTypeAuthorizationCode})
+		})).Return(&model.AgentCompleteResponse{ID: "agent-1"}, nil).Once()
+	handler := newAgentHandler(svc)
+
+	req := ownerRequestWithBody(http.MethodPut, "/users/me/agents/agent-1",
+		`{"description":"new","attributes":{"name":"x"},"grantTypes":["authorization_code"],`+
+			`"redirectUris":["https://a.example.com/cb"]}`, "user-1", false)
+	req.SetPathValue("id", "agent-1")
+	w := httptest.NewRecorder()
+	handler.HandleOwnedAgentPutRequest(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	for _, body := range []string{`{"authFlowId":"flow-1"}`, `{"owner":"user-2"}`, `not json`} {
+		req = ownerRequestWithBody(http.MethodPut, "/users/me/agents/agent-1", body, "user-1", false)
+		req.SetPathValue("id", "agent-1")
+		w = httptest.NewRecorder()
+		handler.HandleOwnedAgentPutRequest(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code, body)
+	}
+
+	req = ownerRequestWithBody(http.MethodPut, "/users/me/agents/agent-1", `{"description":"x"}`, "user-1", true)
+	req.SetPathValue("id", "agent-1")
+	w = httptest.NewRecorder()
+	handler.HandleOwnedAgentPutRequest(w, req)
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+// The owner's delete answers 204, and a delegated token never reaches the service.
+func TestHandleOwnedAgentDeleteRequest(t *testing.T) {
+	svc := agentmock.NewAgentServiceInterfaceMock(t)
+	svc.EXPECT().DeleteOwnedAgent(mock.Anything, "user-1", "agent-1", providers.AgentKindPersonalAssistant).
+		Return(nil).Once()
+	handler := newAgentHandler(svc)
+
+	req := ownerRequestWithBody(http.MethodDelete, "/users/me/agents/agent-1", "", "user-1", false)
+	req.SetPathValue("id", "agent-1")
+	w := httptest.NewRecorder()
+	handler.HandleOwnedAgentDeleteRequest(w, req)
+	assert.Equal(t, http.StatusNoContent, w.Code)
+
+	req = ownerRequestWithBody(http.MethodDelete, "/users/me/agents/agent-1", "", "user-1", true)
+	req.SetPathValue("id", "agent-1")
+	w = httptest.NewRecorder()
+	handler.HandleOwnedAgentDeleteRequest(w, req)
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+// The owner's read serves only the caller's personal agents: a missing agent, another user's agent that the
+// caller may otherwise read, and the caller's agent of another kind are all not found.
+func TestHandleOwnedAgentGetRequest_NotFound(t *testing.T) {
+	cases := []struct {
+		name   string
+		agent  *model.AgentGetResponse
+		svcErr *tidcommon.ServiceError
+	}{
+		{"missing", nil, &ErrorAgentNotFound},
+		{"another owner's agent", &model.AgentGetResponse{ID: "agent-2", Owner: "user-2",
+			Kind: providers.AgentKindPersonalAssistant}, nil},
+		{"an agent of another kind", &model.AgentGetResponse{ID: "agent-2", Owner: "user-1"}, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := agentmock.NewAgentServiceInterfaceMock(t)
+			svc.EXPECT().GetAgent(mock.Anything, "agent-2", false).Return(tc.agent, tc.svcErr).Once()
+			req := ownerRequest("/users/me/agents/agent-2", "user-1", false)
+			req.SetPathValue("id", "agent-2")
+			w := httptest.NewRecorder()
+
+			newAgentHandler(svc).HandleOwnedAgentGetRequest(w, req)
+
+			assert.Equal(t, http.StatusNotFound, w.Code)
+		})
+	}
 }
 
 func TestHandleAgentListRequest_ServiceError(t *testing.T) {

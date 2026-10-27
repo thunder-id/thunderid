@@ -235,6 +235,7 @@ func makeAgentEntityParser(
 			LogoURL:     req.LogoURL,
 			Owner:       req.Owner,
 			Attributes:  attributesJSON,
+			Kind:        req.Kind,
 			InboundAuthProfile: providers.InboundAuthProfile{
 				AuthFlowID:                req.AuthFlowID,
 				AuthFlowHandle:            req.AuthFlowHandle,
@@ -266,7 +267,13 @@ func makeAgentEntityParser(
 		// agent.OUID may have been resolved from OUHandle by ValidateAgent.
 		e, sysCredsJSON, buildErr := buildAgentEntity(
 			req.ID, req.Type, agent.OUID, attributesJSON,
-			req.Description, req.Owner, clientID, clientSecret,
+			model.AgentSystemAttributes{
+				Description: req.Description,
+				Owner:       req.Owner,
+				ClientID:    clientID,
+				Kind:        req.Kind,
+			},
+			clientSecret,
 		)
 		if buildErr != nil {
 			return nil, nil, nil, fmt.Errorf("failed to build agent entity for '%s': %w", req.ID, buildErr)
@@ -307,6 +314,7 @@ func makeAgentInboundParser(agentSvc AgentServiceInterface) func([]byte) (*inbou
 			Description: req.Description,
 			LogoURL:     req.LogoURL,
 			Owner:       req.Owner,
+			Kind:        req.Kind,
 			InboundAuthProfile: providers.InboundAuthProfile{
 				AuthFlowID:                req.AuthFlowID,
 				AuthFlowHandle:            req.AuthFlowHandle,
@@ -339,7 +347,8 @@ func makeAgentInboundParser(agentSvc AgentServiceInterface) func([]byte) (*inbou
 		resolvedClient.IsReadOnly = true
 		setLogoProperty(&resolvedClient, req.LogoURL)
 
-		oauthProfile := buildOAuthProfile(req.InboundAuthConfig)
+		// ValidateAgent may have completed the OAuth config (a personal agent's setup), so it is read back.
+		oauthProfile := buildOAuthProfile(agent.InboundAuthConfig)
 		if oauthProfile != nil {
 			if resolvedClient.Properties == nil {
 				resolvedClient.Properties = make(map[string]interface{})

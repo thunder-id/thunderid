@@ -254,6 +254,54 @@ func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_ValidateAgent
 	assert.Contains(s.T(), err.Error(), "failed to validate agent 'err-agent'")
 }
 
+// The parser hands the personal kind to ValidateAgent, which applies the personal agent setup and its refusals.
+func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_PersonalSetupRefusalSurfaces() {
+	yamlData := []byte("id: pa-agent\nouId: ou-1\ntype: t\nkind: personal-assistant\nowner: user-1\n" +
+		"inboundAuthConfig:\n  - type: oauth2\n    config:\n      grantTypes:\n        - client_credentials\n")
+	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
+	mockSvc.EXPECT().ValidateAgent(mock.Anything, mock.MatchedBy(func(a *providers.Agent) bool {
+		return a.Kind == providers.AgentKindPersonalAssistant
+	}), "pa-agent").Return("", "", inboundmodel.InboundClient{}, &ErrorGrantTypeNotAllowedForPersonalAgent).Once()
+	parser := makeAgentEntityParser(mockSvc)
+
+	_, _, _, err := parser(yamlData)
+
+	s.Require().Error(err)
+	assert.Contains(s.T(), err.Error(), ErrorGrantTypeNotAllowedForPersonalAgent.Code)
+}
+
+// A personal agent with an owner and the personal grants loads, keeping its kind and owner.
+func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_PersonalAgentStored() {
+	yamlData := []byte("id: pa-agent\nouId: ou-1\ntype: t\nkind: personal-assistant\nowner: user-1\n" +
+		"inboundAuthConfig:\n  - type: oauth2\n    config:\n      grantTypes:\n        - authorization_code\n")
+	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
+	mockSvc.EXPECT().ValidateAgent(mock.Anything, mock.Anything, "pa-agent").
+		Return("", "", inboundmodel.InboundClient{}, nil).Once()
+	parser := makeAgentEntityParser(mockSvc)
+
+	e, _, _, err := parser(yamlData)
+
+	s.Require().NoError(err)
+	s.Require().NotNil(e)
+	stored := readSystemAttributes(e.SystemAttributes)
+	assert.Equal(s.T(), providers.AgentKindPersonalAssistant, stored.Kind)
+	assert.Equal(s.T(), "user-1", stored.Owner)
+}
+
+// A file without a kind loads as an ordinary agent.
+func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_NoKindIsOrdinaryAgent() {
+	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
+	mockSvc.EXPECT().ValidateAgent(mock.Anything, mock.Anything, "plain-agent").
+		Return("", "", inboundmodel.InboundClient{}, nil).Once()
+	parser := makeAgentEntityParser(mockSvc)
+
+	e, _, _, err := parser([]byte("id: plain-agent\nouId: ou-1\ntype: t\n"))
+
+	s.Require().NoError(err)
+	s.Require().NotNil(e)
+	assert.Empty(s.T(), readSystemAttributes(e.SystemAttributes).Kind)
+}
+
 // --- makeAgentInboundParser error paths ---
 
 type MakeAgentInboundParserTestSuite struct {

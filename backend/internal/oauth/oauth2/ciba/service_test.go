@@ -65,7 +65,8 @@ func (suite *CIBAServiceTestSuite) SetupTest() {
 	suite.mockInboundClient = inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
 	suite.mockResourceSvc = resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	actorProv := actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil)
+	actorProv := actorprovider.Initialize(
+		suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil, nil)
 	suite.service = newCIBAService(suite.mockStore, suite.mockFlowExec,
 		suite.mockJWTService, actorProv, suite.mockResourceSvc, nil, testhelpers.OAuthConfig())
 	suite.oauthApp = &providers.OAuthClient{
@@ -1115,7 +1116,8 @@ const testEntityID = "entity-abc-123"
 func (suite *CIBAServiceTestSuite) withIssuer() {
 	cfg := testhelpers.OAuthConfig()
 	cfg.JWT.Issuer = testIssuer
-	actorProv := actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil)
+	actorProv := actorprovider.Initialize(
+		suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil, nil)
 	suite.service = newCIBAService(suite.mockStore, suite.mockFlowExec,
 		suite.mockJWTService, actorProv, suite.mockResourceSvc, nil, cfg)
 }
@@ -1410,7 +1412,8 @@ func (suite *CIBAServiceTestSuite) TestHandleCallback_Failure_TransitionsStateBy
 func (suite *CIBAServiceTestSuite) serviceWithServerErrorReporting(enabled bool) CIBAServiceInterface {
 	cfg := testhelpers.OAuthConfig()
 	cfg.OAuth.SendServerErrorsToClient = &enabled
-	actorProv := actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil)
+	actorProv := actorprovider.Initialize(
+		suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil, nil)
 	return newCIBAService(suite.mockStore, suite.mockFlowExec,
 		suite.mockJWTService, actorProv, suite.mockResourceSvc, nil, cfg)
 }

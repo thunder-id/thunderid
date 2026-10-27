@@ -314,6 +314,51 @@ func (s *ManagerTestSuite) TestAuthenticateUser_ResolvedAgentAllowedByConstraint
 	s.Equal(entityRef, st.EntityReference)
 }
 
+// A personal agent accepts only its owner. Correct credentials for another user are refused.
+func (s *ManagerTestSuite) TestAuthenticateUser_RequiredSubjectMismatch() {
+	credentials := map[string]interface{}{"password": "secret"}
+	meta := &providers.AuthnMetadata{}
+	ctx := authnprovidercm.WithSubjectTypeConstraints(context.Background(),
+		authnprovidercm.SubjectTypeConstraints{RequiredSubjectID: "owner-1"})
+
+	s.mockProvider.On("Authenticate", ctx, mock.Anything, credentials, meta).
+		Return(&providers.AuthnResult{
+			EntityReference: &providers.EntityReference{
+				EntityID: "user-2", EntityCategory: "user", EntityType: "customer", OUID: "ou-1",
+			},
+			Attributes: &providers.AttributesResponse{},
+		}, (*tidcommon.ServiceError)(nil))
+
+	returnedAuthUser, rtAttrs, svcErr := s.mgr.AuthenticateUser(ctx, nil, credentials,
+		nil, meta, providers.AuthUser{})
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorSubjectNotAllowed.Code, svcErr.Code)
+	s.Nil(rtAttrs)
+	s.False(returnedAuthUser.IsAuthenticated())
+}
+
+func (s *ManagerTestSuite) TestAuthenticateUser_RequiredSubjectMatches() {
+	credentials := map[string]interface{}{"password": "secret"}
+	meta := &providers.AuthnMetadata{}
+	ctx := authnprovidercm.WithSubjectTypeConstraints(context.Background(),
+		authnprovidercm.SubjectTypeConstraints{RequiredSubjectID: "owner-1"})
+
+	s.mockProvider.On("Authenticate", ctx, mock.Anything, credentials, meta).
+		Return(&providers.AuthnResult{
+			EntityReference: &providers.EntityReference{
+				EntityID: "owner-1", EntityCategory: "user", EntityType: "customer", OUID: "ou-1",
+			},
+			Attributes: &providers.AttributesResponse{},
+		}, (*tidcommon.ServiceError)(nil))
+
+	returnedAuthUser, _, svcErr := s.mgr.AuthenticateUser(ctx, nil, credentials,
+		nil, meta, providers.AuthUser{})
+
+	s.Nil(svcErr)
+	s.True(returnedAuthUser.IsAuthenticated())
+}
+
 // A provider that has not resolved the subject yet returns an entity reference token instead of a
 // reference, so there is no category or type to check. GetEntityReference applies the check later.
 func (s *ManagerTestSuite) TestAuthenticateUser_UnresolvedSubjectDefersConstraintCheck() {
@@ -492,6 +537,23 @@ func (s *ManagerTestSuite) TestGetEntityReference_ResolvedAgentRejectedByConstra
 	authUser := authenticatedAuthUserWithResolved(entityRef, &providers.AttributesResponse{})
 	ctx := authnprovidercm.WithSubjectTypeConstraints(context.Background(),
 		authnprovidercm.SubjectTypeConstraints{AllowedUserTypes: []string{"customer"}})
+
+	_, retRef, svcErr := s.mgr.GetEntityReference(ctx, authUser)
+
+	s.Nil(retRef)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorSubjectNotAllowed.Code, svcErr.Code)
+}
+
+// A subject checked again by a later node, such as one restored from an SSO session, is held to the
+// required subject too.
+func (s *ManagerTestSuite) TestGetEntityReference_RequiredSubjectMismatch() {
+	entityRef := &providers.EntityReference{
+		EntityID: "user-2", EntityCategory: "user", EntityType: "customer", OUID: "ou-1",
+	}
+	authUser := authenticatedAuthUserWithResolved(entityRef, &providers.AttributesResponse{})
+	ctx := authnprovidercm.WithSubjectTypeConstraints(context.Background(),
+		authnprovidercm.SubjectTypeConstraints{RequiredSubjectID: "owner-1"})
 
 	_, retRef, svcErr := s.mgr.GetEntityReference(ctx, authUser)
 
