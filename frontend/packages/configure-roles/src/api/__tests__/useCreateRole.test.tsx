@@ -9,7 +9,8 @@ import type {Role} from '../../models/role';
 import useCreateRole from '../useCreateRole';
 
 // Mock the dependencies
-vi.mock('@thunderid/react', () => ({
+vi.mock('@thunderid/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/react')>()),
   useThunderID: vi.fn(),
 }));
 

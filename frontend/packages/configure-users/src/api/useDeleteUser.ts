@@ -3,7 +3,7 @@
 
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {AdministrationModes, useAdministrationOperation, useConfig, useToast} from '@thunderid/contexts';
-import {useThunderID} from '@thunderid/react';
+import {UserQueryKeys as SdkUserQueryKeys, useThunderID} from '@thunderid/react';
 import {useTranslation} from 'react-i18next';
 import UserQueryKeys from '../constants/user-query-keys';
 import deleteUser, {deleteUserNatively, type HttpLike} from '../utils/deleteUserViaFlow';
@@ -23,7 +23,7 @@ import deleteUser, {deleteUserNatively, type HttpLike} from '../utils/deleteUser
  * @returns TanStack Query mutation object for deleting users
  */
 export default function useDeleteUser(): UseMutationResult<void, Error, string> {
-  const {http} = useThunderID();
+  const {http, invalidator} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient: ReturnType<typeof useQueryClient> = useQueryClient();
   const {t} = useTranslation('users');
@@ -45,6 +45,8 @@ export default function useDeleteUser(): UseMutationResult<void, Error, string> 
       await deleteUser(client, getServerUrl(), userId);
     },
     onSuccess: (_data, userId) => {
+      // Lists the SDK's admin components render keep their own state, so they refresh on this too.
+      invalidator?.invalidate([SdkUserQueryKeys.USERS]);
       queryClient.removeQueries({queryKey: [UserQueryKeys.USER, userId]});
       queryClient.invalidateQueries({queryKey: [UserQueryKeys.USERS]}).catch(() => {
         // Ignore invalidation errors

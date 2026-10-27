@@ -111,6 +111,7 @@ if ($PRODUCT_VERSION.StartsWith("v")) {
 $BINARY_NAME = $PRODUCT_NAME_LOWERCASE
 $PRODUCT_FOLDER = "${BINARY_NAME}-${PRODUCT_VERSION}-${GO_PACKAGE_OS}-${GO_PACKAGE_ARCH}"
 $CP_PRODUCT_FOLDER = "${BINARY_NAME}-cp-${PRODUCT_VERSION}-${GO_PACKAGE_OS}-${GO_PACKAGE_ARCH}"
+$QUICKSTART_PRODUCT_FOLDER = "${BINARY_NAME}-quickstart-${PRODUCT_VERSION}-${GO_PACKAGE_OS}-${GO_PACKAGE_ARCH}"
 
 # --- Sample App Distribution details ---
 
@@ -147,16 +148,25 @@ $LOCAL_CERT_DIR = Join-Path $OUTPUT_DIR ".cert"
 $BACKEND_BASE_DIR = "backend"
 $BACKEND_DIR = Join-Path $BACKEND_BASE_DIR "cmd/server"
 $REPOSITORY_DB_DIR = Join-Path $BACKEND_DIR "database"
+# Bootstrap resources layered onto the quickstart pack's planes, one directory per plane
+# (dp-cp is layered onto both the managed Data Plane and the Control Plane).
+$QUICKSTART_DIR = "quickstart"
+$QUICKSTART_BOOTSTRAP_DIR = Join-Path $QUICKSTART_DIR "bootstrap"
 $CPSERVER_DIR = Join-Path $BACKEND_BASE_DIR "cmd/cpserver"
 $CP_REPOSITORY_DB_DIR = Join-Path $CPSERVER_DIR "database"
+
 $SERVER_SCRIPTS_DIR = Join-Path $BACKEND_BASE_DIR "scripts"
 $SERVER_DB_SCRIPTS_DIR = Join-Path $BACKEND_BASE_DIR "dbscripts"
 $SECURITY_DIR = "config/certs"
 $FRONTEND_BASE_DIR = "frontend"
 $GATE_APP_DIST_DIR = "apps/gate"
 $CONSOLE_APP_DIST_DIR = "apps/console"
+$ADMIN_APP_DIST_DIR = "apps/admin"
+$ACCOUNT_APP_DIST_DIR = "apps/account"
 $FRONTEND_GATE_APP_SOURCE_DIR = Join-Path $FRONTEND_BASE_DIR "apps/gate"
 $FRONTEND_CONSOLE_APP_SOURCE_DIR = Join-Path $FRONTEND_BASE_DIR "apps/console"
+$FRONTEND_ADMIN_APP_SOURCE_DIR = Join-Path $FRONTEND_BASE_DIR "apps/admin"
+$FRONTEND_ACCOUNT_APP_SOURCE_DIR = Join-Path $FRONTEND_BASE_DIR "apps/account"
 # The console the Control Plane serves, packaged into the same apps/console slot.
 $FRONTEND_CONSOLE_CP_APP_SOURCE_DIR = Join-Path $FRONTEND_BASE_DIR "apps/console-cp"
 $SAMPLE_BASE_DIR = "samples"
@@ -176,7 +186,10 @@ $QUICKSTART_BUNDLE_STAGE_DIR = Join-Path $FRONTEND_CONSOLE_APP_SOURCE_DIR "src/d
 # Default ports
 $GATE_APP_DEFAULT_PORT = 5190
 $CONSOLE_APP_DEFAULT_PORT = 5191
-$ADMIN_CONSOLE_APP_DEFAULT_PORT = 5192
+$ADMIN_APP_DEFAULT_PORT = 5192
+$ACCOUNT_APP_DEFAULT_PORT = 5193
+$QUICKSTART_AUTH_DP_PORT = 8091
+$QUICKSTART_CP_PORT = 8095
 $DOCS_DEFAULT_PORT = 3000
 
 # ============================================================================
@@ -486,6 +499,7 @@ function Initialize-CpDatabases {
     Write-Host "Control Plane SQLite database initialization complete."
     Write-Host "================================================================"
 }
+
 function Ensure-Pnpm {
     if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
         Write-Host "pnpm not found, installing..."
@@ -752,6 +766,8 @@ function Prepare-Frontend-For-Packaging {
     $package_folder = Join-Path $DIST_DIR $PRODUCT_FOLDER
     New-Item -Path (Join-Path $package_folder $GATE_APP_DIST_DIR) -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $package_folder $CONSOLE_APP_DIST_DIR) -ItemType Directory -Force | Out-Null
+    New-Item -Path (Join-Path $package_folder $ADMIN_APP_DIST_DIR) -ItemType Directory -Force | Out-Null
+    New-Item -Path (Join-Path $package_folder $ACCOUNT_APP_DIST_DIR) -ItemType Directory -Force | Out-Null
 
     # Copy gate app build output
     if (Test-Path (Join-Path $FRONTEND_GATE_APP_SOURCE_DIR "dist")) {
@@ -769,6 +785,24 @@ function Prepare-Frontend-For-Packaging {
     }
     else {
         Write-Host "Warning: Console app build output not found at $((Join-Path $FRONTEND_CONSOLE_APP_SOURCE_DIR "dist"))"
+    }
+
+    # Copy Admin App build output
+    if (Test-Path (Join-Path $FRONTEND_ADMIN_APP_SOURCE_DIR "dist")) {
+        Write-Host "Copying Admin App build output..."
+        Copy-Item -Path (Join-Path $FRONTEND_ADMIN_APP_SOURCE_DIR "dist\*") -Destination (Join-Path $package_folder $ADMIN_APP_DIST_DIR) -Recurse -Force
+    }
+    else {
+        Write-Host "Warning: Admin App build output not found at $((Join-Path $FRONTEND_ADMIN_APP_SOURCE_DIR "dist"))"
+    }
+
+    # Copy Account App build output
+    if (Test-Path (Join-Path $FRONTEND_ACCOUNT_APP_SOURCE_DIR "dist")) {
+        Write-Host "Copying Account App build output..."
+        Copy-Item -Path (Join-Path $FRONTEND_ACCOUNT_APP_SOURCE_DIR "dist\*") -Destination (Join-Path $package_folder $ACCOUNT_APP_DIST_DIR) -Recurse -Force
+    }
+    else {
+        Write-Host "Warning: Account App build output not found at $((Join-Path $FRONTEND_ACCOUNT_APP_SOURCE_DIR "dist"))"
     }
 
     Write-Host "================================================================"
@@ -870,6 +904,10 @@ function Prepare-Cp-Backend-For-Packaging {
     Copy-Item -Path (Join-Path $BACKEND_DIR "bootstrap") -Destination $package_folder -Recurse -Force
     # Never ship the dev-only CORS seed that Run stages into the source bootstrap dir.
     Remove-Item -Path (Join-Path $package_folder "bootstrap/03-dev-server-configurations.yaml") -Force -ErrorAction SilentlyContinue
+    # A Control Plane serves neither the Admin App nor the Account App, and their default applications
+    # are addressed by its own URL, which a sync would carry to every Data Plane it manages.
+    Remove-BootstrapApplication -PlaneDir $package_folder -ClientId ADMIN_CONSOLE
+    Remove-BootstrapApplication -PlaneDir $package_folder -ClientId ACCOUNT
 
     # Key material is not generated into the distribution; setup-cp.ps1 generates it per deployment.
 }
@@ -895,7 +933,6 @@ function Prepare-Cp-Frontend-For-Packaging {
 
     Write-Host "================================================================"
 }
-
 
 # Package-Cp mirrors Package for the Control Plane: a ready-to-run distribution with its own
 # start-cp.ps1/setup-cp.ps1 rather than the data plane's start.ps1/setup.ps1, since the two bind
@@ -935,6 +972,279 @@ function Package-Cp {
     Remove-Item -Path $package_folder -Recurse -Force
     Write-Host "================================================================"
 }
+
+# Read-QuickstartFile returns a file's text with line endings normalized to LF, so the patterns
+# below behave the same whether the checkout converted line endings or not.
+function Read-QuickstartFile {
+    param([string]$Path)
+    return ([System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $Path).Path)) -replace "`r`n", "`n"
+}
+
+function Write-QuickstartFile {
+    param([string]$Path, [string]$Content)
+    [System.IO.File]::WriteAllText((Resolve-Path -LiteralPath $Path).Path, $Content, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+# Add-QuickstartLine inserts $Line after (or before) every line of the file that matches $Pattern.
+function Add-QuickstartLine {
+    param([string]$Path, [string]$Pattern, [string[]]$Lines, [switch]$Before)
+
+    $out = foreach ($line in ((Read-QuickstartFile $Path) -split "`n")) {
+        if ($Before -and $line -match $Pattern) { $Lines }
+        $line
+        if (-not $Before -and $line -match $Pattern) { $Lines }
+    }
+    Write-QuickstartFile -Path $Path -Content ($out -join "`n")
+}
+
+# Remove-BootstrapApplication drops the default application with the client ID $ClientId from a
+# plane's copy of 01-default-resources.yaml. Documents are split on "---"; the one declaring that
+# clientId is skipped.
+function Remove-BootstrapApplication {
+    param([string]$PlaneDir, [string]$ClientId)
+
+    $path = Join-Path $PlaneDir "bootstrap/01-default-resources.yaml"
+    $docs = New-Object System.Collections.Generic.List[string]
+    $doc = ""
+    foreach ($line in ((Read-QuickstartFile $path).TrimEnd("`n") -split "`n")) {
+        if ($line -eq "---" -and $doc -ne "") { $docs.Add($doc); $doc = "" }
+        $doc += "$line`n"
+    }
+    if ($doc -ne "") { $docs.Add($doc) }
+    $kept = $docs | Where-Object { -not $_.Contains("clientId: $ClientId`n") }
+    Write-QuickstartFile -Path $path -Content (($kept -join "") )
+}
+
+# Set-QuickstartServiceDeskAdmin makes a plane's default resources create the quickstart's
+# Service Desk Admin instead of the default admin: an account authored on the Control Plane and
+# synced to the Data Plane, where it signs into the Admin App. It is applied to the Control
+# Plane and the Data Plane alike, so the Data Plane holds the account from the start and the
+# Control Plane's copy, the same resource under the same ID, arrives on the first sync unchanged.
+#
+# The account gets a group and role of its own, under IDs of their own. auth-dp keeps the default
+# admin, group and role (the operator who signs into the Control Plane console), and the Control
+# Plane never holds that user, so nothing here shares an ID with it. The email follows the username
+# the pack is started with.
+function Set-QuickstartServiceDeskAdmin {
+    param([string]$PlaneDir)
+
+    $path = Join-Path $PlaneDir "bootstrap/01-default-resources.yaml"
+    $text = Read-QuickstartFile $path
+    $edits = @(
+        @('01900000-0000-7000-8000-000000000030', '01900000-0000-7000-8000-0000000000f3'),
+        @('01900000-0000-7000-8000-000000000040', '01900000-0000-7000-8000-0000000000f4'),
+        @('01900000-0000-7000-8000-000000000050', '01900000-0000-7000-8000-0000000000f5')
+    )
+    foreach ($edit in $edits) { $text = $text.Replace($edit[0], $edit[1]) }
+    $lineEdits = @(
+        @('(?m)^name: Administrators$', 'name: Service Desk Administrators'),
+        @('(?m)^name: Administrator$', 'name: Service Desk Administrator'),
+        @('(?m)^description: System administrators group$', 'description: Administrators of the service desk'),
+        @('(?m)^description: System administrator role with full permissions$', 'description: Service desk administrator role with full permissions'),
+        @('(?m)^  email: admin@example.com$', '  email: "{{ .ADMIN_USERNAME }}@example.com"'),
+        @('(?m)^  name: Administrator$', '  name: Service Desk Admin'),
+        @('(?m)^  given_name: Admin$', '  given_name: Service Desk'),
+        @('(?m)^  family_name: User$', '  family_name: Admin')
+    )
+    foreach ($edit in $lineEdits) { $text = [regex]::Replace($text, $edit[0], $edit[1].Replace('$', '$$')) }
+    Write-QuickstartFile -Path $path -Content $text
+}
+
+# Assert-QuickstartPatch fails the build when a quickstart patch did not land. Each patch silently
+# does nothing when its anchor is missing, which would otherwise ship a pack that cannot sign in.
+function Assert-QuickstartPatch {
+    param([string]$Path, [string]$Text)
+
+    if (-not (Read-QuickstartFile $Path).Contains($Text)) {
+        throw "Quickstart patch did not apply: expected '$Text' in $Path"
+    }
+}
+
+# Package-Quickstart nests a full auth-only DP pack, a full managed DP pack, and a full CP pack
+# under one folder, pre-wired together: the CP copy's bootstrap gains one extra resource that
+# registers the managed DP as a gateway with a key quickstart/setup.ps1 generates (which also makes
+# the managed DP trust that key's digest), and the CP copy authenticates against auth-dp instead. Assumes
+# Build-Backend and Build-CpBackend already ran (their binaries are read from $BUILD_DIR, which
+# neither deletes before this can run in the same invocation).
+#
+# The quickstart runs three deployments, not two: the Control Plane's own sign-in is kept
+# separate from the Data Plane it manages, so logging into the Control Plane never depends on
+# the one deployment it also pushes applications/connections/roles/flows to. auth-dp is a
+# second, otherwise-ordinary Data Plane build whose only job is backing that sign-in; dp remains
+# the "managed" one the gateway bootstrap registers and the push dispatcher targets.
+function Package-Quickstart {
+    Write-Host "================================================================"
+    Write-Host "Packaging quickstart (Control Plane + Data Plane) distribution..."
+
+    # A staging directory left behind by an interrupted previous run must not bleed into this one.
+    $quickstart_dir = Join-Path $DIST_DIR $QUICKSTART_PRODUCT_FOLDER
+    Remove-Item -Path $quickstart_dir -Recurse -Force -ErrorAction SilentlyContinue
+    $auth_dp_dir = Join-Path $quickstart_dir "auth-dp"
+    $dp_dir = Join-Path $quickstart_dir "dp"
+    $cp_dir = Join-Path $quickstart_dir "cp"
+    foreach ($dir in @($auth_dp_dir, $dp_dir, $cp_dir)) {
+        New-Item -Path $dir -ItemType Directory -Force | Out-Null
+    }
+
+    # Reuse the existing per-plane packaging functions verbatim, by pointing the product-folder
+    # globals they read at the quickstart's nested auth-dp/, dp/ and cp/ subfolders instead of
+    # their own top-level folders, then restoring them. auth-dp and dp are both ordinary Data
+    # Plane builds, so the same DP packaging functions run twice, once per folder.
+    $saved_dp_folder = $script:PRODUCT_FOLDER
+    $saved_cp_folder = $script:CP_PRODUCT_FOLDER
+    try {
+        $script:PRODUCT_FOLDER = "$QUICKSTART_PRODUCT_FOLDER/auth-dp"
+        Prepare-Frontend-For-Packaging
+        Prepare-Backend-For-Packaging
+
+        $script:PRODUCT_FOLDER = "$QUICKSTART_PRODUCT_FOLDER/dp"
+        Prepare-Frontend-For-Packaging
+        Prepare-Backend-For-Packaging
+
+        $script:CP_PRODUCT_FOLDER = "$QUICKSTART_PRODUCT_FOLDER/cp"
+        Prepare-Cp-Frontend-For-Packaging
+        Prepare-Cp-Backend-For-Packaging
+    }
+    finally {
+        $script:PRODUCT_FOLDER = $saved_dp_folder
+        $script:CP_PRODUCT_FOLDER = $saved_cp_folder
+    }
+
+    # Each plane's own setup/start scripts: the Prepare-* functions only stage the binary and its
+    # supporting files. Only setup and start at the top of the pack are invoked directly, but they
+    # run these per-plane scripts in turn.
+    if ($GO_OS -eq "windows") {
+        foreach ($dir in @($auth_dp_dir, $dp_dir)) {
+            Copy-Item -Path "start.ps1", "setup.ps1" -Destination $dir -Force
+        }
+        Copy-Item -Path "start-cp.ps1", "setup-cp.ps1" -Destination $cp_dir -Force
+    }
+    else {
+        foreach ($dir in @($auth_dp_dir, $dp_dir)) {
+            Copy-Item -Path "start.sh", "setup.sh" -Destination $dir -Force
+        }
+        Copy-Item -Path "start-cp.sh", "setup-cp.sh" -Destination $cp_dir -Force
+    }
+
+    # Layer the quickstart-only gateway bootstrap resource onto the CP copy alone: the standalone
+    # CP pack must never see it, since there is no known DP to point at there.
+    Copy-Item -Path (Join-Path $QUICKSTART_BOOTSTRAP_DIR "cp/*.yaml") -Destination (Join-Path $cp_dir "bootstrap") -Force
+
+    # Layer the quickstart-only CORS allowlist onto auth-dp alone: it is the one the Control
+    # Plane's console calls directly from the browser. The managed dp is never called from the
+    # Control Plane's browser session, so it needs no such allowlist.
+    Copy-Item -Path (Join-Path $QUICKSTART_BOOTSTRAP_DIR "auth-dp/*.yaml") -Destination (Join-Path $auth_dp_dir "bootstrap") -Force
+
+    # auth-dp only signs operators into the Control Plane's console, so it carries just that
+    # console's own client and serves no console UI, and the Control Plane's console signs in
+    # through auth-dp. Neither needs the default CONSOLE application. The managed dp keeps it for
+    # its own Console.
+    Remove-BootstrapApplication -PlaneDir $auth_dp_dir -ClientId CONSOLE
+    Remove-BootstrapApplication -PlaneDir $cp_dir -ClientId CONSOLE
+
+    Set-QuickstartServiceDeskAdmin -PlaneDir $dp_dir
+    Set-QuickstartServiceDeskAdmin -PlaneDir $cp_dir
+
+    # The Control Plane's console signs in through auth-dp as a trusted issuer, and asks for a token
+    # for the Control Plane's own URL (the RFC 8707 "resource" parameter). auth-dp refuses a resource
+    # no resource server is registered for, so its System resource server, whose permissions the
+    # admin role already holds, is identified by that URL instead of the default Data Plane one.
+    $auth_dp_resources = Join-Path $auth_dp_dir "bootstrap/01-default-resources.yaml"
+    Write-QuickstartFile -Path $auth_dp_resources -Content ([regex]::Replace(
+            (Read-QuickstartFile $auth_dp_resources),
+            '(?m)^identifier: https://localhost:8090/mcp$',
+            "identifier: https://localhost:$QUICKSTART_CP_PORT"))
+    Remove-Item -Path (Join-Path $auth_dp_dir $CONSOLE_APP_DIST_DIR) -Recurse -Force -ErrorAction SilentlyContinue
+
+    # Layer the Data Plane's Admin App application onto the managed dp and the cp, in place of the
+    # default one, whose URL would name each plane's own address. It is the same resource, with the
+    # same fixed ID, on both: the cp is where it is administered and synced from, and the dp needs it
+    # to exist before the first sync so the Admin App can sign in.
+    Remove-BootstrapApplication -PlaneDir $dp_dir -ClientId ADMIN_CONSOLE
+    Copy-Item -Path (Join-Path $QUICKSTART_BOOTSTRAP_DIR "dp-cp/*.yaml") -Destination (Join-Path $dp_dir "bootstrap") -Force
+    Copy-Item -Path (Join-Path $QUICKSTART_BOOTSTRAP_DIR "dp-cp/*.yaml") -Destination (Join-Path $cp_dir "bootstrap") -Force
+
+    # auth-dp runs on its own port, distinct from the managed dp it shares a generated certificate
+    # and signing keys with (see quickstart/setup.ps1). Patched into this copy of deployment.yaml
+    # only; the checked-in source is never touched, and the managed dp keeps the default port.
+    $auth_dp_deployment = Join-Path $auth_dp_dir "deployment.yaml"
+    Write-QuickstartFile -Path $auth_dp_deployment -Content ([regex]::Replace(
+            (Read-QuickstartFile $auth_dp_deployment), '(?m)^  port: 8090$', "  port: $QUICKSTART_AUTH_DP_PORT"))
+
+    # The CP issues no tokens of its own; it validates a caller's bearer token by comparing its
+    # iss claim to its own configured jwt.issuer, then verifying the signature with its own
+    # loaded signing keys. Since the CP and auth-dp here share one signing key and auth-dp is what
+    # actually issues the Control Plane's tokens, the CP's copy of deployment.yaml is patched to
+    # claim auth-dp's issuer as its own.
+    Add-QuickstartLine -Path (Join-Path $cp_dir "deployment.yaml") -Pattern '^jwt:' `
+        -Lines "    issuer: `"https://localhost:$QUICKSTART_AUTH_DP_PORT`""
+
+    # The CP Console has no login of its own to redirect to, so its config.js is patched, in this
+    # copy only, with a trusted_issuer block naming auth-dp: the console SDK then sends the actual
+    # /oauth2/authorize and /oauth2/token calls there, while every management-API call it makes is
+    # repointed back to wherever the console itself is served from. Inserted right before the
+    # file's closing "};" so it lands inside the top-level config object.
+    Add-QuickstartLine -Path (Join-Path $cp_dir "$CONSOLE_APP_DIST_DIR/config.js") -Pattern '^};$' -Before -Lines @(
+        "  trusted_issuer: {",
+        "    hostname: `"localhost`",",
+        "    port: $QUICKSTART_AUTH_DP_PORT,",
+        "    http_only: false,",
+        "    client_id: `"CP_CONSOLE`",",
+        "  },")
+
+    # The browser enforces the CP's own Content-Security-Policy, not auth-dp's, on every fetch the
+    # console page makes, including the cross-origin token exchange the trusted_issuer config above
+    # sends to auth-dp. The shared csp.yaml's default connect-src only allows the page's own origin
+    # plus thunderid.dev. Patched into this copy only, right after the one other allowed entry.
+    Add-QuickstartLine -Path (Join-Path $cp_dir "config/resources/server_configs/csp.yaml") `
+        -Pattern '"https://thunderid\.dev"' -Lines "          - `"https://localhost:$QUICKSTART_AUTH_DP_PORT`""
+
+    # Turns on zero-touch propagation for this pack alone: a write on the Control Plane console
+    # automatically captures a configuration version and applies it to the managed Data Plane.
+    # Off everywhere else (gateway.auto_apply defaults to false). allow_private_addresses lets the
+    # Control Plane register and reach the managed Data Plane on localhost, which it refuses by
+    # default. CP's deployment.yaml has no existing "gateway:" block, so this is a plain append.
+    $cp_deployment = Join-Path $cp_dir "deployment.yaml"
+    Write-QuickstartFile -Path $cp_deployment -Content (
+        (Read-QuickstartFile $cp_deployment).TrimEnd("`n") + "`n`ngateway:`n  auto_apply: true`n  allow_private_addresses: true`n")
+
+    Assert-QuickstartPatch (Join-Path $auth_dp_dir "bootstrap/01-default-resources.yaml") "identifier: https://localhost:$QUICKSTART_CP_PORT"
+    Assert-QuickstartPatch (Join-Path $auth_dp_dir "deployment.yaml") "port: $QUICKSTART_AUTH_DP_PORT"
+    Assert-QuickstartPatch (Join-Path $dp_dir "bootstrap/01-default-resources.yaml") "Service Desk Administrators"
+    Assert-QuickstartPatch (Join-Path $cp_dir "bootstrap/01-default-resources.yaml") "Service Desk Administrators"
+    Assert-QuickstartPatch (Join-Path $dp_dir "deployment.yaml") "  security:"
+    Assert-QuickstartPatch (Join-Path $cp_dir "deployment.yaml") "issuer: `"https://localhost:$QUICKSTART_AUTH_DP_PORT`""
+    Assert-QuickstartPatch (Join-Path $cp_dir "$CONSOLE_APP_DIST_DIR/config.js") "trusted_issuer"
+    Assert-QuickstartPatch (Join-Path $cp_dir "config/resources/server_configs/csp.yaml") "https://localhost:$QUICKSTART_AUTH_DP_PORT"
+
+    if ($GO_OS -eq "windows") {
+        Write-Host "Including orchestration scripts (setup.ps1, start.ps1)..."
+        Copy-Item -Path (Join-Path $QUICKSTART_DIR "setup.ps1"), (Join-Path $QUICKSTART_DIR "start.ps1") -Destination $quickstart_dir -Force
+        Copy-Item -Path (Join-Path $QUICKSTART_DIR "bootstrap.ps1") -Destination (Join-Path $quickstart_dir "quickstart-bootstrap.ps1") -Force
+    }
+    else {
+        Write-Host "Including orchestration scripts (setup.sh, start.sh)..."
+        Copy-Item -Path (Join-Path $QUICKSTART_DIR "setup.sh"), (Join-Path $QUICKSTART_DIR "start.sh") -Destination $quickstart_dir -Force
+        Copy-Item -Path (Join-Path $QUICKSTART_DIR "bootstrap.sh") -Destination (Join-Path $quickstart_dir "quickstart-bootstrap.sh") -Force
+    }
+    Copy-Item -Path $VERSION_FILE -Destination $quickstart_dir -Force
+
+    Write-Host "Creating zip file..."
+    $zipFile = Join-Path $DIST_DIR "$QUICKSTART_PRODUCT_FOLDER.zip"
+    if (Test-Path $zipFile) {
+        Remove-Item $zipFile -Force
+    }
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::CreateFromDirectory($quickstart_dir, $zipFile)
+
+    Remove-Item -Path $quickstart_dir -Recurse -Force
+    if (Test-Path $BUILD_DIR) {
+        Remove-Item -Path $BUILD_DIR -Recurse -Force
+    }
+    Write-Host "================================================================"
+}
+
 function Package-Sample-App {
     Write-Host "================================================================"
     Write-Host "Packaging sample apps..."
@@ -1752,7 +2062,7 @@ function Run {
     Write-Host "⚙️  Creating default resources..."
     Write-Host ""
 
-    # Dev-only: seed CORS allowed origins for the Gate and Console apps so they can call
+    # Dev-only: seed CORS allowed origins for the Gate, Console, Admin and Account apps so they can call
     # the backend without manual configuration. Regenerated on every run and picked up by
     # the bootstrap one-shot; it is git-ignored and never packaged (see Build).
     $devServerConfig = @"
@@ -1762,7 +2072,8 @@ value:
   allowedOrigins:
     - "https://localhost:$GATE_APP_DEFAULT_PORT"
     - "https://localhost:$CONSOLE_APP_DEFAULT_PORT"
-    - "https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT"
+    - "https://localhost:$ADMIN_APP_DEFAULT_PORT"
+    - "https://localhost:$ACCOUNT_APP_DEFAULT_PORT"
 "@
     Set-Content -Path (Join-Path $BACKEND_DIR "bootstrap/03-dev-server-configurations.yaml") -Value $devServerConfig
 
@@ -1773,9 +2084,7 @@ value:
     $env:ADMIN_PASSWORD = if ($env:ADMIN_PASSWORD) { $env:ADMIN_PASSWORD } else { "admin" }
     Push-Location $BACKEND_DIR
     try {
-        # Both the Console and Admin Console dev servers use the same CONSOLE OAuth2 client, each on
-        # its own origin, so both need a registered redirect URI here.
-        & go run . bootstrap --console-redirect-uris "https://localhost:${CONSOLE_APP_DEFAULT_PORT}/console,https://localhost:${ADMIN_CONSOLE_APP_DEFAULT_PORT}/console"
+        & go run . bootstrap --console-redirect-uris "https://localhost:${CONSOLE_APP_DEFAULT_PORT}/console" --admin-redirect-uris "https://localhost:${ADMIN_APP_DEFAULT_PORT}/admin" --account-redirect-uris "https://localhost:${ACCOUNT_APP_DEFAULT_PORT}/account"
         $bootstrapExit = $LASTEXITCODE
     }
     finally {
@@ -1796,7 +2105,8 @@ value:
     Write-Host "  📱 Frontend :"
     Write-Host "      🚪 Gate (Login/Register): https://localhost:${GATE_APP_DEFAULT_PORT}/gate"
     Write-Host "      🛠️  Console (System Management): https://localhost:${CONSOLE_APP_DEFAULT_PORT}/console"
-    Write-Host "      🛠️  Admin Console (Users, Agents, Groups, Roles): https://localhost:${ADMIN_CONSOLE_APP_DEFAULT_PORT}/console"
+    Write-Host "      🧩 Admin App (Organization Management): https://localhost:${ADMIN_APP_DEFAULT_PORT}/admin"
+    Write-Host "      👤 Account App (Self Service): https://localhost:${ACCOUNT_APP_DEFAULT_PORT}/account"
     Write-Host ""
 
     Write-Host "Press Ctrl+C to stop."
@@ -1910,7 +2220,7 @@ function Run-Frontend {
         # In dev the apps are served on their own origins, so point them at the backend via
         # THUNDERID_DEV_SERVER_URL (injected into __DEV_SERVER_URL__; applied only in dev builds).
         $env:THUNDERID_DEV_SERVER_URL = $PUBLIC_URL
-        $frontendProcess = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "pnpm", "-r", "--parallel", "--filter", "@thunderid/console", "--filter", "@thunderid/gate", "--filter", "@thunderid/admin-console", "dev" -PassThru -NoNewWindow
+        $frontendProcess = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "pnpm", "-r", "--parallel", "--filter", "@thunderid/console", "--filter", "@thunderid/gate", "--filter", "@thunderid/admin", "--filter", "@thunderid/account", "dev" -PassThru -NoNewWindow
         $script:FRONTEND_PID = $frontendProcess.Id
     }
     finally {
@@ -1968,6 +2278,11 @@ switch ($Command) {
         Build-CpBackend
         Package-Cp
     }
+    'build_quickstart' {
+        Build-Backend
+        Build-CpBackend
+        Package-Quickstart
+    }
     'build_frontend' {
         Build-Frontend
     }
@@ -2007,6 +2322,9 @@ switch ($Command) {
     'package_cp' {
         Package-Cp
     }
+    'package_quickstart' {
+        Package-Quickstart
+    }
     'test_unit' {
         Test-Unit
     }
@@ -2033,7 +2351,7 @@ switch ($Command) {
         Test-Integration
     }
     default {
-        Write-Host "Usage: $($MyInvocation.MyCommand.Name) {clean|build|build_backend|build_cp_backend|build_frontend|build_docs|tools_build|tools_test|tools_lint|tools_build_cli|tools_test_cli|tools_lint_cli|tools_build_i18n_extractor|tools_test_i18n_extractor|tools_lint_i18n_extractor|package_samples|package_cp|test_unit|test_integration|merge_coverage|run|run_backend|run_frontend|run_docs|test}"
+        Write-Host "Usage: $($MyInvocation.MyCommand.Name) {clean|build|build_backend|build_cp_backend|build_quickstart|build_frontend|build_docs|tools_build|tools_test|tools_lint|tools_build_cli|tools_test_cli|tools_lint_cli|tools_build_i18n_extractor|tools_test_i18n_extractor|tools_lint_i18n_extractor|package_samples|package_cp|package_quickstart|test_unit|test_integration|merge_coverage|run|run_backend|run_frontend|run_docs|test}"
         exit 1
     }
 }

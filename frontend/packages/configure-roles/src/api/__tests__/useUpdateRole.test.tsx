@@ -11,7 +11,8 @@ import type {Role} from '../../models/role';
 import useUpdateRole, {ROLE_MUTATION_KEY} from '../useUpdateRole';
 
 // Mock the dependencies
-vi.mock('@thunderid/react', () => ({
+vi.mock('@thunderid/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/react')>()),
   useThunderID: vi.fn(),
 }));
 

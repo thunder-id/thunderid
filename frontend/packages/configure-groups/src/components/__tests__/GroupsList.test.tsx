@@ -5,6 +5,7 @@ import {screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {renderWithProviders} from '@thunderid/test-utils';
 import type * as OxygenUI from '@wso2/oxygen-ui';
+import type {ReactNode} from 'react';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import type {GroupListResponse} from '../../models/group';
 import GroupsList from '../GroupsList';
@@ -104,8 +105,30 @@ vi.mock('react-router', async () => {
 });
 
 const mockUseGetGroups = vi.fn();
-vi.mock('../../api/useGetGroups', () => ({
-  default: (...args: unknown[]): unknown => mockUseGetGroups(...args),
+const {mockInvalidate} = vi.hoisted(() => ({mockInvalidate: vi.fn()}));
+
+// The list draws what the SDK's GroupList loads. This stands in for it, handing its render props the
+// query state each test sets up.
+vi.mock('@thunderid/react', async () => ({
+  ...(await vi.importActual<Record<string, unknown>>('@thunderid/react')),
+  useThunderID: () => ({invalidator: {invalidate: mockInvalidate}}),
+  GroupList: ({children, limit = 20}: {children: (props: object) => ReactNode; limit?: number}): ReactNode => {
+    const {data, error, isLoading} = (mockUseGetGroups() ?? {}) as {
+      data?: {groups?: unknown[]; totalResults?: number} | null;
+      error?: Error | null;
+      isLoading?: boolean;
+    };
+
+    return children({
+      error: error?.message ?? null,
+      isLoading: isLoading ?? false,
+      limit,
+      offset: 0,
+      onPageChange: (): void => undefined,
+      rows: data?.groups ?? [],
+      totalResults: data?.totalResults ?? 0,
+    });
+  },
 }));
 
 const mockDeleteMutate = vi.fn();
@@ -190,20 +213,18 @@ describe('GroupsList', () => {
     });
   });
 
-  it('should refetch groups when the retry action is clicked in the error state', async () => {
+  it('should reload groups when the retry action is clicked in the error state', async () => {
     const user = userEvent.setup();
-    const mockRefetch = vi.fn();
     mockUseGetGroups.mockReturnValue({
       data: null,
       isLoading: false,
       error: new Error('Fetch failed'),
-      refetch: mockRefetch,
     });
     renderWithProviders(<GroupsList />);
 
     await user.click(screen.getByRole('button', {name: 'Refresh'}));
 
-    expect(mockRefetch).toHaveBeenCalled();
+    expect(mockInvalidate).toHaveBeenCalledWith(['groups']);
   });
 
   it('should log an error when navigating to a group on row click fails', async () => {

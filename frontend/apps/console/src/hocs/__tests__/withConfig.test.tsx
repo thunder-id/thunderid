@@ -52,6 +52,7 @@ vi.mock('@thunderid/react', () => ({
     sendCookiesInRequests,
     sendIdTokenInLogoutRequest,
     discovery,
+    endpoints,
     /* eslint-enable react/require-default-props */
   }: {
     children: React.ReactNode;
@@ -65,6 +66,7 @@ vi.mock('@thunderid/react', () => ({
     sendCookiesInRequests?: boolean;
     sendIdTokenInLogoutRequest?: boolean;
     discovery?: Record<string, unknown>;
+    endpoints?: Record<string, string>;
   }) => {
     capturedProviderProps = {
       baseUrl,
@@ -77,6 +79,7 @@ vi.mock('@thunderid/react', () => ({
       sendCookiesInRequests,
       sendIdTokenInLogoutRequest,
       discovery,
+      endpoints,
     };
     return (
       <div
@@ -295,6 +298,22 @@ describe('withConfig (console)', () => {
 
       render(<WithConfigComponent />);
       expect(capturedProviderProps.signInOptions).toEqual({resource: 'https://tenant.example.com:9443'});
+    });
+
+    it('points every management collection the SDK calls at the resource server', () => {
+      mockConfig.trusted_issuer = {hostname: 'auth.cloud.example.com', port: 443, http_only: false};
+      mockGetServerUrl.mockReturnValue('https://tenant.example.com:9443');
+      mockGetTrustedIssuerUrl.mockReturnValue('https://auth.cloud.example.com');
+
+      render(<WithConfigComponent />);
+      expect(capturedProviderProps.endpoints).toMatchObject({
+        agentTypes: 'https://tenant.example.com:9443/agent-types',
+        agents: 'https://tenant.example.com:9443/agents',
+        groups: 'https://tenant.example.com:9443/groups',
+        roles: 'https://tenant.example.com:9443/roles',
+        users: 'https://tenant.example.com:9443/users',
+        userTypes: 'https://tenant.example.com:9443/user-types',
+      });
     });
 
     it('does not set signInOptions when trusted_issuer is not configured', () => {

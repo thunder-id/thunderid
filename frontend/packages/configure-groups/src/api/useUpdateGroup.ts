@@ -3,7 +3,7 @@
 
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig, useToast} from '@thunderid/contexts';
-import {useThunderID} from '@thunderid/react';
+import {GroupQueryKeys as SdkGroupQueryKeys, useThunderID} from '@thunderid/react';
 import {useTranslation} from 'react-i18next';
 import GroupQueryKeys from '../constants/group-query-keys';
 import type {Group} from '../models/group';
@@ -23,7 +23,7 @@ export interface UpdateGroupVariables {
  * @returns TanStack Query mutation object for updating groups
  */
 export default function useUpdateGroup(): UseMutationResult<Group, Error, UpdateGroupVariables> {
-  const {http} = useThunderID();
+  const {http, invalidator} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient: ReturnType<typeof useQueryClient> = useQueryClient();
   const {t} = useTranslation('groups');
@@ -46,6 +46,8 @@ export default function useUpdateGroup(): UseMutationResult<Group, Error, Update
       return response.data;
     },
     onSuccess: (_data, {groupId}) => {
+      // Lists the SDK's admin components render keep their own state, so they refresh on this too.
+      invalidator?.invalidate([SdkGroupQueryKeys.GROUPS]);
       queryClient.invalidateQueries({queryKey: [GroupQueryKeys.GROUP, groupId]}).catch(() => {
         // Ignore invalidation errors
       });

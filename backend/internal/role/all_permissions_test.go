@@ -362,11 +362,18 @@ func TestRoleServiceGetAllPermissions(t *testing.T) {
 // newRefusingRoleAuthz returns an authz mock that refuses every grant check.
 func newRefusingRoleAuthz(t *testing.T) sysauthz.SystemAuthorizationServiceInterface {
 	mockAuthz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	allowRoleActions(mockAuthz)
 	mockAuthz.On("CanGrantPermissions", mock.Anything, mock.Anything).
 		Return(&sysauthz.ErrorGrantNotPermitted).Maybe()
 	mockAuthz.On("CanGrantMembership", mock.Anything, mock.Anything, mock.Anything).
 		Return(&sysauthz.ErrorGrantNotPermitted).Maybe()
 	return mockAuthz
+}
+
+// stubLibrarianRole makes the store report that librarianRole exists.
+func stubLibrarianRole(store *roleStoreInterfaceMock) {
+	store.On("GetRole", mock.Anything, "librarianRole").
+		Return(RoleWithPermissions{ID: "librarianRole", OUID: "ou1"}, nil).Once()
 }
 
 func TestRoleAssignmentGuard(t *testing.T) {
@@ -377,6 +384,7 @@ func TestRoleAssignmentGuard(t *testing.T) {
 	// before anything reaches the store.
 	t.Run("AddAssignmentsIsRefused", func(t *testing.T) {
 		store := newRoleStoreInterfaceMock(t)
+		stubLibrarianRole(store)
 		txr := &fakeTransactioner{}
 		svc := &roleAssignmentService{
 			roleStore:     store,
@@ -394,6 +402,7 @@ func TestRoleAssignmentGuard(t *testing.T) {
 
 	t.Run("RemoveAssignmentsIsRefused", func(t *testing.T) {
 		store := newRoleStoreInterfaceMock(t)
+		stubLibrarianRole(store)
 		txr := &fakeTransactioner{}
 		svc := &roleAssignmentService{
 			roleStore:     store,
@@ -413,8 +422,10 @@ func TestRoleAssignmentGuard(t *testing.T) {
 	// principals exist.
 	t.Run("GuardRunsBeforeAssigneeValidation", func(t *testing.T) {
 		entitySvc := entitymock.NewEntityServiceInterfaceMock(t)
+		store := newRoleStoreInterfaceMock(t)
+		stubLibrarianRole(store)
 		svc := &roleAssignmentService{
-			roleStore:     newRoleStoreInterfaceMock(t),
+			roleStore:     store,
 			entityService: entitySvc,
 			transactioner: &fakeTransactioner{},
 			authzService:  newRefusingRoleAuthz(t),
@@ -508,6 +519,7 @@ func TestModifyAssignments_RechecksInsideTransaction(t *testing.T) {
 	// First call succeeds (pre-transaction), second refuses (inside the transaction), simulating a
 	// concurrent role update that widened the role in between.
 	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	allowRoleActions(authz)
 	call := 0
 	authz.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeRole, "role1").
 		Return(func(context.Context, sysauthz.PrincipalType, string) *tidcommon.ServiceError {
@@ -518,6 +530,7 @@ func TestModifyAssignments_RechecksInsideTransaction(t *testing.T) {
 			return &sysauthz.ErrorGrantNotPermitted
 		})
 
+	store.EXPECT().GetRole(ctx, "role1").Return(RoleWithPermissions{ID: "role1", OUID: "ou1"}, nil).Once()
 	store.EXPECT().IsRoleExist(ctx, "role1").Return(true, nil).Once()
 	store.EXPECT().AddAssignments(mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 

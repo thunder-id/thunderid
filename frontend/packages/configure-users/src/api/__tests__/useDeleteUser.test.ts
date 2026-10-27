@@ -10,6 +10,7 @@ import useDeleteUser from '../useDeleteUser';
 const mockHttpRequest = vi.fn();
 const mockGetServerUrl = vi.fn().mockReturnValue('https://api.test.com');
 const mockShowToast = vi.fn();
+const mockInvalidate = vi.fn();
 
 // How the console says this operation runs. Defaults to the flow, which is what a console that
 // declares nothing gets, so the tests written before the option existed are unaffected.
@@ -17,10 +18,12 @@ let administrationOperation: unknown = AdministrationModes.FLOW;
 
 // Mock the dependencies
 vi.mock('@thunderid/react', () => ({
+  UserQueryKeys: {USERS: 'users'},
   useThunderID: () => ({
     http: {
       request: mockHttpRequest,
     },
+    invalidator: {invalidate: mockInvalidate},
   }),
 }));
 
@@ -184,6 +187,20 @@ describe('useDeleteUser', () => {
     expect(result.current.data).toBeUndefined();
     expect(result.current.error).toBeNull();
     expect(result.current.isPending).toBe(false);
+  });
+
+  it('refreshes the lists the SDK renders', async () => {
+    mockFlowDeletion();
+
+    const {result} = renderHook(() => useDeleteUser());
+
+    result.current.mutate('user-1');
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(mockInvalidate).toHaveBeenCalledWith(['users']);
   });
 
   it('should make correct API call with user ID', async () => {

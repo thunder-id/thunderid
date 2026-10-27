@@ -3,7 +3,7 @@
 
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig, useToast} from '@thunderid/contexts';
-import {useThunderID} from '@thunderid/react';
+import {UserQueryKeys as SdkUserQueryKeys, useThunderID} from '@thunderid/react';
 import type {User} from '@thunderid/types';
 import {useTranslation} from 'react-i18next';
 import UserQueryKeys from '../constants/user-query-keys';
@@ -23,7 +23,7 @@ export interface UpdateUserVariables {
  * @returns TanStack Query mutation object for updating users
  */
 export default function useUpdateUser(): UseMutationResult<User, Error, UpdateUserVariables> {
-  const {http} = useThunderID();
+  const {http, invalidator} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient: ReturnType<typeof useQueryClient> = useQueryClient();
   const {t} = useTranslation('users');
@@ -47,6 +47,8 @@ export default function useUpdateUser(): UseMutationResult<User, Error, UpdateUs
       return response.data;
     },
     onSuccess: (_data, variables) => {
+      // Lists the SDK's admin components render keep their own state, so they refresh on this too.
+      invalidator?.invalidate([SdkUserQueryKeys.USERS]);
       queryClient.invalidateQueries({queryKey: [UserQueryKeys.USER, variables.userId]}).catch(() => {
         // Ignore invalidation errors
       });

@@ -9,11 +9,18 @@ export interface ElementInspectorProps {
   enabled: boolean;
   children: ReactNode;
   onSelectSelector?: (selector: string) => void;
+  /**
+   * When set, the inspector names components instead of CSS classes: hovering highlights the
+   * nearest element carrying this attribute and labels it with the attribute's value. Clicks
+   * are left to the content.
+   */
+  labelAttribute?: string;
 }
 
 interface HighlightInfo {
   rect: DOMRect;
   classes: string[];
+  label?: string;
   tag: string;
 }
 
@@ -48,6 +55,7 @@ export default function ElementInspector({
   enabled,
   children,
   onSelectSelector = undefined,
+  labelAttribute = undefined,
 }: ElementInspectorProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const [highlight, setHighlight] = useState<HighlightInfo | null>(null);
@@ -62,11 +70,39 @@ export default function ElementInspector({
     const container = containerRef.current;
     if (!container || !enabled) return undefined;
 
+    /** Maps a viewport rect into the container's own (unscaled) coordinates. */
+    const toContainerRect = (rect: DOMRect): DOMRect => {
+      const containerRect = container.getBoundingClientRect();
+      // The container may sit inside a CSS-scaled preview stage.
+      const scale = container.offsetWidth ? containerRect.width / container.offsetWidth : 1;
+      return new DOMRect(
+        (rect.x - containerRect.x) / scale,
+        (rect.y - containerRect.y) / scale,
+        rect.width / scale,
+        rect.height / scale,
+      );
+    };
+
     const handleMouseOver = (e: MouseEvent): void => {
       let target = e.target as HTMLElement;
       if (!container.contains(target)) return;
       if (target === container) {
         setHighlight(null);
+        return;
+      }
+
+      if (labelAttribute) {
+        const labelled = target.closest<HTMLElement>(`[${labelAttribute}]`);
+        if (!labelled || !container.contains(labelled)) {
+          setHighlight(null);
+          return;
+        }
+        setHighlight({
+          rect: toContainerRect(labelled.getBoundingClientRect()),
+          classes: [],
+          label: labelled.getAttribute(labelAttribute) ?? '',
+          tag: labelled.tagName.toLowerCase(),
+        });
         return;
       }
 
@@ -81,13 +117,9 @@ export default function ElementInspector({
         return;
       }
 
-      const classes = getProductNamePrefixedClasses(target);
-      const rect = target.getBoundingClientRect();
-      const containerRect = container.getBoundingClientRect();
-
       setHighlight({
-        rect: new DOMRect(rect.x - containerRect.x, rect.y - containerRect.y, rect.width, rect.height),
-        classes,
+        rect: toContainerRect(target.getBoundingClientRect()),
+        classes: getProductNamePrefixedClasses(target),
         tag: target.tagName.toLowerCase(),
       });
     };
@@ -133,7 +165,9 @@ export default function ElementInspector({
 
     container.addEventListener('mouseover', handleMouseOver);
     container.addEventListener('mouseout', handleMouseOut);
-    container.addEventListener('click', handleClick, true);
+    if (!labelAttribute) {
+      container.addEventListener('click', handleClick, true);
+    }
 
     return () => {
       container.removeEventListener('mouseover', handleMouseOver);
@@ -142,7 +176,7 @@ export default function ElementInspector({
       setHighlight(null);
       setCopiedText(null);
     };
-  }, [enabled]);
+  }, [enabled, labelAttribute]);
 
   return (
     <Box
@@ -150,7 +184,7 @@ export default function ElementInspector({
       sx={{
         position: 'relative',
         height: '100%',
-        cursor: enabled ? 'crosshair' : 'default',
+        cursor: enabled && !labelAttribute ? 'crosshair' : 'default',
       }}
     >
       {children}
@@ -193,11 +227,17 @@ export default function ElementInspector({
             }}
           >
             <Typography component="span" sx={{fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 500}}>
-              <span style={{color: '#94a3b8'}}>{`<${highlight.tag}>`}</span>
-              {highlight.classes.length > 0 ? (
-                <span style={{color: '#7dd3fc', marginLeft: 6}}>.{highlight.classes.join(' .')}</span>
+              {highlight.label !== undefined ? (
+                <span style={{color: '#7dd3fc'}}>{highlight.label}</span>
               ) : (
-                <span style={{color: '#94a3b8', marginLeft: 6, fontStyle: 'italic'}}>no classes</span>
+                <>
+                  <span style={{color: '#94a3b8'}}>{`<${highlight.tag}>`}</span>
+                  {highlight.classes.length > 0 ? (
+                    <span style={{color: '#7dd3fc', marginLeft: 6}}>.{highlight.classes.join(' .')}</span>
+                  ) : (
+                    <span style={{color: '#94a3b8', marginLeft: 6, fontStyle: 'italic'}}>no classes</span>
+                  )}
+                </>
               )}
             </Typography>
           </Box>

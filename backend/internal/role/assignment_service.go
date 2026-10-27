@@ -20,6 +20,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -95,16 +96,11 @@ func (as *roleAssignmentService) GetRoleAssignmentsByType(ctx context.Context, i
 		return nil, &ErrorMissingRoleID
 	}
 
-	exists, err := as.roleStore.IsRoleExist(ctx, id)
-	if err != nil {
-		logger.Error(ctx, "Failed to check role existence", log.String("id", id), log.Error(err))
-		return nil, &tidcommon.InternalServerError
-	}
-	if !exists {
-		logger.Debug(ctx, "Role not found", log.String("id", id))
-		return nil, &ErrorRoleNotFound
+	if _, svcErr := loadRoleForAction(ctx, as.roleStore, as.authzService, security.ActionReadRole, id); svcErr != nil {
+		return nil, svcErr
 	}
 
+	var err error
 	// user/app/agent filters require fetching all entity assignments and post-filtering by category.
 	if assigneeType == string(providers.EntityCategoryUser) ||
 		assigneeType == string(providers.EntityCategoryApp) ||
@@ -251,7 +247,7 @@ func (as *roleAssignmentService) AddAssignments(
 	ctx context.Context, id string, assignments []RoleAssignment) *tidcommon.ServiceError {
 	return as.modifyAssignments(ctx, id, assignments,
 		as.roleStore.AddAssignments,
-		"add assignments to role", "added assignments to role")
+		"add assignments to role", "added assignments to role", true)
 }
 
 // RemoveAssignments removes assignments from a role.
@@ -260,7 +256,7 @@ func (as *roleAssignmentService) RemoveAssignments(
 	ctx context.Context, id string, assignments []RoleAssignment) *tidcommon.ServiceError {
 	return as.modifyAssignments(ctx, id, assignments,
 		as.roleStore.RemoveAssignments,
-		"remove assignments from role", "removed assignments from role")
+		"remove assignments from role", "removed assignments from role", true)
 }
 
 // ValidateRemoveAssignment runs the checks RemoveAssignments runs.
@@ -270,6 +266,11 @@ func (as *roleAssignmentService) ValidateRemoveAssignment(ctx context.Context, i
 
 	if assigneeID == "" {
 		return nil, &ErrorMissingAssigneeID
+	}
+	if _, svcErr := loadRoleForAction(
+		ctx, as.roleStore, as.authzService, security.ActionUpdateRole, id,
+	); svcErr != nil {
+		return nil, svcErr
 	}
 	if svcErr := as.authzService.CanGrantMembership(ctx, sysauthz.PrincipalTypeRole, id); svcErr != nil {
 		return nil, svcErr
@@ -320,11 +321,19 @@ func (as *roleAssignmentService) modifyAssignments(
 	assignments []RoleAssignment,
 	storeOp func(context.Context, string, []RoleAssignment) error,
 	action, successAction string,
+	requireRoleAccess bool,
 ) *tidcommon.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, assignmentLoggerComponentName))
 	logger.Debug(ctx, "Modifying role assignments",
 		log.String("action", action), log.String("id", id))
 
+	if requireRoleAccess {
+		if _, svcErr := loadRoleForAction(
+			ctx, as.roleStore, as.authzService, security.ActionUpdateRole, id,
+		); svcErr != nil {
+			return svcErr
+		}
+	}
 	if svcErr := as.authzService.CanGrantMembership(ctx, sysauthz.PrincipalTypeRole, id); svcErr != nil {
 		return svcErr
 	}
@@ -373,7 +382,10 @@ func (as *roleAssignmentService) AddAssigneesToRoles(
 	var capturedSvcErr *tidcommon.ServiceError
 	err := as.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		for _, rid := range roleIDs {
-			if svcErr := as.AddAssignments(txCtx, rid, assignments); svcErr != nil {
+			// Assigning roles while provisioning an entity is part of creating it, not managing the
+			// role, so only the grant guard applies: the caller must hold what the role confers.
+			if svcErr := as.modifyAssignments(txCtx, rid, assignments, as.roleStore.AddAssignments,
+				"add assignments to role", "added assignments to role", false); svcErr != nil {
 				capturedSvcErr = svcErr
 				return fmt.Errorf("failed to assign role %s: %s", rid, svcErr.Error.DefaultValue)
 			}

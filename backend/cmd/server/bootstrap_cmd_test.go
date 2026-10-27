@@ -49,6 +49,23 @@ func (suite *BootstrapCmdTestSuite) TestParseBootstrapOptions_FlagsWin() {
 	assert.Equal(suite.T(), "custom-password", os.Getenv("ADMIN_PASSWORD"))
 }
 
+func (suite *BootstrapCmdTestSuite) TestParseBootstrapOptions_ExportsIndexedRedirectURIs() {
+	_, err := parseBootstrapOptions("/tmp/test", []string{
+		"--admin-password", "custom-password",
+		"--console-redirect-uris", "https://localhost:5191/console",
+		"--admin-redirect-uris", " https://localhost:5192/admin , ,https://admin.example.com/admin",
+		"--account-redirect-uris", "https://localhost:5193/account",
+	})
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "https://localhost:5191/console", os.Getenv("CONSOLE_REDIRECT_URIS_0"))
+	assert.Equal(suite.T(), "https://localhost:5192/admin", os.Getenv("ADMIN_REDIRECT_URIS_0"))
+	assert.Equal(suite.T(), "https://admin.example.com/admin", os.Getenv("ADMIN_REDIRECT_URIS_1"))
+	assert.Equal(suite.T(), "https://localhost:5193/account", os.Getenv("ACCOUNT_REDIRECT_URIS_0"))
+	_, exists := os.LookupEnv("ADMIN_REDIRECT_URIS_2")
+	assert.False(suite.T(), exists)
+}
+
 func (suite *BootstrapCmdTestSuite) TestParseBootstrapOptions_EnvVarsWinOverDefaults() {
 	suite.T().Setenv("ADMIN_USERNAME", "env-admin")
 	suite.T().Setenv("ADMIN_PASSWORD", "env-password")

@@ -55,13 +55,16 @@ prepare:
 clean:
 	./build.sh clean $(OS) $(ARCH)
 
-build: build_frontend build_backend package_samples
+build: build_frontend build_backend build_cp_backend package_samples build_quickstart
 
 build_backend:
 	./build.sh build_backend $(OS) $(ARCH)
 
 build_cp_backend:
 	./build.sh build_cp_backend $(OS) $(ARCH)
+
+build_quickstart:
+	./build.sh build_quickstart $(OS) $(ARCH)
 
 build_frontend:
 	./build.sh build_frontend
@@ -74,6 +77,9 @@ package_samples:
 
 package_cp:
 	./build.sh package_cp $(OS) $(ARCH)
+
+package_quickstart:
+	./build.sh package_quickstart $(OS) $(ARCH)
 
 test:
 	./build.sh test $(OS) $(ARCH)
@@ -237,10 +243,12 @@ help:
 	@echo "  build                         - Build $(PRODUCT_NAME) (backend + frontend + samples)."
 	@echo "  build_backend                 - Build the backend Go application."
 	@echo "  build_cp_backend              - Build and package the Control Plane server (backend/cmd/cpserver)."
+	@echo "  build_quickstart              - Build and package a combined Control Plane + Data Plane quickstart, pre-wired together."
 	@echo "  build_frontend                - Build the frontend applications."
 	@echo "  build_docs                    - Build the documentation."
 	@echo "  package_samples               - Package sample applications."
 	@echo "  package_cp                    - Package the Control Plane server (assumes build_cp_backend already ran)."
+	@echo "  package_quickstart            - Package the combined quickstart (assumes build_backend and build_cp_backend already ran)."
 	@echo "  test_unit                     - Run unit tests."
 	@echo "  test_integration              - Run integration tests. Use RUN= for test filter, PACKAGE= for package filter."
 	@echo "  test_integration_cp           - Run the Control Plane integration tests. Needs build_backend and build_cp_backend first."
@@ -283,7 +291,7 @@ help:
 	@echo "  generate_i18n                 - Extract i18n messages and generate defaults.go."
 	@echo "  help                          - Show this help message."
 
-.PHONY: all prepare clean build build_backend build_cp_backend build_frontend build_docs package_samples package_cp run
+.PHONY: all prepare clean build build_backend build_cp_backend build_quickstart build_frontend build_docs package_samples package_cp package_quickstart run
 .PHONY: docker-build docker-build-latest docker-build-multiarch
 .PHONY: docker-build-multiarch-latest docker-build-multiarch-push
 .PHONY: test_unit test_integration test_integration_cp build_with_coverage build_with_coverage_only test

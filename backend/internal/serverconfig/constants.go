@@ -22,6 +22,12 @@ const (
 	ConfigNameAccountAccess ConfigName = "accountAccess"
 	// ConfigNameNotification is the configuration key for the notification defaults.
 	ConfigNameNotification ConfigName = "notification"
+	// ConfigNameAdminApp is the configuration key for the Admin App, served at
+	// /server-config/system-apps/admin.
+	ConfigNameAdminApp ConfigName = "adminApp"
+	// ConfigNameAccountApp is the configuration key for the Account App, served at
+	// /server-config/system-apps/account.
+	ConfigNameAccountApp ConfigName = "accountApp"
 )
 
 // supportedConfigNames lists all the supported server configuration names.
@@ -33,6 +39,8 @@ var supportedConfigNames = []ConfigName{
 	ConfigNameCSP,
 	ConfigNameAccountAccess,
 	ConfigNameNotification,
+	ConfigNameAdminApp,
+	ConfigNameAccountApp,
 }
 
 // IsValid reports whether the config name is one of the supported values.

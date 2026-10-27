@@ -99,6 +99,12 @@ const ThemeBuilderPage = lazy(() => import('@thunderid/configure-design').then((
 const ThemeCreatePage = lazy(() => import('@thunderid/configure-design').then((m) => ({default: m.ThemeCreatePage})));
 const FlowCreatePage = lazy(() => import('@thunderid/configure-flows').then((m) => ({default: m.FlowCreatePage})));
 const FlowsListPage = lazy(() => import('@thunderid/configure-flows').then((m) => ({default: m.FlowsListPage})));
+const AdminAppBuilderPage = lazy(() =>
+  import('@thunderid/configure-apps').then((m) => ({default: m.AdminAppBuilderPage})),
+);
+const AccountAppBuilderPage = lazy(() =>
+  import('@thunderid/configure-apps').then((m) => ({default: m.AccountAppBuilderPage})),
+);
 const CreateGroupPage = lazy(() => import('@thunderid/configure-groups').then((m) => ({default: m.CreateGroupPage})));
 const GroupEditPage = lazy(() => import('@thunderid/configure-groups').then((m) => ({default: m.GroupEditPage})));
 const GroupsListPage = lazy(() => import('@thunderid/configure-groups').then((m) => ({default: m.GroupsListPage})));
@@ -397,6 +403,18 @@ export default function App(): JSX.Element {
                   }
                 >
                   <Route index element={<ConnectionConfigureWizardPage />} />
+                </Route>
+                {/* The app builders take the full width, like the flow builder. */}
+                <Route
+                  path={`/${ROUTE_SEGMENTS.build}`}
+                  element={
+                    <ProtectedRoute>
+                      <DashboardLayout collapseSidebar />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route path={ROUTE_SEGMENTS.adminApp} element={<AdminAppBuilderPage />} />
+                  <Route path={ROUTE_SEGMENTS.accountApp} element={<AccountAppBuilderPage />} />
                 </Route>
                 <Route
                   path={RouteConfig.flows.detail(':flowId')}

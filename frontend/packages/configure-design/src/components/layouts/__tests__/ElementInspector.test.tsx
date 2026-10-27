@@ -893,4 +893,49 @@ describe('ElementInspector', () => {
       expect(onSelect).toHaveBeenCalledWith(`.${TEST_CN_PREFIX}Base`);
     });
   });
+
+  describe('component labels', () => {
+    it('labels the nearest element carrying the label attribute on hover', () => {
+      render(
+        <ElementInspector enabled labelAttribute="data-preview-component">
+          <div data-preview-component="<UserList />">
+            <span>Aiko Tanaka</span>
+          </div>
+        </ElementInspector>,
+      );
+
+      fireEvent.mouseOver(screen.getByText('Aiko Tanaka'));
+
+      expect(screen.getByText('<UserList />')).toBeTruthy();
+    });
+
+    it('shows nothing over content without a label', () => {
+      render(
+        <ElementInspector enabled labelAttribute="data-preview-component">
+          <span>Plain</span>
+        </ElementInspector>,
+      );
+
+      fireEvent.mouseOver(screen.getByText('Plain'));
+
+      expect(screen.queryByText(/</)).toBeNull();
+    });
+
+    it('leaves clicks to the content', () => {
+      const onClick = vi.fn();
+      const onSelect = vi.fn();
+      render(
+        <ElementInspector enabled labelAttribute="data-preview-component" onSelectSelector={onSelect}>
+          <button type="button" className={`${TEST_CN_PREFIX}Base`} onClick={onClick}>
+            Add
+          </button>
+        </ElementInspector>,
+      );
+
+      fireEvent.click(screen.getByText('Add'));
+
+      expect(onClick).toHaveBeenCalled();
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+  });
 });

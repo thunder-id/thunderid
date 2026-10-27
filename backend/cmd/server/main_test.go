@@ -485,17 +485,25 @@ func TestRegisterStaticFileHandlers(t *testing.T) {
 	logger := log.GetLogger()
 	tmpDir := t.TempDir()
 
-	// Create gate and console directories
+	// Create gate, console and admin app directories
 	gateDir := filepath.Join(tmpDir, "apps", "gate")
 	consoleDir := filepath.Join(tmpDir, "apps", "console")
+	adminDir := filepath.Join(tmpDir, "apps", "admin")
+	accountDir := filepath.Join(tmpDir, "apps", "account")
 	err := os.MkdirAll(gateDir, 0o750)
 	assert.NoError(t, err)
 	err = os.MkdirAll(consoleDir, 0o750)
+	assert.NoError(t, err)
+	err = os.MkdirAll(adminDir, 0o750)
+	assert.NoError(t, err)
+	err = os.MkdirAll(accountDir, 0o750)
 	assert.NoError(t, err)
 
 	// Create index.html files
 	requireWriteFile(t, filepath.Join(gateDir, "index.html"), []byte("gate app"))
 	requireWriteFile(t, filepath.Join(consoleDir, "index.html"), []byte("console app"))
+	requireWriteFile(t, filepath.Join(adminDir, "index.html"), []byte("admin app"))
+	requireWriteFile(t, filepath.Join(accountDir, "index.html"), []byte("account app"))
 
 	t.Run("registers handlers for existing directories", func(t *testing.T) {
 		mux := http.NewServeMux()
@@ -514,6 +522,20 @@ func TestRegisterStaticFileHandlers(t *testing.T) {
 		mux.ServeHTTP(rr, req)
 		assert.Equal(t, http.StatusOK, rr.Code)
 		assert.Contains(t, rr.Body.String(), "console app")
+
+		// Test admin app handler, including the SPA fallback for a client-side route
+		req = httptest.NewRequest(http.MethodGet, "/admin/users/u-1", nil)
+		rr = httptest.NewRecorder()
+		mux.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Body.String(), "admin app")
+
+		// Test account app handler, including the SPA fallback for a client-side route
+		req = httptest.NewRequest(http.MethodGet, "/account/security", nil)
+		rr = httptest.NewRecorder()
+		mux.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Body.String(), "account app")
 	})
 
 	t.Run("serves js files as application/javascript", func(t *testing.T) {
@@ -682,14 +704,14 @@ func runExitHelper(t *testing.T, envKey, testName string) {
 
 func TestAccessLogExcludePaths(t *testing.T) {
 	// The frontend prefixes are always present, even with no configured extras.
-	assert.Equal(t, []string{"/gate/", "/console/"}, accessLogExcludePaths(nil))
+	assert.Equal(t, []string{"/gate/", "/console/", "/admin/", "/account/"}, accessLogExcludePaths(nil))
 
 	// Configured prefixes are appended after the built-in frontend prefixes.
-	assert.Equal(t, []string{"/gate/", "/console/", "/health/", "/metrics/"},
+	assert.Equal(t, []string{"/gate/", "/console/", "/admin/", "/account/", "/health/", "/metrics/"},
 		accessLogExcludePaths([]string{"/health/", "/metrics/"}))
 
 	// Empty and root ("/") entries are dropped so they cannot match every request
 	// and silently disable all access logging.
-	assert.Equal(t, []string{"/gate/", "/console/", "/health/"},
+	assert.Equal(t, []string{"/gate/", "/console/", "/admin/", "/account/", "/health/"},
 		accessLogExcludePaths([]string{"", "/health/", "/"}))
 }

@@ -282,6 +282,18 @@ jobs:
           path: target/out/.build/thunderid-cp
           if-no-files-found: error
 
+      - name: 🔨 Build Quickstart Pack with Coverage Instrumentation
+        run: |
+          set -e
+          ENABLE_COVERAGE=true ./build.sh build_quickstart $(go env GOOS) $(go env GOARCH)
+
+      - name: 📦 Upload Quickstart Pack
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quickstart-pack
+          path: target/dist/thunderid-quickstart-*.zip
+          if-no-files-found: error
+
   test-backend-unit:
     name: 🧪 Backend Unit Tests
     needs: [preflight]
@@ -1102,7 +1114,9 @@ jobs:
     defaults:
       run:
         shell: bash
-    # Provisions and runs against two servers in sequence (core, then a fresh one for @wayfinder).
+    # Provisions and runs against two quickstart packs in sequence (core, then a fresh one for
+    # @wayfinder). Each pack is a Control Plane, the Data Plane it manages and auth-dp; the specs
+    # drive the Data Plane on port 8090.
     timeout-minutes: 40
     steps:
       - name: 🔧 Install Required OS Utilities
@@ -1125,10 +1139,10 @@ jobs:
           corepack prepare pnpm@11.21.0 --activate
           pnpm --version
 
-      - name: 📥 Download Built Distribution
+      - name: 📥 Download Quickstart Pack
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: product-distribution
+          name: quickstart-pack
           path: target/dist/
 
       - name: 📥 Download Built Sample App
@@ -1137,13 +1151,13 @@ jobs:
           name: sample-app-react-sdk
           path: target/dist/
 
-      - name: 📂 Extract Server to E2E
+      - name: 📂 Extract Quickstart Pack to E2E
         run: |
           mkdir -p tests/e2e/server
-          unzip target/dist/$PRODUCT_NAME_LOWER-*.zip -d tests/e2e/server
+          unzip target/dist/$PRODUCT_NAME_LOWER-quickstart-*.zip -d tests/e2e/server
           cd tests/e2e/server
           # Find the extracted folder (name includes version and arch) and move its contents to the root of tests/e2e/server
-          EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "$PRODUCT_NAME_LOWER-*" | head -n 1)
+          EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "$PRODUCT_NAME_LOWER-quickstart-*" | head -n 1)
           if [ -n "$EXTRACTED_DIR" ]; then
             mv "$EXTRACTED_DIR"/* .
             rmdir "$EXTRACTED_DIR"
@@ -1157,8 +1171,9 @@ jobs:
           SECRET_ADMIN_PASSWORD: ${{ secrets.PLAYWRIGHT_ADMIN_PASSWORD }}
         run: |
           # Resolve a single admin username/password pair (Secret > Variable > defaults.env) once,
-          # up front, and reuse it for server bootstrap, token acquisition, and the Playwright run
-          # below, instead of each resolving (or hardcoding) its own copy.
+          # up front, and reuse it for the pack's Service Desk Admin (the account the specs sign in
+          # with), token acquisition, and the Playwright run below, instead of each resolving (or
+          # hardcoding) its own copy.
           DEFAULT_ADMIN_USERNAME=$(grep '^ADMIN_USERNAME=' tests/e2e/defaults.env | cut -d= -f2-)
           DEFAULT_ADMIN_PASSWORD=$(grep '^ADMIN_PASSWORD=' tests/e2e/defaults.env | cut -d= -f2-)
           ADMIN_USERNAME="${SECRET_ADMIN_USERNAME:-${VAR_ADMIN_USERNAME:-$DEFAULT_ADMIN_USERNAME}}"
@@ -1182,7 +1197,7 @@ jobs:
           # Redirect the backend's Google and GitHub endpoints to the mock servers the social login
           # specs start, mirroring what run-e2e.sh does locally. Else the specs would use the real
           # accounts.google.com/github.com.
-          cat >> tests/e2e/server/deployment.yaml <<EOF
+          cat >> tests/e2e/server/dp/deployment.yaml <<EOF
 
           identity_provider:
             google_base_url: "$DEFAULT_MOCK_GOOGLE_BASE_URL"
@@ -1191,7 +1206,9 @@ jobs:
           echo "✅ Pointed identity provider endpoints at the mock servers"
 
           cd tests/e2e/server
-          ./setup.sh
+          # auth-dp's admin only signs into the Control Plane, which the specs do not drive; the
+          # Service Desk Admin is the account that signs into the Data Plane's Admin Console.
+          SERVICE_DESK_USERNAME="$ADMIN_USERNAME" SERVICE_DESK_PASSWORD="$ADMIN_PASSWORD" ./setup.sh
           # In container jobs, GitHub Actions reaps a step's descendant processes when the step's
           # shell exits. `setsid` runs start.sh in a new session detached from the shell so it
           # survives the step boundary and remains up when the Playwright test step runs later.
@@ -1224,6 +1241,7 @@ jobs:
         with:
           admin-username: ${{ env.ADMIN_USERNAME }}
           admin-password: ${{ env.ADMIN_PASSWORD }}
+          client-id: ADMIN_CONSOLE
 
       - name: 📦 Import Vanilla Sample Resources
         uses: ./.github/actions/import-declarative-config
@@ -1279,14 +1297,16 @@ jobs:
           # Kill the start.sh wrapper process
           kill $SERVER_PID 2>/dev/null || true
 
-          # Also kill any process still listening on port 8090
-          # (start.sh backgrounds the server binary, so killing start.sh
-          # may leave the server process running as an orphan)
+          # Also kill any process still listening on the pack's ports
+          # (start.sh backgrounds the server binaries, so killing start.sh
+          # may leave them running as orphans)
           sleep 2
-          if lsof -ti tcp:8090 >/dev/null 2>&1; then
-            echo "Port 8090 still in use, killing remaining processes..."
-            kill -9 $(lsof -ti tcp:8090) 2>/dev/null || true
-          fi
+          for port in 8090 8091 8095; do
+            if lsof -ti tcp:$port >/dev/null 2>&1; then
+              echo "Port $port still in use, killing remaining processes..."
+              kill -9 $(lsof -ti tcp:$port) 2>/dev/null || true
+            fi
+          done
 
           # Wait for port to be fully released
           sleep 3
@@ -1387,7 +1407,7 @@ jobs:
 
       # Pull requests run the Chromium project only, and the merge queue runs all
       # three browsers, so nothing reaches main without the full matrix. On a pull
-      # request that is 74 of the 187 tests.
+      # request that is a third of the runs.
 
       # The Wayfinder specs (tagged @wayfinder) import a config bundle that replaces the
       # server-wide CORS allowlist and default resource server (full-replace import semantics),
@@ -1443,25 +1463,27 @@ jobs:
         run: |
           kill $SERVER_PID 2>/dev/null || true
           sleep 2
-          if lsof -ti tcp:8090 >/dev/null 2>&1; then
-            kill -9 $(lsof -ti tcp:8090) 2>/dev/null || true
-          fi
+          for port in 8090 8091 8095; do
+            if lsof -ti tcp:$port >/dev/null 2>&1; then
+              kill -9 $(lsof -ti tcp:$port) 2>/dev/null || true
+            fi
+          done
           sleep 3
           rm -rf tests/e2e/server
 
-      # A fresh server for the Wayfinder specs: same distribution zip, re-extracted so the CORS
-      # allowlist and default resource server the previous phase set are gone, and importing only
-      # the E2E admin app so there is no `Customer` user type for the Wayfinder bundle's own
+      # A fresh pack for the Wayfinder specs: same zip, re-extracted so the CORS allowlist and
+      # default resource server the previous phase set are gone, and importing only the E2E admin
+      # app and the Wayfinder bundle so there is no `Customer` user type for the bundle's own
       # `Customer` user type to collide with. Runs regardless of the core phase's result - a
       # different server, so the core phase's failure tells us nothing about this one (mirrors
       # run-e2e.sh's run_phase, which does the same for the same reason).
-      - name: 📂 Extract Fresh Server for Wayfinder Tests
+      - name: 📂 Extract Fresh Quickstart Pack for Wayfinder Tests
         if: ${{ !cancelled() }}
         run: |
           mkdir -p tests/e2e/server
-          unzip target/dist/$PRODUCT_NAME_LOWER-*.zip -d tests/e2e/server
+          unzip target/dist/$PRODUCT_NAME_LOWER-quickstart-*.zip -d tests/e2e/server
           cd tests/e2e/server
-          EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "$PRODUCT_NAME_LOWER-*" | head -n 1)
+          EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "$PRODUCT_NAME_LOWER-quickstart-*" | head -n 1)
           if [ -n "$EXTRACTED_DIR" ]; then
             mv "$EXTRACTED_DIR"/* .
             rmdir "$EXTRACTED_DIR"
@@ -1472,7 +1494,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           cd tests/e2e/server
-          ./setup.sh
+          SERVICE_DESK_USERNAME="$ADMIN_USERNAME" SERVICE_DESK_PASSWORD="$ADMIN_PASSWORD" ./setup.sh
           setsid ./start.sh > "$GITHUB_WORKSPACE/server-wayfinder.log" 2>&1 < /dev/null &
           SERVER_PID=$!
           echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
@@ -1499,6 +1521,7 @@ jobs:
         with:
           admin-username: ${{ env.ADMIN_USERNAME }}
           admin-password: ${{ env.ADMIN_PASSWORD }}
+          client-id: ADMIN_CONSOLE
 
       - name: 📦 Import E2E Admin App (Wayfinder)
         if: ${{ !cancelled() }}
@@ -1507,6 +1530,27 @@ jobs:
           config-path: tests/e2e/thunderid-config.yaml
           admin-token: ${{ steps.admin-token-wayfinder.outputs.token }}
           label: E2E admin app
+
+      - name: 📦 Import Wayfinder Bundle
+        if: ${{ !cancelled() }}
+        uses: ./.github/actions/import-declarative-config
+        with:
+          config-path: samples/apps/wayfinder-sample/thunderid-config/redirect/thunderid-config.yaml
+          admin-token: ${{ steps.admin-token-wayfinder.outputs.token }}
+          label: Wayfinder bundle
+          variables-json: |
+            {
+              "WAYFINDER_CLIENT_ID": "WAYFINDER",
+              "AGENT_CLIENT_ID": "WAYFINDER-CONCIERGE",
+              "AGENT_CLIENT_SECRET": "wayfinder-agent-secret",
+              "UPGRADE_AGENT_CLIENT_ID": "WAYFINDER-UPGRADE-AGENT",
+              "UPGRADE_AGENT_CLIENT_SECRET": "wayfinder-upgrade-agent-secret",
+              "JOHN_DOE_PASSWORD": "john.doe",
+              "JANE_SMITH_PASSWORD": "jane.smith",
+              "ALEX_CARTER_PASSWORD": "alex.carter",
+              "SMS_SENDER_ID": "sender-id-value",
+              "CIBA_LOGIN_HINT_ATTRIBUTE": "email"
+            }
 
       - name: 🚀 Start Wayfinder Sample App
         if: ${{ !cancelled() }}
@@ -1578,7 +1622,7 @@ jobs:
           fi
         working-directory: tests/e2e
         env:
-          # wayfinder-sample-setup.spec.ts and tests/wayfinder/** run through their own dedicated
+          # wayfinder-bundle.spec.ts and tests/wayfinder/** run through their own dedicated
           # projects (see playwright.config.ts), not the plain chromium/firefox/webkit ones, so PRs
           # name the Wayfinder projects explicitly (chromium's tryout project plus the two
           # browser-agnostic ones) instead of a 'chromium' or '*wayfinder-*' filter - the former

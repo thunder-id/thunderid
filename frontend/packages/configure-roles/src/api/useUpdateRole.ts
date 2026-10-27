@@ -3,7 +3,7 @@
 
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {AdministrationModes, useAdministrationOperation, useConfig, useToast} from '@thunderid/contexts';
-import {useThunderID} from '@thunderid/react';
+import {RoleQueryKeys as SdkRoleQueryKeys, useThunderID} from '@thunderid/react';
 import {useTranslation} from 'react-i18next';
 import RoleQueryKeys from '../constants/role-query-keys';
 import type {UpdateRoleRequest} from '../models/requests';
@@ -25,7 +25,7 @@ export interface UpdateRoleVariables {
  * @returns TanStack Query mutation object for updating roles
  */
 export default function useUpdateRole(): UseMutationResult<Role, Error, UpdateRoleVariables> {
-  const {http} = useThunderID();
+  const {http, invalidator} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient: ReturnType<typeof useQueryClient> = useQueryClient();
   const {t} = useTranslation('roles');
@@ -48,6 +48,8 @@ export default function useUpdateRole(): UseMutationResult<Role, Error, UpdateRo
       return updateRoleViaFlow(client, getServerUrl(), roleId, data, current);
     },
     onSuccess: (data, {roleId}) => {
+      // Lists the SDK's admin components render keep their own state, so they refresh on this too.
+      invalidator?.invalidate([SdkRoleQueryKeys.ROLES]);
       queryClient.setQueryData<Role>([RoleQueryKeys.ROLE, roleId], (old) =>
         old ? {...old, name: data.name, description: data.description, permissions: data.permissions ?? []} : data,
       );

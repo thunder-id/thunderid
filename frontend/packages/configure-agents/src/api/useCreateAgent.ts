@@ -3,7 +3,7 @@
 
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig, useToast} from '@thunderid/contexts';
-import {useThunderID} from '@thunderid/react';
+import {AgentQueryKeys as SdkAgentQueryKeys, useThunderID} from '@thunderid/react';
 import {useTranslation} from 'react-i18next';
 import AgentQueryKeys from '../constants/agent-query-keys';
 import type {Agent, CreateAgentRequest} from '../models/agent';
@@ -12,7 +12,7 @@ import type {Agent, CreateAgentRequest} from '../models/agent';
  * Creates an agent with the agents management API, without running an onboarding flow.
  */
 export default function useCreateAgent(): UseMutationResult<Agent, Error, CreateAgentRequest> {
-  const {http} = useThunderID();
+  const {http, invalidator} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient = useQueryClient();
   const {t} = useTranslation('agents');
@@ -30,6 +30,8 @@ export default function useCreateAgent(): UseMutationResult<Agent, Error, Create
       return response.data;
     },
     onSuccess: () => {
+      // Lists the SDK's admin components render keep their own state, so they refresh on this too.
+      invalidator?.invalidate([SdkAgentQueryKeys.AGENTS]);
       queryClient.invalidateQueries({queryKey: [AgentQueryKeys.AGENTS]}).catch(() => undefined);
       showToast(t('create.success'), 'success');
     },

@@ -9,7 +9,8 @@ import RoleQueryKeys from '../../constants/role-query-keys';
 import useDeleteRole from '../useDeleteRole';
 
 // Mock the dependencies
-vi.mock('@thunderid/react', () => ({
+vi.mock('@thunderid/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/react')>()),
   useThunderID: vi.fn(),
 }));
 
@@ -32,6 +33,7 @@ const {useConfig, useToast} = await import('@thunderid/contexts');
 
 describe('useDeleteRole', () => {
   let mockHttpRequest: ReturnType<typeof vi.fn>;
+  const mockInvalidate = vi.fn();
   let mockGetServerUrl: ReturnType<typeof vi.fn>;
   let mockShowToast: ReturnType<typeof vi.fn>;
 
@@ -45,6 +47,7 @@ describe('useDeleteRole', () => {
       http: {
         request: mockHttpRequest,
       },
+      invalidator: {invalidate: mockInvalidate},
     } as unknown as ReturnType<typeof useThunderID>);
 
     vi.mocked(useConfig).mockReturnValue({
@@ -88,6 +91,19 @@ describe('useDeleteRole', () => {
     expect(result.current.data).toBeUndefined();
     expect(result.current.error).toBeNull();
     expect(result.current.isPending).toBe(false);
+  });
+
+  it('refreshes the lists the SDK renders', async () => {
+    mockHttpRequest.mockResolvedValueOnce(undefined);
+    const {result} = renderHook(() => useDeleteRole());
+
+    result.current.mutate('role-1');
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(mockInvalidate).toHaveBeenCalledWith(['roles']);
   });
 
   it('should make correct API call with role ID', async () => {

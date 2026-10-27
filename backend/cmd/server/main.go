@@ -145,7 +145,8 @@ func main() {
 	// Start server in a goroutine
 	go func() {
 		startupDuration := time.Since(startupStartedAt)
-		logger.Info(ctx, "ThunderID Server started", log.String("startup_time", startupDuration.String()))
+		logger.Info(ctx, "ThunderID Server started",
+			log.String("mode", string(config.GetServerMode())), log.String("startup_time", startupDuration.String()))
 		if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
 			logger.Fatal(ctx, "Failed to serve requests", log.Error(err))
 		}
@@ -229,10 +230,10 @@ func loadCertConfig(ctx context.Context, logger *log.Logger, runtimeSvc common.T
 }
 
 // accessLogExcludePaths returns the path prefixes excluded from the access log: the always-excluded
-// Gate and Console frontend paths plus any configured extras. Empty and root ("/") entries are
+// Gate, Console, Admin App and Account App frontend paths plus any configured extras. Empty and root ("/") entries are
 // dropped because they match every request and would silently disable all access logging.
 func accessLogExcludePaths(configured []string) []string {
-	paths := []string{"/gate/", "/console/"}
+	paths := []string{"/gate/", "/console/", "/admin/", "/account/"}
 	for _, prefix := range configured {
 		if prefix != "" && prefix != "/" {
 			paths = append(paths, prefix)
@@ -398,6 +399,27 @@ func registerStaticFileHandlers(ctx context.Context, logger *log.Logger, mux *ht
 		logger.Debug(ctx, "Registering static file handler for Console application",
 			log.String("path", "/console/"), log.String("directory", consoleDir))
 		mux.Handle("/console/", handler)
+	}
+
+	// Serve the Admin App from /admin. Only the data plane serves it: its pages run flows, such as
+	// inviting a user, that the control plane does not execute.
+	adminDir := path.Join(serverHome, "apps", "admin")
+	if handler, err := createStaticFileHandler("/admin/", adminDir, logger); err != nil {
+		logger.Warn(ctx, "Admin App not registered", log.String("directory", adminDir), log.Error(err))
+	} else {
+		logger.Debug(ctx, "Registering static file handler for Admin App",
+			log.String("path", "/admin/"), log.String("directory", adminDir))
+		mux.Handle("/admin/", handler)
+	}
+
+	// Serve the Account App from /account. Like the Admin App, only the data plane serves it.
+	accountDir := path.Join(serverHome, "apps", "account")
+	if handler, err := createStaticFileHandler("/account/", accountDir, logger); err != nil {
+		logger.Warn(ctx, "Account App not registered", log.String("directory", accountDir), log.Error(err))
+	} else {
+		logger.Debug(ctx, "Registering static file handler for Account App",
+			log.String("path", "/account/"), log.String("directory", accountDir))
+		mux.Handle("/account/", handler)
 	}
 }
 

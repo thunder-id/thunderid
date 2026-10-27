@@ -7,7 +7,6 @@ export {default as useCreateRole} from './api/useCreateRole';
 export {default as useDeleteRole} from './api/useDeleteRole';
 export {default as useGetRole} from './api/useGetRole';
 export {default as useGetRoleAssignments} from './api/useGetRoleAssignments';
-export {default as useGetRoles} from './api/useGetRoles';
 export {default as useRemoveRoleAssignment} from './api/useRemoveRoleAssignment';
 export {default as useUpdateRole} from './api/useUpdateRole';
 

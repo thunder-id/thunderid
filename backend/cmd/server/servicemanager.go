@@ -102,6 +102,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm/pki"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/systemapps"
 
 	"github.com/thunder-id/thunderid/internal/system/mcp"
 	"github.com/thunder-id/thunderid/internal/system/observability"
@@ -250,6 +251,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		serverconfig.ConfigNameCSP:                   csp.PolicyHandler{},
 		serverconfig.ConfigNameAccountAccess:         identitygovernance.NewAccountAccessHandler(governanceCfg),
 		serverconfig.ConfigNameNotification:          notificationConfigHandler,
+		serverconfig.ConfigNameAdminApp:              systemapps.NewAppConfigHandler(systemapps.AppTypeAdmin),
+		serverconfig.ConfigNameAccountApp:            systemapps.NewAppConfigHandler(systemapps.AppTypeAccount),
 	}
 	serverConfigService, serverConfigExporter, err := serverconfig.Initialize(mux, cacheManager, serverConfigHandlers,
 		observabilitySvc)

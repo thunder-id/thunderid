@@ -73,6 +73,10 @@ func parseBootstrapOptions(serverHome string, args []string) (bootstrap.Options,
 	adminPassword := fs.String("admin-password", "", "Password for the default admin user")
 	consoleRedirectURIs := fs.String("console-redirect-uris", "",
 		"Comma-separated extra redirect URIs for the Console application")
+	adminRedirectURIs := fs.String("admin-redirect-uris", "",
+		"Comma-separated extra redirect URIs for the Admin App")
+	accountRedirectURIs := fs.String("account-redirect-uris", "",
+		"Comma-separated extra redirect URIs for the Account App")
 	defaultsDir := fs.String("defaults", "", "Path to the bootstrap resource definitions directory")
 	// Flags are best-effort; unknown flags must not abort bootstrap.
 	_ = fs.Parse(args)
@@ -88,21 +92,28 @@ func parseBootstrapOptions(serverHome string, args []string) (bootstrap.Options,
 
 	setEnv("PUBLIC_URL", firstNonEmpty(os.Getenv("PUBLIC_URL"),
 		config.GetServerURL(&config.GetServerRuntime().Config.Server)))
-	// The bundle ranges over CONSOLE_REDIRECT_URIS, which buildArrayFromEnvVars
-	// reconstructs from the indexed CONSOLE_REDIRECT_URIS_0, _1, ... variables.
-	idx := 0
-	for _, uri := range strings.Split(*consoleRedirectURIs, ",") {
-		if uri = strings.TrimSpace(uri); uri != "" {
-			setEnv(fmt.Sprintf("CONSOLE_REDIRECT_URIS_%d", idx), uri)
-			idx++
-		}
-	}
+	// The bundle ranges over CONSOLE_REDIRECT_URIS, ADMIN_REDIRECT_URIS and ACCOUNT_REDIRECT_URIS, which
+	// buildArrayFromEnvVars reconstructs from the indexed <NAME>_0, _1, ... variables.
+	setIndexedEnv("CONSOLE_REDIRECT_URIS", *consoleRedirectURIs)
+	setIndexedEnv("ADMIN_REDIRECT_URIS", *adminRedirectURIs)
+	setIndexedEnv("ACCOUNT_REDIRECT_URIS", *accountRedirectURIs)
 
 	dir := *defaultsDir
 	if dir == "" {
 		dir = path.Join(serverHome, "bootstrap")
 	}
 	return bootstrap.Options{DefaultsDir: dir}, nil
+}
+
+// setIndexedEnv exports each non-empty entry of a comma-separated list as <name>_0, <name>_1, ...
+func setIndexedEnv(name, csv string) {
+	idx := 0
+	for _, value := range strings.Split(csv, ",") {
+		if value = strings.TrimSpace(value); value != "" {
+			setEnv(fmt.Sprintf("%s_%d", name, idx), value)
+			idx++
+		}
+	}
 }
 
 // setEnv sets an environment variable, ignoring the (practically impossible) error

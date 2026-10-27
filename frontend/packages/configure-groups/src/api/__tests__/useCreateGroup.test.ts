@@ -9,6 +9,7 @@ import type {CreateGroupRequest} from '../../models/requests';
 
 const mockHttpRequest = vi.fn();
 vi.mock('@thunderid/react', () => ({
+  GroupQueryKeys: {GROUPS: 'groups'},
   useThunderID: () => ({
     http: {request: mockHttpRequest},
   }),

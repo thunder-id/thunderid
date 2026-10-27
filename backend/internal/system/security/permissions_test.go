@@ -213,6 +213,13 @@ func (s *SecurityContextTestSuite) TestResolveActionPermission() {
 		{name: "DeleteGroup", action: ActionDeleteGroup, wantPerm: p.Group},
 		{name: "ListGroups", action: ActionListGroups, wantPerm: p.GroupView},
 
+		// Role actions.
+		{name: "CreateRole", action: ActionCreateRole, wantPerm: p.Role},
+		{name: "ReadRole", action: ActionReadRole, wantPerm: p.RoleView},
+		{name: "UpdateRole", action: ActionUpdateRole, wantPerm: p.Role},
+		{name: "DeleteRole", action: ActionDeleteRole, wantPerm: p.Role},
+		{name: "ListRoles", action: ActionListRoles, wantPerm: p.RoleView},
+
 		// Unmapped action falls back to Root (system).
 		{name: "UnmappedAction_FallsBackToSystem", action: Action("custom:unknown"), wantPerm: p.Root},
 		{name: "EmptyAction_FallsBackToSystem", action: Action(""), wantPerm: p.Root},
@@ -269,6 +276,8 @@ func TestInitSystemPermissions_EmptyHandle(t *testing.T) {
 	assert.Equal(t, "system:user:view", p.UserView)
 	assert.Equal(t, "system:group", p.Group)
 	assert.Equal(t, "system:group:view", p.GroupView)
+	assert.Equal(t, "system:role", p.Role)
+	assert.Equal(t, "system:role:view", p.RoleView)
 	assert.Equal(t, "system:usertype", p.UserType)
 	assert.Equal(t, "system:usertype:view", p.UserTypeView)
 	assert.Equal(t, "system:agenttype", p.AgentType)
@@ -287,6 +296,7 @@ func TestInitSystemPermissions_NonEmptyHandle(t *testing.T) {
 	assert.Equal(t, "mgmt:system:user:view", p.UserView)
 	assert.Equal(t, "mgmt:system:group", p.Group)
 	assert.Equal(t, "mgmt:system:group:view", p.GroupView)
+	assert.Equal(t, "mgmt:system:role:view", p.RoleView)
 	assert.Equal(t, "mgmt:system:usertype", p.UserType)
 	assert.Equal(t, "mgmt:system:usertype:view", p.UserTypeView)
 	assert.Equal(t, "mgmt:system:agenttype", p.AgentType)
@@ -342,6 +352,15 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		{name: "POST /users exact", method: http.MethodPost, path: "/users", wantPerm: p.User},
 		{name: "GET /groups exact", method: http.MethodGet, path: "/groups", wantPerm: p.GroupView},
 		{name: "POST /groups exact", method: http.MethodPost, path: "/groups", wantPerm: p.Group},
+		{name: "GET /roles exact", method: http.MethodGet, path: "/roles", wantPerm: p.RoleView},
+		{name: "POST /roles exact", method: http.MethodPost, path: "/roles", wantPerm: p.Role},
+		{name: "GET /roles/{id}/assignments", method: http.MethodGet, path: "/roles/r-1/assignments", wantPerm: p.RoleView},
+		{
+			name:   "POST /roles/{id}/assignments/add",
+			method: http.MethodPost, path: "/roles/r-1/assignments/add", wantPerm: p.Role,
+		},
+		{name: "PUT /roles/{id}", method: http.MethodPut, path: "/roles/r-1", wantPerm: p.Role},
+		{name: "DELETE /roles/{id}", method: http.MethodDelete, path: "/roles/r-1", wantPerm: p.Role},
 
 		// ---- Notification template APIs ----
 		{
@@ -447,6 +466,14 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		{
 			name:   "Unmapped path falls back to system",
 			method: http.MethodGet, path: "/applications", wantPerm: p.Root,
+		},
+		{
+			name:   "GET a system app's configuration is open to any signed-in user",
+			method: http.MethodGet, path: "/server-config/system-apps/admin", wantPerm: "",
+		},
+		{
+			name:   "PUT a system app's configuration needs the root permission",
+			method: http.MethodPut, path: "/server-config/system-apps/admin", wantPerm: p.Root,
 		},
 		{name: "Root path falls back to system", method: http.MethodGet, path: "/", wantPerm: p.Root},
 		{

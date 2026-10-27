@@ -1,0 +1,73 @@
+# Quickstart-only: packaged into auth-dp alone. auth-dp exists only to sign operators into the
+# Control Plane's console, so this is the one application it carries: the CP console's OAuth2
+# client. The CONSOLE application every Data Plane bootstraps by default is stripped from auth-dp
+# at package time (see build.sh's package_quickstart), along with its own console UI.
+# CP_CONSOLE_URL is the Control Plane's console URL, exported by quickstart/setup.sh.
+resource_type: application
+id: 01900000-0000-7000-8000-0000000000f2
+name: Control Plane Console
+description: Sign-in client of the Control Plane console
+type: browser
+ouId: 01900000-0000-7000-8000-000000000001
+url: "{{ .CP_CONSOLE_URL }}"
+logoUrl: "avatar:shape=rounded,variant=anonymous_entity,content=cube,colors=0"
+authFlowId: 01900000-0000-7000-8000-000000000068
+registrationFlowId: 01900000-0000-7000-8000-000000000069
+isRegistrationFlowEnabled: false
+signOutFlowId: 01900000-0000-7000-8000-00000000006a
+recoveryFlowId: 01900000-0000-7000-8000-000000000070
+isRecoveryFlowEnabled: false
+allowedUserTypes:
+  - person
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: CP_CONSOLE
+      redirectUris:
+        - "{{ .CP_CONSOLE_URL }}"
+      postLogoutRedirectUris:
+        - "{{ .CP_CONSOLE_URL }}"
+      grantTypes:
+        - authorization_code
+        - refresh_token
+      responseTypes:
+        - code
+      pkceRequired: true
+      tokenEndpointAuthMethod: none
+      publicClient: true
+      token:
+        accessToken:
+          userConfig:
+            validityPeriod: 3600
+            attributes:
+              - given_name
+              - family_name
+              - email
+              - groups
+              - name
+              - ouId
+        idToken:
+          validityPeriod: 3600
+          userAttributes:
+            - given_name
+            - family_name
+            - email
+            - groups
+            - name
+            - ouId
+      scopeClaims:
+        profile:
+          - name
+          - given_name
+          - family_name
+          - picture
+        email:
+          - email
+          - email_verified
+        phone:
+          - phone_number
+          - phone_number_verified
+        group:
+          - groups
+        ou:
+          - ouId

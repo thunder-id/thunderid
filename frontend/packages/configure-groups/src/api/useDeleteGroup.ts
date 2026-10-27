@@ -3,7 +3,7 @@
 
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {AdministrationModes, useAdministrationOperation, useConfig, useToast} from '@thunderid/contexts';
-import {useThunderID} from '@thunderid/react';
+import {GroupQueryKeys as SdkGroupQueryKeys, useThunderID} from '@thunderid/react';
 import {useTranslation} from 'react-i18next';
 import GroupQueryKeys from '../constants/group-query-keys';
 import {deleteGroupNatively, deleteGroupViaFlow, type HttpLike} from '../utils/groupAdministrationFlow';
@@ -14,7 +14,7 @@ import {deleteGroupNatively, deleteGroupViaFlow, type HttpLike} from '../utils/g
  * @returns TanStack Query mutation object for deleting groups
  */
 export default function useDeleteGroup(): UseMutationResult<void, Error, string> {
-  const {http} = useThunderID();
+  const {http, invalidator} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient: ReturnType<typeof useQueryClient> = useQueryClient();
   const {t} = useTranslation('groups');
@@ -36,6 +36,8 @@ export default function useDeleteGroup(): UseMutationResult<void, Error, string>
       await deleteGroupViaFlow(client, getServerUrl(), groupId);
     },
     onSuccess: (_data, groupId) => {
+      // Lists the SDK's admin components render keep their own state, so they refresh on this too.
+      invalidator?.invalidate([SdkGroupQueryKeys.GROUPS]);
       queryClient.removeQueries({queryKey: [GroupQueryKeys.GROUP, groupId]});
       queryClient.invalidateQueries({queryKey: [GroupQueryKeys.GROUPS]}).catch(() => {
         // Ignore invalidation errors

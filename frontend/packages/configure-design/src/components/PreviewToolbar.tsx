@@ -23,12 +23,16 @@ export interface PreviewToolbarProps {
   setZoom: (z: number) => void;
   zoomIdx: number;
   showDimensions?: boolean;
+  /** Extra content rendered at the start of the toolbar (before a divider). */
+  startContent?: ReactNode;
   /** Extra content rendered at the end of the toolbar (after a divider). */
   extraContent?: ReactNode;
   /** Whether to show viewport switching controls. Defaults to true. */
   showViewportControls?: boolean;
   /** Whether to show zoom controls. Defaults to true. */
   showZoomControls?: boolean;
+  /** Whether to show the color scheme switch. Defaults to true. */
+  showColorSchemeControls?: boolean;
 }
 
 const ZOOM_STEPS = [25, 50, 75, 100, 125, 150];
@@ -54,9 +58,11 @@ export default function PreviewToolbar({
   zoom,
   setZoom,
   zoomIdx,
+  startContent = undefined,
   extraContent = undefined,
   showViewportControls = true,
   showZoomControls = true,
+  showColorSchemeControls = true,
 }: PreviewToolbarProps): JSX.Element {
   const {t} = useTranslation('design');
   const {mode, systemMode} = useColorScheme();
@@ -125,6 +131,13 @@ export default function PreviewToolbar({
         whiteSpace: 'nowrap',
       }}
     >
+      {startContent && (
+        <>
+          {startContent}
+          <ToolbarDivider />
+        </>
+      )}
+
       {/* Viewport */}
       {showViewportControls && (
         <>
@@ -177,49 +190,51 @@ export default function PreviewToolbar({
       )}
 
       {/* Color scheme 3-way switch */}
-      <Box sx={{display: 'flex', alignItems: 'center', gap: 0.75}}>
-        <Typography
-          variant="caption"
-          sx={{fontSize: '0.7rem', color: 'text.secondary', userSelect: 'none', lineHeight: 1}}
-        >
-          {t('common.preview.toolbar.fields.color_scheme.label', 'Color scheme')}
-        </Typography>
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            border: '1px solid',
-            borderColor: 'divider',
-            borderRadius: 1,
-            overflow: 'hidden',
-          }}
-        >
-          {ColorSchemeOptions.map((cs) => (
-            <Tooltip key={cs.id} title={t(`common.color_scheme.options.${cs.id}.label`, cs.label)}>
-              <Box
-                onClick={() => handleColorSchemeChange(cs.id)}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  px: 0.75,
-                  py: 0.5,
-                  cursor: 'pointer',
-                  color: previewColorScheme === cs.id ? 'primary.main' : 'text.secondary',
-                  bgcolor: previewColorScheme === cs.id ? 'primary.50' : 'transparent',
-                  '&:hover': {bgcolor: previewColorScheme === cs.id ? 'primary.100' : 'action.hover'},
-                }}
-              >
-                {cs.icon}
-              </Box>
-            </Tooltip>
-          ))}
+      {showColorSchemeControls && (
+        <Box sx={{display: 'flex', alignItems: 'center', gap: 0.75}}>
+          <Typography
+            variant="caption"
+            sx={{fontSize: '0.7rem', color: 'text.secondary', userSelect: 'none', lineHeight: 1}}
+          >
+            {t('common.preview.toolbar.fields.color_scheme.label', 'Color scheme')}
+          </Typography>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 1,
+              overflow: 'hidden',
+            }}
+          >
+            {ColorSchemeOptions.map((cs) => (
+              <Tooltip key={cs.id} title={t(`common.color_scheme.options.${cs.id}.label`, cs.label)}>
+                <Box
+                  onClick={() => handleColorSchemeChange(cs.id)}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    px: 0.75,
+                    py: 0.5,
+                    cursor: 'pointer',
+                    color: previewColorScheme === cs.id ? 'primary.main' : 'text.secondary',
+                    bgcolor: previewColorScheme === cs.id ? 'primary.50' : 'transparent',
+                    '&:hover': {bgcolor: previewColorScheme === cs.id ? 'primary.100' : 'action.hover'},
+                  }}
+                >
+                  {cs.icon}
+                </Box>
+              </Tooltip>
+            ))}
+          </Box>
         </Box>
-      </Box>
+      )}
 
       {showZoomControls && (
         <>
-          <ToolbarDivider />
+          {showColorSchemeControls && <ToolbarDivider />}
 
           {/* Zoom out */}
           <Tooltip title={t('common.preview.toolbar.actions.zoom_out.tooltip', 'Zoom out')}>

@@ -21,11 +21,13 @@ import {
 import {
   Bot,
   Building,
+  CircleUserRound,
   Group,
   Home,
   IdCard,
   Languages,
   Layers,
+  LayoutDashboard,
   LayoutGrid,
   LogOut,
   Mail,
@@ -257,12 +259,6 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
             path: RouteConfig.organizationUnits.list(),
           },
           {
-            id: 'flows',
-            text: t('navigation:pages.flows'),
-            icon: <Workflow />,
-            path: RouteConfig.flows.list(),
-          },
-          {
             id: 'connections',
             text: t('navigation:pages.connections'),
             icon: <Layers />,
@@ -286,6 +282,29 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
                 path: RouteConfig.verifiablePresentations.list(),
               },
             ],
+          },
+        ],
+      },
+      {
+        category: t('navigation:categories.build', 'Build'),
+        routes: [
+          {
+            id: 'flows',
+            text: t('navigation:pages.flows'),
+            icon: <Workflow />,
+            path: RouteConfig.flows.list(),
+          },
+          {
+            id: 'admin-app',
+            text: t('navigation:pages.adminApp', 'Admin App'),
+            icon: <LayoutDashboard />,
+            path: RouteConfig.build.adminApp(),
+          },
+          {
+            id: 'account-app',
+            text: t('navigation:pages.accountApp', 'Account App'),
+            icon: <CircleUserRound />,
+            path: RouteConfig.build.accountApp(),
           },
         ],
       },

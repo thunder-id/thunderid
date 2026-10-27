@@ -138,6 +138,11 @@ describe('RouteConfig', () => {
     expect(RouteConfig.settings.list()).toBe('/settings');
   });
 
+  it('build nests the app builders under the build segment', () => {
+    expect(RouteConfig.build.adminApp()).toBe('/build/admin-app');
+    expect(RouteConfig.build.accountApp()).toBe('/build/account-app');
+  });
+
   it('every builder derives its path from ROUTE_SEGMENTS rather than a separate literal', () => {
     expect(RouteConfig.organizationUnits.list()).toBe(`/${ROUTE_SEGMENTS.organizationUnits}`);
     expect(RouteConfig.users.list()).toBe(`/${ROUTE_SEGMENTS.users}`);

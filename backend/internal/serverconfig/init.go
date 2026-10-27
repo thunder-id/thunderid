@@ -90,4 +90,21 @@ func registerRoutes(mux *http.ServeMux, handler *serverConfigHandler) {
 	mux.HandleFunc(middleware.WithCORS("GET /server-config/{name}", handler.HandleGetServerConfig, itemOpts))
 	mux.HandleFunc(middleware.WithCORS("PUT /server-config/{name}", handler.HandleUpdateServerConfig, itemOpts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /server-config/{name}", noContent, itemOpts))
+
+	// The system apps read their own section, so it has a path of its own that any signed-in user may
+	// read (see security/permissions.go). /server-config/system-apps/admin is the adminApp section.
+	mux.HandleFunc(middleware.WithCORS("GET /server-config/system-apps/{app}",
+		systemAppSection(handler.HandleGetServerConfig), itemOpts))
+	mux.HandleFunc(middleware.WithCORS("PUT /server-config/system-apps/{app}",
+		systemAppSection(handler.HandleUpdateServerConfig), itemOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /server-config/system-apps/{app}", noContent, itemOpts))
+}
+
+// systemAppSection serves a system app's section under the name of that app's server-config section:
+// "admin" is the adminApp section and "account" the accountApp one. Any other app names no section.
+func systemAppSection(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r.SetPathValue("name", r.PathValue("app")+"App")
+		next(w, r)
+	}
 }

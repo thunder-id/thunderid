@@ -109,16 +109,27 @@ func (rs *roleService) GetRoleList(ctx context.Context, limit, offset int) (*Rol
 		return nil, err
 	}
 
-	totalCount, err := rs.roleStore.GetRoleListCount(ctx)
-	if err != nil {
-		if errors.Is(err, errResultLimitExceededInCompositeMode) {
-			return nil, &ResultLimitExceededInCompositeMode
-		}
-		logger.Error(ctx, "Failed to get role count", log.Error(err))
-		return nil, &tidcommon.InternalServerError
+	accessible, svcErr := rs.authzService.GetAccessibleResources(ctx, security.ActionListRoles, security.ResourceTypeOU)
+	if svcErr != nil {
+		return nil, svcErr
 	}
 
-	roles, err := rs.roleStore.GetRoleList(ctx, limit, offset)
+	var roles []Role
+	var totalCount int
+	var err error
+	if accessible.AllAllowed {
+		totalCount, err = rs.roleStore.GetRoleListCount(ctx)
+		if err != nil {
+			if errors.Is(err, errResultLimitExceededInCompositeMode) {
+				return nil, &ResultLimitExceededInCompositeMode
+			}
+			logger.Error(ctx, "Failed to get role count", log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+		roles, err = rs.roleStore.GetRoleList(ctx, limit, offset)
+	} else {
+		roles, totalCount, err = listRolesInOUs(ctx, rs.roleStore, accessible.IDs, limit, offset)
+	}
 	if err != nil {
 		if errors.Is(err, errResultLimitExceededInCompositeMode) {
 			return nil, &ResultLimitExceededInCompositeMode
@@ -174,6 +185,10 @@ func (rs *roleService) CreateRole(
 
 	if err := rs.validateCreateRoleRequest(role); err != nil {
 		return nil, err
+	}
+
+	if svcErr := checkRoleAccess(ctx, rs.authzService, security.ActionCreateRole, role.OUID, ""); svcErr != nil {
+		return nil, svcErr
 	}
 
 	responseAssignments := role.Assignments
@@ -289,6 +304,10 @@ func (rs *roleService) GetRoleWithPermissions(ctx context.Context, id string) (
 		return nil, &tidcommon.InternalServerError
 	}
 
+	if svcErr := checkRoleAccess(ctx, rs.authzService, security.ActionReadRole, role.OUID, id); svcErr != nil {
+		return nil, svcErr
+	}
+
 	ou, svcErr := rs.ouService.GetOrganizationUnit(ctx, role.OUID)
 	if svcErr != nil {
 		logger.Warn(ctx, "Failed to resolve OU handle for role, skipping",
@@ -362,14 +381,15 @@ func (rs *roleService) UpdateRoleWithPermissions(
 		return nil, svcErr
 	}
 
-	exists, err := rs.roleStore.IsRoleExist(ctx, id)
-	if err != nil {
-		logger.Error(ctx, "Failed to check role existence", log.String("id", id), log.Error(err))
-		return nil, &tidcommon.InternalServerError
+	// The caller must be able to update the role where it is, and where it moves to.
+	existing, svcErr := loadRoleForAction(ctx, rs.roleStore, rs.authzService, security.ActionUpdateRole, id)
+	if svcErr != nil {
+		return nil, svcErr
 	}
-	if !exists {
-		logger.Debug(ctx, "Role not found", log.String("id", id))
-		return nil, &ErrorRoleNotFound
+	if role.OUID != existing.OUID {
+		if svcErr := checkRoleAccess(ctx, rs.authzService, security.ActionUpdateRole, role.OUID, id); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 
 	if svcErr := rs.validateRoleMutable(ctx, id); svcErr != nil {
@@ -429,14 +449,14 @@ func (rs *roleService) DeleteRole(ctx context.Context, id string) *tidcommon.Ser
 		return &ErrorMissingRoleID
 	}
 
-	exists, err := rs.roleStore.IsRoleExist(ctx, id)
-	if err != nil {
-		logger.Error(ctx, "Failed to check role existence", log.String("id", id), log.Error(err))
-		return &tidcommon.InternalServerError
-	}
-	if !exists {
-		logger.Debug(ctx, "Role not found", log.String("id", id))
-		return nil
+	if _, svcErr := loadRoleForAction(
+		ctx, rs.roleStore, rs.authzService, security.ActionDeleteRole, id,
+	); svcErr != nil {
+		if svcErr.Code == ErrorRoleNotFound.Code {
+			logger.Debug(ctx, "Role not found", log.String("id", id))
+			return nil
+		}
+		return svcErr
 	}
 
 	if svcErr := rs.validateRoleMutable(ctx, id); svcErr != nil {
@@ -446,7 +466,7 @@ func (rs *roleService) DeleteRole(ctx context.Context, id string) *tidcommon.Ser
 	// Delete all assignments for the role before deleting the role itself (cascade delete).
 	// The ROLE_ASSIGNMENT table does not have a FK constraint on ROLE_ID to allow assignments
 	// for roles that live in the file-based store, so cascade delete is handled here in code.
-	err = rs.transactioner.Transact(ctx, func(txCtx context.Context) error {
+	err := rs.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		if err := rs.roleStore.DeleteAssignmentsByRoleID(txCtx, id); err != nil {
 			return err
 		}

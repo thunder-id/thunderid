@@ -1,0 +1,79 @@
+# The Data Plane's Admin App (Users, Agents, Groups, Roles), with its own ADMIN_CONSOLE client. It is
+# the default Admin App application, with its URL taken from ADMIN_CONSOLE_URL rather than each
+# plane's own PUBLIC_URL, so the Control Plane's copy names the Data Plane's address.
+#
+# Layered onto the Data Plane and the Control Plane alike, in place of the default one and with the
+# same fixed ID, so that the Control Plane's copy replaces the Data Plane's own on sync rather than
+# adding a duplicate. ADMIN_CONSOLE_URL is the Data Plane's Admin App URL, exported by
+# quickstart/setup.sh. Named to sort after 01-default-resources.yaml, whose flows it references.
+resource_type: application
+id: 01900000-0000-7000-8000-0000000000f1
+name: Admin App
+description: Lets the admins of an organization unit manage its users, groups, roles and agents
+type: browser
+ouId: 01900000-0000-7000-8000-000000000001
+url: "{{ .ADMIN_CONSOLE_URL }}"
+logoUrl: "avatar:shape=rounded,variant=anonymous_entity,content=cube,colors=0"
+authFlowId: 01900000-0000-7000-8000-000000000068
+registrationFlowId: 01900000-0000-7000-8000-000000000069
+isRegistrationFlowEnabled: false
+signOutFlowId: 01900000-0000-7000-8000-00000000006a
+recoveryFlowId: 01900000-0000-7000-8000-000000000070
+isRecoveryFlowEnabled: false
+allowedUserTypes:
+  - person
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: ADMIN_CONSOLE
+      redirectUris:
+        - "{{ .ADMIN_CONSOLE_URL }}"
+      postLogoutRedirectUris:
+        - "{{ .ADMIN_CONSOLE_URL }}"
+      grantTypes:
+        - authorization_code
+        - refresh_token
+      responseTypes:
+        - code
+      pkceRequired: true
+      tokenEndpointAuthMethod: none
+      publicClient: true
+      token:
+        accessToken:
+          userConfig:
+            validityPeriod: 3600
+            attributes:
+              - given_name
+              - family_name
+              - email
+              - groups
+              - name
+              - ouId
+              - ouName
+              - ouHandle
+        idToken:
+          validityPeriod: 3600
+          userAttributes:
+            - given_name
+            - family_name
+            - email
+            - groups
+            - name
+            - ouId
+            - ouName
+            - ouHandle
+      scopeClaims:
+        profile:
+          - name
+          - given_name
+          - family_name
+          - picture
+        email:
+          - email
+          - email_verified
+        group:
+          - groups
+        ou:
+          - ouId
+          - ouName
+          - ouHandle

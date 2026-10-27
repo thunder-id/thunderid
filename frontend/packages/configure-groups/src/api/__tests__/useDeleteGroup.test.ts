@@ -8,9 +8,12 @@ import {AdministrationFlowConfigKey, AdministrationFlowInput} from '@thunderid/u
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 
 const mockHttpRequest = vi.fn();
+const mockInvalidate = vi.fn();
 vi.mock('@thunderid/react', () => ({
+  GroupQueryKeys: {GROUPS: 'groups'},
   useThunderID: () => ({
     http: {request: mockHttpRequest},
+    invalidator: {invalidate: mockInvalidate},
   }),
 }));
 
@@ -56,6 +59,19 @@ describe('useDeleteGroup', () => {
         method: 'DELETE',
       }),
     );
+  });
+
+  it('refreshes the lists the SDK renders', async () => {
+    mockHttpRequest.mockResolvedValue({});
+    const {result} = renderHook(() => useDeleteGroup());
+
+    result.current.mutate('g1');
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(mockInvalidate).toHaveBeenCalledWith(['groups']);
   });
 
   it('should handle error', async () => {

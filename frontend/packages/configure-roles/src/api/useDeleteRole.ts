@@ -3,7 +3,7 @@
 
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {AdministrationModes, useAdministrationOperation, useConfig, useToast} from '@thunderid/contexts';
-import {useThunderID} from '@thunderid/react';
+import {RoleQueryKeys as SdkRoleQueryKeys, useThunderID} from '@thunderid/react';
 import {useTranslation} from 'react-i18next';
 import RoleQueryKeys from '../constants/role-query-keys';
 import {deleteRoleNatively, deleteRoleViaFlow, type HttpLike} from '../utils/roleAdministrationFlow';
@@ -14,7 +14,7 @@ import {deleteRoleNatively, deleteRoleViaFlow, type HttpLike} from '../utils/rol
  * @returns TanStack Query mutation object for deleting roles
  */
 export default function useDeleteRole(): UseMutationResult<void, Error, string> {
-  const {http} = useThunderID();
+  const {http, invalidator} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient: ReturnType<typeof useQueryClient> = useQueryClient();
   const {t} = useTranslation('roles');
@@ -36,6 +36,8 @@ export default function useDeleteRole(): UseMutationResult<void, Error, string> 
       await deleteRoleViaFlow(client, getServerUrl(), roleId);
     },
     onSuccess: (_data, roleId) => {
+      // Lists the SDK's admin components render keep their own state, so they refresh on this too.
+      invalidator?.invalidate([SdkRoleQueryKeys.ROLES]);
       queryClient.removeQueries({queryKey: [RoleQueryKeys.ROLE, roleId]});
       queryClient.invalidateQueries({queryKey: [RoleQueryKeys.ROLES]}).catch(() => {
         /* noop */

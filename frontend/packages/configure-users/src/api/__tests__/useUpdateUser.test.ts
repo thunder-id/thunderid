@@ -13,6 +13,7 @@ const mockShowToast = vi.fn();
 
 // Mock the dependencies
 vi.mock('@thunderid/react', () => ({
+  UserQueryKeys: {USERS: 'users'},
   useThunderID: () => ({
     http: {
       request: mockHttpRequest,

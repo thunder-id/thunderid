@@ -14,10 +14,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/csp"
 )
 
-// cspAppPathPrefixes are the only paths CSP is emitted for: the Gate and Console apps, the only
+// cspAppPathPrefixes are the only paths CSP is emitted for: the Gate, Console and Admin apps, the only
 // responses that render as documents a browser enforces CSP against. Everything else (API, OAuth2) is
 // JSON or a redirect, where a CSP header would be inert.
-var cspAppPathPrefixes = []string{"/gate/", "/console/"}
+var cspAppPathPrefixes = []string{"/gate/", "/console/", "/admin/", "/account/"}
 
 // SecurityHeadersMiddleware applies X-Frame-Options: DENY to every response and the deny-first
 // Content-Security-Policy to Gate and Console responses. The effective CSP policy is resolved per

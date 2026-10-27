@@ -44,8 +44,12 @@ export default function withConfig<P extends object>(WrappedComponent: Component
               flowMeta: `${resourceServerUrl}/flow/meta`,
               usersMe: `${resourceServerUrl}/users/me`,
               agents: `${resourceServerUrl}/agents`,
+              agentTypes: `${resourceServerUrl}/agent-types`,
               applications: `${resourceServerUrl}/applications`,
+              groups: `${resourceServerUrl}/groups`,
+              roles: `${resourceServerUrl}/roles`,
               users: `${resourceServerUrl}/users`,
+              userTypes: `${resourceServerUrl}/user-types`,
             },
           }
         : {}),

@@ -1,11 +1,10 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {isEmpty, merge} from '@thunderid/utils';
-import {CssVarsThemeOptions, extendTheme} from '@wso2/oxygen-ui';
 import {useContext, useMemo} from 'react';
 import DesignContext, {DesignContextType} from './DesignContext';
 import type {Theme} from '../../models/theme';
+import createThemeFromDesign from '../../utils/createThemeFromDesign';
 
 /**
  * React hook for accessing design configuration throughout the application.
@@ -29,24 +28,10 @@ export default function useDesign(baseTheme?: Theme): DesignContextType {
   }
 
   // If a baseTheme is provided, override the transformedTheme
-  const transformedTheme = useMemo(() => {
-    if (baseTheme && !isEmpty(context.design?.theme)) {
-      const themeOptions = merge({...context.design?.theme} as CssVarsThemeOptions, {
-        colorSchemeSelector: 'data-color-scheme',
-      });
-
-      // MUI's extendTheme only accepts 'light' or 'dark' for defaultColorScheme.
-      // 'system' is a runtime concept — remove it so MUI falls
-      // back to its default.
-      if ((themeOptions as Record<string, unknown>)['defaultColorScheme'] === 'system') {
-        delete (themeOptions as Record<string, unknown>)['defaultColorScheme'];
-      }
-
-      return extendTheme(themeOptions) as unknown as Theme;
-    }
-
-    return baseTheme;
-  }, [baseTheme, context.design?.theme]);
+  const transformedTheme = useMemo(
+    () => (baseTheme ? (createThemeFromDesign(context.design?.theme) ?? baseTheme) : baseTheme),
+    [baseTheme, context.design?.theme],
+  );
 
   return useMemo(
     () => ({

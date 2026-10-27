@@ -373,7 +373,7 @@ func (suite *SecurityServiceTestSuite) TestIsPublicPath() {
 		// Non-public paths - should return false
 		{"API users", "/api/users", false},
 		{"API groups", "/api/groups", false},
-		{"Admin panel", "/admin/dashboard", false},
+		{"Unlisted panel", "/internal/dashboard", false},
 		{"Root path", "/", false},
 		{"Random path", "/random/path", false},
 		{"Similar but not exact", "/authentication", false},

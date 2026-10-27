@@ -1,9 +1,11 @@
 # Frontend — Agent Guide
 
-Read with the root [AGENTS.md](../AGENTS.md). The frontend is a pnpm monorepo under `frontend/` with three React apps,
+Read with the root [AGENTS.md](../AGENTS.md). The frontend is a pnpm monorepo under `frontend/` with five React apps,
 `frontend/apps/console` (admin console), `frontend/apps/console-cp` (the console the control plane serves: the same
-shell plus gateway management, with every administration operation running natively rather than through a flow) and
-`frontend/apps/gate` (login, registration, recovery), plus shared and feature packages under `frontend/packages/`.
+shell plus gateway management, with every administration operation running natively rather than through a flow),
+`frontend/apps/gate` (login, registration, recovery), `frontend/apps/admin` (the Admin App, built from the `manage-*`
+packages on the React SDK) and `frontend/apps/account` (the Account App), plus shared and feature packages under
+`frontend/packages/`.
 
 For feature-package layout and app boundaries, see the
 [Frontend Development overview](../docs/community/contributing/contributing-code/frontend-development/overview.mdx).
@@ -11,8 +13,11 @@ For feature-package layout and app boundaries, see the
 ## Feature Packages
 
 Console management features ship as `@thunderid/configure-*` packages (e.g. `@thunderid/configure-users`) under
-`frontend/packages/`. Shared building blocks live in packages such as `@thunderid/components`, `@thunderid/hooks`,
-`@thunderid/contexts`, and `@thunderid/i18n`.
+`frontend/packages/`. The Admin App's pages ship as `@thunderid/manage-*` packages (e.g. `@thunderid/manage-users`),
+built on the React SDK's admin components, so another app of the same kind can reuse them; keep them separate from
+`configure-*`. What the Admin App and the Account App share (their configuration model and defaults, theme and brand)
+lives in `@thunderid/system-apps`. Shared building blocks live in packages such as `@thunderid/components`,
+`@thunderid/hooks`, `@thunderid/contexts`, and `@thunderid/i18n`.
 
 Gate consumes ThunderID's published SDK packages — `@thunderid/react` and `@thunderid/react-router` — from the separate
 [javascript-sdks](https://github.com/thunder-id/javascript-sdks) repository. Clone that repository only to develop or

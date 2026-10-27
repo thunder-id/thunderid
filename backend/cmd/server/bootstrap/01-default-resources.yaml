@@ -110,6 +110,55 @@ resources:
   - name: System
     handle: system
     description: System resource
+  - name: Organization Units
+    handle: ou
+    parent: system
+    description: Manage organization units. The view action reads them only.
+    actions:
+      - name: View
+        handle: view
+  - name: Users
+    handle: user
+    parent: system
+    description: Manage users. The view action reads them only.
+    actions:
+      - name: View
+        handle: view
+  - name: Groups
+    handle: group
+    parent: system
+    description: Manage groups. The view action reads them only.
+    actions:
+      - name: View
+        handle: view
+  - name: Roles
+    handle: role
+    parent: system
+    description: Manage roles. The view action reads them only.
+    actions:
+      - name: View
+        handle: view
+  - name: Agents
+    handle: agent
+    parent: system
+    description: Manage agents. The view action reads them only.
+    actions:
+      - name: View
+        handle: view
+  - name: User Types
+    handle: usertype
+    parent: system
+    description: Manage user types. The view action reads them only.
+    actions:
+      - name: View
+        handle: view
+  - name: Agent Types
+    handle: agenttype
+    parent: system
+    description: Manage agent types. The view action reads them only.
+    actions:
+      - name: View
+        handle: view
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000061
@@ -6215,6 +6264,152 @@ inboundAuthConfig:
           - phone_number_verified
         group:
           - groups
+        ou:
+          - ouId
+---
+resource_type: application
+id: 01900000-0000-7000-8000-0000000000f1
+name: Admin App
+description: Lets the admins of an organization unit manage its users, groups, roles and agents
+type: browser
+ouId: 01900000-0000-7000-8000-000000000001
+url: "{{ .PUBLIC_URL }}/admin"
+logoUrl: "avatar:shape=rounded,variant=anonymous_entity,content=cube,colors=0"
+authFlowId: 01900000-0000-7000-8000-000000000068
+registrationFlowId: 01900000-0000-7000-8000-000000000069
+isRegistrationFlowEnabled: false
+signOutFlowId: 01900000-0000-7000-8000-00000000006a
+recoveryFlowId: 01900000-0000-7000-8000-000000000070
+isRecoveryFlowEnabled: false
+allowedUserTypes:
+  - person
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: ADMIN_CONSOLE
+      redirectUris:
+        - "{{ .PUBLIC_URL }}/admin"
+        {{- range .ADMIN_REDIRECT_URIS }}
+        - "{{ . }}"
+        {{- end }}
+      postLogoutRedirectUris:
+        - "{{ .PUBLIC_URL }}/admin"
+        {{- range .ADMIN_REDIRECT_URIS }}
+        - "{{ . }}"
+        {{- end }}
+      grantTypes:
+        - authorization_code
+        - refresh_token
+      responseTypes:
+        - code
+      pkceRequired: true
+      tokenEndpointAuthMethod: none
+      publicClient: true
+      token:
+        accessToken:
+          userConfig:
+            validityPeriod: 3600
+            attributes:
+              - given_name
+              - family_name
+              - email
+              - groups
+              - name
+              - ouId
+              - ouName
+              - ouHandle
+        idToken:
+          validityPeriod: 3600
+          userAttributes:
+            - given_name
+            - family_name
+            - email
+            - groups
+            - name
+            - ouId
+            - ouName
+            - ouHandle
+      scopeClaims:
+        profile:
+          - name
+          - given_name
+          - family_name
+          - picture
+        email:
+          - email
+          - email_verified
+        group:
+          - groups
+        ou:
+          - ouId
+          - ouName
+          - ouHandle
+---
+resource_type: application
+id: 01900000-0000-7000-8000-0000000000f6
+name: Account App
+description: Lets users manage their own profile and sign-in credentials
+type: browser
+ouId: 01900000-0000-7000-8000-000000000001
+url: "{{ .PUBLIC_URL }}/account"
+logoUrl: "avatar:shape=rounded,variant=anonymous_entity,content=cube,colors=0"
+authFlowId: 01900000-0000-7000-8000-000000000068
+registrationFlowId: 01900000-0000-7000-8000-000000000069
+isRegistrationFlowEnabled: false
+signOutFlowId: 01900000-0000-7000-8000-00000000006a
+recoveryFlowId: 01900000-0000-7000-8000-000000000070
+isRecoveryFlowEnabled: false
+allowedUserTypes:
+  - person
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: ACCOUNT
+      redirectUris:
+        - "{{ .PUBLIC_URL }}/account"
+        {{- range .ACCOUNT_REDIRECT_URIS }}
+        - "{{ . }}"
+        {{- end }}
+      postLogoutRedirectUris:
+        - "{{ .PUBLIC_URL }}/account"
+        {{- range .ACCOUNT_REDIRECT_URIS }}
+        - "{{ . }}"
+        {{- end }}
+      grantTypes:
+        - authorization_code
+        - refresh_token
+      responseTypes:
+        - code
+      pkceRequired: true
+      tokenEndpointAuthMethod: none
+      publicClient: true
+      token:
+        accessToken:
+          userConfig:
+            validityPeriod: 3600
+            attributes:
+              - given_name
+              - family_name
+              - email
+              - name
+              - ouId
+        idToken:
+          validityPeriod: 3600
+          userAttributes:
+            - given_name
+            - family_name
+            - email
+            - name
+            - ouId
+      scopeClaims:
+        profile:
+          - name
+          - given_name
+          - family_name
+          - picture
+        email:
+          - email
+          - email_verified
         ou:
           - ouId
 ---

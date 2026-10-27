@@ -15,26 +15,19 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-// RoleAuthzTestSuite pins the authorization boundary of the role management API.
+// RoleAuthzTestSuite pins the authorization boundary of the role management API for an
+// administrator who holds fine-grained system permissions but not system:role.
 //
-// Unlike /groups and /users, /roles has no entry in the API permission table
-// (internal/system/security/permissions.go), so every role path falls back to the root "system"
-// permission. A scoped administrator holding the fine-grained system permissions is therefore
-// refused on every role endpoint, read and write alike, by the security middleware (AUTH-4030) and
-// never reaches the handler.
+// /roles requires system:role or system:role:view (internal/system/security/permissions.go), so
+// such an administrator is refused on every role endpoint, read and write alike, by the security
+// middleware (AUTH-4030) and never reaches the handler. RoleDelegatedAuthzTestSuite covers an
+// administrator who does hold system:role.
 //
 // The refusals are asserted on the error code, not just the status, because two different layers
 // answer 403 here:
 //
 //	AUTH-4030 — the security middleware: the caller lacks the permission the path requires.
 //	SAZ-4030  — sysauthz's grant guard: the operation would confer permissions the caller lacks.
-//
-// Distinguishing them matters. Because the role API admits only root callers, and
-// sysauthz.CanGrantMembership short-circuits for root, the role privilege-escalation guard
-// (CanGrantMembership with PrincipalTypeRole, and CanGrantPermissions on role create/update) cannot
-// fire for any HTTP caller in the shipped configuration. Should /roles later gain fine-grained
-// permission entries, TestScopedAdministratorCannotAddAssignmentToPrivilegedRole starts exercising
-// the guard, and the expected code becomes SAZ-4030 rather than AUTH-4030.
 //
 // Fixture topology, all within one OU:
 //
@@ -461,7 +454,7 @@ func (ts *RoleAuthzTestSuite) rootRoleStatus(roleID string) int {
 // Reads
 // ---------------------------------------------------------------------------
 
-// TestScopedAdministratorCannotListRoles verifies role listing is closed to non-root callers.
+// TestScopedAdministratorCannotListRoles verifies role listing is closed to callers without system:role.
 func (ts *RoleAuthzTestSuite) TestScopedAdministratorCannotListRoles() {
 	resp := ts.doScoped(http.MethodGet, rolesBasePath, nil)
 	defer resp.Body.Close()
@@ -469,7 +462,7 @@ func (ts *RoleAuthzTestSuite) TestScopedAdministratorCannotListRoles() {
 	ts.requireRefusedWithCode(resp, errCodeInsufficientPermissions)
 }
 
-// TestScopedAdministratorCannotGetRole verifies reading a single role is closed to non-root callers.
+// TestScopedAdministratorCannotGetRole verifies reading a single role is closed to callers without system:role.
 func (ts *RoleAuthzTestSuite) TestScopedAdministratorCannotGetRole() {
 	resp := ts.doScoped(http.MethodGet, rolesBasePath+"/"+ts.harmlessRoleID, nil)
 	defer resp.Body.Close()
@@ -478,7 +471,7 @@ func (ts *RoleAuthzTestSuite) TestScopedAdministratorCannotGetRole() {
 }
 
 // TestScopedAdministratorCannotListRoleAssignments verifies that reading who holds a role, which
-// discloses the privileges of other principals, is closed to non-root callers.
+// discloses the privileges of other principals, is closed to callers without system:role.
 func (ts *RoleAuthzTestSuite) TestScopedAdministratorCannotListRoleAssignments() {
 	resp := ts.doScoped(http.MethodGet, rolesBasePath+"/"+ts.privilegedRoleID+"/assignments", nil)
 	defer resp.Body.Close()
@@ -527,7 +520,7 @@ func (ts *RoleAuthzTestSuite) TestScopedAdministratorCannotUpdateRoleToConferUnh
 }
 
 // TestScopedAdministratorCannotDeleteRole verifies deletion, which silently strips privileges from
-// every assignee, is closed to non-root callers.
+// every assignee, is closed to callers without system:role.
 func (ts *RoleAuthzTestSuite) TestScopedAdministratorCannotDeleteRole() {
 	resp := ts.doScoped(http.MethodDelete, rolesBasePath+"/"+ts.harmlessRoleID, nil)
 	defer resp.Body.Close()
@@ -542,7 +535,8 @@ func (ts *RoleAuthzTestSuite) TestScopedAdministratorCannotDeleteRole() {
 
 // TestScopedAdministratorCannotAddAssignmentToPrivilegedRole is the escalation the grant guard
 // exists to stop: assigning a principal to a role conferring system:user, which the caller does not
-// hold. The refusal currently comes from the middleware, so the guard itself never runs.
+// hold. The refusal comes from the middleware, since this caller lacks system:role;
+// RoleDelegatedAuthzTestSuite shows the guard itself refusing it.
 func (ts *RoleAuthzTestSuite) TestScopedAdministratorCannotAddAssignmentToPrivilegedRole() {
 	resp := ts.doScoped(http.MethodPost,
 		rolesBasePath+"/"+ts.privilegedRoleID+"/assignments/add", ts.assigneePayload())

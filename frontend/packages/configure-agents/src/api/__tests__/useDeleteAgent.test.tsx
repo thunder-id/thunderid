@@ -25,6 +25,7 @@ const {useConfig} = await import('@thunderid/contexts');
 
 describe('useDeleteAgent', () => {
   let mockHttpRequest: ReturnType<typeof vi.fn>;
+  const mockInvalidate = vi.fn();
   const agentId = '550e8400-e29b-41d4-a716-446655440000';
 
   beforeEach(() => {
@@ -32,6 +33,7 @@ describe('useDeleteAgent', () => {
 
     vi.mocked(useThunderID).mockReturnValue({
       http: {request: mockHttpRequest},
+      invalidator: {invalidate: mockInvalidate},
     } as unknown as ReturnType<typeof useThunderID>);
 
     vi.mocked(useConfig).mockReturnValue({
@@ -58,6 +60,19 @@ describe('useDeleteAgent', () => {
       method: 'DELETE',
       headers: {'Content-Type': 'application/json'},
     });
+  });
+
+  it('refreshes the lists the SDK renders', async () => {
+    mockHttpRequest.mockResolvedValueOnce(undefined);
+    const {result} = renderHook(() => useDeleteAgent());
+
+    result.current.mutate(agentId);
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(mockInvalidate).toHaveBeenCalledWith(['agents']);
   });
 
   it('should handle API error', async () => {

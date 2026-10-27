@@ -37,6 +37,8 @@ var publicPaths = []string{
 	"/.well-known/oauth-protected-resource",
 	"/gate/**",
 	"/console/**",
+	"/admin/**",
+	"/account/**",
 	"/error/**",
 	"/design/resolve/**",
 	"/i18n/languages",
@@ -65,6 +67,8 @@ const (
 	ResourceTypeGroup ResourceType = "group"
 	// ResourceTypeAgent identifies an agent resource.
 	ResourceTypeAgent ResourceType = "agent"
+	// ResourceTypeRole identifies a role resource.
+	ResourceTypeRole ResourceType = "role"
 	// ResourceTypeUserType identifies a user-category entity type resource.
 	ResourceTypeUserType ResourceType = "usertype"
 	// ResourceTypeAgentType identifies an agent-category entity type resource.
@@ -113,6 +117,17 @@ const (
 	ActionDeleteGroup Action = "group:delete"
 	// ActionListGroups lists groups.
 	ActionListGroups Action = "group:list"
+
+	// ActionCreateRole creates a new role.
+	ActionCreateRole Action = "role:create"
+	// ActionReadRole reads a role and its assignments.
+	ActionReadRole Action = "role:read"
+	// ActionUpdateRole updates a role or changes who it is assigned to.
+	ActionUpdateRole Action = "role:update"
+	// ActionDeleteRole deletes a role.
+	ActionDeleteRole Action = "role:delete"
+	// ActionListRoles lists roles.
+	ActionListRoles Action = "role:list"
 
 	// ActionCreateAgent creates a new agent.
 	ActionCreateAgent Action = "agent:create"
@@ -171,6 +186,8 @@ type SystemPermissions struct {
 	UserView                 string
 	Group                    string
 	GroupView                string
+	Role                     string
+	RoleView                 string
 	Agent                    string
 	AgentView                string
 	UserType                 string
@@ -208,6 +225,8 @@ func InitSystemPermissions(handle string) {
 		UserView:                 buildPermission(handle, "system", "user", "view"),
 		Group:                    buildPermission(handle, "system", "group"),
 		GroupView:                buildPermission(handle, "system", "group", "view"),
+		Role:                     buildPermission(handle, "system", "role"),
+		RoleView:                 buildPermission(handle, "system", "role", "view"),
 		Agent:                    buildPermission(handle, "system", "agent"),
 		AgentView:                buildPermission(handle, "system", "agent", "view"),
 		UserType:                 buildPermission(handle, "system", "usertype"),
@@ -241,6 +260,13 @@ func InitSystemPermissions(handle string) {
 		ActionUpdateGroup: p.Group,
 		ActionDeleteGroup: p.Group,
 		ActionListGroups:  p.GroupView,
+
+		// Role actions.
+		ActionCreateRole: p.Role,
+		ActionReadRole:   p.RoleView,
+		ActionUpdateRole: p.Role,
+		ActionDeleteRole: p.Role,
+		ActionListRoles:  p.RoleView,
 
 		// Agent actions.
 		ActionCreateAgent: p.Agent,
@@ -336,6 +362,15 @@ func InitSystemPermissions(handle string) {
 		{"PUT /groups/**", p.Group},
 		{"DELETE /groups/**", p.Group},
 
+		// Role APIs. The role service also checks the caller's organization unit, and refuses to grant
+		// permissions or memberships the caller does not hold.
+		{"GET /roles", p.RoleView},
+		{"POST /roles", p.Role},
+		{"GET /roles/**", p.RoleView},
+		{"POST /roles/**", p.Role},
+		{"PUT /roles/**", p.Role},
+		{"DELETE /roles/**", p.Role},
+
 		// User type APIs.
 		{"GET /user-types", p.UserTypeView},
 		{"POST /user-types", p.UserType},
@@ -371,6 +406,10 @@ func InitSystemPermissions(handle string) {
 		{"GET /notification-templates/**", p.NotificationTemplateView},
 		{"PUT /notification-templates/**", p.NotificationTemplate},
 		{"DELETE /notification-templates/**", p.NotificationTemplate},
+
+		// System app configuration. The Admin App and the Account App read their own section, so any
+		// signed-in user may read it; saving it keeps the root permission every server config needs.
+		{"GET /server-config/system-apps/**", ""},
 
 		// Import APIs.
 		{"POST /import", p.Root},

@@ -3,6 +3,7 @@
 
 import userEvent from '@testing-library/user-event';
 import {render, screen, waitFor} from '@thunderid/test-utils';
+import type {ReactNode} from 'react';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import type {AgentListResponse} from '../../models/agent';
@@ -13,7 +14,34 @@ const {mockLoggerError} = vi.hoisted(() => ({
 }));
 
 // Mock the dependencies
-vi.mock('../../api/useGetAgents');
+const {mockUseGetAgents} = vi.hoisted(() => ({mockUseGetAgents: vi.fn()}));
+
+const {mockInvalidate} = vi.hoisted(() => ({mockInvalidate: vi.fn()}));
+
+// The list draws what the SDK's AgentList loads. This stands in for it, handing its render props the
+// query state each test sets up.
+vi.mock('@thunderid/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/react')>()),
+  useThunderID: () => ({invalidator: {invalidate: mockInvalidate}}),
+  AgentList: ({children, limit = 20}: {children: (props: object) => ReactNode; limit?: number}): ReactNode => {
+    const {data, error, isLoading} = (mockUseGetAgents() ?? {}) as {
+      data?: {agents?: unknown[]; totalResults?: number} | null;
+      error?: Error | null;
+      isLoading?: boolean;
+    };
+
+    return children({
+      error: error?.message ?? null,
+      isLoading: isLoading ?? false,
+      limit,
+      offset: 0,
+      onPageChange: (): void => undefined,
+      rows: data?.agents ?? [],
+      totalResults: data?.totalResults ?? 0,
+    });
+  },
+}));
+
 vi.mock('react-router', async () => {
   const actual = await vi.importActual('react-router');
   return {
@@ -140,7 +168,6 @@ vi.mock('@thunderid/logger/react', async (importOriginal) => ({
   }),
 }));
 
-const {default: useGetAgents} = await import('../../api/useGetAgents');
 const {useNavigate} = await import('react-router');
 const {useDataGridLocaleText} = await import('@thunderid/hooks');
 
@@ -182,11 +209,11 @@ describe('AgentsList', () => {
   const renderComponent = () => render(<AgentsList />);
 
   it('should render loading state', () => {
-    vi.mocked(useGetAgents).mockReturnValue({
+    mockUseGetAgents.mockReturnValue({
       data: undefined,
       isLoading: true,
       error: null,
-    } as ReturnType<typeof useGetAgents>);
+    });
 
     renderComponent();
 
@@ -195,26 +222,11 @@ describe('AgentsList', () => {
 
   it('should render error state', () => {
     const error = new Error('Failed to load agents');
-    vi.mocked(useGetAgents).mockReturnValue({
+    mockUseGetAgents.mockReturnValue({
       data: undefined,
       isLoading: false,
       error,
-    } as ReturnType<typeof useGetAgents>);
-
-    renderComponent();
-
-    expect(screen.getByText('Failed to load agents')).toBeInTheDocument();
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
-  });
-
-  it('should render error state with default message when error has no message', () => {
-    const error = new Error();
-    error.message = '';
-    vi.mocked(useGetAgents).mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      error,
-    } as ReturnType<typeof useGetAgents>);
+    });
 
     renderComponent();
 
@@ -223,11 +235,11 @@ describe('AgentsList', () => {
   });
 
   it('should render agents list successfully', () => {
-    vi.mocked(useGetAgents).mockReturnValue({
+    mockUseGetAgents.mockReturnValue({
       data: mockAgentsData,
       isLoading: false,
       error: null,
-    } as ReturnType<typeof useGetAgents>);
+    });
 
     renderComponent();
 
@@ -238,14 +250,14 @@ describe('AgentsList', () => {
   });
 
   it("should show each agent's access status, treating an absent status as active", () => {
-    vi.mocked(useGetAgents).mockReturnValue({
+    mockUseGetAgents.mockReturnValue({
       data: {
         ...mockAgentsData,
         agents: [{...mockAgentsData.agents[0], status: {value: 'SUSPENDED'}}, mockAgentsData.agents[1]],
       },
       isLoading: false,
       error: null,
-    } as ReturnType<typeof useGetAgents>);
+    });
 
     renderComponent();
 
@@ -262,11 +274,11 @@ describe('AgentsList', () => {
   });
 
   it('should fall back to the agent id when an agent has no display value', () => {
-    vi.mocked(useGetAgents).mockReturnValue({
+    mockUseGetAgents.mockReturnValue({
       data: {...mockAgentsData, agents: [{...mockAgentsData.agents[0], display: undefined}]},
       isLoading: false,
       error: null,
-    } as ReturnType<typeof useGetAgents>);
+    });
 
     renderComponent();
 
@@ -275,11 +287,11 @@ describe('AgentsList', () => {
   });
 
   it('should display agent ids', () => {
-    vi.mocked(useGetAgents).mockReturnValue({
+    mockUseGetAgents.mockReturnValue({
       data: mockAgentsData,
       isLoading: false,
       error: null,
-    } as ReturnType<typeof useGetAgents>);
+    });
 
     renderComponent();
 
@@ -288,11 +300,11 @@ describe('AgentsList', () => {
   });
 
   it('should display ouHandle when present and ouId otherwise', () => {
-    vi.mocked(useGetAgents).mockReturnValue({
+    mockUseGetAgents.mockReturnValue({
       data: mockAgentsData,
       isLoading: false,
       error: null,
-    } as ReturnType<typeof useGetAgents>);
+    });
 
     renderComponent();
 
@@ -312,11 +324,11 @@ describe('AgentsList', () => {
       ],
     };
 
-    vi.mocked(useGetAgents).mockReturnValue({
+    mockUseGetAgents.mockReturnValue({
       data: dataWithMissingOu,
       isLoading: false,
       error: null,
-    } as ReturnType<typeof useGetAgents>);
+    });
 
     renderComponent();
 
@@ -326,11 +338,11 @@ describe('AgentsList', () => {
   it('should open delete dialog when clicking Delete action', async () => {
     const user = userEvent.setup();
 
-    vi.mocked(useGetAgents).mockReturnValue({
+    mockUseGetAgents.mockReturnValue({
       data: mockAgentsData,
       isLoading: false,
       error: null,
-    } as ReturnType<typeof useGetAgents>);
+    });
 
     renderComponent();
 
@@ -345,11 +357,11 @@ describe('AgentsList', () => {
   it('should close delete dialog when cancelled', async () => {
     const user = userEvent.setup();
 
-    vi.mocked(useGetAgents).mockReturnValue({
+    mockUseGetAgents.mockReturnValue({
       data: mockAgentsData,
       isLoading: false,
       error: null,
-    } as ReturnType<typeof useGetAgents>);
+    });
 
     renderComponent();
 
@@ -371,11 +383,11 @@ describe('AgentsList', () => {
   it('should navigate to agent edit page when clicking row', async () => {
     const user = userEvent.setup();
 
-    vi.mocked(useGetAgents).mockReturnValue({
+    mockUseGetAgents.mockReturnValue({
       data: mockAgentsData,
       isLoading: false,
       error: null,
-    } as ReturnType<typeof useGetAgents>);
+    });
 
     renderComponent();
 
@@ -390,11 +402,11 @@ describe('AgentsList', () => {
   it('should navigate to agent when Edit action button is clicked', async () => {
     const user = userEvent.setup();
 
-    vi.mocked(useGetAgents).mockReturnValue({
+    mockUseGetAgents.mockReturnValue({
       data: mockAgentsData,
       isLoading: false,
       error: null,
-    } as ReturnType<typeof useGetAgents>);
+    });
 
     renderComponent();
 
@@ -412,11 +424,11 @@ describe('AgentsList', () => {
     const navigationError = new Error('Navigation failed');
     mockNavigate.mockRejectedValueOnce(navigationError);
 
-    vi.mocked(useGetAgents).mockReturnValue({
+    mockUseGetAgents.mockReturnValue({
       data: mockAgentsData,
       isLoading: false,
       error: null,
-    } as ReturnType<typeof useGetAgents>);
+    });
 
     renderComponent();
 
@@ -435,11 +447,11 @@ describe('AgentsList', () => {
   });
 
   it('should handle empty agents list', () => {
-    vi.mocked(useGetAgents).mockReturnValue({
+    mockUseGetAgents.mockReturnValue({
       data: {totalResults: 0, startIndex: 0, count: 0, agents: []},
       isLoading: false,
       error: null,
-    } as unknown as ReturnType<typeof useGetAgents>);
+    } as unknown);
 
     renderComponent();
 

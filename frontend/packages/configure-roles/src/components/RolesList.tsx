@@ -4,13 +4,19 @@
 import {QueryErrorNotice} from '@thunderid/components';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
+import {
+  RoleList,
+  RoleQueryKeys,
+  useThunderID,
+  type AdminListRenderProps,
+  type RoleSummary as SdkRoleSummary,
+} from '@thunderid/react';
 import {IconButton, Typography, Tooltip, DataGrid, ListingTable} from '@wso2/oxygen-ui';
 import {Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import RoleDeleteDialog from './RoleDeleteDialog';
-import useGetRoles from '../api/useGetRoles';
 import useRoleRoutes from '../hooks/useRoleRoutes';
 import type {RoleSummary} from '../models/role';
 
@@ -23,16 +29,8 @@ export default function RolesList(): JSX.Element {
   const logger = useLogger('RolesList');
   const dataGridLocaleText = useDataGridLocaleText();
   const routes = useRoleRoutes();
-  const [paginationModel, setPaginationModel] = useState<DataGrid.GridPaginationModel>({pageSize: 10, page: 0});
-
-  const rolesParams = useMemo(
-    () => ({
-      limit: paginationModel.pageSize,
-      offset: paginationModel.page * paginationModel.pageSize,
-    }),
-    [paginationModel],
-  );
-  const {data, isLoading, error, refetch} = useGetRoles(rolesParams);
+  const {invalidator} = useThunderID();
+  const [pageSize, setPageSize] = useState<number>(10);
 
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false);
@@ -138,24 +136,32 @@ export default function RolesList(): JSX.Element {
     [handleDeleteClick, handleViewClick, t],
   );
 
-  if (error) {
-    return (
-      <QueryErrorNotice
-        error={error}
-        t={t}
-        variant="block"
-        title={t('roles:listing.error', 'Failed to load roles')}
-        onRetry={() => void refetch()}
-      />
-    );
-  }
+  const renderList = ({
+    error,
+    isLoading,
+    limit,
+    offset,
+    onPageChange,
+    rows,
+    totalResults,
+  }: AdminListRenderProps<SdkRoleSummary>): JSX.Element => {
+    if (error) {
+      return (
+        <QueryErrorNotice
+          error={new Error(error)}
+          t={t}
+          variant="block"
+          title={t('roles:listing.error', 'Failed to load roles')}
+          onRetry={() => invalidator?.invalidate([RoleQueryKeys.ROLES])}
+        />
+      );
+    }
 
-  return (
-    <>
+    return (
       <ListingTable.Provider variant="data-grid-card" loading={isLoading}>
         <ListingTable.Container disablePaper>
           <ListingTable.DataGrid
-            rows={data?.roles ?? []}
+            rows={rows as RoleSummary[]}
             columns={columns}
             getRowId={(row) => (row as RoleSummary).id}
             onRowClick={(params) => {
@@ -167,9 +173,16 @@ export default function RolesList(): JSX.Element {
               });
             }}
             paginationMode="server"
-            rowCount={data?.totalResults ?? 0}
-            paginationModel={paginationModel}
-            onPaginationModelChange={setPaginationModel}
+            rowCount={totalResults}
+            paginationModel={{page: Math.floor(offset / limit), pageSize: limit}}
+            onPaginationModelChange={(model: DataGrid.GridPaginationModel) => {
+              if (model.pageSize !== limit) {
+                setPageSize(model.pageSize);
+                onPageChange?.(0);
+                return;
+              }
+              onPageChange?.(model.page * limit);
+            }}
             pageSizeOptions={[5, 10, 25]}
             disableRowSelectionOnClick
             // Filtering is not wired end to end, so the column filter panel stays hidden.
@@ -182,6 +195,12 @@ export default function RolesList(): JSX.Element {
           />
         </ListingTable.Container>
       </ListingTable.Provider>
+    );
+  };
+
+  return (
+    <>
+      <RoleList limit={pageSize}>{renderList}</RoleList>
 
       <RoleDeleteDialog open={deleteDialogOpen} roleId={selectedRoleId} onClose={handleDeleteDialogClose} />
     </>

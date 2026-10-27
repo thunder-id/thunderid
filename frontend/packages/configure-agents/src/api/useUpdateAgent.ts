@@ -3,7 +3,7 @@
 
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig, useToast} from '@thunderid/contexts';
-import {useThunderID} from '@thunderid/react';
+import {AgentQueryKeys as SdkAgentQueryKeys, useThunderID} from '@thunderid/react';
 import {useTranslation} from 'react-i18next';
 import AgentQueryKeys from '../constants/agent-query-keys';
 import type {Agent, UpdateAgentRequest} from '../models/agent';
@@ -14,7 +14,7 @@ interface UpdateAgentParams {
 }
 
 export default function useUpdateAgent(): UseMutationResult<Agent, Error, UpdateAgentParams> {
-  const {http} = useThunderID();
+  const {http, invalidator} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient = useQueryClient();
   const {t} = useTranslation('agents');
@@ -33,6 +33,8 @@ export default function useUpdateAgent(): UseMutationResult<Agent, Error, Update
       return response.data;
     },
     onSuccess: (_, {agentId}) => {
+      // Lists the SDK's admin components render keep their own state, so they refresh on this too.
+      invalidator?.invalidate([SdkAgentQueryKeys.AGENTS]);
       queryClient.invalidateQueries({queryKey: [AgentQueryKeys.AGENT, agentId]}).catch(() => undefined);
       queryClient.invalidateQueries({queryKey: [AgentQueryKeys.AGENTS]}).catch(() => undefined);
       showToast(t('update.success'), 'success');

@@ -3,7 +3,7 @@
 
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig, useToast} from '@thunderid/contexts';
-import {useThunderID} from '@thunderid/react';
+import {RoleQueryKeys as SdkRoleQueryKeys, useThunderID} from '@thunderid/react';
 import {useTranslation} from 'react-i18next';
 import RoleQueryKeys from '../constants/role-query-keys';
 import type {CreateRoleRequest} from '../models/requests';
@@ -15,7 +15,7 @@ import type {Role} from '../models/role';
  * @returns TanStack Query mutation object for creating roles
  */
 export default function useCreateRole(): UseMutationResult<Role, Error, CreateRoleRequest> {
-  const {http} = useThunderID();
+  const {http, invalidator} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient: ReturnType<typeof useQueryClient> = useQueryClient();
   const {t} = useTranslation('roles');
@@ -34,6 +34,8 @@ export default function useCreateRole(): UseMutationResult<Role, Error, CreateRo
       return response.data;
     },
     onSuccess: () => {
+      // Lists the SDK's admin components render keep their own state, so they refresh on this too.
+      invalidator?.invalidate([SdkRoleQueryKeys.ROLES]);
       queryClient.invalidateQueries({queryKey: [RoleQueryKeys.ROLES]}).catch(() => {
         /* noop */
       });

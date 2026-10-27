@@ -73,6 +73,12 @@ export const ConsoleRoutes = {
   /** Settings page */
   settings: "/console/settings",
 
+  /** Admin App builder page */
+  adminAppBuilder: "/console/build/admin-app",
+
+  /** Account App builder page */
+  accountAppBuilder: "/console/build/account-app",
+
   /** User profile settings page */
   profile: "/console/settings/profile",
 

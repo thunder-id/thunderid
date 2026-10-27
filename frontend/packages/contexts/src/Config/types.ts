@@ -173,6 +173,13 @@ export interface BrandConfig {
   favicon: {light: string; dark: string};
 
   /**
+   * Logo an app shows in its header. The Admin App and the Account App show the logo of the
+   * application they sign in with when this is not set.
+   * @example "https://example.com/logo.svg"
+   */
+  logo?: string;
+
+  /**
    * Design configuration for theming and UI customization.
    */
   design?: DesignConfig;
