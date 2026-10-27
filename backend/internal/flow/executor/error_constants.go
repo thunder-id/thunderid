@@ -1280,8 +1280,8 @@ var (
 		},
 	}
 
-	// ErrSelfRegNotSupportedForAgents is returned when a registration flow reaches the agent type
-	// resolver. An agent is provisioned on an administrator's behalf, never by itself.
+	// ErrSelfRegNotSupportedForAgents is returned when a registration flow provisions an agent that is not
+	// a personal agent. Any other agent is provisioned on an administrator's behalf, never by itself.
 	ErrSelfRegNotSupportedForAgents = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1091",
@@ -1291,7 +1291,7 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.self_reg_not_supported_for_agents_desc",
-			DefaultValue: "An agent is created by an administrator and cannot register itself",
+			DefaultValue: "A registration flow can register only a personal agent",
 		},
 	}
 

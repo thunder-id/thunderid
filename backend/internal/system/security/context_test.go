@@ -168,6 +168,55 @@ func (s *SecurityContextTestSuite) testContextGetter(fieldName, expectedValue st
 	}
 }
 
+func (s *SecurityContextTestSuite) TestIsDelegated() {
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		expected bool
+	}{
+		{name: "no security context", ctx: context.Background(), expected: false},
+		{name: "runtime context", ctx: WithRuntimeContext(context.Background()), expected: false},
+		{name: "nil attributes", ctx: withSecurityContext(context.Background(),
+			newSecurityContext("api-key", "", "", nil, nil)), expected: false},
+		{name: "token without act", ctx: withSecurityContext(context.Background(),
+			newSecurityContext("user-1", "ou", "token", nil, map[string]interface{}{"sub": "user-1"})),
+			expected: false},
+		{name: "delegated token", ctx: withSecurityContext(context.Background(),
+			newSecurityContext("user-1", "ou", "token", nil, map[string]interface{}{
+				"sub": "user-1", "act": map[string]interface{}{"sub": "agent-1"},
+			})), expected: true},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			s.Equal(tt.expected, IsDelegated(tt.ctx))
+		})
+	}
+}
+
+func (s *SecurityContextTestSuite) TestGetClientID() {
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		expected string
+	}{
+		{name: "no security context", ctx: context.Background(), expected: ""},
+		{name: "token without client_id", ctx: withSecurityContext(context.Background(),
+			newSecurityContext("user-1", "ou", "token", nil, map[string]interface{}{"sub": "user-1"})),
+			expected: ""},
+		{name: "non string client_id", ctx: withSecurityContext(context.Background(),
+			newSecurityContext("user-1", "ou", "token", nil, map[string]interface{}{"client_id": 42})),
+			expected: ""},
+		{name: "token with client_id", ctx: withSecurityContext(context.Background(),
+			newSecurityContext("user-1", "ou", "token", nil, map[string]interface{}{"client_id": "app-client"})),
+			expected: "app-client"},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			s.Equal(tt.expected, GetClientID(tt.ctx))
+		})
+	}
+}
+
 func (s *SecurityContextTestSuite) TestGetAttribute() {
 	attributes := map[string]interface{}{
 		"string_attribute": "string_value",

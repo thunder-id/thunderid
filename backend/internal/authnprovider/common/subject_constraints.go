@@ -20,6 +20,9 @@ type SubjectTypeConstraints struct {
 	AllowedUserTypes []string
 	// AllowedAgentTypes are the agent type handles accepted as a subject. Empty accepts no agent.
 	AllowedAgentTypes []string
+	// RequiredSubjectID, when set, is the entity ID of the only subject accepted, whatever its category:
+	// a personal agent accepts only its owner. Empty leaves the subject to the type constraints.
+	RequiredSubjectID string
 }
 
 // PermitsSubject reports whether an entity of the given category and type may authenticate under
@@ -30,6 +33,12 @@ func (c SubjectTypeConstraints) PermitsSubject(category providers.EntityCategory
 		return slices.Contains(c.AllowedAgentTypes, entityType)
 	}
 	return true
+}
+
+// PermitsSubjectID reports whether the entity with the given ID may authenticate under these constraints:
+// any entity when no subject is required, otherwise only the required one.
+func (c SubjectTypeConstraints) PermitsSubjectID(entityID string) bool {
+	return c.RequiredSubjectID == "" || c.RequiredSubjectID == entityID
 }
 
 type subjectTypeConstraintsContextKey struct{}
