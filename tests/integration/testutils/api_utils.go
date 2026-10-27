@@ -39,7 +39,7 @@ const (
 	// SystemResourceIdentifier is the identifier of the bootstrapped System resource server
 	// (backend/cmd/server/bootstrap/01-default-resources.yaml). The CONSOLE app binds its tokens
 	// to this resource server via the RFC 8707 resource parameter, mirroring the console runtime
-	// config (frontend/apps/console/public/config.js).
+	// config (frontend/apps/admin-console/public/config.js).
 	SystemResourceIdentifier = "https://localhost:8090/mcp"
 
 	// FlowSecretHeaderName is the header used to present a Flow Secret to /flow/execute.
