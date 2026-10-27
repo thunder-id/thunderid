@@ -2,12 +2,12 @@
 displayed_sidebar: null
 title: iOS Management API
 docType: reference
-description: List, read, create, update, and delete applications, users, and agents from the iOS SDK through the management API.
+description: List, read, create, update, and delete applications, users, user types, agents, and agent types from the iOS SDK through the management API, and run administration flows.
 ---
 
 # iOS Management API
 
-`ThunderIDClient` exposes the <ProductName /> management API through three accessors: `applications`, `users`, and `agents`. Each lists, reads, creates, updates, and deletes its resource. Requests are authorized with the signed-in user's access token, and the token needs the permissions the server requires for each resource.
+`ThunderIDClient` exposes the <ProductName /> management API through the `applications`, `users`, `userTypes`, `agents`, and `agentTypes` accessors. Each lists, reads, creates, updates, and deletes its resource, and some add operations of their own. Requests are authorized with the signed-in user's access token, and the token needs the permissions the server requires for each resource.
 
 ```swift
 import ThunderID
@@ -31,19 +31,42 @@ The accessors throw `.sdkNotInitialized` until `initialize(config:)` has run.
 | | `get(id:fetcher:)` | `GET /applications/{id}` | `Application` |
 | | `create(_:fetcher:)` | `POST /applications` | `Application` |
 | | `update(id:_:fetcher:)` | `PUT /applications/{id}` | `Application` |
-| | `delete(id:fetcher:)` | `DELETE /applications/{id}` | Nothing |
+| | `delete(id:administrationMode:fetcher:)` | `DELETE /applications/{id}` | Nothing |
+| | `previewCimdDocument(clientId:fetcher:)` | `POST {baseUrl}/cimd/preview` | `CimdPreviewResponse` |
+| | `regenerateClientSecret(id:administrationMode:fetcher:)` | `GET`, then `PUT /applications/{id}` | `RegenerateClientSecretResult` |
+| | `regenerateFlowSecret(id:fetcher:)` | `GET`, then `PUT /applications/{id}` | `RegenerateFlowSecretResult` |
 | `users` | `list(limit:offset:filter:fetcher:)` | `GET /users?include=display` | `ManagedUserListResponse` |
 | | `get(id:fetcher:)` | `GET /users/{id}?include=display` | `ManagedUser` |
 | | `create(_:fetcher:)` | `POST /users` | `ManagedUser` |
 | | `update(id:_:fetcher:)` | `PUT /users/{id}` | `ManagedUser` |
-| | `delete(id:fetcher:)` | `DELETE /users/{id}` | Nothing |
-| `agents` | `list(limit:offset:fetcher:)` | `GET /agents?include=display` | `AgentListResponse` |
+| | `delete(id:administrationMode:fetcher:)` | `DELETE /users/{id}` | Nothing |
+| | `usages(id:fetcher:)` | `GET /users/{id}/usages` | `UserUsagesResponse` |
+| | `updateCredentials(id:_:fetcher:)` | `POST /users/{id}/update-credentials` | Nothing |
+| `userTypes` | `list(limit:offset:fetcher:)` | `GET /user-types?include=display` | `ManagedUserTypeListResponse` |
+| | `get(id:fetcher:)` | `GET /user-types/{id}?include=display` | `ManagedUserTypeDetails` |
+| | `create(_:fetcher:)` | `POST /user-types` | `ManagedUserTypeDetails` |
+| | `update(id:_:fetcher:)` | `PUT /user-types/{id}` | `ManagedUserTypeDetails` |
+| | `delete(id:fetcher:)` | `DELETE /user-types/{id}` | Nothing |
+| `agents` | `list(limit:offset:filter:fetcher:)` | `GET /agents?include=display` | `AgentListResponse` |
 | | `get(id:fetcher:)` | `GET /agents/{id}?include=display` | `Agent` |
 | | `create(_:fetcher:)` | `POST /agents` | `Agent` |
 | | `update(id:_:fetcher:)` | `PUT /agents/{id}` | `Agent` |
 | | `delete(id:fetcher:)` | `DELETE /agents/{id}` | Nothing |
+| | `regenerateSecret(id:fetcher:)` | `GET`, then `PUT /agents/{id}` | `RegenerateAgentSecretResult` |
+| `agentTypes` | `list(limit:offset:fetcher:)` | `GET /agent-types?include=display` | `AgentTypeListResponse` |
+| | `get(id:fetcher:)` | `GET /agent-types/{id}?include=display` | `AgentTypeDetails` |
+| | `update(id:_:fetcher:)` | `PUT /agent-types/{id}` | `AgentTypeDetails` |
 
 All methods are `async throws`.
+
+`usages(id:)` lists the resources that reference a user, such as agents that name the user as their owner, and what happens to each when the user is deleted: `fallback`, `cascade`, or `restrict`. `previewCimdDocument(clientId:)` asks the server to read a client ID metadata document (CIMD) and returns what it declares, so you can register an application from it. It always goes to `{baseUrl}/cimd/preview`.
+
+Unless an administration flow runs them, the secret operations generate a random secret on the device, save it on the resource, and return it with the updated resource. The result is the only place the new secret can be read. `regenerateClientSecret` and `agents.regenerateSecret` throw `.invalidInput`, before saving anything, when the resource has no OAuth client.
+
+```swift
+let result = try await client.applications.regenerateClientSecret(id: "<application-id>")
+showOnce(result.clientSecret)
+```
 
 ## Models
 
@@ -52,8 +75,12 @@ All methods are `async throws`.
 | `ApplicationRequest` | `applications.create`, `applications.update` | `name` |
 | `CreateManagedUserRequest` | `users.create` | `ouId`, `type` |
 | `UpdateManagedUserRequest` | `users.update` | None |
+| `UpdateUserCredentialsRequest` | `users.updateCredentials` | `credentials`, keyed by attribute name |
+| `CreateUserTypeRequest` | `userTypes.create` | `handle`, `displayName`, `ouId`, `schema` |
+| `UpdateUserTypeRequest` | `userTypes.update` | `displayName`, `ouId`, `schema` |
 | `CreateAgentRequest` | `agents.create` | `ouId`, `type`, `name` |
 | `UpdateAgentRequest` | `agents.update` | None |
+| `UpdateAgentTypeRequest` | `agentTypes.update` | `displayName`, `ouId`, `schema` |
 
 `Application` holds the server-generated `id`, `createdAt`, and `updatedAt`, plus an `ApplicationRequest` in its `request` property. Every `ApplicationRequest` field reads directly on the application, as in `application.name`. To update an application, edit `application.request` and pass it to `update(id:_:)`, because an update replaces the application's mutable fields.
 
@@ -77,7 +104,7 @@ The request passed to the fetcher already carries the `Authorization` header. Wi
 
 ## Management API on a Separate Host
 
-Requests go to `{baseUrl}/applications`, `{baseUrl}/users`, and `{baseUrl}/agents`. When the management API runs on a different host, set the collection URL through `ThunderIDConfig.endpoints`:
+Requests go to `{baseUrl}/applications`, `{baseUrl}/users`, `{baseUrl}/user-types`, `{baseUrl}/agents`, and `{baseUrl}/agent-types`. When the management API runs on a different host, set the collection URL through `ThunderIDConfig.endpoints`, which also accepts `userTypes` and `agentTypes`:
 
 ```swift
 ThunderIDConfig(
@@ -90,6 +117,56 @@ ThunderIDConfig(
     )
 )
 ```
+
+`previewCimdDocument` and administration flows always go to `baseUrl`, whatever `endpoints` sets.
+
+## Administration Flows
+
+Some operations change more than one record on the server, so the server can run them as an administration flow instead of a direct call. For example, a user deletion flow revokes the user's grants and ends their sessions before it removes the user. Pass `administrationMode: .flow` to run the flow the server configures for the operation:
+
+```swift
+try await client.users.delete(id: "<user-id>", administrationMode: .flow)
+```
+
+| Value | Behavior |
+| :--- | :--- |
+| `.native` (default) | Calls the management API directly. |
+| `.flow` | Reads the flow configured for the operation and runs it. Calls the management API directly when the server configures no flow for the operation. Needs an access token that can read server configuration. |
+
+These operations accept `administrationMode`:
+
+| Operation | Flow configuration key |
+| :--- | :--- |
+| `applications.delete(id:administrationMode:fetcher:)` | `.applicationDeletion` |
+| `applications.regenerateClientSecret(id:administrationMode:fetcher:)` | `.secretRegeneration` |
+| `users.delete(id:administrationMode:fetcher:)` | `.userDeletion` |
+| `groups.delete(id:administrationMode:fetcher:)` | `.groupDeletion` |
+| `groups.removeMembers(id:_:administrationMode:fetcher:)` | `.groupMembershipRemoval`, run once for each member |
+| `roles.delete(id:administrationMode:fetcher:)` | `.roleDeletion` |
+| `roles.removeAssignments(id:_:administrationMode:fetcher:)` | `.roleAssignmentRemoval`, run once for each assignee |
+| `roles.update(id:_:current:administrationMode:fetcher:)` | `.rolePermissionRemoval`, only when the update removes a permission |
+
+In `.flow` mode, `roles.update` writes the role's other fields first, then runs the flow for the permissions. Pass the role as it is now in `current` to skip the read that tells whether the update removes a permission. When a flow regenerates a client secret, `RegenerateClientSecretResult.application` is `nil`, because the flow does not return the application.
+
+To run an administration flow the SDK has no operation for, use `client.administrationFlows`. Its calls go to `{baseUrl}/server-config/flow`, `{baseUrl}/flows`, and `{baseUrl}/flow/execute`.
+
+| Method | Description |
+| :--- | :--- |
+| `resolveHandles(_:fetcher:)` | Reads the flow handle configured for each `AdministrationFlowConfigKey`. A key with no handle is absent from the result. |
+| `find(handles:fetcher:)` | Finds the administration flows that carry the given handles, as `ManagedFlow` values. |
+| `resolve(_:fetcher:)` | Maps each configuration key to the identifier of its configured flow. |
+| `resolveId(_:action:fetcher:)` | Returns the identifier of the flow configured for one key, or `nil` when none is configured. |
+| `execute(flowId:inputs:action:fetcher:)` | Runs a flow to completion with all its inputs and returns the values it produced. |
+| `run(_:inputs:action:fetcher:)` | Resolves and runs the flow configured for one key, or returns `nil` when none is configured. |
+
+```swift
+let produced = try await client.administrationFlows.run(
+    .userSuspend,
+    inputs: [AdministrationFlowInput.subject: "<user-id>"]
+)
+```
+
+The constants name what a flow reads and returns. `AdministrationFlowConfigKey` lists the configuration key of each operation, `AdministrationFlowInput` the input names (such as `subject`, `application`, `group`, `member`, `role`, and `assignee`), `AdministrationFlowData` the values a flow returns (`clientSecret` and `emailSent`), and `AdministrationFlowConstants` the flow type (`ADMINISTRATION`) and listing page size.
 
 ## SwiftUI
 
@@ -142,12 +219,29 @@ do {
 }
 ```
 
-Management requests add two codes:
+Management requests add these codes:
 
 | Code | Value | Description |
 | :--- | :--- | :--- |
 | `.forbidden` | `FORBIDDEN` | The server returned HTTP 403. The access token lacks permission for the operation. |
 | `.notFound` | `NOT_FOUND` | The server returned HTTP 404. The resource does not exist. |
-| `.invalidInput` | `INVALID_INPUT` | The resource identifier is empty, or the server rejected the payload with HTTP 400. |
+| `.invalidInput` | `INVALID_INPUT` | The resource identifier is empty, the resource has no OAuth client to regenerate a secret for, or the server rejected the payload with HTTP 400. |
+| `.administrationFlowFailed` | `ADMINISTRATION_FLOW_FAILED` | A flow step refused the operation, or the flow completed without the value the operation needed. |
+| `.administrationFlowIncomplete` | `ADMINISTRATION_FLOW_INCOMPLETE` | The flow asked for more input, so it could not complete. |
+| `.administrationFlowNotFound` | `ADMINISTRATION_FLOW_NOT_FOUND` | The server configures a flow for the operation, but that flow no longer exists. The operation was not performed. |
+
+`isAdministrationFlowError` is `true` for the three administration flow codes. When a flow step refuses, `flowError` carries the step's `code`, and its `message` and `description`.
+
+When the server rejects a request, `serverError` carries the server's own error: its `code` (for example `USR-1027`), and its `message` and `description`, each with a `key`, a `defaultValue`, and the `params` to interpolate. Use it to show a translated message.
+
+```swift
+do {
+    try await client.users.delete(id: userId, administrationMode: .flow)
+} catch let error as ThunderIDError where error.isAdministrationFlowError {
+    showMessage(error.flowError?.message?.defaultValue ?? error.message)
+} catch let error as ThunderIDError {
+    showMessage(error.serverError?.message?.defaultValue ?? error.message)
+}
+```
 
 See [Error Codes](../thunderid-client#error-codes) for the full list.
