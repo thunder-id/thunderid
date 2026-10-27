@@ -93,6 +93,7 @@ func (s *GraphBuilderSubsetRegistryTestSuite) TestBuildGraph_SubsetRegistryRejec
 	mockFlowFactory.EXPECT().CreateNode(
 		"task", "TASK_EXECUTION", map[string]interface{}(nil), false, true).Return(mockTaskNode, nil)
 	mockTaskNode.EXPECT().SetInputs([]providers.Input{})
+	mockTaskNode.EXPECT().SetIdentifierInputs([]providers.Input{})
 
 	graph, err := builder.buildGraph(context.Background(), flow)
 
