@@ -52,6 +52,8 @@ vi.mock('@thunderid/react', () => ({
     sendCookiesInRequests,
     sendIdTokenInLogoutRequest,
     discovery,
+    endpoints,
+    session,
     /* eslint-enable react/require-default-props */
   }: {
     children: React.ReactNode;
@@ -65,6 +67,8 @@ vi.mock('@thunderid/react', () => ({
     sendCookiesInRequests?: boolean;
     sendIdTokenInLogoutRequest?: boolean;
     discovery?: Record<string, unknown>;
+    endpoints?: Record<string, unknown>;
+    session?: Record<string, unknown>;
   }) => {
     capturedProviderProps = {
       baseUrl,
@@ -77,6 +81,8 @@ vi.mock('@thunderid/react', () => ({
       sendCookiesInRequests,
       sendIdTokenInLogoutRequest,
       discovery,
+      endpoints,
+      session,
     };
     return (
       <div
@@ -107,6 +113,59 @@ describe('withConfig (console)', () => {
     mockGetTrustedIssuerScopes.mockReturnValue([]);
     mockGetResourceIdentifier.mockReturnValue(undefined);
     mockIsTrustedIssuerGenericOidc.mockReturnValue(false);
+  });
+
+  it('maps the host backend endpoints onto the SDK when the console is embedded', () => {
+    mockGetClientId.mockReturnValue('client-id');
+    mockGetServerUrl.mockReturnValue('https://server.example.com');
+    mockGetClientUrl.mockReturnValue('https://client.example.com');
+    mockConfig.client = {
+      embedded: true,
+      backend: {
+        sign_in: '/identity/auth/signin',
+        session: '/identity/auth/session',
+        check_session: '/identity/auth/checksession',
+        refresh: '/identity/auth/refresh',
+        sign_out: '/identity/auth/signout',
+        proxy: '/identity/proxy',
+        check_session_interval: 30,
+      },
+    };
+
+    render(<WithConfigComponent />);
+
+    expect((capturedProviderProps.endpoints as Record<string, unknown>)?.backend).toEqual({
+      checkSession: '/identity/auth/checksession',
+      proxy: '/identity/proxy',
+      refresh: '/identity/auth/refresh',
+      session: '/identity/auth/session',
+      signIn: '/identity/auth/signin',
+      signOut: '/identity/auth/signout',
+    });
+    expect(capturedProviderProps.session).toEqual({checkInterval: 30});
+  });
+
+  it('ignores the backend endpoints when the console is not embedded', () => {
+    mockGetClientId.mockReturnValue('client-id');
+    mockGetServerUrl.mockReturnValue('https://server.example.com');
+    mockGetClientUrl.mockReturnValue('https://client.example.com');
+    mockConfig.client = {backend: {sign_in: '/identity/auth/signin'}};
+
+    render(<WithConfigComponent />);
+
+    expect((capturedProviderProps.endpoints as Record<string, unknown>)?.backend).toBeUndefined();
+    expect(capturedProviderProps.session).toBeUndefined();
+  });
+
+  it('signs in from the browser when an embedded console has no backend', () => {
+    mockGetClientId.mockReturnValue('client-id');
+    mockGetServerUrl.mockReturnValue('https://server.example.com');
+    mockGetClientUrl.mockReturnValue('https://client.example.com');
+    mockConfig.client = {embedded: true};
+
+    render(<WithConfigComponent />);
+
+    expect((capturedProviderProps.endpoints as Record<string, unknown>)?.backend).toBeUndefined();
   });
 
   it('renders without crashing', () => {

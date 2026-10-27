@@ -78,6 +78,33 @@ export interface ClientConfig {
   resource_identifier?: string;
 
   /**
+   * Set when the console runs embedded in a host application as a microfrontend. The host supplies
+   * the chrome, the theme and the session, so the console renders only its pages.
+   */
+  embedded?: boolean;
+
+  /**
+   * Endpoints of the backend for frontend that signs the console in, on the page's own origin. When
+   * set, the console signs in through it and the browser holds no token. Omit it to sign in from
+   * the browser.
+   * @example {sign_in: "/identity/auth/signin", session: "/identity/auth/session"}
+   */
+  backend?: {
+    sign_in?: string;
+    session?: string;
+    check_session?: string;
+    refresh?: string;
+    sign_out?: string;
+    proxy?: string;
+    /**
+     * Seconds between checks that the session is still live, so a sign-out elsewhere signs the
+     * console out without waiting for its next request. Omit or set 0 to check only when the console
+     * regains focus.
+     */
+    check_session_interval?: number;
+  };
+
+  /**
    * Server hostname or IP address
    * @example "localhost", "api.example.com", "192.168.1.100"
    */

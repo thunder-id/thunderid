@@ -32,22 +32,50 @@ export default function withConfig<P extends object>(WrappedComponent: Component
     // them. Point those endpoints back at the resource server URL.
     const resourceServerUrl = config.trusted_issuer ? getServerUrl().replace(/\/+$/, '') : undefined;
 
+    // Embedded in a host that runs a backend for frontend, the console signs in through it: the
+    // backend holds the tokens and proxies the console's API calls, so no token reaches the browser.
+    // The endpoints are on the page's own origin, which is the host's, and the console never sees
+    // them in any other arrangement.
+    const backend = config.client?.embedded === true ? config.client?.backend : undefined;
+
     // Behavioral defaults derived from app config and runtime heuristics.
     // config.sdk values are deep-merged on top, so operators can override any of these.
     const sdkDefaults: Partial<ThunderIDProviderProps> = {
       discovery: {wellKnown: {enabled: true}},
       ...(resourceIdentifier ? {signInOptions: {resource: resourceIdentifier}} : {}),
-      ...(resourceServerUrl
+      ...(resourceServerUrl || backend
         ? {
             endpoints: {
-              flowExecute: `${resourceServerUrl}/flow/execute`,
-              flowMeta: `${resourceServerUrl}/flow/meta`,
-              usersMe: `${resourceServerUrl}/users/me`,
-              agents: `${resourceServerUrl}/agents`,
-              applications: `${resourceServerUrl}/applications`,
-              users: `${resourceServerUrl}/users`,
+              ...(resourceServerUrl
+                ? {
+                    flowExecute: `${resourceServerUrl}/flow/execute`,
+                    flowMeta: `${resourceServerUrl}/flow/meta`,
+                    usersMe: `${resourceServerUrl}/users/me`,
+                    agents: `${resourceServerUrl}/agents`,
+                    applications: `${resourceServerUrl}/applications`,
+                    users: `${resourceServerUrl}/users`,
+                  }
+                : {}),
+              ...(backend
+                ? {
+                    backend: {
+                      checkSession: backend.check_session,
+                      proxy: backend.proxy,
+                      refresh: backend.refresh,
+                      session: backend.session,
+                      signIn: backend.sign_in,
+                      signOut: backend.sign_out,
+                    },
+                  }
+                : {}),
             },
           }
+        : {}),
+      // Poll the backend so a sign-out elsewhere signs the console out promptly.
+      // TODO: Drop the cast once the catalog moves to the @thunderid/react release that adds
+      // `session.checkInterval`. Older releases ignore the key and check only on focus.
+      ...(backend?.check_session_interval
+        ? {session: {checkInterval: backend.check_session_interval} as ThunderIDProviderProps['session']}
         : {}),
       sendIdTokenInLogoutRequest: false,
       // Revoke the access token at the OP's revocation_endpoint before completing sign out, on top
