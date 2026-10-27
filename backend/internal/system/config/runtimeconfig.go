@@ -14,12 +14,37 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
+// ServerMode is the role a running server plays.
+type ServerMode string
+
+const (
+	// ServerModeDataPlane runs authentication and issues tokens. It is the mode a server starts in
+	// unless its entry point says otherwise.
+	ServerModeDataPlane ServerMode = "data_plane"
+	// ServerModeControlPlane authors and deploys configuration, and serves no runtime traffic.
+	ServerModeControlPlane ServerMode = "control_plane"
+)
+
 // ServerRuntime holds the runtime configuration for the server.
 type ServerRuntime struct {
 	ServerHome            string `yaml:"server_home"`
 	GateClientLoginURL    *url.URL
 	GateClientCallbackURL *url.URL
 	Config                Config `yaml:"config"`
+	// Mode is set by the server's entry point and is not part of Config, so no configuration file
+	// can change it.
+	Mode ServerMode
+}
+
+// RuntimeOption changes how the server runtime is initialized.
+type RuntimeOption func(*ServerRuntime)
+
+// WithMode sets the mode the server runs in. Only an entry point chooses it; it is never read from
+// configuration.
+func WithMode(mode ServerMode) RuntimeOption {
+	return func(runtime *ServerRuntime) {
+		runtime.Mode = mode
+	}
 }
 
 var (
@@ -27,8 +52,9 @@ var (
 	once          sync.Once
 )
 
-// InitializeServerRuntime initializes the server runtime configurations.
-func InitializeServerRuntime(serverHome string, config *Config) error {
+// InitializeServerRuntime initializes the server runtime configurations. The server runs as a data
+// plane unless WithMode says otherwise.
+func InitializeServerRuntime(serverHome string, config *Config, opts ...RuntimeOption) error {
 	once.Do(func() {
 		loginPath := config.GateClient.LoginPath
 		if strings.TrimSpace(loginPath) == "" {
@@ -77,6 +103,10 @@ func InitializeServerRuntime(serverHome string, config *Config) error {
 			GateClientLoginURL:    parsedURL,
 			GateClientCallbackURL: parsedCallbackURL,
 			Config:                *config,
+			Mode:                  ServerModeDataPlane,
+		}
+		for _, opt := range opts {
+			opt(runtimeConfig)
 		}
 	})
 	return nil
@@ -88,6 +118,11 @@ func GetServerRuntime() *ServerRuntime {
 		panic("Server runtime is not initialized")
 	}
 	return runtimeConfig
+}
+
+// GetServerMode returns the mode the server is running in.
+func GetServerMode() ServerMode {
+	return GetServerRuntime().Mode
 }
 
 // IsServerRuntimeInitialized reports whether the server runtime has been initialized, without

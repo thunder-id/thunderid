@@ -39,37 +39,36 @@ const BROWSERS = [
 ];
 
 /**
- * Specs that mutate global, non-partitionable server state: the CORS allowed-origins list, the
- * shared sample app's flow bindings, the server-wide notification-sender and
- * identity_provider.<vendor>_base_url settings, each mock server's fixed port, and each branded
- * connection vendor's single fixed-name instance. Running them in more than one browser project at
- * a time is not just racy, it cannot work - the mock ports the backend is configured to call
- * collide outright, and a branded connection's name is hardcoded to the vendor's display name
- * (`name: meta.displayName` in ConnectionConfigureWizardPage.tsx), so concurrent projects cannot
- * hold separate instances and each one's create/teardown deletes the others' connection mid-test.
+ * Specs that mutate global, non-partitionable server state: the shared sample app's flow bindings,
+ * the server-wide notification-sender and identity_provider.<vendor>_base_url settings, and each
+ * mock server's fixed port. Running them in more than one browser project at a time is not just
+ * racy, it cannot work - the mock ports the backend is configured to call collide outright.
  *
- * They assert server behavior (flow COMPLETE, /user/emails called, Access-Control-Allow-Origin,
- * a scope update surviving a reload), so one run is the whole coverage; the shared form and
- * unsaved-changes UI is exercised cross-browser by the applications and accessibility specs. They
- * run on chromium only.
+ * They assert server behavior (flow COMPLETE, /user/emails called), so one run is the whole
+ * coverage. They run on chromium only.
  */
 const SERVER_STATE_SPECS = [
-  "**/settings/cors-allowed-origins.spec.ts",
   "**/sample-app-authentication/sample-app-mfa-login.spec.ts",
   "**/sample-app-authentication/sample-app-social-login.spec.ts",
-  "**/connections/branded-connection-crud.spec.ts",
 ];
 
 /**
- * wayfinder-sample-setup.spec.ts imports the Wayfinder config bundle (replacing the server-wide
- * default resource server and CORS allowed-origins list, same non-partitionable-state reasoning
- * as SERVER_STATE_SPECS above); tests/wayfinder/** exercises the standalone Wayfinder sample app
- * against data that import creates (the seed user, the "Wayfinder" OAuth client). Both run
- * chromium-only via their own dedicated projects below rather than SERVER_STATE_SPECS, because
- * the tryout specs additionally need to run strictly *after* the setup spec finishes - a plain
- * testIgnore exclusion has no ordering mechanism, only a project `dependencies:` graph does.
+ * The accessibility audits scan the Admin Console's pages, which are the same in every browser, so
+ * one browser's run is the whole coverage. They run on chromium only.
  */
-const WAYFINDER_SETUP_SPEC = "**/welcome/wayfinder-sample-setup.spec.ts";
+const ACCESSIBILITY_SPECS = ["**/accessibility/**/*.spec.ts"];
+
+/**
+ * wayfinder-bundle.spec.ts verifies the Wayfinder config bundle that run-e2e.sh imported (the
+ * bundle replaces the server-wide default resource server and CORS allowed-origins list, so it
+ * only ever runs against the dedicated Wayfinder server); tests/wayfinder/** exercises the
+ * standalone Wayfinder sample app against data that import creates (the seed user, the "Wayfinder"
+ * OAuth client). Both run chromium-only via their own dedicated projects below rather than
+ * SERVER_STATE_SPECS, because the tryout specs additionally need to run strictly *after* the bundle
+ * check finishes - a plain testIgnore exclusion has no ordering mechanism, only a project
+ * `dependencies:` graph does.
+ */
+const WAYFINDER_SETUP_SPEC = "**/wayfinder-setup/wayfinder-bundle.spec.ts";
 // `**` after wayfinder/ matches both direct children (mock-email-flows.spec.ts) and specs grouped
 // into a subdirectory (b2c-tryout/authentication.spec.ts).
 const WAYFINDER_TRYOUT_SPECS = ["**/wayfinder/**/*.spec.ts"];
@@ -81,13 +80,6 @@ const WAYFINDER_TRYOUT_SPECS = ["**/wayfinder/**/*.spec.ts"];
  * three-browser projects below and instead runs `.serial` in its own single chromium-only project.
  */
 const MOCK_EMAIL_TRYOUT_SPEC = "**/wayfinder/mock-email-flows.spec.ts";
-
-/**
- * Specs that have possible collisions in the system, and so must not run while
- * anything else is running. They are run in a separate project after all the
- * other specs have finished.
- */
-const ORDERED_LAST_SPECS = ["**/applications/application-user-access.spec.ts"];
 
 export default defineConfig({
   /** Directory containing test files */
@@ -174,9 +166,9 @@ export default defineConfig({
    */
   projects: [
     /**
-     * Every spec runs in one flat fan-out,except ORDERED_LAST_SPECS (excluded here, picked up by
-     * the `${browser}-ordered-last` projects below); the server-state specs (see SERVER_STATE_SPECS) are
-     * excluded from the non-chromium projects instead of being duplicated and serialized. The
+     * Every spec runs in one flat fan-out; the server-state and accessibility specs (see
+     * SERVER_STATE_SPECS and ACCESSIBILITY_SPECS) are excluded from the non-chromium projects
+     * instead of being duplicated and serialized. The
      * Wayfinder setup/tryout specs are excluded from every browser project unconditionally - they
      * run exclusively through the two dedicated projects below.
      */
@@ -186,27 +178,15 @@ export default defineConfig({
       testIgnore: [
         WAYFINDER_SETUP_SPEC,
         ...WAYFINDER_TRYOUT_SPECS,
-        ...ORDERED_LAST_SPECS,
-        ...(browser.id === "chromium" ? [] : SERVER_STATE_SPECS),
+        ...(browser.id === "chromium" ? [] : [...SERVER_STATE_SPECS, ...ACCESSIBILITY_SPECS]),
       ],
       use: { ...browser.device },
     })),
 
     /**
-     * Runs ORDERED_LAST_SPECS only once every browser project has finished, so nothing else can
-     * still be mutating the state they read.
-     */
-    ...BROWSERS.map(browser => ({
-      name: `${browser.id}-ordered-last`,
-      testMatch: ORDERED_LAST_SPECS,
-      use: { ...browser.device },
-      dependencies: BROWSERS.map(b => b.id),
-    })),
-
-    /**
      * tests/wayfinder/** reads data (the seed user, the "Wayfinder" OAuth client) that only
      * exists once wayfinder-sample-setup.spec.ts's import has completed, so wayfinder-tryout must
-     * not start until wayfinder-setup finishes.
+     * not start until the bundle check finishes.
      */
     {
       name: "wayfinder-setup",

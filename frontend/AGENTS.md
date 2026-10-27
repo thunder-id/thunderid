@@ -1,7 +1,7 @@
 # Frontend — Agent Guide
 
 Read with the root [AGENTS.md](../AGENTS.md). The frontend is a pnpm monorepo under `frontend/` with three React apps,
-`frontend/apps/console` (admin console), `frontend/apps/console-cp` (the console the control plane serves: the same
+`frontend/apps/admin-console` (the data plane admin console: Users, Agents, Groups, Roles), `frontend/apps/console-cp` (the console the control plane serves: the same
 shell plus gateway management, with every administration operation running natively rather than through a flow) and
 `frontend/apps/gate` (login, registration, recovery), plus shared and feature packages under `frontend/packages/`.
 
@@ -60,14 +60,14 @@ UI: a page, dialog, form, table, card, shared component, or styling. The rules t
 
 ## Route Configuration — Never Hardcode a Path
 
-Every route destination is centralized in a per-app `RouteConfig` (`frontend/apps/console/src/configs/RouteConfig.ts`,
+Every route destination is centralized in a per-app `RouteConfig` (`frontend/apps/admin-console/src/configs/RouteConfig.ts`,
 `frontend/apps/gate/src/configs/RouteConfig.ts`) — never a literal path string scattered through app code.
 
 - **Never** write `navigate('/some/path')`, ``navigate(`/some/${id}`)``, or `<Link to="/some/path">`. Always resolve the
   destination through `RouteConfig` (app-local code) or a package's `use<Domain>Routes()` hook (see below).
-- Console's `App.tsx` `<Route path>` declarations and `DashboardLayout.tsx`'s sidebar are built from the same
+- Each console's `App.tsx` `<Route path>` declarations and `DashboardLayout.tsx`'s sidebar are built from the same
   `RouteConfig`/`ROUTE_SEGMENTS`, so the mounted route and every place that navigates to it share one source and can't
-  drift apart. Read `frontend/apps/console/src/configs/RouteConfig.ts` directly — do not trust a copied route table,
+  drift apart. Read `frontend/apps/admin-console/src/configs/RouteConfig.ts` directly — do not trust a copied route table,
   which goes stale.
 - A `@thunderid/configure-*` package must never hardcode or assume the host app's URL structure. Each package defines
   its own `routes/types.ts` (a route-shape interface + defaults matching Console's current paths) and a

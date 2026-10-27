@@ -18,7 +18,7 @@ This guide covers setting up a local debugging environment for <ProductName />'s
 |-----------|-------------|------|
 | Backend | Go-based API server | 8090 |
 | Gate App | React-based authentication gateway | 5190 |
-| Console App | React-based developer console | 5191 |
+| Admin Console App | React-based admin console | 5192 |
 | React SDK Sample | Sample app demonstrating OAuth integration | 3000 |
 
 This guide focuses on local development and debugging with SQLite for database storage.
@@ -57,7 +57,7 @@ value:
   allowedOrigins:
     - "https://localhost:3000"
     - "https://localhost:5190"
-    - "https://localhost:5191"
+    - "https://localhost:5192"
 ```
 
 **Gate client port**: add this to `backend/cmd/server/deployment.yaml` (so the backend knows where to redirect for auth):
@@ -84,7 +84,7 @@ on its own, so pass one explicitly with `--admin-password`:
 PUBLIC_URL="https://localhost:8090" \
   go run -C backend/cmd/server . bootstrap \
   --admin-password "admin" \
-  --console-redirect-uris "https://localhost:5191/console"
+  --console-redirect-uris "https://localhost:5192/console"
 ```
 
 Stop the backend by pressing `Ctrl + C`.
@@ -129,9 +129,9 @@ npm run dev
 
 ### Connect to Console App (Browser DevTools)
 
-1. Open [https://localhost:5191/console](https://localhost:5191/console) in Chrome
+1. Open [https://localhost:5192/console](https://localhost:5192/console) in Chrome
 2. Open DevTools (`Cmd+Option+I` on macOS, `F12` on Windows/Linux)
-3. Navigate to **Sources** → `top` → `localhost:5191` → `console` → `src`
+3. Navigate to **Sources** → `top` → `localhost:5192` → `console` → `src`
 4. Click on a line number to set a breakpoint
 5. When that line executes, Chrome pauses execution and lets you inspect variables
 
@@ -218,7 +218,7 @@ In VS Code, open these files and set breakpoints:
 
 ### 3. Trigger the Flow
 
-1. Navigate to [https://localhost:5191/console](https://localhost:5191/console)
+1. Navigate to [https://localhost:5192/console](https://localhost:5192/console)
 2. Log in with the admin credentials from Step 2 (username `admin`, password `admin` if you used the example above)
 3. Go to **Users** section
 4. Click **Add User**

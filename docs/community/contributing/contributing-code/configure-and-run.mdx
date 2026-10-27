@@ -12,7 +12,7 @@ hide_table_of_contents: false
 
 **CORS allowed origins:**
 
-`make run` (and `.\build.ps1 run` on Windows) automatically configures the Gate and Console development origins (`https://localhost:5190` and `https://localhost:5191`) on startup, so no manual CORS setup is required for the standard flow.
+`make run` (and `.\build.ps1 run` on Windows) automatically configures the Gate and Admin Console development origins (`https://localhost:5190` and `https://localhost:5192`) on startup, so no manual CORS setup is required for the standard flow.
 
 :::tip
 To allow additional origins, add them to `backend/cmd/server/config/resources/server_configs/cors.yaml` or set them at runtime with `PUT /server-config/cors`.
@@ -64,7 +64,7 @@ This command will automatically set up your complete development environment:
 
 - **Backend server**: [https://localhost:8090](https://localhost:8090)
 - **<ProductName /> Gate** (Login/Register): [https://localhost:5190/gate](https://localhost:5190/gate)
-- **<ProductName /> Console** (Admin Console): [https://localhost:5191/console](https://localhost:5191/console)
+- **<ProductName /> Console** (Admin Console): [https://localhost:5192/console](https://localhost:5192/console)
 :::
 
 <details>
@@ -103,13 +103,13 @@ The `bootstrap` subcommand never invents an admin password on its own. Pass one 
     {`PUBLIC_URL="https://localhost:8090" \\
   go run -C backend/cmd/server . bootstrap \\
   --admin-password "admin" \\
-  --console-redirect-uris "https://localhost:5191/console"`}
+  --console-redirect-uris "https://localhost:5192/console"`}
   </CodeBlock>
   <CodeBlock lang="powershell" label="Windows">
     {`$env:PUBLIC_URL = "https://localhost:8090"
 go run -C backend/cmd/server . bootstrap \`
   --admin-password "admin" \`
-  --console-redirect-uris "https://localhost:5191/console"`}
+  --console-redirect-uris "https://localhost:5192/console"`}
   </CodeBlock>
 </CodeGroup>
 

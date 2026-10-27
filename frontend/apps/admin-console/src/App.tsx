@@ -13,7 +13,11 @@ import DashboardLayout from './layouts/DashboardLayout';
 import FullScreenLayout from './layouts/FullScreenLayout';
 
 const AgentOnboardPage = lazy(() => import('@thunderid/configure-agents').then((m) => ({default: m.AgentOnboardPage})));
-const AgentEditPage = lazy(() => import('@thunderid/configure-agents').then((m) => ({default: m.AgentEditPage})));
+const AgentEditPage = lazy(() =>
+  import('./lib/monaco-setup').then(() =>
+    import('@thunderid/configure-agents').then((m) => ({default: m.AgentEditPage})),
+  ),
+);
 const AgentsListPage = lazy(() => import('@thunderid/configure-agents').then((m) => ({default: m.AgentsListPage})));
 const ViewAgentTypePage = lazy(() =>
   import('@thunderid/configure-agent-types').then((m) => ({default: m.ViewAgentTypePage})),

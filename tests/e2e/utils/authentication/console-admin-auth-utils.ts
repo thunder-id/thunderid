@@ -369,21 +369,8 @@ function checkTokensExpired(authState: AuthState, debug: boolean): boolean {
 async function waitForSessionData(page: Page): Promise<void> {
   await page.waitForURL("**/console/**", { timeout: Timeouts.REDIRECT });
 
-  // The welcome key is the later of the two: WelcomeRedirect marks itself dismissed in
-  // sessionStorage the first time a signed-in session renders a non-/welcome route (see
-  // WelcomeRedirect.tsx), which is a useEffect that only runs once the session token exists.
-  // Capturing state before that effect commits replays a session that looks brand new to every
-  // consumer of this file, redirecting whatever page they navigate to next into /welcome instead
-  // of the page the test actually asked for. Both are still checked because a retried sign-in
-  // starts with the previous attempt's welcome key already in storage.
   await page.waitForFunction(
-    () => {
-      const keys = Object.keys(sessionStorage);
-      return (
-        keys.some(key => key.includes("session_data-instance_0")) &&
-        keys.some(key => key.endsWith(":welcome:dismissed"))
-      );
-    },
+    () => Object.keys(sessionStorage).some(key => key.includes("session_data-instance_0")),
     undefined,
     { timeout: Timeouts.PAGE_LOAD }
   );
@@ -420,7 +407,7 @@ Please ensure they are set in your .env file or the test environment configurati
     // from that. Re-visiting /console rides the IdP's SSO cookie (see
     // backend/internal/flow/session/transport.go) to a fresh code without re-entering credentials.
     console.log(
-      "⚠️ Sign-in did not settle (SDK code-exchange race, or the welcome effect never committed), retrying..."
+      "⚠️ Sign-in did not settle (SDK code-exchange race), retrying..."
     );
     await signinPage.gotoHome();
     await waitForSessionData(page);

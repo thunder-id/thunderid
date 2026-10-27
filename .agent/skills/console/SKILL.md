@@ -11,7 +11,7 @@ allowed-tools: Bash(playwright-cli:*) Bash(npx:*)
 Before running any commands, determine the console base URL. Do NOT hardcode a URL — resolve it from project configuration:
 
 1. **Check `deployment.yaml`** at `backend/cmd/server/deployment.yaml` for the `server.hostname` and `server.port`. If the backend is serving the console (production mode), the URL is `https://{hostname}:{port}/console`.
-2. **Check `vite.config.ts`** at `frontend/apps/console/vite.config.ts` for the development server `PORT` (default `5191`) and `HOST` (default `localhost`). If the frontend development server is running separately, the URL is `https://{HOST}:{PORT}/console`.
+2. **Check `vite.config.ts`** at `frontend/apps/admin-console/vite.config.ts` for the development server `PORT` (default `5192`) and `HOST` (default `localhost`). If the frontend development server is running separately, the URL is `https://{HOST}:{PORT}/console`.
 3. **Check environment variables**: `PORT`, `HOST`, or `BASE_URL` may override the defaults.
 4. **If unable to resolve**, ask the user for the ThunderID Console URL.
 
@@ -94,8 +94,8 @@ Keep the named browser session open when continuing the same test. Saving browse
 
 Routes change often, so they are not duplicated here — a copied table goes stale. Derive routes from these source files, relative to the repository root:
 
-- Route definitions: `frontend/apps/console/src/App.tsx`
-- Sidebar navigation and categories: `frontend/apps/console/src/layouts/DashboardLayout.tsx`
+- Route definitions: `frontend/apps/admin-console/src/App.tsx`
+- Sidebar navigation and categories: `frontend/apps/admin-console/src/layouts/DashboardLayout.tsx`
 
 The Console base path is `/console`; append a route from `App.tsx` to the resolved `{CONSOLE_URL}` (e.g. `{CONSOLE_URL}/users`).
 

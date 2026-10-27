@@ -53,7 +53,8 @@
 
 ## frontend files
 
-/frontend/apps/console/ @DonOmalVindula
+/frontend/apps/admin-console/ @DonOmalVindula
+/frontend/apps/console-cp/ @DonOmalVindula
 /frontend/apps/gate/ @brionmario
 /frontend/packages/ @jeradrutnam @brionmario @DonOmalVindula
 

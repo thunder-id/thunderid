@@ -37,7 +37,7 @@ while IFS= read -r profile; do
 done < <(find coverage-artifacts -type f \( -name 'coverage_unit.out' -o -name 'coverage_integration.out' \) 2>/dev/null | sort)
 
 # Rewrite LCOV SF paths (absolute or app-relative) to repo-relative paths.
-for app in console gate; do
+for app in gate; do
   src=$(find "coverage-artifacts/${app}-coverage" -type f -name 'lcov.info' 2>/dev/null | head -1)
   [ -n "$src" ] || continue
   dst="${app}-lcov.info"

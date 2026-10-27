@@ -20,7 +20,7 @@ import { Timeouts } from "../../constants/timeouts";
 
 /**
  * Navigate to the dashboard and wait for its actual content, not network idle: HomePage
- * (frontend/apps/console/src/pages/HomePage.tsx) renders its "Hello, <name>" h1
+ * (frontend/apps/admin-console/src/pages/HomePage.tsx) renders its "Hello, <name>" h1
  * and the rest of its content (StartBuildingSection/NextStepsSection, neither of which fetches
  * its own data) in one synchronous pass, so the heading appearing is a reliable proxy for the
  * whole page being ready to scan.
@@ -32,7 +32,7 @@ async function gotoDashboard(page: Page): Promise<void> {
 
 /**
  * Navigate to the users list and wait for the loaded rows, not network idle: UsersListPage is
- * React.lazy-loaded (frontend/apps/console/src/App.tsx) and its grid
+ * React.lazy-loaded (frontend/apps/admin-console/src/App.tsx) and its grid
  * (frontend/packages/configure-users/src/components/UsersList.tsx) renders unconditionally, with
  * `/users` still in flight, so neither the grid root nor a row on its own means the data arrived.
  * MUI's skeleton overlay renders placeholder rows as `.MuiDataGrid-row.MuiDataGrid-rowSkeleton`;

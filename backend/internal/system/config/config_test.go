@@ -144,6 +144,59 @@ jwt:
 	assert.Equal(suite.T(), dummyCryptoKey, config.Crypto.Encryption.Key) // Default value
 }
 
+// The server mode is chosen by the entry point, so a deployment file cannot set it: the YAML loader
+// refuses a key Config does not have.
+func (suite *ConfigTestSuite) TestLoadConfigRejectsAServerModeInTheDeploymentFile() {
+	tempDir := suite.T().TempDir()
+	valid := `
+server:
+  hostname: "user-host"
+  port: 8090
+database:
+  config:
+    type: "sqlite"
+    sqlite:
+      path: "database/configdb.db"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+
+	_, err := LoadConfig(suite.createTempFile(tempDir, "valid*.yaml", valid), "", tempDir)
+	suite.Require().NoError(err, "the file without a mode must load, so the next failure is about the mode")
+
+	_, err = LoadConfig(suite.createTempFile(tempDir, "mode*.yaml", valid+"mode: \"control_plane\"\n"), "", tempDir)
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "mode")
+}
+
+// A mode in default.json is ignored, and the server still runs as a data plane.
+func (suite *ConfigTestSuite) TestLoadConfigIgnoresAServerModeInDefaultJSON() {
+	tempDir := suite.T().TempDir()
+	defaults := `{
+  "server": {"hostname": "default-host", "port": 8080},
+  "mode": "control_plane",
+  "server_mode": "control_plane",
+  "notification": {"otp": {"length": 6, "use_numeric_only": true, "validity_period_seconds": 120}}
+}`
+	user := `
+server:
+  hostname: "user-host"
+  port: 8090
+`
+	cfg, err := LoadConfig(suite.createTempFile(tempDir, "user*.yaml", user),
+		suite.createTempFile(tempDir, "default*.json", defaults), tempDir)
+	suite.Require().NoError(err)
+
+	ResetServerRuntime()
+	suite.T().Cleanup(ResetServerRuntime)
+	suite.Require().NoError(InitializeServerRuntime(tempDir, cfg))
+
+	suite.Equal(ServerModeDataPlane, GetServerMode())
+}
+
 func (suite *ConfigTestSuite) TestLoadConfigWithDefaults_NoDefaults() {
 	// Create a partial YAML user configuration file.
 	userContent := `

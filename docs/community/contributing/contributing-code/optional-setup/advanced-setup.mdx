@@ -41,7 +41,7 @@ If you have not already created the `Console` application and the default admin 
 ```bash
 PUBLIC_URL="https://localhost:8090" \
   go run -C backend/cmd/server . bootstrap \
-  --console-redirect-uris "https://localhost:5191/console"
+  --console-redirect-uris "https://localhost:5192/console"
 ```
 
 This runs the in-process `bootstrap` subcommand, which creates the default resources (including the `Console` application and the default admin user) directly through the service layer. No temporary server or security bypass is involved, and it is idempotent if re-run.
@@ -92,12 +92,12 @@ curl -k -X GET "https://localhost:8090/applications/<console-application-id>"
 
 **Note**: Replace `<console-application-id>` with the actual application ID (e.g., `6100bc91-ba99-4ce9-87dd-6d4d80178c38`) obtained from the previous step. The `-k` flag allows curl to work with self-signed SSL certificates in development.
 
-3. Copy the response from step 2 and update the `redirectUris` in the JSON object to include the local development URL (ex: https://localhost:5191/console). Locate the `inboundAuthConfig > config` section and update the `redirectUris` array:
+3. Copy the response from step 2 and update the `redirectUris` in the JSON object to include the local development URL (ex: https://localhost:5192/console). Locate the `inboundAuthConfig > config` section and update the `redirectUris` array:
 
 ```json
 "redirectUris": [
   "https://localhost:8090/console",
-  "https://localhost:5191/console"
+  "https://localhost:5192/console"
 ]
 ```
 
@@ -109,19 +109,19 @@ curl -k -X PUT "https://localhost:8090/applications/<console-application-id>" \
   -d '<paste-the-modified-json-here>'
 ```
 
-5. Add the local Console origin (`https://localhost:5191`) to the CORS resource. In a source checkout, use `backend/cmd/server/config/resources/server_configs/cors.yaml`; in a packaged distribution, use `<THUNDERID_HOME>/config/resources/server_configs/cors.yaml`.
+5. Add the local Console origin (`https://localhost:5192`) to the CORS resource. In a source checkout, use `backend/cmd/server/config/resources/server_configs/cors.yaml`; in a packaged distribution, use `<THUNDERID_HOME>/config/resources/server_configs/cors.yaml`.
 
 ```yaml
 name: cors
 value:
   allowedOrigins:
-    - "https://localhost:5191"
+    - "https://localhost:5192"
 ```
 
-6. Run the <ProductName /> Console application.
+6. Run the <ProductName /> Admin Console application.
 
 ```bash
-pnpm --filter @thunderid/console dev
+pnpm --filter @thunderid/admin-console dev
 ```
 
-This will run the <ProductName /> Console application on `https://localhost:5191/console`.
+This will run the <ProductName /> Admin Console application on `https://localhost:5192/console`.

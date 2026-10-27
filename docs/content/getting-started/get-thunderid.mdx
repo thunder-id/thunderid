@@ -124,7 +124,7 @@ seed, then `start` to serve.
 :::
 
 :::tip Success
-Access <ProductName /> on **https://localhost:8090/console**
+Access the <ProductName /> Admin Console on **https://localhost:8090/console**. It manages users, agents, groups, roles, and organization units. Applications, connections, and flows are managed through the REST API, declarative YAML, or the Control Plane console.
 :::
 
 </Stepper>
@@ -159,7 +159,7 @@ This command will automatically:
 
 
 :::tip Success
-Access <ProductName /> on **https://localhost:8090/console**
+Access the <ProductName /> Admin Console on **https://localhost:8090/console**. It manages users, agents, groups, roles, and organization units. Applications, connections, and flows are managed through the REST API, declarative YAML, or the Control Plane console.
 :::
 
 </Stepper>
@@ -261,7 +261,7 @@ kubectl get secret {{productSlug}}-admin-credentials -o jsonpath="{.data.admin-p
 Open `https://localhost:8090/console` and sign in using the admin username with that password.
 
 :::tip Success
-Access <ProductName /> on **https://localhost:8090/console**
+Access the <ProductName /> Admin Console on **https://localhost:8090/console**. It manages users, agents, groups, roles, and organization units. Applications, connections, and flows are managed through the REST API, declarative YAML, or the Control Plane console.
 :::
 
 </Stepper>
@@ -280,13 +280,13 @@ Access <ProductName /> on **https://localhost:8090/console**
   />
   <NextStepsCard
     title="Manage Applications"
-    description="Register applications, configure OAuth settings, manage redirect URIs, and control access policies from the Console."
+    description="Register applications, configure OAuth settings, manage redirect URIs, and control access policies through the REST API, declarative YAML, or the Control Plane console."
     href="../../guides/applications/manage-applications"
     cta="Manage applications"
   />
   <NextStepsCard
     title="Build a Sign-In Flow"
-    description="Use the visual flow designer to configure authentication: add MFA, passkeys, or social login without changing app code."
+    description="Use the visual flow designer in the Control Plane console to configure authentication: add MFA, passkeys, or social login without changing app code."
     href="../../guides/flows/build-a-flow"
     cta="Open flow designer"
   />

@@ -34,7 +34,7 @@ Visit [Get ThunderID](https://thunderid.dev/docs/next/getting-started/get-thunde
 
 ## Architecture
 
-<img src="https://thunderid.dev/assets/images/readme/architecture.png" alt="ThunderID Architecture" width="100%" />
+<img src="docs/static/assets/images/readme/architecture.png" alt="ThunderID architecture: a control plane that authors configuration and a data plane that runs authentication" width="100%" />
 
 
 ## Features

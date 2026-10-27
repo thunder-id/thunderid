@@ -27,7 +27,7 @@ SOURCE_LABEL="Codecov's compare API (fallback 1 of 2; the codecov/patch check ru
 # in codecov.yml. Codecov processes uploads incrementally, and a comparison
 # against a partially processed head report yields a bogus patch number
 # (e.g. 0% when only backend sessions are in but the diff is frontend-only).
-REQUIRED_SESSIONS=7
+REQUIRED_SESSIONS=6
 POLL_ATTEMPTS=10
 POLL_INTERVAL_SECONDS=30
 CURL_MAX_TIME=15

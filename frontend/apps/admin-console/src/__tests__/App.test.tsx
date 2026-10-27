@@ -39,6 +39,8 @@ vi.mock('@thunderid/configure-agent-types', () => ({
   ViewAgentTypePage: () => <div data-testid="view-agent-type-page">View Agent Type Page</div>,
 }));
 
+vi.mock('../lib/monaco-setup', () => ({}));
+
 vi.mock('../layouts/DashboardLayout', async () => {
   const {Outlet} = await import('react-router');
   return {default: () => <Outlet />};
@@ -90,7 +92,7 @@ describe('App', () => {
     });
   });
 
-  it('loads AgentEditPage lazily at /agents/a-1', async () => {
+  it('loads AgentEditPage lazily via the monaco-setup chain at /agents/a-1', async () => {
     window.history.pushState({}, '', '/agents/a-1');
     render(<App />);
     await waitFor(() => {

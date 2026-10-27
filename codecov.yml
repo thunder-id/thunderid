@@ -5,14 +5,13 @@ codecov:
   require_ci_to_pass: true
   notify:
     wait_for_ci: true
-    # Wait for exactly 7 coverage uploads before reporting status:
+    # Wait for exactly 6 coverage uploads before reporting status:
     #   1. backend-unit (from build job)
     #   2. backend-integration-sqlite (from test-integration matrix)
     #   3. backend-integration-postgres (from test-integration matrix)
     #   4. backend-integration-redis (from test-integration matrix)
-    #   5. frontend-apps-console-unit (from upload-frontend-coverage)
-    #   6. frontend-apps-gate-unit (from upload-frontend-coverage)
-    #   7. frontend-packages-unit (from upload-frontend-coverage)
+    #   5. frontend-apps-gate-unit (from upload-frontend-coverage)
+    #   6. frontend-packages-unit (from upload-frontend-coverage)
     # Without this, Codecov status checks can intermittently hang at
     # "Expected — Waiting for status to be reported" when CI signal is delayed.
     # See: https://about.codecov.io/blog/delay-notifications-for-flags-with-after_n_builds/
@@ -38,10 +37,6 @@ flags:
     carryforward: false
     paths:
       - backend/
-  frontend-apps-console-unit:
-    carryforward: false
-    paths:
-      - frontend/apps/console/
   frontend-apps-gate-unit:
     carryforward: false
     paths:
@@ -87,16 +82,9 @@ coverage:
           - backend-integration-sqlite
           - backend-integration-postgres
           - backend-integration-redis
-          - frontend-apps-console-unit
           - frontend-apps-gate-unit
           - frontend-packages-unit
         target: auto
-        threshold: 1%
-        informational: false
-      frontend-apps-console-unit:
-        flags:
-          - frontend-apps-console-unit
-        target: 60%
         threshold: 1%
         informational: false
       frontend-apps-gate-unit:
@@ -113,7 +101,7 @@ coverage:
 
 bundle_analysis:
   # Comment-only: post an informational status and PR comment showing bundle-size
-  # changes for the gate and console apps, but never fail/block a PR.
+  # changes for the gate app, but never fail/block a PR.
   # To start blocking later, set `status: true` and add a `bundle_change_threshold`.
   status: informational
   # Flag the comment with a warning when a bundle grows by more than 5%.

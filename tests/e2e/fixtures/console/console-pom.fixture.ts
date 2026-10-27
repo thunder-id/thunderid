@@ -13,11 +13,6 @@
 import { test as base } from "./console-auth.fixture";
 import { ConsoleSigninPage } from "../../pages/authentication";
 import { UsersPage } from "../../pages/user-management";
-import { UserTypesPage } from "../../pages/user-types";
-import { ApplicationsPage } from "../../pages/applications";
-import { SettingsPage } from "../../pages/settings";
-import { WelcomePage } from "../../pages/welcome";
-import { ConnectionsPage } from "../../pages/connections";
 import { AgentOnboardingPage, AgentDetailsPage } from "../../pages/agents";
 
 const baseUrl = process.env.BASE_URL || "";
@@ -25,11 +20,6 @@ const baseUrl = process.env.BASE_URL || "";
 type POMFixtures = {
   signinPage: ConsoleSigninPage;
   usersPage: UsersPage;
-  userTypesPage: UserTypesPage;
-  applicationsPage: ApplicationsPage;
-  settingsPage: SettingsPage;
-  welcomePage: WelcomePage;
-  connectionsPage: ConnectionsPage;
   agentOnboardingPage: AgentOnboardingPage;
   agentDetailsPage: AgentDetailsPage;
 };
@@ -43,30 +33,6 @@ export const test = base.extend<POMFixtures>({
   // Users page requires auth, uses authenticatedPage fixture
   usersPage: async ({ authenticatedPage }, use) => {
     await use(new UsersPage(authenticatedPage, baseUrl));
-  },
-
-  // User types page requires auth, uses authenticatedPage fixture
-  userTypesPage: async ({ authenticatedPage }, use) => {
-    await use(new UserTypesPage(authenticatedPage, baseUrl));
-  },
-
-  // Applications page requires auth, uses authenticatedPage fixture
-  applicationsPage: async ({ authenticatedPage }, use) => {
-    await use(new ApplicationsPage(authenticatedPage, baseUrl));
-  },
-
-  // Settings page requires auth, uses authenticatedPage fixture
-  settingsPage: async ({ authenticatedPage }, use) => {
-    await use(new SettingsPage(authenticatedPage, baseUrl));
-  },
-  // Welcome page requires auth, uses authenticatedPage fixture
-  welcomePage: async ({ authenticatedPage }, use) => {
-    await use(new WelcomePage(authenticatedPage, baseUrl));
-  },
-  
-  // Connections page requires auth, uses authenticatedPage fixture
-  connectionsPage: async ({ authenticatedPage }, use) => {
-    await use(new ConnectionsPage(authenticatedPage, baseUrl));
   },
 
   // Agent onboarding page requires auth, uses authenticatedPage fixture
@@ -83,9 +49,4 @@ export const test = base.extend<POMFixtures>({
 export { expect } from "@playwright/test";
 export { ConsoleSigninPage } from "../../pages/authentication";
 export { UsersPage, type UserFormData } from "../../pages/user-management";
-export { UserTypesPage } from "../../pages/user-types";
-export { ApplicationsPage, type ApplicationFormData } from "../../pages/applications";
-export { SettingsPage } from "../../pages/settings";
-export { WelcomePage } from "../../pages/welcome";
-export { ConnectionsPage, type BrandedConnectionFormData } from "../../pages/connections";
 export { AgentOnboardingPage, AgentDetailsPage } from "../../pages/agents";
