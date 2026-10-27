@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Agent Management API
   version: "1.0"
-  description: Manage AI agents and their configuration schemas. Agents are autonomous components assigned to applications to extend identity flows with AI-driven capabilities.
+  description: Manage agent identities, OAuth profiles, and the agent type schema. Direct agent creation uses the management service and does not run the Console onboarding flow.
   license:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html
@@ -50,24 +50,24 @@ paths:
                   - id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
                     ouId: "456e8400-e29b-41d4-a716-446655440001"
                     ouHandle: "platform/automations"
-                    type: "automation"
+                    type: "default"
                     description: "Runs nightly data sync jobs"
                     owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
                     attributes:
                       name: "Nightly Sync Worker"
-                      llmModel: "claude-3-5-sonnet"
-                      team: "platform"
+                      model: "claude-3-5-sonnet"
+                      modelProvider: "anthropic"
                   - id: "039bda67-a80d-4b7b-ac0f-36db85332089"
                     ouId: "456e8400-e29b-41d4-a716-446655440001"
                     ouHandle: "platform/automations"
-                    type: "service-agent"
+                    type: "default"
                     description: "Agent exposing calendar tools"
                     clientId: "calendar_agent_client"
                     owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
                     attributes:
                       name: "Calendar Agent"
-                      llmModel: "claude-3-5-sonnet"
-                      environment: "production"
+                      model: "claude-3-5-sonnet"
+                      modelProvider: "anthropic"
                 links:
                   - href: "agents?offset=2&limit=2"
                     rel: "next"
@@ -122,7 +122,12 @@ paths:
         An inbound auth profile is created when any inbound auth config fields are supplied.
         An OAuth profile is created when `inboundAuthConfig` is supplied.
 
-        The `clientSecret` is returned once in the response and never again — store it securely.
+        Send the name inside `attributes.name`. The default agent schema defines it as a required,
+        unique string. Missing required attributes fail schema validation (`AGT-1015`); duplicate
+        unique attributes produce an attribute conflict (`AGT-1014`).
+        This endpoint does not execute the Console's configured agent onboarding flow.
+
+        When an OAuth client secret is generated, `clientSecret` is returned in this response only. Store it securely.
       requestBody:
         required: true
         content:
@@ -134,24 +139,24 @@ paths:
                 summary: Entity only (minimal)
                 value:
                   ouId: "456e8400-e29b-41d4-a716-446655440001"
-                  type: "automation"
+                  type: "default"
                   description: "Runs nightly data sync jobs"
                   owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
                   attributes:
                     name: "Nightly Sync Worker"
-                    llmModel: "claude-3-5-sonnet"
-                    team: "platform"
+                    model: "claude-3-5-sonnet"
+                    modelProvider: "anthropic"
               entity-and-inbound:
                 summary: Entity + inbound auth profile (no OAuth)
                 value:
                   ouId: "456e8400-e29b-41d4-a716-446655440001"
-                  type: "service-agent"
+                  type: "default"
                   description: "Agent exposing calendar tools"
                   owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
                   attributes:
                     name: "Calendar Agent"
-                    llmModel: "claude-3-5-sonnet"
-                    environment: "production"
+                    model: "claude-3-5-sonnet"
+                    modelProvider: "anthropic"
                   authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                   registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
                   isRegistrationFlowEnabled: false
@@ -167,13 +172,13 @@ paths:
                 summary: Agent with client_credentials OAuth (M2M)
                 value:
                   ouId: "456e8400-e29b-41d4-a716-446655440001"
-                  type: "worker"
+                  type: "default"
                   description: "Processes ETL jobs"
                   owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
                   attributes:
                     name: "Data Pipeline Worker"
-                    pipeline: "etl-daily"
-                    team: "data-engineering"
+                    function: "task-automation"
+                    modelProvider: "custom"
                   authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                   inboundAuthConfig:
                     - type: "oauth2"
@@ -189,13 +194,13 @@ paths:
                 summary: Agent with authorization_code OAuth (all fields)
                 value:
                   ouId: "456e8400-e29b-41d4-a716-446655440001"
-                  type: "service-agent"
+                  type: "default"
                   description: "Agent exposing calendar tools"
                   owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
                   attributes:
                     name: "Calendar Agent"
-                    llmModel: "claude-3-5-sonnet"
-                    environment: "production"
+                    model: "claude-3-5-sonnet"
+                    modelProvider: "anthropic"
                   authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                   registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
                   isRegistrationFlowEnabled: false
@@ -256,13 +261,13 @@ paths:
                 id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
                 ouId: "456e8400-e29b-41d4-a716-446655440001"
                 ouHandle: "platform/automations"
-                type: "service-agent"
+                type: "default"
                 description: "Agent exposing calendar tools"
                 owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
                 attributes:
                   name: "Calendar Agent"
-                  llmModel: "claude-3-5-sonnet"
-                  environment: "production"
+                  model: "claude-3-5-sonnet"
+                  modelProvider: "anthropic"
                 authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                 registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
                 isRegistrationFlowEnabled: false
@@ -641,14 +646,14 @@ paths:
                 id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
                 ouId: "456e8400-e29b-41d4-a716-446655440001"
                 ouHandle: "platform/automations"
-                type: "service-agent"
+                type: "default"
                 description: "Agent exposing calendar tools"
                 clientId: "calendar_agent_client"
                 owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
                 attributes:
                   name: "Calendar Agent"
-                  llmModel: "claude-3-5-sonnet"
-                  environment: "production"
+                  model: "claude-3-5-sonnet"
+                  modelProvider: "anthropic"
                 authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                 registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
                 isRegistrationFlowEnabled: false
@@ -726,6 +731,10 @@ paths:
         and OAuth profile fields are applied according to the same rules as
         CreateAgentRequest. Omitting an inbound auth or OAuth field clears it.
 
+        Send the complete `attributes` object to preserve its values. The default agent schema
+        requires a unique string `attributes.name`. Missing required attributes fail schema
+        validation (`AGT-1015`); duplicate unique attributes produce an attribute conflict (`AGT-1014`).
+
         If `ouId` is provided and differs from the current value, the agent is moved to the
         new organization unit (which must exist).
       parameters:
@@ -744,9 +753,9 @@ paths:
               $ref: '#/components/schemas/UpdateAgentRequest'
             examples:
               update-name-description:
-                summary: Update name and description only
+                summary: Replace agent attributes and clear omitted profile settings
                 value:
-                  type: "service-agent"
+                  type: "default"
                   description: "Updated agent with v2 APIs"
                   attributes:
                     name: "Calendar Agent v2"
@@ -754,13 +763,13 @@ paths:
                 summary: Full update (all fields)
                 value:
                   ouId: "456e8400-e29b-41d4-a716-446655440001"
-                  type: "service-agent"
+                  type: "default"
                   description: "Agent exposing calendar tools"
                   owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
                   attributes:
                     name: "Calendar Agent"
-                    llmModel: "claude-3-5-sonnet"
-                    environment: "production"
+                    model: "claude-3-5-sonnet"
+                    modelProvider: "anthropic"
                   authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                   registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
                   isRegistrationFlowEnabled: false
@@ -823,13 +832,13 @@ paths:
                 id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
                 ouId: "456e8400-e29b-41d4-a716-446655440001"
                 ouHandle: "platform/automations"
-                type: "service-agent"
+                type: "default"
                 description: "Agent exposing calendar tools"
                 owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
                 attributes:
                   name: "Calendar Agent"
-                  llmModel: "claude-3-5-sonnet"
-                  environment: "production"
+                  model: "claude-3-5-sonnet"
+                  modelProvider: "anthropic"
                 authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                 registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
                 isRegistrationFlowEnabled: false
@@ -1144,6 +1153,16 @@ paths:
                     description:
                       key: "error.agentservice.agent_already_exists_with_client_id_description"
                       defaultValue: "An entity with the same client ID already exists"
+                attribute-conflict:
+                  summary: Unique attribute value already in use
+                  value:
+                    code: "AGT-1014"
+                    message:
+                      key: "error.agentservice.attribute_conflict"
+                      defaultValue: "Attribute conflict"
+                    description:
+                      key: "error.agentservice.attribute_conflict_description"
+                      defaultValue: "An agent with the same unique attribute value already exists"
         "401":
           $ref: '#/components/responses/Unauthorized'
         "500":
@@ -1433,6 +1452,11 @@ paths:
               systemAttributes:
                 display: "name"
               schema:
+                name:
+                  type: "string"
+                  displayName: "Name"
+                  required: true
+                  unique: true
                 modelProvider:
                   type: "string"
                   required: false
@@ -1460,6 +1484,11 @@ paths:
                 systemAttributes:
                   display: "name"
                 schema:
+                  name:
+                    type: "string"
+                    displayName: "Name"
+                    required: true
+                    unique: true
                   modelProvider:
                     type: "string"
                     required: false
@@ -1561,6 +1590,11 @@ paths:
                 systemAttributes:
                   display: "name"
                 schema:
+                  name:
+                    type: "string"
+                    displayName: "Name"
+                    required: true
+                    unique: true
                   modelProvider:
                     type: "string"
                     required: false
@@ -1624,6 +1658,11 @@ paths:
               systemAttributes:
                 display: "name"
               schema:
+                name:
+                  type: "string"
+                  displayName: "Name"
+                  required: true
+                  unique: true
                 modelProvider:
                   type: "string"
                   required: false
@@ -1889,8 +1928,8 @@ components:
             are extracted and stored as hashed credentials, not returned in read responses.
           example:
             name: "Calendar Agent"
-            llmModel: "claude-3-5-sonnet"
-            environment: "production"
+            model: "claude-3-5-sonnet"
+            modelProvider: "anthropic"
         isReadOnly:
           type: boolean
           readOnly: true
@@ -1991,8 +2030,8 @@ components:
             as hashed credentials, not returned in read responses.
           example:
             name: "Calendar Agent"
-            llmModel: "claude-3-5-sonnet"
-            environment: "production"
+            model: "claude-3-5-sonnet"
+            modelProvider: "anthropic"
         authFlowId:
           type: string
           description: |
@@ -2070,7 +2109,7 @@ components:
           example: "456e8400-e29b-41d4-a716-446655440001"
         type:
           type: string
-          example: "service-agent"
+          example: "default"
         description:
           type: string
           example: "Agent exposing calendar tools"
@@ -2099,8 +2138,8 @@ components:
           additionalProperties: true
           example:
             name: "Calendar Agent"
-            llmModel: "claude-3-5-sonnet"
-            environment: "production"
+            model: "claude-3-5-sonnet"
+            modelProvider: "anthropic"
         authFlowId:
           type: string
           example: "edc013d0-e893-4dc0-990c-3e1d203e005b"
@@ -2159,7 +2198,7 @@ components:
           example: "platform/automations"
         type:
           type: string
-          example: "service-agent"
+          example: "default"
         description:
           type: string
           example: "Agent exposing calendar tools"
@@ -2176,8 +2215,8 @@ components:
           additionalProperties: true
           example:
             name: "Calendar Agent"
-            llmModel: "claude-3-5-sonnet"
-            environment: "production"
+            model: "claude-3-5-sonnet"
+            modelProvider: "anthropic"
         status:
           allOf:
             - $ref: '#/components/schemas/AgentAccessStatus'
@@ -2247,7 +2286,7 @@ components:
           example: "platform/automations"
         type:
           type: string
-          example: "service-agent"
+          example: "default"
         display:
           type: string
           readOnly: true
@@ -2276,8 +2315,8 @@ components:
           additionalProperties: true
           example:
             name: "Calendar Agent"
-            llmModel: "claude-3-5-sonnet"
-            environment: "production"
+            model: "claude-3-5-sonnet"
+            modelProvider: "anthropic"
         authFlowId:
           type: string
           example: "edc013d0-e893-4dc0-990c-3e1d203e005b"
@@ -2752,6 +2791,8 @@ components:
         systemAttributes:
           type: object
           description: "System-level metadata for the agent type"
+          example:
+            display: "name"
           properties:
             display:
               type: string
@@ -2886,6 +2927,11 @@ components:
                         additionalProperties: false
                 additionalProperties: false
           example:
+            name:
+              type: "string"
+              displayName: "Name"
+              required: true
+              unique: true
             modelProvider:
               type: "string"
               required: false

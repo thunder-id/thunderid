@@ -1,0 +1,28 @@
+/* Copyright 2026 The ThunderID Authors */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+.diagram {
+  overflow-x: auto;
+}
+
+.diagram :global(.docusaurus-mermaid-container > svg) {
+  min-width: 32rem;
+}
+
+/* Keep icons in the node padding without changing Mermaid's measured label width. */
+.diagram :global(.node foreignObject) {
+  overflow: visible;
+}
+
+.diagram :global(.nodeLabel) {
+  display: block;
+  position: relative;
+}
+
+.diagram :global(.nodeLabel::before) {
+  position: absolute;
+  inset-inline-start: -1.4em;
+  top: 50%;
+  margin-right: 0;
+  transform: translateY(-50%);
+}

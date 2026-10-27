@@ -12,8 +12,8 @@ Use this page to build the Wayfinder AI agent setup manually instead of importin
 The first section is the shared foundation, required regardless of which walkthroughs you plan to exercise. The remaining sections build on it.
 
 - [Set Up the Foundation](#set-up-the-foundation): resource servers, roles, demo users, and the `WAYFINDER` application.
-- [Register the Wayfinder Concierge Agent](#register-the-wayfinder-concierge-agent): needed for [Acting on Its Own](../try-it-out/act-on-its-own) and [Acting on Behalf of a User](../try-it-out/act-on-behalf-of-user).
 - [Build the Agent Authentication Flow](#build-the-agent-authentication-flow): drives the OBO consent screen used by [Acting on Behalf of a User](../try-it-out/act-on-behalf-of-user).
+- [Register the Wayfinder Concierge Agent](#register-the-wayfinder-concierge-agent): needed for [Acting on Its Own](../try-it-out/act-on-its-own) and [Acting on Behalf of a User](../try-it-out/act-on-behalf-of-user).
 
 ## Set Up the Foundation
 
@@ -228,43 +228,32 @@ Each call then sends `-H "Authorization: Bearer $TOKEN"`.
 
    See [Manage Applications](../../../guides/applications/manage-applications).
 
-## Register the Wayfinder Concierge Agent
-
-The Concierge runs as a first-class agent in <ProductName />. It needs its own credentials, the right OAuth grants enabled, and a role assignment so its machine-to-machine token can call browsing tools.
-
-1. **Add the agent.**
-
-   Navigate to **Agents** → **Add agent**. Name the agent `WAYFINDER-CONCIERGE`, then:
-
-   - **Capture the client secret.** <ProductName /> prints it only once. You will use it in `ai-agent/.env`.
-   - On the **Advanced** tab, under **Operating mode**, turn on **Delegated mode**. That adds the `authorization_code` grant the on-behalf-of flow needs. Client credentials stays on either way.
-   - Still on **Advanced**, add the redirect URI `{{WayFinderSampleUrl}}/agent-callback`.
-
-   See [Create and Manage Your Agent](../../../guides/agents/manage-agents) and [Act on Behalf of a User](../../../guides/agents/authentication/on-behalf-of-user).
-
-2. **Assign the `Recommender` role to the agent.**
-
-   With the agent created, complete the role assignment:
-
-   - **Roles** → **Recommender** → **Assignments** tab → **Add assignment**. Pick **Agent** and assign `WAYFINDER-CONCIERGE`.
-
 ## Build the Agent Authentication Flow
 
-The Wayfinder Concierge needs a separate authentication flow that drives the on-behalf-of (OBO) consent screen when a chat request triggers a mutating tool. The flow authenticates the user with username and password, then shows a consent screen listing the `booking:*` permissions the agent is requesting.
+The Wayfinder sample uses an authentication flow to sign customers in and collect consent when they use the agent. This is separate from the Administration flow that an administrator runs to create the agent. Use an existing authentication flow with these steps, or configure the sample's flow below.
 
-Navigate to **Flows** and create a flow with these steps:
+In **Flows**, create an Authentication flow named `Wayfinder Agent Sign-in` with these steps:
 
-- A `PROMPT` step asking for username and password.
-- A `TASK_EXECUTION` step running the `CredentialsAuthExecutor`.
-- A `TASK_EXECUTION` step running the `AuthorizationExecutor`.
-- A `TASK_EXECUTION` step running the `ConsentExecutor`, with a `PROMPT` step for the consent screen on its `onIncomplete` branch.
-- A `TASK_EXECUTION` step running the `AuthAssertExecutor` on success.
+1. A `PROMPT` node asking for username and password.
+2. A `TASK_EXECUTION` node running `CredentialsAuthExecutor`.
+3. A `TASK_EXECUTION` node running `AuthorizationExecutor`.
+4. A `TASK_EXECUTION` node running `ConsentExecutor`, with a consent prompt on its incomplete path. Route both consent decisions back to the executor.
+5. A `TASK_EXECUTION` node running `AuthAssertExecutor` on success, followed by `END`.
 
-Attach the flow to the `WAYFINDER-CONCIERGE` agent: set `authFlowHandle` in a declarative file, or `authFlowId` through the management API.
+Use the `wayfinder-agent-auth-flow` definition in the sample distribution's `thunderid-config/redirect/thunderid-config.yaml` as the complete wiring reference. See [Build a Multi-Factor Sign-In Flow](../../../guides/flows/build-a-flow) for using the builder.
 
-The complete flow definition is in the Wayfinder sample distribution at `thunderid-config/redirect/thunderid-config.yaml` under the `wayfinder-agent-auth-flow` entry: copy it as a reference.
+## Register the Wayfinder Concierge Agent
 
-See [Build a Flow](../../../guides/flows/build-a-flow).
+For agent creation, use an Administration flow with **Delegated Agent Details** and **Delegated mode** enabled on **Provisioning**, or **Choose Agent Mode** for an administrator-selected mode. The OBO and Choose Mode templates include these settings. [Set this onboarding flow as the Console default](../../../guides/agents/manage-agents#make-the-flow-active).
+
+1. Navigate to **Agents**. Click **Add agent**.
+2. Select the organization unit and owner when prompted. In **Agent Details**, set the **Name** schema attribute to `WAYFINDER-CONCIERGE`.
+3. If the flow asks for a mode, select **Act on behalf of a signed-in user**.
+4. Set **Authorized redirect URIs** to `{{WayFinderSampleUrl}}/agent-callback`. For **Login flow**, select **Wayfinder Agent Sign-in** or the existing authentication flow you configured for the sample. Select **Customer** as the **User type**.
+5. Complete onboarding. Copy the client ID and client secret for `ai-agent/.env`; the secret is shown only once.
+6. In **Roles** → **Recommender** → **Assignments**, click **Add assignment**. Select **Agent** and assign `WAYFINDER-CONCIERGE`.
+
+The Administration flow saves these settings during creation. It does not run the customer's sign-in flow. See [Create and Manage Agents](../../../guides/agents/manage-agents) for subsequent changes.
 
 ## Start the Sample
 

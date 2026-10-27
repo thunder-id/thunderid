@@ -215,6 +215,38 @@ A flow has no effect until it is assigned to an application.
 
 </details>
 
+## Build an agent onboarding flow
+
+Agent onboarding uses an **Administration** flow in the signed-in administrator's Console session. It is separate from the authentication flow that an agent's users run later. The direct Agent API does not run the onboarding flow.
+
+The builder provides one **Provisioning** step for users and agents. The preceding type resolver supplies the category and schema. For agents, keep **Agent Type Resolver** before the uniqueness check and **Provisioning**.
+
+1. In **Flows**, click **+ Create New Flow**. Select **Administration**.
+2. Select **Agent Onboarding Flow (Own Identity)**, **Agent Onboarding Flow (On Behalf of a User)**, or **Agent Onboarding Flow (Choose Mode)**.
+3. Enter a name and create the flow.
+4. Review the shared steps below. Configure **Delegated mode** on **Provisioning** for the intended agent behavior.
+5. Save the flow. Set its handle as the [agent onboarding default](../../agents/manage-agents#make-the-flow-active).
+
+| Step | Configuration |
+|---|---|
+| Permission validation | Keep the administrator permission check before onboarding. |
+| Agent Type Resolver | Set `allowedAgentTypes` to `["default"]` for the built-in agent type. The resolver supplies `categoryName: agent` and `categoryType` for uniqueness validation and provisioning. |
+| OU Resolver | Resolve the target organization unit after the agent type. |
+| Owner Resolver | Offer a user selection; leaving it empty uses the authenticated caller. |
+| Agent Details | Collect schema attributes, including `name`. Add fields for custom attributes or use a dynamic input prompt on Provisioning's incomplete path. |
+| Validate Attribute Uniqueness | Use the category and type supplied by Agent Type Resolver. Route incomplete results back to **Agent Details**. |
+| Delegation settings | Add **Delegated Agent Details** to collect `redirectUris`, `authFlowId`, and `allowedUserTypes`, or **Choose Agent Mode** to collect these fields and `delegated`. Connect the widget after a successful uniqueness check and before Provisioning. |
+| Provisioning | Set `includeOptional: true`. Enable **Delegated mode** (`delegated: true`) for an OBO-only flow. With **Choose Agent Mode**, the collected `delegated` value overrides the node's fallback. |
+| Credential display | Present `agentId`, `clientId`, and `clientSecret` from the provisioning response. |
+
+The supplied templates connect Provisioning's failure output to **Agent Details**. The own-identity template also sends incomplete results there; the OBO and Choose Mode templates use a dynamic input prompt for missing inputs. Keep these return paths when customizing the flow. Flow execution does not provide a general rollback of an agent after provisioning succeeds.
+
+To assign access during onboarding, set **Assign Group** (`assignGroup`) and **Assign Role** (`assignRole`) on Provisioning to comma-separated IDs of existing groups and roles. The executor assigns them after creating the agent. See [Assign groups and roles during onboarding](../../agents/manage-agents#assign-groups-and-roles-during-onboarding).
+
+Both parts are needed for OBO: the flow collects the delegation settings, and provisioning receives `delegated: true` from its property or the administrator's selection. The **Login flow** field saves an existing authentication flow on the agent; it does not add user sign-in or consent steps to the onboarding flow. See [Configure onboarding for agents that act on behalf of users](../../agents/manage-agents#configure-onboarding-for-agents-that-act-on-behalf-of-users) for the widget setup.
+
+For properties, input types, and node examples, see [Advanced Configurations](../advanced-configurations#user-provisioning-and-attributes). For administrator creation steps, see [Create and Manage Agents](../../agents/manage-agents).
+
 <details>
   <summary>Build and configure a sign-out flow</summary>
 

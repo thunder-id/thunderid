@@ -20,7 +20,7 @@ Your agent will list the available courses using its own permissions. No student
 </Mode>
 <Mode value="obo">
 
-Your agent will enroll you in a course after you sign in and consent. It uses your delegated permissions.
+Your agent will enroll you in a course after you sign in, and after you consent if the login flow asks for it. It uses your delegated permissions.
 
 </Mode>
 
@@ -49,9 +49,32 @@ Open the Console at <ConsoleUrl />.
 
 ## Register an Agent
 
-1. In the Console, open **Agents** and click **Add agent**.
-2. Name it `Course Agent`. Select **Gemini** as the **Model Provider**, enter `gemini-flash-lite-latest` as the **Model**, and select an **Owner**. Complete the wizard to create the agent.
-3. Copy the **Client Secret** when shown, then the **Client ID** from **Overview** → **Agent details**. Keep them for `.env`; the secret appears only once.
+The Console runs the agent onboarding flow that is set as its default. Before you start, make sure that flow creates the type of agent this mode needs.
+
+<Mode value="own">
+
+Use the built-in onboarding flow, or a flow created from the **Agent Onboarding Flow (Own Identity)** or **Choose Mode** template. If an on-behalf-of flow is the current default, [set an own-identity flow as the Console default](../../../guides/agents/manage-agents#make-the-flow-active). See [select a flow template](../../../guides/agents/manage-agents#select-a-flow-template) for the templates.
+
+1. In **Agents**, click **Add agent**.
+2. Select the organization unit when prompted. Select an owner, or leave it empty to use your signed-in user.
+3. In **Agent Details**, set the **Name** schema attribute to `Course Agent`. Select `gemini` as the model provider and enter `gemini-flash-lite-latest` as the model. If asked, leave **Act on behalf of a signed-in user** unchecked.
+4. Complete the flow. Copy the client ID and client secret for `.env`; the secret is shown only once.
+
+</Mode>
+<Mode value="obo">
+
+Use a flow created from the **Agent Onboarding Flow (On Behalf of a User)** or **Choose Mode** template, and [set it as the Console default](../../../guides/agents/manage-agents#make-the-flow-active). See [configure onboarding for agents that act on behalf of users](../../../guides/agents/manage-agents#configure-onboarding-for-agents-that-act-on-behalf-of-users) for the setup.
+
+The student signs in through the agent's login flow. For a quick tryout, use the **Default Authentication Flow**, which signs the student in without a consent screen. To ask for consent, use a flow that includes **User Consent** instead. See how to [build a sign-in flow](../../../guides/flows/build-a-flow) and [add consent to a flow](../../../guides/consent#configuring-consent-in-flows).
+
+1. In **Agents**, click **Add agent**. Select the organization unit and owner when prompted.
+2. In **Agent Details**, set the **Name** schema attribute to `Course Enrollment Agent`. Select `gemini` as the model provider and enter `gemini-flash-lite-latest` as the model.
+3. If the flow asks for a mode, select **Act on behalf of a signed-in user**. Set **Authorized redirect URIs** to `http://localhost:6274/callback`. Select the **Default Authentication Flow** as the **Login flow** and the student's **User type**.
+4. Complete the flow. Copy the client ID and client secret for `.env`; the secret is shown only once.
+
+The administrator completes onboarding in the Console. The selected **Login flow** controls the student's later sign-in and consent; it does not run during agent creation.
+
+</Mode>
 
 ## Configure Access
 
@@ -68,17 +91,13 @@ Create the following action under **Courses**. In **Roles**, create the role wit
 </Mode>
 <Mode value="obo">
 
-Use an existing non-admin user as the student, or create one in **Users** with a username and password. Create the following action under **Courses**. In **Roles**, create the role with that permission, then assign it on **Assignments** → **Add assignment**:
+Use an existing non-admin user as the student, or create one in **Users** with a username, email, and password. Create the following action under **Courses**. In **Roles**, create the role with that permission, then assign it on **Assignments** → **Add assignment**:
 
 | Action name | Handle | Permission | Role | Assign to |
 |---|---|---|---|---|
 | Enroll in a course | `enroll` | `courses:enroll` | `Student` | **User** → your test student |
 
-Enable delegated access and consent:
-
-1. In **Agents** → **Course Agent** → **Advanced**, turn on **Delegated mode**. Keep **Require PKCE** on, leave **Require pushed authorization requests** off, and add `http://localhost:6274/callback` under **Authorized redirect URIs**. Save.
-2. In **Flows**, create `Course Enrollment Sign-in` from the **Basic** sign-in template. Add **User Consent** from **Widgets** between **Authorization** and **Auth Assertion Generator**. Connect both **Allow** and **Deny** responses back to **User Consent**. Turn on **Fail flow when user denies consent** and save.
-3. On the agent's **Flows** tab, select **Course Enrollment Sign-in** as its **Sign-in flow** and save.
+Use the user type selected during agent onboarding for this student.
 
 </Mode>
 
@@ -393,7 +412,7 @@ https://localhost:8090/oauth2/authorize?...
 ```
 
 1. Open the printed URL. Sign in as the student assigned the **Student** role.
-2. On the consent screen, turn on `courses:enroll` and click **Allow**.
+2. If a consent screen appears, turn on `courses:enroll` and click **Allow**.
 3. Return to the terminal after the browser reaches the local redirect URI.
 
 Expect a result like this:
@@ -406,7 +425,7 @@ Agent: You are enrolled in CS205.
 
 `student_id` should match your signed-in student's **User ID**. The sample reads the agent's identity from the validated token's `act.sub` claim. Enrollment records disappear when the process exits.
 
-To try denial, run the sample again and click **Deny**. The tool fails without recording an enrollment. Each run requests fresh consent.
+With a consent flow, you can try denial: run the sample again and click **Deny**. The tool fails without recording an enrollment. Each run requests fresh consent.
 
 </Mode>
 
@@ -436,7 +455,7 @@ In PowerShell, set `$env:NODE_EXTRA_CA_CERTS = "$PWD/thunderid.pem"` before runn
 | Symptom | Check |
 |---|---|
 | Token is not valid for `courses:enroll` | Assign **Student** to the signed-in user and allow the permission on the consent screen. |
-| No consent screen appears | Select **Course Enrollment Sign-in** on the agent's **Flows** tab. Confirm the flow includes **User Consent**. |
+| No consent screen appears | The **Default Authentication Flow** does not ask for consent. Select a flow that includes **User Consent** on the agent's **Flows** tab. See [add consent to a flow](../../../guides/consent#configuring-consent-in-flows). |
 | Sign-in fails before the redirect | Enable delegated mode and register `http://localhost:6274/callback` exactly. |
 | Port `6274` is in use, or sign-in times out | Stop the other sample, or run this sample again and complete sign-in within 180 seconds. |
 

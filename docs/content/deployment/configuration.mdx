@@ -885,6 +885,30 @@ Controls notification delivery behaviour, including OTP generation parameters.
 | `notification.otp.use_numeric_only` | `true` | If `true`, OTPs use digits only; if `false`, OTPs use a mixed alphanumeric character set. |
 | `notification.otp.validity_period_seconds` | `120` | OTP validity period in seconds. Must be in `[30, 600]`. |
 
+## Runtime Management Providers
+
+User and agent management providers connect the runtime to the services that manage those identities. The default implementations call <ProductName />'s own user and agent management services. A custom implementation can connect the runtime to your own management services through the same interfaces.
+
+The runtime currently uses these providers for user and agent creation in flows. The interfaces keep runtime code independent of which management services handle those operations.
+
+| Setting | Default behavior | Supported values |
+|---|---|---|
+| `user_mgt_provider.type` | Calls the user management service | `default`, `disabled` |
+| `agent_mgt_provider.type` | Calls the agent management service | `default`, `disabled` |
+
+Configure the built-in providers in `deployment.yaml`. Setting a provider to `disabled` makes runtime creation fail for that entity category; it does not disable the direct management API.
+
+```yaml
+user_mgt_provider:
+  type: default
+agent_mgt_provider:
+  type: default
+```
+
+For an embedded runtime, implement `providers.UserMgtProvider` or `providers.AgentMgtProvider` and pass the implementation through `thunderidengine.WithUserMgtProvider` or `thunderidengine.WithAgentMgtProvider`. Their current operations are `CreateUser` and `CreateAgent`. Custom implementations are supplied through these Go options, not through a custom `type` value in `deployment.yaml`.
+
+`providers.Agent` carries schema values in its `Attributes` JSON, including `name`. The default agent type requires a unique name. A custom provider receives these values through `Attributes`, not a separate `Name` field. The Console label is resolved from the [agent type's display setting](../../guides/agents/agent-schema#display-attribute).
+
 ## Authentication Provider Configuration
 
 External authentication provider settings.
@@ -1070,7 +1094,9 @@ Each flow type has two fields:
 | `<type>.defaultHandle` | Handle of the flow to use when the application and the organization unit do not pin a specific flow. Empty string means no server default, and the flow type is treated as not configured at the server level. |
 | `<type>.expirySeconds` | How long (in seconds) a started flow context remains valid before it expires. Must be a positive integer. |
 
-Supported flow types are `authFlow`, `registrationFlow`, `userOnboardingFlow`, `recoveryFlow`, `signOutFlow`, and `userDeletionFlow`.
+Flow default keys include `authFlow`, `registrationFlow`, `userOnboardingFlow`, `recoveryFlow`, `signOutFlow`, `userDeletionFlow`, and `agentOnboardingFlow`.
+
+`agentOnboardingFlow.defaultHandle` selects the Administration flow used when creating an agent in the Console. Bootstrap sets it to `default-agent-onboarding-flow`, which creates agents using their own identity. Set it to any saved agent onboarding Administration flow, including a custom flow, using the runtime API described below. For OBO creation, that flow collects delegation inputs and sets `delegated` through the Provisioning node or an administrator's selection. This Console action reads the server setting directly; it does not use the application and organization-unit fallback below. Direct `POST /agents` requests do not run the onboarding flow. See [Configure agent onboarding](../../guides/agents/manage-agents#configure-agent-onboarding).
 
 `userDeletionFlow` is resolved differently from the others: it names an administration flow that runs when a user is deleted from the Console, rather than a flow an inbound request starts. Its shipped default revokes the user's tokens and terminates their sessions before the record is removed. Deleting a user through the `DELETE /users/{id}` API removes the record only and does not run this flow. See [Token Revocation](../../guides/protocols/oauth-oidc/token-revocation#user-deletion).
 
@@ -1100,20 +1126,31 @@ Configure flow defaults in either of these ways:
     signOutFlow:
       expirySeconds: 1800
   ```
-- **Runtime** - send the new value to `PUT /server-config/flow`; it is applied immediately and merged with any declarative file:
+- **Runtime** - send the new value to `PUT /server-config/flow`; it is applied immediately. The request replaces the entire writable `flow` section, so include every key you want to keep. Read the current section with `GET /server-config/flow`, change the keys you need in its `writable` object, and send that object back:
   ```http
   PUT /server-config/flow
   Content-Type: application/json
 
   {
     "authFlow": { "defaultHandle": "default-flow", "expirySeconds": 3600 },
-    "registrationFlow": { "expirySeconds": 3600 }
+    "registrationFlow": { "expirySeconds": 3600 },
+    "recoveryFlow": { "expirySeconds": 1800 },
+    "signOutFlow": { "defaultHandle": "default-flow", "expirySeconds": 1800 },
+    "userOnboardingFlow": { "defaultHandle": "default-flow", "expirySeconds": 86400 },
+    "userDeletionFlow": { "defaultHandle": "default-user-deletion-flow" },
+    "applicationDeletionFlow": { "defaultHandle": "default-application-deletion-flow" },
+    "secretRegenerationFlow": { "defaultHandle": "default-secret-regeneration-flow" },
+    "agentOnboardingFlow": { "defaultHandle": "default-agent-onboarding-flow" }
   }
   ```
+
+Bootstrap stores the shipped defaults in the writable section. A writable value takes precedence over the same key in `flow.yaml`, so a file value takes effect only for keys the writable section leaves empty. To change a default that bootstrap already set, such as `agentOnboardingFlow.defaultHandle`, use the runtime request. The `merged` object in the `GET /server-config/flow` response shows the value in effect.
 
 :::note
 Set `defaultHandle` only for flow types that have a corresponding flow in your deployment. The handle is validated when the configuration is written. An unknown handle or a handle belonging to a different flow type is rejected with `SCF-1003`. For optional types (registration, recovery, user-onboarding, sign-out), omit `defaultHandle` to leave the server-level default empty.
 :::
+
+If the agent onboarding default is absent, or its flow cannot be found, the Console cannot start agent creation. Restore a valid Administration flow handle in this section.
 
 ## Account Access
 

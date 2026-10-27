@@ -8,14 +8,35 @@ description: Configure an agent in {{ProductName}} to act on behalf of a user by
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
+import diagramStyles from '@site/src/components/AgentDiagram.module.css';
 
 # Agent Access on Behalf of Users
 
 An agent can hold an access token that represents a user instead of itself. The token names the user in the `sub` claim, and on the sign-in and exchange paths it also names the agent in the `act` (actor) claim, so a resource sees both the user who authorized the action and the agent that carried it out. <ProductName /> issues these tokens once the agent is extended to act on behalf of a user.
 
+<div className={diagramStyles.diagram}>
+
+```mermaid
+%%{init: {"flowchart": {"padding": 30}}}%%
+flowchart LR
+    signin[User sign-in] --> token["User access token<br/>sub = user<br/>act = agent"]:::accent
+    approval[Backchannel approval] --> token
+    exchange[Token exchange] --> token
+    class signin ic-user
+    class approval ic-check
+    class exchange ic-flow
+    class token ic-token
+```
+
+</div>
+
+Select the path based on whether the user can sign in now, must approve on another device, or already has a token. These paths run after agent onboarding.
+
 ## Extend the agent to act for a user
 
-By default an agent acts only on its own. Extending it lets the same agent also act for a signed-in user, without giving up acting on its own. In the Console, extend the agent as follows:
+An agent created through an [OBO onboarding flow](../../manage-agents#configure-onboarding-for-agents-that-act-on-behalf-of-users) already has delegated mode and the administrator-selected redirect URIs, login flow, and user type. Onboarding is an Administration flow; the user sign-in flow runs later when a user accesses the agent.
+
+To extend an existing own-identity agent, configure it in the Console as follows:
 
 1. On the **Advanced** tab, under **Operating mode**, turn on the **Delegated mode** toggle. The agent keeps acting on its own (`client_credentials`) and gains the ability to sign a user in and act for them (`authorization_code` with PKCE).
 2. Still on the **Advanced** tab, add the **Authorized redirect URIs** for the sign-in callback, and set **Allowed user types** to the user types allowed to register through the agent.

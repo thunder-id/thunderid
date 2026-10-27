@@ -298,6 +298,9 @@ Widgets are pre-built, reusable flow segments that combine a View node and one o
 | **Continue with SMS OTP** | An OTP input view wired to the Verify OTP executor. |
 | **Sign In with Passkey** | A passkey prompt wired to the passkey verification executors. |
 | **Provisioning** | A Provisioning executor wired to a dynamic input view that prompts for missing schema attributes. |
+| **Owner Resolution** | An optional user selection wired to Owner Resolver. |
+| **Delegated Agent Details** | Collects the redirect URIs, authentication flow, and user type for an OBO agent. |
+| **Choose Agent Mode** | Collects the delegated-mode choice and optional delegation settings. Provisioning requires the settings when delegation is selected. |
 | **Self Sign Up Link** | A rich text link wired to a CALL node that invokes a registration flow. |
 | **Sign In Link** | A rich text link wired to a CALL node that invokes an authentication flow. |
 | **Recovery Link** | A rich text link wired to a CALL node that invokes a recovery flow. |
@@ -367,9 +370,11 @@ Every flow you deploy must reference only executors that are registered on the s
 | **Resolve User** | Handles disambiguation when multiple users match an identifier. | - |
 | **Account Linking** | Matches a federated identity that has no recorded link to existing accounts and links it after the user verifies one. | A federated executor must run first |
 | **User Type Resolver** | Resolves the user type based on configured rules. | User type configured on the application |
-| **Provisioning** | Creates or updates the user record in the store. | - |
+| **Agent Type Resolver** | Resolves the agent type and its default organization unit for administrative onboarding. | An agent type must exist |
+| **Owner Resolver** | Verifies an optional owner selection before provisioning. | Selected ID must belong to a user |
+| **Provisioning** | Creates a user or agent through the corresponding management service. | Resolved entity type and organization unit |
 | **Attribute Collector** | Collects additional user attributes defined in the user type. | - |
-| **Validate Attribute Uniqueness** | Checks that unique attributes are not already registered. | User Type Resolver must have run |
+| **Validate Attribute Uniqueness** | Checks values against the selected user or agent schema's unique attributes. | The matching type resolver must have run |
 | **Set Credentials** | Sets credentials (e.g., password) for an existing user. | - |
 | **OpenID4VP Verify** | Initiates an OpenID4VP credential presentation request, returns a QR code and deep link for the user's wallet, and polls until the credential is verified. | OpenID4VP service configured in <ProductName /> |
 | **Authorization** | Evaluates authorization policies for the current user. | - |
@@ -427,6 +432,12 @@ When an executor forwards inputs dynamically to a PROMPT node via its `onIncompl
 | `HIDDEN` | A hidden field not rendered to the user. |
 | `SELECT` | A dropdown selection field. |
 | `OU_SELECT` | An organization unit selection field. |
+| `USER_SELECT` | A user selection field. The client loads candidates and submits a user ID. |
+| `AUTH_FLOW_SELECT` | An authentication-flow selection field. The client loads authentication flows and submits a flow ID. |
+| `USER_TYPE_SELECT` | A user-type selection field. The client loads user types and submits a type handle. |
+| `BOOLEAN_INPUT` | A checkbox. Used by agent onboarding to collect the `delegated` choice. |
+
+The Console supports these selection inputs during agent onboarding. A custom flow client must implement candidate loading for them; the flow response does not supply those candidate lists. Server-side resolvers and management services validate submitted values.
 
 ### View and Executor Pairings
 
@@ -441,6 +452,9 @@ Each View node (Step or Widget) collects user input that must be read by a speci
 | **Continue with Google** (Widget) | Google | - | Redirect-based. The executor handles the OAuth redirect and reads the authorization code returned by Google. |
 | **Continue with GitHub** (Widget) | GitHub | - | Redirect-based. The executor handles the OAuth redirect and reads the authorization code returned by GitHub. |
 | **Blank View** (with attribute fields) | Attribute Collector | User must be authenticated | Use when collecting profile attributes required by the user type. The executor checks the user's existing attributes and prompts only for what is missing. |
+| **Owner Resolution** | Owner Resolver | Administration flow for agent onboarding | Use `owner` with type `USER_SELECT`; the executor verifies the submitted user ID. |
+| **Delegated Agent Details** | Provisioning | Agent type and OU resolved | Collect `redirectUris`, `authFlowId`, and `allowedUserTypes` before provisioning with `delegated: true`. |
+| **Choose Agent Mode** | Provisioning | Agent type and OU resolved | Also collect `delegated` as `BOOLEAN_INPUT`. Delegation settings are required only when it is true. |
 | **EUDI Wallet View** (Widget) | OpenID4VP Verify | OpenID4VP service configured | The executor initiates the request and surfaces QR code data. The view renders the QR code and polls until the wallet responds. |
 
 Some Executors run entirely in the background and do not need a preceding View to gather user input.
@@ -452,7 +466,7 @@ Some Executors run entirely in the background and do not need a preceding View t
 | **Generate OTP** | Before the SMS OTP View | - |
 | **Send SMS** | After Generate OTP, before the SMS OTP View | User's mobile number must be on record |
 | **Send Email** | After the flow collects the recipient email | Recipient email input; `inviteLink` for invite and self-registration templates |
-| **Provisioning** | After identity collection in registration flows | - |
+| **Provisioning** | After type resolution and attribute collection | Connect an incomplete output to a dynamic input prompt for missing fields |
 | **Identify User** | Early in the flow, after the user submits an identifier | - |
 | **User Type Resolver** | After Identify User | - |
 | **Account Linking** | Immediately after a federated executor, with `onIncomplete` pointing to the linking prompt | A federated executor must run first |
@@ -1127,17 +1141,20 @@ Validates the magic link token the user received and authenticates them. Runs in
 <details>
 <summary>Provisioning</summary>
 
-Creates a new user record in the user store. This executor persists the user's identity during registration flows. The executor follows the user type schema: required attributes are determined by the user type resolved earlier in the flow.
+Creates a user or agent through its management service. User Type Resolver and Agent Type Resolver write the category to `categoryName` and the type handle to `categoryType` in runtime data. Provisioning uses these values to select the management service and schema. If `categoryName` is absent or empty, provisioning defaults to users. An unknown non-empty category fails.
 
-**When to use:** Registration flows, after the User Type Resolver has run. Also authentication flows, after a federated executor with `allowAuthenticationWithoutLocalUser` enabled, to create the local account for a first-time user.
+**When to use:** User registration and onboarding, Administration flows for agent onboarding, or authentication flows that provision a first-time federated user. Agent self-registration through a Registration flow is not supported.
 
-**Prerequisites (registration and user onboarding flows):**
-- `userType` (required): must be present in runtime data. Set by User Type Resolver or by a previous operation. Defines which attributes are required for the new user.
-- `defaultOUID` or `ouId` (required): must be present in runtime data. Set by User Type Resolver or OU Resolver. Determines which OU the new user belongs to.
+**Runtime values for registration and administrative onboarding:**
 
-**Authentication flows:** The executor uses `userType` and the OU ID from runtime data when they are present. The User Type Resolver does not set `userType` in authentication flows, so the executor falls back to the application's allowed user types. It takes the only one with self-registration enabled, and provisioning fails when none or more than one is eligible.
+- `categoryName`: `user` or `agent`, set by the type resolver. Agent onboarding requires Agent Type Resolver before provisioning.
+- `categoryType`: the resolved type handle, set by User Type Resolver or Agent Type Resolver. Administrative onboarding requires a resolved type.
+- `defaultOUID` or `ouId`: the resolved organization unit. The type resolver supplies the default; OU Resolver can select the target unit.
+- For agent onboarding, Owner Resolver can set the verified `ownerId`. If no owner is supplied, the agent service uses the authenticated caller.
 
-**How attribute collection works:** The executor fetches required and optional attributes from the user type schema. Attributes already present in user inputs or federated accounts are considered satisfied. Only missing required attributes are prompted. Optional attributes are only prompted if `includeOptional` is enabled in node properties.
+**Authentication flows:** The executor uses `categoryType` and the OU ID from runtime data when they are present. For user provisioning without a resolved type, it falls back to the application's allowed user types. It takes the only one with self-registration enabled, and provisioning fails when none or more than one is eligible. This fallback is available only for users. Agent provisioning requires a resolved agent type and does not use the application's allowed agent types.
+
+**How attribute collection works:** The executor reads the selected user or agent schema. It requests missing required attributes and, when `includeOptional` is enabled, missing optional non-credential attributes. Schema enums are offered as selections. Connect `onIncomplete` to a prompt containing a `DYNAMIC_INPUT_PLACEHOLDER`, then route its submit action back to provisioning. This keeps additional schema fields usable without adding a fixed form field for every attribute.
 
 **Prompt batching:** If `maxPerPrompt` is set, the executor forwards only that many missing inputs per prompt cycle, cycling through them across multiple flow iterations.
 
@@ -1162,16 +1179,50 @@ Without `allowCrossOUProvisioning`, every linked user counts. With it, only link
 
 | Property | UI Label | Required | Default | Description |
 |---|---|---|---|---|
+| `delegated` | Delegated mode | No | `false` | Fallback for whether a provisioned agent acts on behalf of a signed-in user. Shown for every Provisioning node; has no effect on user provisioning. |
 | `allowCrossOUProvisioning` | Allow Cross-OU Provisioning | No | `false` | Allow creating the user in a different OU from the default when the user already exists in another OU |
-| `assignGroup` | Assign Group | No | - | Group ID to automatically assign the new user to |
-| `assignRole` | Assign Role | No | - | Role ID to automatically assign the new user to |
+| `assignGroup` | Assign Group | No | - | Comma-separated group IDs to assign the new user or agent to |
+| `assignRole` | Assign Role | No | - | Comma-separated role IDs to assign to the new user or agent |
 | `includeOptional` | - | No | `false` | Whether to prompt for optional (non-credential) schema attributes |
 | `includeOptionalCredentials` | Include Optional Credentials | No | `false` | Whether to prompt for optional credential attributes |
 | `maxPerPrompt` | - | No | `0` (all at once) | Maximum number of missing inputs to forward per prompt cycle |
 | `seedGroupsFromMapping` | Seed Groups From Authorization Mapping | No | `false` | Assign groups the connection's authorization mapping resolved for this subject |
 | `seedRolesFromMapping` | Seed Roles From Authorization Mapping | No | `false` | Assign roles the connection's authorization mapping resolved for this subject |
 
-**Input Configuration:** Required user attributes are dynamically determined from the user type schema, so no fixed input defaults are needed. However, you may optionally declare entries in the executor's `inputs` array to set a specific input type for an attribute (e.g., `EMAIL_INPUT` for an email field). Without an explicit override, non-credential inputs default to `TEXT_INPUT`. Attributes that define a fixed set of allowed values (`enum`) in the user type schema are always forwarded as `SELECT` inputs that list those values as options. A prompt node that declares the attribute as a `SELECT` input receives the same options, and a prompt node that declares it with another type keeps that type. In a prompt node that this executor doesn't forward inputs to, define the options in the flow definition. See [Input Types](#input-types) for valid types.
+**Input Configuration:** Required attributes are dynamically determined from the resolved schema, so no fixed input defaults are needed. However, you may optionally declare entries in the executor's `inputs` array to set a specific input type for an attribute (e.g., `EMAIL_INPUT` for an email field). Without an explicit override, non-credential inputs default to `TEXT_INPUT`. Attributes that define a fixed set of allowed values (`enum`) in the resolved schema are always forwarded as `SELECT` inputs that list those values as options. A prompt node that declares the attribute as a `SELECT` input receives the same options, and a prompt node that declares it with another type keeps that type. In a prompt node that this executor doesn't forward inputs to, define the options in the flow definition. See [Input Types](#input-types) for valid types.
+
+**Agent operating mode:** The first non-empty `delegated` value in runtime data or submitted inputs takes precedence over the node property. Without any value, it defaults to `false`. An invalid boolean fails provisioning. This is a fallback setting, not a restriction that overrides a submitted choice.
+
+In an Administration onboarding flow, run **Agent Type Resolver** before **Provisioning**. Use **Delegated Agent Details** to collect the sign-in settings and set `delegated: true` on the Provisioning node. To collect the mode choice, use **Choose Agent Mode** instead; its `delegated` input determines whether provisioning creates an OBO agent. These widgets collect configuration from the signed-in administrator, not sign-in credentials or consent from an end user.
+
+When delegated mode is enabled, provisioning requires these inputs:
+
+| Identifier | Input type | Value |
+|---|---|---|
+| `redirectUris` | `TEXT_INPUT` | Redirect URIs separated by commas; whitespace is trimmed |
+| `authFlowId` | `AUTH_FLOW_SELECT` | The ID selected in **Login flow**, for users who later sign in through the agent |
+| `allowedUserTypes` | `USER_TYPE_SELECT` | The existing user-type handle selected in **User type** |
+
+When delegated mode is disabled, these values are not applied. The default agent management provider generates a client-credentials configuration. With delegation enabled, it also adds authorization code and refresh token grants and requires PKCE. The agent service validates the resulting request. The selected authentication flow is stored, not executed during onboarding. See [Runtime Management Providers](../../../deployment/configuration#runtime-management-providers) for the runtime integration interfaces.
+
+**Agent output:** Successful provisioning returns `agentId`, `clientId`, and `clientSecret` in additional response data for the credential screen. These values are not ordinary runtime attributes. Use the template's credential-display prompt, and do not assume that a later failed node deletes an already-created agent.
+
+**Agent example:** Run Agent Type Resolver and resolve the target OU before this node. The resolver supplies `categoryName: agent` and the agent type handle.
+
+```json
+{
+  "id": "provision_agent",
+  "type": "TASK_EXECUTION",
+  "executor": {"name": "ProvisioningExecutor"},
+  "properties": {
+    "delegated": true,
+    "includeOptional": true
+  },
+  "onSuccess": "agent_credentials",
+  "onIncomplete": "missing_inputs",
+  "onFailure": "error_prompt"
+}
+```
 
 **Example:**
 
@@ -1200,11 +1251,16 @@ Without `allowCrossOUProvisioning`, every linked user counts. With it, only link
 ```
 
 **Failure conditions:**
-- `userType` or OU ID not available (User Type Resolver did not run)
+
+- Unknown non-empty `categoryName`
+- Resolved type or OU ID not available
 - In authentication flows, none or more than one of the application's allowed user types has self-registration enabled
 - User already exists with a conflicting unique attribute (in registration flows, prompts for a different value)
 - Required attribute validation failure
-- User store error
+- Invalid or missing agent delegation settings
+- User or agent management service error
+
+Shared provisioning errors retain their codes while identifying the affected category as user or agent. A schema attribute conflict is reported for the relevant category. Connect correction paths to a prompt that can collect the failed attribute.
 
 </details>
 
@@ -1259,6 +1315,59 @@ Checks the authenticated user's existing profile attributes against the node's c
 </details>
 
 #### Identity and User Resolution
+
+<details>
+<summary>Agent Type Resolver</summary>
+
+Resolves the agent type and its default organization unit for an Administration flow. It reads the agent-type catalog, applies `allowedAgentTypes` and the organization-unit context, and selects the only eligible type or requests a selection.
+
+**When to use:** Before OU Resolver and Provisioning in agent onboarding. The built-in agent type is `default`.
+
+| Property | Required | Default | Description |
+|---|---|---|---|
+| `allowedAgentTypes` | No | No node-level restriction | List of agent-type handles eligible for this flow |
+
+**Input and output:** A requested selection uses `agentType` with input type `SELECT`. Successful type resolution writes `categoryName: agent`, the type handle as `categoryType`, and the type's organization unit as `defaultOUID` in runtime data.
+
+```json
+{
+  "id": "resolve_agent_type",
+  "type": "TASK_EXECUTION",
+  "executor": {"name": "AgentTypeResolver"},
+  "properties": {"allowedAgentTypes": ["default"]},
+  "onSuccess": "resolve_ou",
+  "onIncomplete": "agent_type_prompt",
+  "onFailure": "error_prompt"
+}
+```
+
+Connect the selection prompt back to this executor. An invalid selection is rejected. Administration flows use the node's allowed types, not an application's sign-in settings. In an Authentication flow, this executor checks that the application allows agent types without selecting a provisioning type. Agent self-registration is not supported.
+
+</details>
+
+<details>
+<summary>Owner Resolver</summary>
+
+Offers an optional owner selection and verifies that the submitted ID belongs to an existing user. If the administrator skips selection, agent provisioning uses the authenticated caller as owner.
+
+**When to use:** Before agent provisioning in an Administration flow. Owner Resolver is also available in Registration flows, but that does not make agent self-registration available.
+
+**Input and output:** The input is `owner` with type `USER_SELECT` and `required: false`. The client loads the user choices. A verified selection is stored as `ownerId` in runtime data.
+
+```json
+{
+  "id": "resolve_owner",
+  "type": "TASK_EXECUTION",
+  "executor": {"name": "OwnerResolver"},
+  "onSuccess": "agent_details",
+  "onIncomplete": "owner_prompt",
+  "onFailure": "error_prompt"
+}
+```
+
+Connect the owner prompt back to this executor. An ID that does not exist or belongs to an agent returns an incomplete result and asks for a valid user. A lookup service failure is an error. The input widget supplies candidates; it does not replace the server's owner check.
+
+</details>
 
 <details>
 <summary>Identify User</summary>
@@ -1436,7 +1545,7 @@ Flow validation rejects any other wiring, since the account that verified is che
 <details>
 <summary>User Type Resolver</summary>
 
-Determines the user type and default OU for the flow. The resolved values are used by Provisioning and other downstream executors. Behavior differs by flow type.
+Determines the user type and default OU for the flow. When it resolves a type, it writes `categoryName: user`, the type handle as `categoryType`, and the OU as `defaultOUID` in runtime data for Provisioning and other downstream executors. The selection input remains `userType`. Behavior differs by flow type.
 
 **When to use:** At the start of registration and user onboarding flows, before Provisioning. Also used in authentication flows to validate that the application allows the resolved user type.
 
@@ -1490,9 +1599,9 @@ Determines the user type and default OU for the flow. The resolved values are us
 <details>
 <summary>Resolve OU</summary>
 
-Resolves or selects an organizational unit based on a configured strategy. Overwrites the default OU set by User Type Resolver when applicable.
+Resolves or selects an organizational unit based on a configured strategy. Overwrites the default OU set by User Type Resolver or Agent Type Resolver when applicable.
 
-**When to use:** User onboarding flows where the target OU must be determined dynamically based on the caller, administrative selection, or system hierarchy.
+**When to use:** User or agent onboarding flows where the target OU depends on the caller, administrative selection, or system hierarchy.
 
 **Prerequisites:** Depends on the resolution strategy (see table below).
 
@@ -1516,10 +1625,10 @@ Resolves or selects an organizational unit based on a configured strategy. Overw
 - Prompts the user to select a child OU if the default OU has children
 - **When to use:** Delegated onboarding where an admin selects which sub-organization to create the user in
 - **Prerequisites:** 
-  - **User Type Resolver must have run first**: resolves `defaultOUID`
+  - **User Type Resolver or Agent Type Resolver must have run first**: resolves `defaultOUID`
   - **A Blank View with OU selection input must follow this executor**, to collect the user's OU selection
 - **Setup:**
-  1. Place **User Type Resolver** before this executor in registration flows
+  1. Place **User Type Resolver** or **Agent Type Resolver** before this executor, according to the entity being created
   2. Add a **Blank View** immediately after this executor with an OU selection component
   3. This executor will prompt only if the default OU has child OUs. Otherwise, it completes silently
 - **Failure conditions:** Default OU not found; selected OU is not a child of the default
@@ -2185,43 +2294,28 @@ Generates the final authentication assertion, a signed JWT, that <ProductName />
 <details>
 <summary>Validate Attribute Uniqueness</summary>
 
-Checks that unique schema attributes supplied in user inputs are not already held by an existing user. If a conflict is detected, the user is prompted to change the value.
+Checks submitted values for attributes marked unique in the selected user or agent schema. A conflict returns an incomplete result with the attribute named in the error, so the flow can ask for another value.
 
-**When to use:** After a form View that collects unique attributes (email, username, phone, etc.), before any creation executor. Early detection prevents conflicts at provisioning time.
+**When to use:** After type resolution and collection of unique attributes, before provisioning. The validator uses the resolved category and type to select the schema.
 
-**Prerequisites:**
-- `userType` (required): must be present in runtime data. Set by User Type Resolver. The executor reads the unique attribute schema from this user type.
+**Prerequisites:** User Type Resolver or Agent Type Resolver supplies both `categoryName` and `categoryType` in runtime data. A custom flow that writes its own resolved type must supply both values. A missing key fails the prerequisite check. If both keys exist but either value is empty, the executor skips the uniqueness check.
 
-**View pairing:** Pair with a **Blank View** that collects the unique attributes (email, username, phone, etc.).
+**Input Configuration:** The executor checks values already in submitted inputs. It does not declare default inputs. Values omitted from the form are left for provisioning and the management service to validate.
 
-**How it works:**
-1. Reads the user type resolved by User Type Resolver
-2. Fetches the unique attributes defined in that user type's schema
-3. Checks each unique attribute value provided in user inputs
-4. Queries the user store to see if any other user already holds that value
-5. Prompts the user to correct the conflicting attribute if a conflict is found
-6. Returns `COMPLETE` if all values are free to use
-
-**Input Configuration:** None. This executor validates the unique-attribute values that are already present in user inputs; it has no registered node input defaults.
-
-**Example:**
+**Agent example:**
 
 ```json
 {
   "id": "check_uniqueness",
   "type": "TASK_EXECUTION",
-  "executor": {
-    "name": "AttributeUniquenessValidator"
-  },
+  "executor": {"name": "AttributeUniquenessValidator"},
   "onSuccess": "provisioning",
-  "onIncomplete": "attr_form"
+  "onIncomplete": "attr_form",
+  "onFailure": "error_prompt"
 }
 ```
 
-**Failure conditions:**
-- `userType` not available (User Type Resolver did not run)
-- User type schema not found
-- User store lookup error
+**Failure conditions:** A required runtime key is missing, the resolved category is unknown, the schema cannot be read, or the entity lookup fails. A conflicting value takes the incomplete path. This check does not replace validation by the user or agent service at creation time.
 
 </details>
 

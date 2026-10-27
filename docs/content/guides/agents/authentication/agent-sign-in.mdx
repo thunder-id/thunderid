@@ -8,10 +8,28 @@ description: Configure an agent in {{ProductName}} to complete an interactive si
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
+import diagramStyles from '@site/src/components/AgentDiagram.module.css';
 
 # Agent Sign-In
 
 An agent can complete an interactive sign-in built for a human, without impersonating an employee or sharing a login. Which credential it uses depends on what the target application expects. That might be a username and password held as schema attributes, an emailed or texted one-time code or magic link, or a passkey the agent registers and uses itself.
+
+<div className={diagramStyles.diagram}>
+
+```mermaid
+%%{init: {"flowchart": {"padding": 30}}}%%
+flowchart LR
+    method{Sign-in method?} --> password[Password]
+    method --> otp[Code or link]
+    method --> passkey[Passkey]
+    class password ic-lock
+    class otp ic-token
+    class passkey ic-key
+```
+
+</div>
+
+Prepare the agent's schema attributes for password or message-based sign-in, or register a passkey against its ID. In every case, the application must allow agent sign-in.
 
 ## Allow the agent type on the application
 
@@ -66,7 +84,7 @@ An agent can have multiple methods of authentication to sign in to an applicatio
 
 ### Add the attributes to the agent schema
 
-<ProductName /> agents carry one schema per organization unit, shared by every agent in it. See [Agent Schema](../../agent-schema) for the full attribute model.
+<ProductName /> agents share the `default` agent type's schema, including its required, unique `name` attribute. See [Agent Schema](../../agent-schema) for the full attribute model.
 
 <Tabs groupId="agent-config">
 <TabItem value="console" label="Console" default>
@@ -79,28 +97,18 @@ An agent can have multiple methods of authentication to sign in to an applicatio
 </TabItem>
 <TabItem value="api" label="API">
 
-The update replaces the schema in full, so fetch the current one first:
+The update replaces the schema in full. Use `jq` to add `username` and `password` to the current schema while preserving other attributes, including `name`, and the display mapping:
 
 ```bash
-curl -X GET https://localhost:8090/agent-types/<agent-type-id> \
-  -H 'Authorization: Bearer <access-token>'
-```
-
-Add `username` and `password` alongside the existing attributes, then send the merged schema back:
-
-```bash
-curl -X PUT https://localhost:8090/agent-types/<agent-type-id> \
-  -H 'Content-Type: application/json' \
+curl --fail --silent --show-error 'https://localhost:8090/agent-types/<agent-type-id>' \
   -H 'Authorization: Bearer <access-token>' \
-  -d '{
-    "handle": "default",
-    "displayName": "Default",
-    "ouId": "<organization-unit-id>",
-    "schema": {
-      "username": { "type": "string", "required": true, "unique": true },
-      "password": { "type": "string", "required": true, "credential": true }
-    }
-  }'
+  | jq '{handle, displayName, ouId, schema, systemAttributes}
+      | .schema.username = {type: "string", required: true, unique: true}
+      | .schema.password = {type: "string", required: true, credential: true}' \
+  | curl --fail --silent --show-error -X PUT 'https://localhost:8090/agent-types/<agent-type-id>' \
+      -H 'Content-Type: application/json' \
+      -H 'Authorization: Bearer <access-token>' \
+      -d @-
 ```
 
 See the [Agent Types API Reference](../../../../apis#tag/agent-types).
@@ -112,7 +120,7 @@ Marking `password` as a credential means <ProductName /> hashes it on write and 
 
 ### Create an agent
 
-Create the agent the same way as any agent, filling in the `username` and `password` attributes with the values the application expects. See [Create an agent](../../manage-agents#create-an-agent).
+Create the agent with its required schema attributes, including `name`, `username`, and `password`. The `name` labels the agent by default; `username` and `password` are its sign-in credentials. See [Create an agent](../../manage-agents#create-an-agent).
 
 :::note[The password cannot be read back]
 Once created, <ProductName /> can verify the password but cannot return it, the same as any credential attribute. Provision the same value to the agent's runtime through your own secrets manager or deployment pipeline, since creating the agent already required it.
@@ -130,7 +138,7 @@ See [Authenticate the Agent](../../../../use-cases/ai-agents/solve-sign-in) for 
 
 ### Add the attributes to the agent schema
 
-<ProductName /> agents carry one schema per organization unit, shared by every agent in it. See [Agent Schema](../../agent-schema) for the full attribute model.
+<ProductName /> agents share the `default` agent type's schema, including its required, unique `name` attribute. See [Agent Schema](../../agent-schema) for the full attribute model.
 
 <Tabs groupId="agent-config">
 <TabItem value="console" label="Console" default>
@@ -143,28 +151,18 @@ See [Authenticate the Agent](../../../../use-cases/ai-agents/solve-sign-in) for 
 </TabItem>
 <TabItem value="api" label="API">
 
-The update replaces the schema in full, so fetch the current one first:
+The update replaces the schema in full. Use `jq` to add the attributes for the channels the application uses while preserving other attributes, including `name`, and the display mapping. This example adds both channels; omit the assignment for any channel that is not needed:
 
 ```bash
-curl -X GET https://localhost:8090/agent-types/<agent-type-id> \
-  -H 'Authorization: Bearer <access-token>'
-```
-
-Add `email`, `mobile_number`, or both, depending on which channel the application uses, then send the merged schema back:
-
-```bash
-curl -X PUT https://localhost:8090/agent-types/<agent-type-id> \
-  -H 'Content-Type: application/json' \
+curl --fail --silent --show-error 'https://localhost:8090/agent-types/<agent-type-id>' \
   -H 'Authorization: Bearer <access-token>' \
-  -d '{
-    "handle": "default",
-    "displayName": "Default",
-    "ouId": "<organization-unit-id>",
-    "schema": {
-      "email": { "type": "string", "required": true },
-      "mobile_number": { "type": "string", "required": true }
-    }
-  }'
+  | jq '{handle, displayName, ouId, schema, systemAttributes}
+      | .schema.email = {type: "string", required: true}
+      | .schema.mobile_number = {type: "string", required: true}' \
+  | curl --fail --silent --show-error -X PUT 'https://localhost:8090/agent-types/<agent-type-id>' \
+      -H 'Content-Type: application/json' \
+      -H 'Authorization: Bearer <access-token>' \
+      -d @-
 ```
 
 See the [Agent Types API Reference](../../../../apis#tag/agent-types).
@@ -188,7 +186,7 @@ This connection runs outside <ProductName />, through whatever email provider, S
 
 ### Create the agent
 
-A passkey is stored against the agent's own entity ID, so the agent must exist first. Create it the same way as any agent; a passkey does not need a schema attribute, so leave `attributes` out or set only the ones your organization tracks. See [Create an agent](../../manage-agents#create-an-agent).
+A passkey is stored against the agent's own entity ID, so the agent must exist first. Create it with the attributes required by its schema, including `name` in the default schema. The passkey itself does not need a schema attribute. See [Create an agent](../../manage-agents#create-an-agent).
 
 ### Register a passkey for the agent
 

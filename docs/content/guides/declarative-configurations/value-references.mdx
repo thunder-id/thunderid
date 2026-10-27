@@ -161,10 +161,7 @@ Capture follows these rules:
 
 ### Limits
 
-- **Renames.** Renaming an application, agent, or user changes the names its values are exported
-  under. The control plane captures the client ID under the new name, but not a client secret or
-  password it was not given in the same write, because it holds only their hashes. Set the value
-  under the new name on the gateway yourself.
+- **Renames.** Changing an application's name, an agent's resolved display label, or a user's username changes the names its values are exported under. For agents, the label comes from the schema's display setting, which selects `name` by default and falls back to the agent ID. The control plane captures the client ID under the new name, but not a client secret or password it was not given in the same write, because it holds only their hashes. Set the value under the new name on the gateway yourself.
 - **Imported connections.** Configuration imported into a control plane writes connections without
   capturing their values. Applications, agents, and users imported into a control plane are captured.
 - **Name collisions.** When two resources' names normalize to the same value name, a full export adds

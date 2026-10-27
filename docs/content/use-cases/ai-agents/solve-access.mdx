@@ -26,11 +26,13 @@ So a booking API with one `booking` resource and three actions generates three p
 
 ```mermaid
 flowchart LR
-  rs[["Resource server: Booking API<br/>https://api.travel.example/booking"]] --> res["Resource: booking"]
+  rs["Resource server<br/>Booking API"] --> res["Resource<br/>booking"]
   res --> p1["read → booking:read"]
   res --> p2["create → booking:create"]
   res --> p3["recommend → booking:recommend"]
 ```
+
+The Booking API's resource server identifier is `https://api.travel.example/booking`. The resource handle inside it is `booking`.
 
 A larger API nests resources, which extends the permission into a longer chain, and the separator is the
 resource server's `delimiter`. See [Manage Resource Servers](../../../guides/resource-servers) for both cases.

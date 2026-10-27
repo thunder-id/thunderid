@@ -8,10 +8,116 @@ description: Register an agent in {{ProductName}}, manage its identifiers, owner
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
+import {Bot, UserCheck} from '@wso2/oxygen-ui-icons-react';
+import {AgentDocCards, AgentDocCard} from '@site/src/components/AgentDocCards';
+import diagramStyles from '@site/src/components/AgentDiagram.module.css';
 
 # Create and Manage Agents
 
-Create an agent, give it identifiers and an owner, and assign the groups and roles that decide what it can reach. Manage its attribute schema, then delete it when it is retired.
+Configure how administrators onboard agents, then create agents with their own credentials, attributes, and owners. The onboarding flow can also assign groups and roles when it creates the agent.
+
+## Configure agent onboarding
+
+Agent onboarding runs as an **Administration** flow in the signed-in administrator's Console session. It creates the agent and its credentials; it is not a user sign-in or registration flow. The built-in `default-agent-onboarding-flow` creates agents that act using their own identity.
+
+The templates have three phases. The operating mode comes from the template, or from the administrator's choice in the Choose Mode flow.
+
+<div className={diagramStyles.diagram}>
+
+```mermaid
+%%{init: {"flowchart": {"padding": 30}}}%%
+flowchart LR
+    access[Check access] --> details[Collect details] --> create[Create agent]:::success
+    class access ic-shield
+    class details ic-flow
+    class create ic-key
+```
+
+</div>
+
+The flow checks administrator permissions, then resolves the agent type, organization unit, and owner. **Agent Details** collects schema attributes, including `name`, before the uniqueness check and any delegation settings. Provisioning creates the agent and its credentials, which appear on the completion screen.
+
+In the supplied flows, a duplicate attribute value returns the administrator to **Agent Details**. Provisioning failures also return there so the administrator can review the submitted values and the error.
+
+### Select a flow template
+
+Select a template, or customize an existing agent onboarding Administration flow:
+
+1. In the Console, navigate to **Flows**. Click **+ Create New Flow**.
+2. Select **Administration** as the flow type.
+3. Select the template for your onboarding process:
+
+    | Template | Use when |
+    |---|---|
+    | **Agent Onboarding Flow (Own Identity)** | Every new agent acts using its own identity. |
+    | **Agent Onboarding Flow (On Behalf of a User)** | Every new agent needs to act for signed-in users. |
+    | **Agent Onboarding Flow (Choose Mode)** | Administrators select the operating mode during creation. |
+
+4. Enter a flow name. Create the flow, then review its steps in the builder.
+5. Save the flow and copy its handle.
+
+For custom attributes, update the [Agent Schema](../agent-schema) first. Add the fields to the flow's attribute form, or connect Provisioning's incomplete output to a dynamic input prompt that submits back to Provisioning. The executor requests missing required attributes and, with `includeOptional: true`, optional attributes.
+
+For node properties and connections, see [Build an agent onboarding flow](../../flows/build-a-flow#build-an-agent-onboarding-flow).
+
+### Configure onboarding for agents that act on behalf of users
+
+An on-behalf-of-user (OBO) onboarding flow needs both parts below. Create a flow from **Agent Onboarding Flow (On Behalf of a User)** to include both, then [make it active](#make-the-flow-active).
+
+<AgentDocCards>
+<AgentDocCard title="Collect delegation settings" icon={<UserCheck size={22} />}>
+
+The **Delegated Agent Details** widget asks the administrator for **Authorized redirect URIs**, **Login flow**, and **User type**. It saves settings for later user sign-in; it does not sign in a user during onboarding.
+
+</AgentDocCard>
+<AgentDocCard title="Create a delegated agent" icon={<Bot size={22} />}>
+
+Keep **Agent Type Resolver** before **Provisioning** so the flow resolves the agent category and type. On **Provisioning**, enable **Delegated mode** (`delegated: true`). This creates an agent that can act on behalf of users with the settings collected by the widget.
+
+</AgentDocCard>
+</AgentDocCards>
+
+To adapt an existing own-identity Administration flow instead:
+
+1. Open the flow in the builder. Keep the administrator permission check and the agent type, organization unit, owner, and attribute steps.
+2. From **Widgets**, add **Delegated Agent Details** after **Validate Attribute Uniqueness** and before **Provisioning**. Connect the successful uniqueness check to the widget and its **Continue** action to **Provisioning**.
+3. On the **Provisioning** node, enable **Delegated mode** (`delegated: true`). The widget collects the inputs; this property tells provisioning to create an OBO agent.
+4. Connect the node's incomplete output to a dynamic input prompt that submits back to **Provisioning**. Save the flow, then [make it active](#make-the-flow-active).
+
+To let the administrator select the mode for each agent, use **Choose Agent Mode** instead of **Delegated Agent Details**. Keep **Agent Type Resolver** before the uniqueness check and **Provisioning**. This widget submits `delegated` from **Act on behalf of a signed-in user**, overriding the node's fallback value. Leave the node's **Delegated mode** unchecked to default to own identity.
+
+All three delegation fields are required when delegated mode is selected. **Login flow** selects an existing authentication flow for users who later sign in through the agent.
+
+### Assign groups and roles during onboarding
+
+Configure these assignments when every agent created by the flow needs the same access:
+
+1. Create the required [groups](../../users/manage-groups) and [roles](../../users/manage-roles). Copy their IDs.
+2. Open the flow's **Provisioning** node. Set **Assign Group** (`assignGroup`) to the group IDs, separated by commas. Set **Assign Role** (`assignRole`) to the role IDs in the same format.
+3. Save the flow. Leave either property empty when no assignment is needed.
+
+Provisioning creates the agent, then adds it to the configured groups and roles. These settings apply to both own-identity and OBO agents. Review the resulting assignments on the agent's **Access** tab.
+
+### Make the flow active
+
+Any agent onboarding Administration flow, including a custom flow, can be the Console default. Set `agentOnboardingFlow.defaultHandle` in the server's `flow` configuration to its saved handle. Obtain an administrator access token with the `system` scope and set `TOKEN` to that value.
+
+`PUT /server-config/flow` replaces the entire writable `flow` section, so a request that carries only `agentOnboardingFlow` clears every other flow default and expiry. Read the current section, change the handle, and send the whole section back:
+
+```bash
+curl -sk -H "Authorization: Bearer $TOKEN" https://localhost:8090/server-config/flow \
+  | jq '.writable | .agentOnboardingFlow.defaultHandle = "<your-flow-handle>"' \
+  | curl -sk -X PUT https://localhost:8090/server-config/flow \
+      -H "Authorization: Bearer $TOKEN" \
+      -H "Content-Type: application/json" \
+      -d @-
+```
+
+The change takes effect without a restart. The request returns `400` and changes nothing when the handle does not belong to an existing Administration flow. The `merged` object in a `GET /server-config/flow` response shows the handle in effect.
+
+Do not set the handle in `config/resources/server_configs/flow.yaml`. Bootstrap stores `default-agent-onboarding-flow` in the writable configuration, and the writable value takes precedence over the file, so the Console keeps running the built-in flow. See [Flow Defaults](../../../deployment/configuration#flow-defaults).
+
+The Console uses this flow for subsequent agent creation. A missing default or a handle that does not resolve to an Administration flow prevents the Console from starting onboarding. Direct `POST /agents` requests create agents through the management API without running this flow.
 
 ## Create an agent
 
@@ -20,29 +126,65 @@ Creating an agent gives that agent its own identity in <ProductName />, with its
 <Tabs groupId="agent-config">
 <TabItem value="console" label="Console" default>
 
-1. Go to **Agents** and click **Add agent**.
-2. If the organization hierarchy requires it, choose an **Organization Unit**.
-3. Enter an **Agent name** (type one or pick a suggestion).
-4. If the agent schema defines attributes, fill them in.
-5. Choose an **Owner** (defaults to the creator), the person accountable for the agent throughout its lifecycle.
-6. Click **Create**.
+Select a creation path below. These instructions follow the supplied templates; custom flows can change the fields and their order. Selecting a card changes these instructions, not the Console's [configured onboarding flow](#make-the-flow-active).
+
+<AgentModeSelector />
+
+<Mode value="own">
+
+### Act using its own identity
+
+Use the built-in `default-agent-onboarding-flow`, or create a flow from **Agent Onboarding Flow (Own Identity)** and [make it active](#make-the-flow-active). The template resolves the agent category and type through **Agent Type Resolver** and sets `delegated: false` on **Provisioning**.
+
+1. Navigate to **Agents**. Click **Add agent**.
+2. Select the organization unit when prompted. The template resolves the `default` agent type before this step.
+3. Select an owner, or leave the selection empty to use your signed-in user. The owner is the person accountable for the agent.
+4. In **Agent Details**, fill in the schema attributes, including **Name**. The default schema requires a unique name; model provider, model, and function are optional.
+5. Continue to create the agent. If you use the Choose Mode template, leave **Act on behalf of a signed-in user** unchecked.
+6. Copy the **Client ID** and **Client Secret** from the completion screen. Store the secret before closing the flow; it is shown only once.
+
+</Mode>
+<Mode value="obo">
+
+### Act on behalf of a user
+
+Prepare the Administration flow in either of these ways:
+
+- Create a flow from **Agent Onboarding Flow (On Behalf of a User)**. It includes the delegation form and sets `delegated: true` on Provisioning.
+- Adapt an own-identity flow by adding **Delegated Agent Details** and enabling **Delegated mode** on Provisioning. Follow [Configure onboarding for agents that act on behalf of users](#configure-onboarding-for-agents-that-act-on-behalf-of-users) for the connections. Use **Choose Agent Mode** instead when administrators need to select the mode for each agent.
+
+[Set the saved flow as the Console default](#make-the-flow-active), then create the agent:
+
+1. Navigate to **Agents**. Click **Add agent**.
+2. Select the organization unit when prompted. The template resolves the `default` agent type before this step.
+3. Select an owner, or leave the selection empty to use your signed-in user.
+4. In **Agent Details**, fill in the schema attributes, including **Name**. Continue after entering a unique name and the other required values.
+5. If you use the Choose Mode template, select **Act on behalf of a signed-in user**.
+6. Enter **Authorized redirect URIs**, separated by commas. Select the agent's **Login flow** and **User type**. Continue to create the agent.
+7. Copy the **Client ID** and **Client Secret** from the completion screen. Store the secret before closing the flow; it is shown only once.
+
+The created agent has delegated mode and PKCE enabled. Onboarding saves the selected user sign-in settings on the agent; it does not sign in an end user or ask for their consent. See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user) for using the agent after creation.
+
+</Mode>
 
 </TabItem>
 <TabItem value="api" label="API">
 
 ```bash
 curl -X POST https://localhost:8090/agents \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{
-    "name": "Invoice Reconciler",
     "type": "default",
     "ouId": "<organization-unit-id>",
     "owner": "<owner-user-id>",
-    "attributes": { }
+    "attributes": { "name": "Invoice Reconciler" }
   }'
 ```
 
-`ouId`, `type`, and `name` are required; `owner` and `attributes` are optional. `type` is the agent type's name. <ProductName /> ships a single agent type, `default`, and does not accept others. See the [Agents API Reference](../../../apis#tag/agents) for the create request and all fields.
+Set `TOKEN` to an access token with permission to create agents. Replace the organization unit and owner placeholders with existing IDs. `ouId` and `type` are required. The default agent schema also requires a unique `attributes.name` value. Omit `owner` to use the authenticated caller.
+
+This request creates an agent record directly and bypasses the onboarding flow. To issue OAuth credentials through the API, also supply `inboundAuthConfig` with an OAuth configuration. See the [Agents API Reference](../../../apis#tag/agents) for the complete request and response.
 
 </TabItem>
 </Tabs>
@@ -55,16 +197,18 @@ That profile is configured on the **Credentials**, **Flows**, **Tokens**, and **
 
 ## Manage an agent
 
-In the Console, open the agent from the list. The name and description are editable inline in the header, and changes across tabs are saved together from the unsaved-changes bar.
+In the Console, open the agent from the list. Edit its `name` value on the **Attributes** tab and its description in the header. Save changes from the unsaved-changes bar.
 
-Through the API, update an agent with `PUT /agents/<AGENT_ID>`, sending only the fields being changed. See the [Agents API Reference](../../../apis#tag/agents) for the full request and response.
+The Console label comes from the agent type's configured [display attribute](../agent-schema#display-attribute), which is `name` by default. If the type selects another attribute, edit that attribute to change the label. Without a display value, the Console shows the agent ID.
+
+Through the API, update an agent with `PUT /agents/<AGENT_ID>`. This is a full replacement: send `type`, the complete attributes, and the inbound authentication and OAuth settings you want to keep. Omitting profile fields can remove those settings. See the [Agents API Reference](../../../apis#tag/agents) for the full request and response.
 
 ### Identifiers and owner
 
 Every agent has an **Agent ID**, its identity in <ProductName />, and an **Owner**, the person accountable for it. The owner is the contact point for what the agent does. Assigning one grants that user no access to the agent.
 
 - **Console:** the **Overview** tab shows the Agent ID and owner under **Agent details**, and the **Advanced** tab is where the owner is changed.
-- **API:** `GET /agents/<AGENT_ID>` returns both.
+- **API:** `GET /agents/<AGENT_ID>` returns both. Add `?include=display` to get the label resolved from the schema's display attribute. The label falls back to the agent ID if no display value is available.
 
 ### Attribute values
 
@@ -74,6 +218,8 @@ The agent schema decides which attributes an agent carries, and each agent holds
 - **API:** send `attributes` in the `PUT` request.
 
 ### Groups and roles
+
+The onboarding flow can [assign groups and roles during creation](#assign-groups-and-roles-during-onboarding). Use the following options to review or change access afterward.
 
 An agent should reach only the resources its task needs. What its tokens are allowed to carry comes from the groups and roles assigned to it, so the agent's reach is controlled separately from its credential, and changing what an agent can do never rotates its secret.
 
@@ -122,3 +268,9 @@ The custom attributes every agent carries come from the agent schema, a single b
 :::warning
 Deletion is permanent and revokes the agent's credentials. Tokens the agent was already issued stay valid until they expire, so keep agent token lifetimes short.
 :::
+
+## Related Guides
+
+- [Agent Schema](../agent-schema)
+- [Advanced Configurations](../../flows/advanced-configurations)
+- [Agent Access on Behalf of Users](../authentication/on-behalf-of-user)

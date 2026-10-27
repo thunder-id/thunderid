@@ -6,9 +6,27 @@ persona: iam
 description: Let an agent obtain its own access token in {{ProductName}} with the client credentials grant, and control the scopes, audience, and claims the token carries.
 ---
 
+import diagramStyles from '@site/src/components/AgentDiagram.module.css';
+
 # Agent Token
 
 When an agent works on its own behalf, with no user involved, it holds an **agent token**: an access token whose subject is the agent itself, so every call it makes is made as that agent and is traceable to it. (When the agent instead acts for a user, it holds a user token; see [Agent Access on Behalf of Users](../on-behalf-of-user).) The `client_credentials` grant, enabled by default on a newly registered agent, is the grant an agent uses to obtain a token for itself directly. A token exchange can also produce a token whose subject is the agent; see [Agent-to-Agent Delegation](../agent-to-agent).
+
+<div className={diagramStyles.diagram}>
+
+```mermaid
+%%{init: {"flowchart": {"padding": 30}}}%%
+flowchart LR
+    agent[Agent] -->|client_credentials| token["Access token<br/>sub = agent"]:::accent
+    token -->|Allowed scopes| api[Protected API]
+    class agent ic-service
+    class token ic-token
+    class api ic-shield
+```
+
+</div>
+
+No user signs in for this path. The API authorizes calls using the agent's own identity and granted scopes.
 
 ## Choose what the agent token carries
 
@@ -48,7 +66,7 @@ Every agent access token is a signed JWT (`typ: at+jwt`). A `client_credentials`
 | `grant_type` | `client_credentials`. |
 | `exp`, `iat`, `nbf`, `jti` | Standard JWT lifetime and identity claims. |
 
-There is no `act` claim, because the agent acts as itself and not for anyone else. `sub_type` is the one claim above that the **Tokens** tab can remove: clear its chip when the resource servers reading these tokens do not use it. Creating an agent selects the claim for you, whether through the Console, the REST API, or a declarative import. Two cases start without it: an agent created before the claim existed, and an agent read from a declarative file in `declarative` store mode, which has to list `sub_type` under `clientConfig.attributes` itself. The attributes and claims selected on the **Tokens** tab (the agent's schema attributes, its system attributes `name` and `owner`, the OU claims `ouId`, `ouName`, and `ouHandle`, and its `groups` and `roles`) are added only when selected.
+There is no `act` claim, because the agent acts as itself and not for anyone else. `sub_type` is the one claim above that the **Tokens** tab can remove: clear its chip when the resource servers reading these tokens do not use it. Creating an agent selects the claim for you, whether through the Console, the REST API, or a declarative import. Two cases start without it: an agent created before the claim existed, and an agent read from a declarative file in `declarative` store mode, which has to list `sub_type` under `clientConfig.attributes` itself. The attributes and claims selected on the **Tokens** tab (the agent's schema attributes, including `name`, its system attribute `owner`, the OU claims `ouId`, `ouName`, and `ouHandle`, and its `groups` and `roles`) are added only when selected.
 
 ## Call a protected API with the agent token
 
