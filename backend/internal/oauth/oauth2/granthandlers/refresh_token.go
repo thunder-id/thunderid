@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/google/uuid"
 	"slices"
 	"strings"
 	"time"
@@ -40,6 +41,9 @@ type refreshTokenGrantHandler struct {
 	actorProvider    providers.ActorProvider
 	refreshRevoker   revocation.RefreshTokenRevokerInterface
 	criteriaRevoker  revocation.CriteriaRevokerInterface
+	// deviceSecretProvider keeps Native SSO device secrets alive across refreshes; nil when the
+	// deployment does not support device_sso.
+	deviceSecretProvider providers.DeviceSecretProvider
 }
 
 // newRefreshTokenGrantHandler creates a new instance of RefreshTokenGrantHandler.
@@ -53,19 +57,21 @@ func newRefreshTokenGrantHandler(
 	actorProvider providers.ActorProvider,
 	refreshRevoker revocation.RefreshTokenRevokerInterface,
 	criteriaRevoker revocation.CriteriaRevokerInterface,
+	deviceSecretProvider providers.DeviceSecretProvider,
 	cfg oauthconfig.Config,
 ) RefreshTokenGrantHandlerInterface {
 	return &refreshTokenGrantHandler{
-		cfg:              cfg,
-		jwtService:       jwtService,
-		tokenBuilder:     tokenBuilder,
-		tokenValidator:   tokenValidator,
-		attrCacheService: attrCacheService,
-		resourceService:  resourceService,
-		authzService:     authzService,
-		actorProvider:    actorProvider,
-		refreshRevoker:   refreshRevoker,
-		criteriaRevoker:  criteriaRevoker,
+		cfg:                  cfg,
+		jwtService:           jwtService,
+		tokenBuilder:         tokenBuilder,
+		tokenValidator:       tokenValidator,
+		attrCacheService:     attrCacheService,
+		resourceService:      resourceService,
+		authzService:         authzService,
+		actorProvider:        actorProvider,
+		refreshRevoker:       refreshRevoker,
+		criteriaRevoker:      criteriaRevoker,
+		deviceSecretProvider: deviceSecretProvider,
 	}
 }
 
@@ -247,6 +253,19 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 		attrs = cacheEntry.Attributes
 	}
 
+	// Native SSO for Mobile Apps 1.0 §3.4.3: while device_sso stays in scope the refreshed ID token
+	// must keep its binding to a device secret, so the secret is kept (when a valid one is presented)
+	// or re-issued, and ds_hash/sid go onto the new ID token.
+	var deviceSecret, dsHash, sessionID string
+	if slices.Contains(newTokenScopes, constants.ScopeDeviceSSO) {
+		var dsErr *model.ErrorResponse
+		deviceSecret, dsHash, sessionID, dsErr = h.deviceSecretOnRefresh(
+			ctx, tokenRequest, oauthApp, refreshTokenClaims, newTokenScopes, attrs, logger)
+		if dsErr != nil {
+			return nil, dsErr
+		}
+	}
+
 	userSubConfig := oauthApp.UserAccessTokenConfig()
 	accessTokenCtx := &tokenservice.AccessTokenBuildContext{
 		Subject:           refreshTokenClaims.Sub,
@@ -279,7 +298,8 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 
 	// Prepare the token response
 	tokenResponse := &model.TokenResponseDTO{
-		AccessToken: *accessToken,
+		AccessToken:  *accessToken,
+		DeviceSecret: deviceSecret,
 	}
 
 	// Generate ID token if 'openid' scope is present
@@ -291,6 +311,8 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 			UserAttributes: attrs,
 			OAuthApp:       oauthApp,
 			ClaimsRequest:  refreshTokenClaims.ClaimsRequest,
+			SessionID:      sessionID,
+			DSHash:         dsHash,
 		})
 		if idErr != nil {
 			logger.Error(ctx, "Failed to generate ID token", log.Error(idErr))
@@ -681,4 +703,104 @@ func (h *refreshTokenGrantHandler) validateAndApplyScopes(ctx context.Context, r
 
 	logger.Debug(ctx, "Applied scope downscoping", log.Any("grantedScopes", trimmedRequestedScopes))
 	return trimmedRequestedScopes, nil
+}
+
+// deviceSecretOnRefresh keeps a Native SSO device secret alive across a refresh_token grant whose
+// scopes still include device_sso (OpenID Connect Native SSO for Mobile Apps 1.0 §3.3 and §3.4.3).
+// A presented device_secret that the provider accepts for this client, subject and DPoP key is kept
+// (rotating a valid secret is not recommended by the specification); a missing or invalid one is
+// replaced by a freshly issued secret. Either way the refreshed ID token carries the matching
+// ds_hash and sid. It returns the device secret to return, its ds_hash and the sid.
+func (h *refreshTokenGrantHandler) deviceSecretOnRefresh(ctx context.Context, tokenRequest *model.TokenRequest,
+	oauthApp *providers.OAuthClient, claims *tokenservice.RefreshTokenClaims, scopes []string,
+	attrs map[string]interface{}, logger *log.Logger) (string, string, string, *model.ErrorResponse) {
+	if h.deviceSecretProvider == nil {
+		return "", "", "", &model.ErrorResponse{
+			Error:            constants.ErrorInvalidScope,
+			ErrorDescription: "The device_sso scope is not supported by this deployment",
+		}
+	}
+	if !slices.Contains(oauthApp.Scopes, constants.ScopeDeviceSSO) {
+		return "", "", "", &model.ErrorResponse{
+			Error:            constants.ErrorInvalidScope,
+			ErrorDescription: "The device_sso scope is not enabled for this client",
+		}
+	}
+	if !slices.Contains(scopes, constants.ScopeOpenID) {
+		return "", "", "", &model.ErrorResponse{
+			Error:            constants.ErrorInvalidScope,
+			ErrorDescription: "The device_sso scope requires the openid scope",
+		}
+	}
+	// The device secret is bound to the application's DPoP key (cnf.jkt); a refresh that keeps or
+	// re-issues one must prove possession of that key.
+	jkt := dpop.GetJkt(ctx)
+	if jkt == "" {
+		return "", "", "", &model.ErrorResponse{
+			Error:            constants.ErrorInvalidRequest,
+			ErrorDescription: "device_sso requires a DPoP-bound token request",
+		}
+	}
+
+	// §3.4: an invalid device_secret is treated as if none was presented.
+	if tokenRequest.DeviceSecret != "" {
+		dsClaims, svcErr := h.deviceSecretProvider.ValidateDeviceSecret(ctx, tokenRequest.ClientID, tokenRequest.DeviceSecret)
+		switch {
+		case svcErr != nil && svcErr.Type == tidcommon.ServerErrorType:
+			logger.Error(ctx, "Failed to validate the presented device secret",
+				log.String("error", svcErr.ErrorDescription.DefaultValue))
+			return "", "", "", &model.ErrorResponse{
+				Error:            constants.ErrorServerError,
+				ErrorDescription: "Failed to validate device secret",
+			}
+		// A kept secret must also carry the sid the refreshed ID token will repeat; without one the
+		// exchange could never bind the two, so such a secret is replaced instead.
+		case svcErr == nil && dsClaims != nil && dsClaims.Sub == claims.Sub &&
+			dsClaims.ClientID == tokenRequest.ClientID && dsClaims.CnfJKT == jkt && dsClaims.SessionID != "":
+			return tokenRequest.DeviceSecret, deviceSecretHash(tokenRequest.DeviceSecret), dsClaims.SessionID, nil
+		default:
+			logger.Debug(ctx, "Presented device secret is not valid for this refresh; issuing a new one")
+		}
+	}
+
+	// No authorization code exists on a refresh: the refresh token's own identity stands in for the
+	// authorization id and, without an SSO session store, for the sid the ID token and the secret share.
+	sessionID := claims.JTI
+	if sessionID == "" {
+		sessionID = claims.TokenFamilyID
+	}
+	if sessionID == "" {
+		sessionID = uuid.NewString()
+	}
+	acr := ""
+	if v, ok := claims.Claims["acr"].(string); ok {
+		acr = v
+	}
+	dsRes, dsErr := h.deviceSecretProvider.GenerateDeviceSecret(ctx, &providers.DeviceSecretParams{
+		Sub:            claims.Sub,
+		AuthID:         sessionID,
+		ClientID:       tokenRequest.ClientID,
+		Scope:          strings.Join(scopes, " "),
+		ACR:            acr,
+		Claims:         attrs,
+		CnfJKT:         jkt,
+		ExpiryDuration: defaultDeviceSecretValidity,
+		SessionID:      sessionID,
+	})
+	if dsErr != nil || dsRes == nil || dsRes.DeviceSecret == "" {
+		logger.Error(ctx, "Failed to generate device secret on refresh")
+		return "", "", "", &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to generate device secret",
+		}
+	}
+	dsHash := deviceSecretHash(dsRes.DeviceSecret)
+	if dsRes.DSHash != "" && dsRes.DSHash != dsHash {
+		logger.Error(ctx, "Device secret provider returned a ds_hash that does not match the engine's derivation")
+		return "", "", "", &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to generate device secret",
+		}
+	}
+	return dsRes.DeviceSecret, dsHash, sessionID, nil
 }

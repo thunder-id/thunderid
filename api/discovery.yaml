@@ -66,6 +66,7 @@ paths:
                 authorization_response_iss_parameter_supported: true
                 authorization_grant_profiles_supported:
                   - "urn:ietf:params:oauth:grant-profile:id-jag"
+                native_sso_supported: true
 
   /.well-known/openid-configuration:
     get:
@@ -120,6 +121,7 @@ paths:
                 authorization_response_iss_parameter_supported: true
                 authorization_grant_profiles_supported:
                   - "urn:ietf:params:oauth:grant-profile:id-jag"
+                native_sso_supported: true
         "500":
           description: Internal server error — metadata could not be generated.
 

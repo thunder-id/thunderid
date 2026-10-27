@@ -184,6 +184,28 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_ClientAttributes_Merges
 
 // A jwt-bearer-grant (ID-JAG) access token carries the source IdP issuer as the `idp` claim so
 // downstream consumers can distinguish a federated principal from a local one.
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_DeviceSSONotInScopeClaim() {
+	// device_sso marks the grant (and stays on the token DTO for the response and the refresh
+	// token) but is not a permission: the access token's scope claim omits it.
+	ctx := &AccessTokenBuildContext{
+		Subject:   "user123",
+		Audiences: []string{"app123"},
+		ClientID:  "test-client",
+		Scopes:    []string{"openid", "profile", constants.ScopeDeviceSSO},
+		GrantType: string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:  suite.oauthApp,
+	}
+	suite.mockJWTService.On("GenerateJWT", mock.Anything, "user123", "https://example.com", int64(3600),
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			return claims["scope"] == "openid profile"
+		}), mock.Anything, mock.Anything,
+	).Return(testAccessToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), ctx)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), []string{"openid", "profile", constants.ScopeDeviceSSO}, result.Scopes)
+}
+
 func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_WithSourceIDP() {
 	ctx := &AccessTokenBuildContext{
 		Subject:           "ext-user-123",

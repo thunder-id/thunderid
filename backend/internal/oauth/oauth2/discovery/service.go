@@ -25,20 +25,35 @@ type DiscoveryServiceInterface interface {
 
 // discoveryService implements DiscoveryServiceInterface
 type discoveryService struct {
-	cfg            oauthconfig.Config
-	cryptoProvider providers.RuntimeCryptoProvider
-	jweService     jwe.JWEServiceInterface
+	cfg                oauthconfig.Config
+	cryptoProvider     providers.RuntimeCryptoProvider
+	jweService         jwe.JWEServiceInterface
+	nativeSSOSupported bool
+}
+
+// Option configures optional discovery metadata.
+type Option func(*discoveryService)
+
+// WithNativeSSOSupported sets the native_sso_supported metadata (OpenID Connect Native SSO for
+// Mobile Apps 1.0 §5). It is advertised when the engine has a device secret provider.
+func WithNativeSSOSupported(supported bool) Option {
+	return func(ds *discoveryService) { ds.nativeSSOSupported = supported }
 }
 
 // newDiscoveryService creates a new discovery service instance
 func newDiscoveryService(
 	cryptoProvider providers.RuntimeCryptoProvider, jweService jwe.JWEServiceInterface, cfg oauthconfig.Config,
+	opts ...Option,
 ) DiscoveryServiceInterface {
-	return &discoveryService{
+	ds := &discoveryService{
 		cfg:            cfg,
 		cryptoProvider: cryptoProvider,
 		jweService:     jweService,
 	}
+	for _, opt := range opts {
+		opt(ds)
+	}
+	return ds
 }
 
 // GetOAuth2AuthorizationServerMetadata returns OAuth 2.0 Authorization Server Metadata
@@ -102,6 +117,7 @@ func (ds *discoveryService) GetOIDCMetadata(ctx context.Context) (*OIDCProviderM
 		ClaimsSupported:                      ds.getAllowedClaims(),
 		ClaimsParameterSupported:             true,
 		AcrValuesSupported:                   ds.getSupportedAcrValues(),
+		NativeSSOSupported:                   ds.nativeSSOSupported,
 	}
 
 	if ds.cfg.OAuth.Logout.IsEnabled() {

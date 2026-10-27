@@ -46,6 +46,7 @@ func newGrantHandlerProvider(
 	cibaService ciba.CIBAServiceInterface,
 	refreshTokenRevoker revocation.RefreshTokenRevokerInterface,
 	criteriaRevoker revocation.CriteriaRevokerInterface,
+	deviceSecretProvider providers.DeviceSecretProvider,
 	cfg oauthconfig.Config,
 ) GrantHandlerProviderInterface {
 	allowedGrantTypes := cfg.OAuth.AllowedGrantTypes
@@ -56,16 +57,17 @@ func newGrantHandlerProvider(
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeAuthorizationCode) {
 		grantProvider.authorizationCodeGrantHandler = newAuthorizationCodeGrantHandler(
-			authzService, tokenBuilder, attrCacheService, resourceService)
+			authzService, tokenBuilder, attrCacheService, resourceService, deviceSecretProvider)
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeRefreshToken) {
 		grantProvider.refreshTokenGrantHandler = newRefreshTokenGrantHandler(
 			jwtService, tokenBuilder, tokenValidator, attrCacheService, resourceService,
-			rbacAuthzService, actorProvider, refreshTokenRevoker, criteriaRevoker, cfg)
+			rbacAuthzService, actorProvider, refreshTokenRevoker, criteriaRevoker, deviceSecretProvider, cfg)
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeTokenExchange) {
 		grantProvider.tokenExchangeGrantHandler = newTokenExchangeGrantHandler(
-			tokenBuilder, tokenValidator, resourceService, cfg)
+			tokenBuilder, tokenValidator, resourceService, attrCacheService, deviceSecretProvider,
+			actorProvider, cfg)
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeCIBA) {
 		grantProvider.cibaGrantHandler = newCIBAGrantHandler(cibaService, tokenBuilder, attrCacheService,

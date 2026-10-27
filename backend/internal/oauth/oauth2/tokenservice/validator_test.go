@@ -3256,3 +3256,60 @@ func (suite *IDJAGValidatorTestSuite) TestValidateIDJAGAssertion_JTIExceedsMaxLe
 	claims["jti"] = strings.Repeat("a", 257)
 	suite.assertRejectsSignedAssertion(claims, "assertion 'jti' exceeds maximum length")
 }
+
+// ---- Native SSO subject tokens ----
+
+func (suite *TokenValidatorTestSuite) TestValidateNativeSSOSubjectToken_AcceptsExpiredIDToken() {
+	now := time.Now().Unix()
+	token := suite.createTestJWT(map[string]interface{}{
+		"sub": "user123", "iss": "https://example.com", "aud": suite.getDefaultAudience(),
+		"exp": float64(now - 3600), "nbf": float64(now - 7200), "scope": "openid profile",
+		"sid": "sid-1", "ds_hash": "hash-1",
+	})
+	suite.mockJWTService.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
+
+	_, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+	assert.ErrorIs(suite.T(), err, ErrTokenExpired, "the generic path still refuses an expired token")
+
+	result, err := suite.validator.ValidateNativeSSOSubjectToken(context.Background(), token, suite.oauthApp)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "user123", result.Sub)
+	assert.Equal(suite.T(), "sid-1", result.SID)
+	assert.Equal(suite.T(), "hash-1", result.DSHash)
+}
+
+func (suite *TokenValidatorTestSuite) TestValidateNativeSSOSubjectToken_StillEnforcesNbf() {
+	now := time.Now().Unix()
+	token := suite.createTestJWT(map[string]interface{}{
+		"sub": "user123", "iss": "https://example.com", "aud": suite.getDefaultAudience(),
+		"exp": float64(now + 3600), "nbf": float64(now + 3600),
+	})
+	suite.mockJWTService.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
+
+	_, err := suite.validator.ValidateNativeSSOSubjectToken(context.Background(), token, suite.oauthApp)
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "not yet valid")
+}
+
+func (suite *TokenValidatorTestSuite) TestValidateNativeSSOSubjectToken_RejectsAccessToken() {
+	now := time.Now().Unix()
+	token := suite.createTestAccessToken(map[string]interface{}{
+		"sub": "user123", "iss": "https://example.com", "aud": suite.getDefaultAudience(),
+		"exp": float64(now + 3600), "nbf": float64(now - 60),
+	})
+
+	_, err := suite.validator.ValidateNativeSSOSubjectToken(context.Background(), token, suite.oauthApp)
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "must be an ID token")
+}
+
+func (suite *TokenValidatorTestSuite) TestValidateNativeSSOSubjectToken_RejectsForeignIssuer() {
+	now := time.Now().Unix()
+	token := suite.createTestJWT(map[string]interface{}{
+		"sub": "user123", "iss": "https://other-idp.example.com", "aud": suite.getDefaultAudience(),
+		"exp": float64(now + 3600), "nbf": float64(now - 60),
+	})
+
+	_, err := suite.validator.ValidateNativeSSOSubjectToken(context.Background(), token, suite.oauthApp)
+	assert.ErrorIs(suite.T(), err, ErrIssuerNotTrusted)
+}

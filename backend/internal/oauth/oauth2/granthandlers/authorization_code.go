@@ -5,6 +5,7 @@ package granthandlers
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"time"
@@ -22,12 +23,17 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
+// defaultDeviceSecretValidity bounds how long a Native SSO device secret may be exchanged. The
+// DeviceSecretProvider may shorten it; the value only sets the expiry the engine asks for.
+const defaultDeviceSecretValidity = 30 * 24 * time.Hour
+
 // authorizationCodeGrantHandler handles the authorization code grant type.
 type authorizationCodeGrantHandler struct {
-	authzService    authz.AuthorizeServiceInterface
-	tokenBuilder    tokenservice.TokenBuilderInterface
-	attributeCache  attributecache.AttributeCacheServiceInterface
-	resourceService providers.ResourceServerProvider
+	authzService         authz.AuthorizeServiceInterface
+	tokenBuilder         tokenservice.TokenBuilderInterface
+	attributeCache       attributecache.AttributeCacheServiceInterface
+	resourceService      providers.ResourceServerProvider
+	deviceSecretProvider providers.DeviceSecretProvider
 }
 
 // newAuthorizationCodeGrantHandler creates a new instance of AuthorizationCodeGrantHandler.
@@ -36,12 +42,14 @@ func newAuthorizationCodeGrantHandler(
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	attributeCache attributecache.AttributeCacheServiceInterface,
 	resourceService providers.ResourceServerProvider,
+	deviceSecretProvider providers.DeviceSecretProvider,
 ) GrantHandlerInterface {
 	return &authorizationCodeGrantHandler{
-		authzService:    authzService,
-		tokenBuilder:    tokenBuilder,
-		attributeCache:  attributeCache,
-		resourceService: resourceService,
+		authzService:         authzService,
+		tokenBuilder:         tokenBuilder,
+		attributeCache:       attributeCache,
+		resourceService:      resourceService,
+		deviceSecretProvider: deviceSecretProvider,
 	}
 }
 
@@ -150,6 +158,14 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		accessTokenScopes = append(accessTokenScopes, downscopedNonOidc...)
 	}
 
+	// Native SSO preconditions are checked before any token is minted.
+	deviceSSO := slices.Contains(accessTokenScopes, constants.ScopeDeviceSSO)
+	if deviceSSO {
+		if errResp := h.validateDeviceSSOGrant(ctx, oauthApp, accessTokenScopes); errResp != nil {
+			return nil, errResp
+		}
+	}
+
 	// Generate access token using tokenBuilder (attributes will be filtered in BuildAccessToken)
 	userSubConfig := oauthApp.UserAccessTokenConfig()
 	accessTokenCtx := &tokenservice.AccessTokenBuildContext{
@@ -186,6 +202,58 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		AccessToken: *accessToken,
 	}
 
+	// Native SSO (OpenID Connect Native SSO for Mobile Apps 1.0): a grant that carries the
+	// device_sso scope also mints a device secret bound to the ID token through ds_hash and sid.
+	var dsHash string
+	// This engine build has no SSO session store, so the authorization id serves as the sid.
+	sessionID := ""
+	if deviceSSO {
+		// The device secret and the ID token share a session id. Deployments without an SSO session
+		// store (such as an embedded engine) have no sid of their own, so the authorization id
+		// identifies the authentication instead.
+		if sessionID == "" {
+			sessionID = authCode.CodeID
+		}
+		dsRes, dsErr := h.deviceSecretProvider.GenerateDeviceSecret(ctx, &providers.DeviceSecretParams{
+			Sub:            authCode.AuthorizedUserID,
+			AuthID:         authCode.CodeID,
+			ClientID:       tokenRequest.ClientID,
+			Scope:          strings.Join(accessTokenScopes, " "),
+			ACR:            authCode.CompletedACR,
+			Claims:         attrs,
+			CnfJKT:         dpop.GetJkt(ctx),
+			ExpiryDuration: defaultDeviceSecretValidity,
+			SessionID:      sessionID,
+		})
+		if dsErr != nil {
+			logger.Error(ctx, "Failed to generate device secret",
+				log.Error(errors.New(dsErr.ErrorDescription.String())))
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorServerError,
+				ErrorDescription: "Failed to generate device secret",
+			}
+		}
+		if dsRes == nil || dsRes.DeviceSecret == "" || dsRes.DSHash == "" {
+			logger.Error(ctx, "Device secret provider returned an empty device secret")
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorServerError,
+				ErrorDescription: "Failed to generate device secret",
+			}
+		}
+		// The token exchange verifies ds_hash as BASE64URL(SHA-256(device_secret)) (Native SSO 1.0
+		// leaves the binding to the deployment, so the engine owns it on both sides). A provider that
+		// returns a different value would issue ID tokens no exchange could ever redeem.
+		dsHash = deviceSecretHash(dsRes.DeviceSecret)
+		if dsRes.DSHash != "" && dsRes.DSHash != dsHash {
+			logger.Error(ctx, "Device secret provider returned a ds_hash that does not match the engine's derivation")
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorServerError,
+				ErrorDescription: "Failed to generate device secret",
+			}
+		}
+		tokenResponse.DeviceSecret = dsRes.DeviceSecret
+	}
+
 	// Generate ID token if 'openid' scope is present
 	if slices.Contains(accessTokenScopes, constants.ScopeOpenID) {
 		idToken, err := h.tokenBuilder.BuildIDToken(ctx, &tokenservice.IDTokenBuildContext{
@@ -198,6 +266,8 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 			ClaimsRequest:  authCode.ClaimsRequest,
 			Nonce:          authCode.Nonce,
 			CompletedACR:   authCode.CompletedACR,
+			SessionID:      sessionID,
+			DSHash:         dsHash,
 		})
 		if err != nil {
 			logger.Error(ctx, "Failed to generate ID token", log.Error(err))
@@ -210,6 +280,45 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 	}
 
 	return tokenResponse, nil
+}
+
+// validateDeviceSSOGrant checks that a grant carrying the device_sso scope may mint a device secret:
+// the deployment supports Native SSO, the client is registered for it, the grant also issues an ID
+// token (the device secret and the ID token are issued together or not at all), and the token
+// request is DPoP-bound so the device secret can be bound to the requesting app's key (cnf.jkt).
+func (h *authorizationCodeGrantHandler) validateDeviceSSOGrant(ctx context.Context,
+	oauthApp *providers.OAuthClient, scopes []string) *model.ErrorResponse {
+	if h.deviceSecretProvider == nil {
+		return &model.ErrorResponse{
+			Error:            constants.ErrorInvalidScope,
+			ErrorDescription: "The device_sso scope is not supported by this deployment",
+		}
+	}
+	// The token endpoint re-checks that the registered client is enabled for Native SSO, so a
+	// client cannot obtain a device secret merely by asking for the scope at authorization.
+	if !slices.Contains(oauthApp.Scopes, constants.ScopeDeviceSSO) {
+		return &model.ErrorResponse{
+			Error:            constants.ErrorInvalidScope,
+			ErrorDescription: "The device_sso scope is not enabled for this client",
+		}
+	}
+	// Native SSO for Mobile Apps 1.0 §3.4: the device secret is returned together with an ID token,
+	// which carries the ds_hash and sid that bind the two.
+	if !slices.Contains(scopes, constants.ScopeOpenID) {
+		return &model.ErrorResponse{
+			Error:            constants.ErrorInvalidScope,
+			ErrorDescription: "The device_sso scope requires the openid scope",
+		}
+	}
+	// The device secret is bound to the requesting app's DPoP key (cnf.jkt); without a proof it
+	// would be a long-lived bearer credential.
+	if dpop.GetJkt(ctx) == "" {
+		return &model.ErrorResponse{
+			Error:            constants.ErrorInvalidRequest,
+			ErrorDescription: "device_sso requires a DPoP-bound token request",
+		}
+	}
+	return nil
 }
 
 func (h *authorizationCodeGrantHandler) retrieveAndValidateAuthCode(

@@ -151,7 +151,10 @@ func SeparateOIDCAndNonOIDCScopes(scopes string, scopeClaimsMapping map[string][
 	for _, scp := range scopeSlice {
 		_, isMapped := scopeClaimsMapping[scp]
 		_, isStandard := constants.StandardOIDCScopes[scp]
-		if isMapped || isStandard {
+		// device_sso (OpenID Connect Native SSO for Mobile Apps 1.0) is a protocol scope that asks
+		// for a device secret alongside the ID token; it names no resource server permission.
+		isProtocol := scp == constants.ScopeDeviceSSO
+		if isMapped || isStandard || isProtocol {
 			oidcScopes = append(oidcScopes, scp)
 		} else {
 			nonOidcScopes = append(nonOidcScopes, scp)

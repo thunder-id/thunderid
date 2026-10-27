@@ -63,6 +63,7 @@ type RefreshTokenGrantHandlerTestSuite struct {
 	mockActorProvider    *actorprovidermock.ActorProviderMock
 	mockRefreshRevoker   *revocationmock.RefreshTokenRevokerInterfaceMock
 	mockCriteriaRevoker  *revocationmock.CriteriaRevokerInterfaceMock
+	deviceSecretProvider providers.DeviceSecretProvider
 	oauthApp             *providers.OAuthClient
 	validRefreshToken    string
 	validClaims          map[string]interface{}
@@ -190,6 +191,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) rebuildHandlerWithConfig() {
 		suite.mockActorProvider,
 		suite.mockRefreshRevoker,
 		suite.mockCriteriaRevoker,
+		suite.deviceSecretProvider,
 		suite.testCfg,
 	).(*refreshTokenGrantHandler)
 }
@@ -205,7 +207,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestNewRefreshTokenGrantHandler(
 		suite.mockAttrCacheService,
 		suite.mockResourceService, suite.mockAuthzService,
 		suite.mockActorProvider, suite.mockRefreshRevoker,
-		suite.mockCriteriaRevoker, testhelpers.OAuthConfig())
+		suite.mockCriteriaRevoker, nil, testhelpers.OAuthConfig())
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*RefreshTokenGrantHandlerInterface)(nil), handler)
 }
@@ -699,6 +701,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RevokePreviousOn
 		suite.mockResourceService,
 		suite.mockAuthzService,
 		suite.mockActorProvider,
+		nil,
 		nil,
 		nil,
 		suite.testCfg,
@@ -2582,7 +2585,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_NoActorProviderS
 	suite.handler = newRefreshTokenGrantHandler(
 		suite.mockJWTService, suite.mockTokenBuilder, suite.mockTokenValidator,
 		suite.mockAttrCacheService, suite.mockResourceService, nil, nil,
-		suite.mockRefreshRevoker, suite.mockCriteriaRevoker, suite.testCfg,
+		suite.mockRefreshRevoker, suite.mockCriteriaRevoker, nil, suite.testCfg,
 	).(*refreshTokenGrantHandler)
 	suite.refreshClaimsValid()
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
@@ -2709,4 +2712,164 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_SystemAttributes
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), response)
+}
+
+// deviceSSORefreshClaims returns refresh-token claims of a login that was granted device_sso.
+func deviceSSORefreshClaims(jkt string) *tokenservice.RefreshTokenClaims {
+	return &tokenservice.RefreshTokenClaims{
+		ClientID:  testRefreshTokenClientID,
+		Sub:       testRefreshTokenUserID,
+		Audiences: []string{testRefreshTokenClientID}, // OIDC-only grant: audience is the client id
+		Scopes:    []string{"openid", "profile", constants.ScopeDeviceSSO},
+		GrantType: "authorization_code",
+		DPoPJkt:   jkt,
+		JTI:       "rt-jti-1",
+	}
+}
+
+func (suite *RefreshTokenGrantHandlerTestSuite) deviceSSORefreshSetup(ds providers.DeviceSecretProvider,
+	jkt string) (*model.TokenRequest, context.Context) {
+	suite.deviceSecretProvider = ds
+	suite.rebuildHandlerWithConfig()
+	suite.oauthApp.Scopes = []string{"openid", "profile", constants.ScopeDeviceSSO}
+	suite.mockTokenValidator.On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(deviceSSORefreshClaims(jkt), nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600,
+		Scopes: []string{"openid", "profile"},
+	}, nil).Maybe()
+	req := &model.TokenRequest{
+		GrantType:    string(providers.GrantTypeRefreshToken),
+		ClientID:     testRefreshTokenClientID,
+		RefreshToken: suite.validRefreshToken,
+	}
+	ctx := context.Background()
+	if jkt != "" {
+		ctx = dpop.WithJkt(ctx, jkt)
+	}
+	return req, ctx
+}
+
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_DeviceSSO_IssuesSecretWithBoundIDToken() {
+	// Native SSO 1.0 §3.4.3: device_sso still in scope and no device_secret presented, so a new
+	// secret is issued and the refreshed ID token carries its ds_hash and sid.
+	var generated *providers.DeviceSecretParams
+	ds := &mockDeviceSecretProvider{
+		generateFunc: func(ctx context.Context, params *providers.DeviceSecretParams) (
+			*providers.DeviceSecretResult, *tidcommon.ServiceError) {
+			generated = params
+			return &providers.DeviceSecretResult{DeviceSecret: "rt-secret", DSHash: deviceSecretHash("rt-secret")}, nil
+		},
+	}
+	req, ctx := suite.deviceSSORefreshSetup(ds, "thumbprint-rt")
+	suite.mockTokenBuilder.On("BuildIDToken", mock.Anything, mock.MatchedBy(
+		func(c *tokenservice.IDTokenBuildContext) bool {
+			return c.DSHash == deviceSecretHash("rt-secret") && c.SessionID == "rt-jti-1"
+		})).Return(&model.TokenDTO{Token: "new.id.token"}, nil).Once()
+
+	resp, errResp := suite.handler.HandleGrant(ctx, req, suite.oauthApp)
+	suite.Require().Nil(errResp)
+	suite.Equal("rt-secret", resp.DeviceSecret)
+	suite.Require().NotNil(generated)
+	suite.Equal(testRefreshTokenUserID, generated.Sub)
+	suite.Equal("thumbprint-rt", generated.CnfJKT)
+	suite.Equal("rt-jti-1", generated.SessionID)
+	suite.Contains(generated.Scope, constants.ScopeDeviceSSO)
+}
+
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_DeviceSSO_KeepsValidPresentedSecret() {
+	// A valid device_secret bound to this subject, client and DPoP key is kept rather than rotated.
+	ds := &mockDeviceSecretProvider{
+		generateFunc: func(ctx context.Context, params *providers.DeviceSecretParams) (
+			*providers.DeviceSecretResult, *tidcommon.ServiceError) {
+			suite.FailNow("a valid presented device secret must not be rotated")
+			return nil, nil
+		},
+		validateFunc: func(ctx context.Context, clientID, deviceSecret string) (
+			*providers.DeviceSecretClaims, *tidcommon.ServiceError) {
+			suite.Equal("old-secret", deviceSecret)
+			return &providers.DeviceSecretClaims{Sub: testRefreshTokenUserID, ClientID: clientID,
+				CnfJKT: "thumbprint-rt", SessionID: "sid-from-login"}, nil
+		},
+	}
+	req, ctx := suite.deviceSSORefreshSetup(ds, "thumbprint-rt")
+	req.DeviceSecret = "old-secret"
+	suite.mockTokenBuilder.On("BuildIDToken", mock.Anything, mock.MatchedBy(
+		func(c *tokenservice.IDTokenBuildContext) bool {
+			return c.DSHash == deviceSecretHash("old-secret") && c.SessionID == "sid-from-login"
+		})).Return(&model.TokenDTO{Token: "new.id.token"}, nil).Once()
+
+	resp, errResp := suite.handler.HandleGrant(ctx, req, suite.oauthApp)
+	suite.Require().Nil(errResp)
+	suite.Equal("old-secret", resp.DeviceSecret)
+}
+
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_DeviceSSO_PresentedSecretWithoutSidIsReplaced() {
+	// A valid secret that carries no sid could never be bound to the refreshed ID token, so it is
+	// replaced like an invalid one.
+	ds := &mockDeviceSecretProvider{
+		generateFunc: func(ctx context.Context, params *providers.DeviceSecretParams) (
+			*providers.DeviceSecretResult, *tidcommon.ServiceError) {
+			return &providers.DeviceSecretResult{DeviceSecret: "fresh-secret"}, nil
+		},
+		validateFunc: func(ctx context.Context, clientID, deviceSecret string) (
+			*providers.DeviceSecretClaims, *tidcommon.ServiceError) {
+			return &providers.DeviceSecretClaims{Sub: testRefreshTokenUserID, ClientID: clientID, CnfJKT: "thumbprint-rt"}, nil
+		},
+	}
+	req, ctx := suite.deviceSSORefreshSetup(ds, "thumbprint-rt")
+	req.DeviceSecret = "sidless-secret"
+	suite.mockTokenBuilder.On("BuildIDToken", mock.Anything, mock.MatchedBy(
+		func(c *tokenservice.IDTokenBuildContext) bool {
+			return c.DSHash == deviceSecretHash("fresh-secret") && c.SessionID == "rt-jti-1"
+		})).Return(&model.TokenDTO{Token: "new.id.token"}, nil).Once()
+
+	resp, errResp := suite.handler.HandleGrant(ctx, req, suite.oauthApp)
+	suite.Require().Nil(errResp)
+	suite.Equal("fresh-secret", resp.DeviceSecret)
+}
+
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_DeviceSSO_InvalidPresentedSecretIsReplaced() {
+	// §3.4: an invalid device_secret is processed as if none was presented.
+	ds := &mockDeviceSecretProvider{
+		generateFunc: func(ctx context.Context, params *providers.DeviceSecretParams) (
+			*providers.DeviceSecretResult, *tidcommon.ServiceError) {
+			return &providers.DeviceSecretResult{DeviceSecret: "fresh-secret"}, nil
+		},
+		validateFunc: func(ctx context.Context, clientID, deviceSecret string) (
+			*providers.DeviceSecretClaims, *tidcommon.ServiceError) {
+			return nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType,
+				ErrorDescription: tidcommon.I18nMessage{DefaultValue: "expired"}}
+		},
+	}
+	req, ctx := suite.deviceSSORefreshSetup(ds, "thumbprint-rt")
+	req.DeviceSecret = "stale-secret"
+	suite.mockTokenBuilder.On("BuildIDToken", mock.Anything, mock.MatchedBy(
+		func(c *tokenservice.IDTokenBuildContext) bool {
+			return c.DSHash == deviceSecretHash("fresh-secret") && c.SessionID == "rt-jti-1"
+		})).Return(&model.TokenDTO{Token: "new.id.token"}, nil).Once()
+
+	resp, errResp := suite.handler.HandleGrant(ctx, req, suite.oauthApp)
+	suite.Require().Nil(errResp)
+	suite.Equal("fresh-secret", resp.DeviceSecret)
+}
+
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_DeviceSSO_RequiresDPoP() {
+	ds := &mockDeviceSecretProvider{}
+	req, ctx := suite.deviceSSORefreshSetup(ds, "")
+
+	resp, errResp := suite.handler.HandleGrant(ctx, req, suite.oauthApp)
+	suite.Nil(resp)
+	suite.Require().NotNil(errResp)
+	suite.Equal(constants.ErrorInvalidRequest, errResp.Error)
+	suite.Contains(errResp.ErrorDescription, "DPoP")
+}
+
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_DeviceSSO_NotSupportedWithoutProvider() {
+	req, ctx := suite.deviceSSORefreshSetup(nil, "thumbprint-rt")
+
+	resp, errResp := suite.handler.HandleGrant(ctx, req, suite.oauthApp)
+	suite.Nil(resp)
+	suite.Require().NotNil(errResp)
+	suite.Equal(constants.ErrorInvalidScope, errResp.Error)
 }

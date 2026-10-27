@@ -15,9 +15,9 @@ import (
 // Initialize initializes the discovery service and registers its routes
 func Initialize(
 	mux *http.ServeMux, cryptoProvider providers.RuntimeCryptoProvider, jweService jwe.JWEServiceInterface,
-	cfg oauthconfig.Config,
+	cfg oauthconfig.Config, opts ...Option,
 ) DiscoveryServiceInterface {
-	discoveryService := newDiscoveryService(cryptoProvider, jweService, cfg)
+	discoveryService := newDiscoveryService(cryptoProvider, jweService, cfg, opts...)
 	discoveryHandler := newDiscoveryHandler(discoveryService)
 	registerRoutes(mux, discoveryHandler)
 	return discoveryService

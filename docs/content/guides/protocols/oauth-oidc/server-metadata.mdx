@@ -99,6 +99,13 @@ The OAuth-only document at `/.well-known/oauth-authorization-server` omits the O
 
 </details>
 
+### Native SSO
+
+When a `DeviceSecretProvider` is configured, both documents additionally advertise
+`"native_sso_supported": true` (OpenID Connect Native SSO for Mobile Apps 1.0 §5), telling native
+apps that the `device_sso` scope and device-secret token exchange are available. The key is absent
+otherwise.
+
 ## Try It in <ProductName />
 
 No configuration is needed. The discovery endpoints are always served and reflect the current deployment's settings.

@@ -238,6 +238,7 @@ func (ts *tokenService) ProcessTokenRequest(
 		RefreshToken: tokenRespDTO.RefreshToken.Token,
 		Scope:        scopes,
 		IDToken:      tokenRespDTO.IDToken.Token,
+		DeviceSecret: tokenRespDTO.DeviceSecret,
 	}
 
 	// For token exchange, determine the issued_token_type from the request.

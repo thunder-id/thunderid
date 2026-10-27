@@ -221,7 +221,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		engineCtx.jweService, engineCtx.flowExecService, engineCtx.observabilitySvc, engineCtx.runtimeCryptoSvc,
 		engineCtx.ouProvider, engineCtx.attributeCacheService, engineCtx.authzProvider, engineCtx.resourceProvider,
 		engineCtx.i18nProvider, engineCtx.idpProvider, engineCtx.dpopVerifier, engineCtx.runtimeStoreProvider,
-		engineCtx.transactioner, revocationEnforcer, revocationService, oauthConfig)
+		engineCtx.transactioner, revocationEnforcer, revocationService, engineCtx.deviceSecretProvider, oauthConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize OAuth services", log.Error(err))
 	}
@@ -384,6 +384,8 @@ type engineContext struct {
 	authzProvider             providers.AuthorizationProvider
 	attestationProvider       providers.AttestationProvider
 	captchaValidationProvider providers.CaptchaValidationProvider
+
+	deviceSecretProvider providers.DeviceSecretProvider
 
 	transactioner        providers.Transactioner
 	runtimeStoreProvider providers.RuntimeStoreProvider
@@ -569,4 +571,9 @@ func WithCaptchaValidationProvider(provider providers.CaptchaValidationProvider)
 // WithRuntimeCryptoProvider supplies the RuntimeCryptoProvider.
 func WithRuntimeCryptoProvider(provider kmprovider.RuntimeCryptoProvider) Option {
 	return func(c *engineContext) { c.runtimeCryptoSvc = provider }
+}
+
+// WithDeviceSecretProvider supplies the DeviceSecretProvider for Native Mobile SSO.
+func WithDeviceSecretProvider(provider providers.DeviceSecretProvider) Option {
+	return func(c *engineContext) { c.deviceSecretProvider = provider }
 }

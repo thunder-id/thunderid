@@ -559,3 +559,38 @@ func (suite *DiscoveryTestSuite) TestOIDCDiscovery_EngineOverridesLandInWellKnow
 }
 
 func boolPtr(b bool) *bool { return &b }
+
+func (suite *DiscoveryTestSuite) TestNativeSSOSupported_OmittedByDefault() {
+	suite.cryptoMock.EXPECT().GetPublicKeys(mock.Anything, providers.PublicKeyFilter{}).
+		Return([]providers.PublicKeyInfo{{KeyID: "k1", Algorithm: string(cryptolib.AlgorithmRS256)}}, nil)
+
+	metadata, err := suite.discoveryService.GetOIDCMetadata(context.Background())
+	assert.NoError(suite.T(), err)
+
+	raw, err := json.Marshal(metadata)
+	assert.NoError(suite.T(), err)
+	var doc map[string]any
+	assert.NoError(suite.T(), json.Unmarshal(raw, &doc))
+	_, present := doc["native_sso_supported"]
+	assert.False(suite.T(), present, "native_sso_supported is advertised only with a device secret provider")
+}
+
+func (suite *DiscoveryTestSuite) TestNativeSSOSupported_Advertised() {
+	cryptoMock := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
+	cryptoMock.EXPECT().GetSupportedSigningAlgorithms().Return(suite.oauthCfg.OAuth.DPoP.AllowedAlgs).Maybe()
+	cryptoMock.EXPECT().GetSupportedEncryptionAlgorithms().
+		Return([]string{string(cryptolib.AlgorithmRSAOAEP256)}).Maybe()
+	cryptoMock.EXPECT().GetPublicKeys(mock.Anything, providers.PublicKeyFilter{}).
+		Return([]providers.PublicKeyInfo{{KeyID: "k1", Algorithm: string(cryptolib.AlgorithmRS256)}}, nil)
+	svc := newDiscoveryService(cryptoMock, newTestJWEService(cryptoMock), suite.oauthCfg,
+		WithNativeSSOSupported(true))
+
+	metadata, err := svc.GetOIDCMetadata(context.Background())
+	assert.NoError(suite.T(), err)
+
+	raw, err := json.Marshal(metadata)
+	assert.NoError(suite.T(), err)
+	var doc map[string]any
+	assert.NoError(suite.T(), json.Unmarshal(raw, &doc))
+	assert.Equal(suite.T(), true, doc["native_sso_supported"])
+}

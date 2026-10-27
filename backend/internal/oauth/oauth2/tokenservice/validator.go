@@ -36,6 +36,13 @@ type TokenValidatorInterface interface {
 	ValidateRefreshToken(ctx context.Context, token string) (*RefreshTokenClaims, error)
 	ValidateSubjectToken(ctx context.Context, token string, oauthApp *providers.OAuthClient) (
 		*SubjectTokenClaims, error)
+	// ValidateNativeSSOSubjectToken validates the ID token a sibling app presents as the subject token
+	// of an OpenID Connect Native SSO exchange. It performs the ValidateSubjectToken checks for a
+	// self-issued ID token (typ "JWT", signature, nbf, revocation deny list) but tolerates an expired
+	// exp: the ID token is a binding artefact there, and the device secret presented with it carries
+	// the lifetime of the exchange.
+	ValidateNativeSSOSubjectToken(ctx context.Context, token string, oauthApp *providers.OAuthClient) (
+		*SubjectTokenClaims, error)
 	// ValidateIDJAGSubjectToken validates a subject token for the ID-JAG issuance leg of token
 	// exchange (draft-ietf-oauth-identity-assertion-authz-grant). It performs the same validation as
 	// ValidateSubjectToken and additionally requires the token to be a genuine ID token: its typ
@@ -281,6 +288,53 @@ func (tv *tokenValidator) ValidateSubjectToken(
 	return tv.extractSubjectTokenClaims(token, iss, claims, oauthApp, issuerInfo.AttributeMappings)
 }
 
+// ValidateNativeSSOSubjectToken validates the ID token presented as the subject token of a Native
+// SSO exchange. Only a self-issued, genuine ID token (typ "JWT", no access_token_sub) qualifies; the
+// signature, nbf and the revocation deny list are enforced, while an expired exp is tolerated
+// because the accompanying device secret bounds the exchange (OpenID Connect Native SSO for
+// Mobile Apps 1.0 §5.2).
+func (tv *tokenValidator) ValidateNativeSSOSubjectToken(
+	ctx context.Context,
+	token string,
+	oauthApp *providers.OAuthClient,
+) (*SubjectTokenClaims, error) {
+	header, err := jwt.DecodeJWTHeader(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode subject token header: %w", err)
+	}
+	if typ, _ := header["typ"].(string); typ != "" && typ != "JWT" {
+		return nil, fmt.Errorf("subject_token must be an ID token (typ JWT), got typ %q", typ)
+	}
+
+	claims, err := jwt.DecodeJWTPayload(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode subject token: %w", err)
+	}
+	if _, isRefresh := claims["access_token_sub"]; isRefresh {
+		return nil, fmt.Errorf("subject_token must be an ID token, not a refresh token")
+	}
+
+	iss, err := extractStringClaim(claims, "iss")
+	if err != nil {
+		return nil, fmt.Errorf("subject token is missing 'iss' claim: %w", err)
+	}
+	if !tv.isSelfIssuer(iss) {
+		return nil, fmt.Errorf("%w: a Native SSO subject token must be issued by this server", ErrIssuerNotTrusted)
+	}
+	if err := tv.verifyTokenSignatureByIssuer(ctx, token, iss); err != nil {
+		return nil, fmt.Errorf("invalid subject token signature: %w", err)
+	}
+	selfClaims, err := tv.extractSubjectTokenClaimsOpts(token, iss, claims, oauthApp, nil, true)
+	if err != nil {
+		return nil, err
+	}
+	tokenFamilyID, _ := extractStringClaim(claims, constants.ClaimTokenFamilyID)
+	if err := tv.ensureNotRevoked(ctx, revocationIdentity(claims, selfClaims.JTI, tokenFamilyID)); err != nil {
+		return nil, err
+	}
+	return selfClaims, nil
+}
+
 // ValidateIDJAGSubjectToken validates a subject token for the ID-JAG issuance leg of token exchange
 // (draft-ietf-oauth-identity-assertion-authz-grant). Beyond the standard subject-token validation
 // performed by ValidateSubjectToken (signature, revocation deny list, time claims, and claim
@@ -514,11 +568,24 @@ func (tv *tokenValidator) validateExternalTokenAudience(auds []string, issuerInf
 
 // extractSubjectTokenClaims extracts and validates claims from a decoded subject token.
 func (tv *tokenValidator) extractSubjectTokenClaims(
+	token string,
+	iss string,
+	claims map[string]interface{},
+	oauthApp *providers.OAuthClient,
+	attributeMappings []providers.AttributeMapping,
+) (*SubjectTokenClaims, error) {
+	return tv.extractSubjectTokenClaimsOpts(token, iss, claims, oauthApp, attributeMappings, false)
+}
+
+// extractSubjectTokenClaimsOpts is extractSubjectTokenClaims with the time-claim policy explicit:
+// allowExpired keeps nbf enforced but tolerates a past exp (Native SSO subject tokens).
+func (tv *tokenValidator) extractSubjectTokenClaimsOpts(
 	_ string,
 	iss string,
 	claims map[string]interface{},
 	oauthApp *providers.OAuthClient,
 	attributeMappings []providers.AttributeMapping,
+	allowExpired bool,
 ) (*SubjectTokenClaims, error) {
 	sub, err := extractStringClaim(claims, "sub")
 	if err != nil {
@@ -526,7 +593,7 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 	}
 
 	// Validate time-based claims
-	if err := tv.validateTimeClaims(claims); err != nil {
+	if err := tv.validateTimeClaimsOpts(claims, allowExpired); err != nil {
 		return nil, err
 	}
 
@@ -584,6 +651,9 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 		tokenFamilyID, _ = extractStringClaim(claims, constants.ClaimTokenFamilyID)
 	}
 
+	dsHash, _ := extractStringClaim(claims, "ds_hash")
+	sid, _ := extractStringClaim(claims, "sid")
+
 	return &SubjectTokenClaims{
 		Sub:            sub,
 		Iss:            iss,
@@ -594,6 +664,8 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 		CnfJkt:         cnfJkt,
 		JTI:            jti,
 		TokenFamilyID:  tokenFamilyID,
+		DSHash:         dsHash,
+		SID:            sid,
 	}, nil
 }
 
@@ -620,6 +692,12 @@ func (tv *tokenValidator) isSelfIssuer(issuer string) bool {
 
 // validateTimeClaims validates time-based claims (exp, nbf).
 func (tv *tokenValidator) validateTimeClaims(claims map[string]interface{}) error {
+	return tv.validateTimeClaimsOpts(claims, false)
+}
+
+// validateTimeClaimsOpts validates time-based claims; with allowExpired the exp claim must still be
+// present and well-formed but a past value is tolerated.
+func (tv *tokenValidator) validateTimeClaimsOpts(claims map[string]interface{}, allowExpired bool) error {
 	// Get leeway from config to account for clock skew
 	leeway := tv.cfg.JWT.Leeway
 	now := time.Now().Unix()
@@ -628,7 +706,7 @@ func (tv *tokenValidator) validateTimeClaims(claims map[string]interface{}) erro
 	if err != nil {
 		return fmt.Errorf("missing or invalid 'exp' claim: %w", err)
 	}
-	if now >= exp+leeway {
+	if now >= exp+leeway && !allowExpired {
 		return ErrTokenExpired
 	}
 
