@@ -23,6 +23,8 @@ const (
 	fieldOwner        = "owner"
 	fieldClientID     = "clientId"
 	fieldClientSecret = authnprovidercm.CredentialTypeClientSecret
+	// fieldKind holds the agent kind, set at creation and preserved across updates.
+	fieldKind = "kind"
 )
 
 // fieldOwnerID is the path of the owner's ID within the SystemAttributes blob.
@@ -41,6 +43,9 @@ var ownerIDTypes = []providers.AgentOwnerIDType{
 	providers.AgentOwnerIDTypeEmail,
 	providers.AgentOwnerIDTypeMobile,
 }
+
+// personalAgentAuthFlowHandle is the shipped login flow for a personal agent whose registration flow fixes none.
+const personalAgentAuthFlowHandle = "default-personal-agent-auth-flow"
 
 // propLogoURL is the inbound-client PROPERTIES key holding the agent logo.
 const propLogoURL = "logo_url"

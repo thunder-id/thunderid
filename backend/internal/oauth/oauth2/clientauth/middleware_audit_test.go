@@ -101,7 +101,7 @@ func (suite *ClientAuthMiddlewareAuditTestSuite) SetupTest() {
 // serve runs request through the middleware publishing on bus and returns the status it answered with.
 func (suite *ClientAuthMiddlewareAuditTestSuite) serve(bus eventbus.EventBusInterface, request *http.Request) int {
 	actorProvider := actorprovider.Initialize(suite.mockInboundClient,
-		entityprovidermock.NewEntityProviderInterfaceMock(suite.T()), noopAuthnMgr(), nil, nil)
+		entityprovidermock.NewEntityProviderInterfaceMock(suite.T()), noopAuthnMgr(), nil, nil, nil)
 	middleware := ClientAuthMiddleware(actorProvider, suite.mockAuthnProvider, nil,
 		jwtmock.NewJWTServiceInterfaceMock(suite.T()), nil, testIssuer, testAssertionCfg, testJWTLeeway, bus)
 	recorder := httptest.NewRecorder()

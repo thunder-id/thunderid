@@ -553,7 +553,16 @@ type Agent struct {
 	LayoutID                  string                   `json:"layoutId,omitempty"`
 	AllowedUserTypes          []string                 `json:"allowedUserTypes,omitempty"`
 	AllowedAgentTypes         []string                 `json:"allowedAgentTypes,omitempty"`
+	LoginConsent              *LoginConsent            `json:"loginConsent,omitempty"`
 	InboundAuthConfig         []AgentInboundAuthConfig `json:"inboundAuthConfig,omitempty"`
+
+	Kind string `json:"kind,omitempty"`
+}
+
+// LoginConsent holds a client's login consent settings.
+type LoginConsent struct {
+	ValidityPeriod int64 `json:"validityPeriod"`
+	AlwaysPrompt   *bool `json:"alwaysPrompt,omitempty"`
 }
 
 // AgentInboundAuthConfig represents an inbound auth config entry for an agent.
