@@ -213,19 +213,12 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
     if (step === Step.TYPE) {
       return null;
     }
+    // Picking a protocol card also advances, so the protocol step only needs Back.
     if (step === Step.PROTOCOL) {
       return (
-        <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+        <Box sx={{display: 'flex', justifyContent: 'flex-start', alignItems: 'center'}}>
           <Button variant="outlined" onClick={returnToTypeStep} sx={{minWidth: 100}}>
             {t('common:actions.back', 'Back')}
-          </Button>
-          <Button
-            variant="contained"
-            disabled={!isAuthZENPDP}
-            onClick={() => setStep(Step.NAME)}
-            data-testid="wizard-continue"
-          >
-            {t('common:actions.continue', 'Continue')}
           </Button>
         </Box>
       );
@@ -288,7 +281,10 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
       {step === Step.PROTOCOL && (
         <SelectPDPProtocol
           selectedProtocol={isAuthZENPDP ? ConnectionTypes.AUTHZEN_PDP : null}
-          onSelect={setSelectedType}
+          onSelect={(protocol) => {
+            setSelectedType(protocol);
+            setStep(Step.NAME);
+          }}
         />
       )}
 

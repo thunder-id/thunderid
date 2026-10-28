@@ -52,7 +52,10 @@ type AuthZENPDPService struct {
 
 var _ AuthZENPDPServiceInterface = (*AuthZENPDPService)(nil)
 
-const reservedSubjectGroupsAttribute = "groups"
+const (
+	reservedSubjectGroupsAttribute = "groups"
+	reservedSubjectRolesAttribute  = "roles"
+)
 
 // newAuthZENPDPService creates an AuthZEN PDP connection service.
 func newAuthZENPDPService(
@@ -354,7 +357,8 @@ func (s *AuthZENPDPService) validateSubjectAttributeMappings(
 			allowed[attribute.Attribute] = struct{}{}
 		}
 		for _, attribute := range mapping.Attributes {
-			if attribute.Attribute == reservedSubjectGroupsAttribute {
+			if attribute.Attribute == reservedSubjectGroupsAttribute ||
+				attribute.Attribute == reservedSubjectRolesAttribute {
 				continue
 			}
 			if _, ok := allowed[attribute.Attribute]; !ok {
