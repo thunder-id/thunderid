@@ -1032,6 +1032,36 @@ func (ts *GroupAuthzTestSuite) TestAddSelfToPrivilegedGroupIsForbidden() {
 		"adding self to a group conferring system:user must be forbidden, got %d", resp.StatusCode)
 }
 
+// A permission held only through a role in another OU never reaches the caller's tokens, so it
+// must not let the caller grant it either. The group-manager lives in OU1 and holds system:user
+// only through an OU2 role, so joining the librarian group stays forbidden.
+func (ts *GroupAuthzTestSuite) TestAddSelfToPrivilegedGroupIsForbiddenWhenHeldOnlyInAnotherOU() {
+	otherOURoleID, err := testutils.CreateRole(testutils.Role{
+		Name: "authz-librarian-role-ou2",
+		OUID: ts.groupOU2ID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: ts.scopedRSID, Permissions: []string{"system:user"}},
+		},
+		Assignments: []testutils.Assignment{{ID: ts.groupMgrUserID, Type: "user"}},
+	})
+	ts.Require().NoError(err, "create OU2 role granting system:user to the group-manager")
+	defer func() {
+		if err := testutils.DeleteRole(otherOURoleID); err != nil {
+			ts.T().Logf("delete OU2 role: %v", err)
+		}
+	}()
+
+	payload := ts.mustMarshal(map[string]any{
+		"members": []map[string]string{{"id": ts.groupMgrUserID, "type": "user"}},
+	})
+
+	resp := ts.doGroup(http.MethodPost, "/groups/"+ts.librarianGroupID+"/members/add", payload)
+	defer resp.Body.Close()
+
+	ts.Equalf(http.StatusForbidden, resp.StatusCode,
+		"system:user held only in OU2 must not let the OU1 manager grant it, got %d", resp.StatusCode)
+}
+
 // Escalation on behalf of someone else is the same defect; the guard is actor-relative.
 func (ts *GroupAuthzTestSuite) TestAddAnotherUserToPrivilegedGroupIsForbidden() {
 	payload := ts.mustMarshal(map[string]any{

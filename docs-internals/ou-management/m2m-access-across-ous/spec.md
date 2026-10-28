@@ -179,7 +179,7 @@ A token issued for an organization unit must not carry permissions that unit may
 
 1. Requested scopes are downscoped to the permissions the target resource server defines.
 2. In the same pass, a permission the accessing organization unit may not use is treated as undefined and dropped.
-3. The application's own entitlement is evaluated afterwards, unchanged.
+3. The application's own entitlement is evaluated afterwards, unchanged: its roles and groups are resolved in the organization unit that owns the application, not in the accessing unit.
 
 What the accessing unit may use comes from the resource server's own sharing policy. A resource server declares one field, `permissions`, as a hierarchy over its permission strings, so naming a resource shares it together with everything beneath it. The field is pinned: the sharing organization unit decides what is shared, and a reached unit has nothing of its own to choose.
 

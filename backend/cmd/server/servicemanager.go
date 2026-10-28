@@ -337,7 +337,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		role.NewEffectivePermissionResolver(roleService, groupService, entityService))
 
 	authZService := authz.Initialize(
-		roleService, resourceService, entityService, authZENPDPService)
+		roleService, resourceService, entityService, groupService, authZENPDPService)
 
 	idpService, err := idp.Initialize(
 		cacheManager, entityTypeService, roleService, groupService, resourceService, ouService)

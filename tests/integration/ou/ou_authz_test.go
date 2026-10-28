@@ -52,6 +52,8 @@ type OUAuthzTestSuite struct {
 
 	// Test-specific role and OU-admin user
 	ouAdminRoleID string
+	// otherOURoleID is a role in OU2 granting "system" to the OU-admin, which must not reach its token.
+	otherOURoleID string
 	ouAdminUserID string
 	scopedRSID    string
 
@@ -169,6 +171,22 @@ func (ts *OUAuthzTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create ou-view-admin role")
 	ts.ouAdminRoleID = roleID
 
+	// ---- 5b. Assign the OU-admin a role in OU2 granting the root "system" permission ----
+	// System permissions come only from roles in the user's own OU, so the token below must not
+	// carry it.
+	otherOURoleID, err := testutils.CreateRole(testutils.Role{
+		Name: ouViewRoleName + " in OU2",
+		OUID: ts.ou2ID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: systemRSID, Permissions: []string{"system"}},
+		},
+		Assignments: []testutils.Assignment{
+			{ID: ts.ouAdminUserID, Type: "user"},
+		},
+	})
+	ts.Require().NoError(err, "create OU2 role assigned to the ou-admin")
+	ts.otherOURoleID = otherOURoleID
+
 	// ---- 6. Obtain a scoped access token for the OU-admin user ----
 	tokenResp, err := testutils.ObtainAccessTokenWithPassword(
 		developClientID,
@@ -192,6 +210,11 @@ func (ts *OUAuthzTestSuite) SetupSuite() {
 // ---------------------------------------------------------------------------
 
 func (ts *OUAuthzTestSuite) TearDownSuite() {
+	if ts.otherOURoleID != "" {
+		if err := testutils.DeleteRole(ts.otherOURoleID); err != nil {
+			ts.T().Logf("teardown: delete OU2 role: %v", err)
+		}
+	}
 	if ts.ouAdminRoleID != "" {
 		if err := testutils.DeleteRole(ts.ouAdminRoleID); err != nil {
 			ts.T().Logf("teardown: delete role: %v", err)

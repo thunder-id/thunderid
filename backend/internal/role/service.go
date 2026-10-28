@@ -51,14 +51,18 @@ type RoleServiceInterface interface {
 	ValidateGroupMembershipRemoval(ctx context.Context, groupID, memberID string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	IsRoleDeclarative(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
+	// GetAuthorizedPermissionsByResourceServer returns the requested permissions the entity, its
+	// groups, or the named roles hold. A non-empty ouID counts only roles available in that
+	// organization unit.
 	GetAuthorizedPermissionsByResourceServer(
 		ctx context.Context, entityID string, groups, roleIDs []string, resourceServerID string,
-		requestedPermissions []string,
+		requestedPermissions []string, ouID string,
 	) ([]string, *tidcommon.ServiceError)
 	// GetAllPermissions returns every permission the entity and/or groups hold, keyed by resource
-	// server. Unlike GetAuthorizedPermissionsByResourceServer it enumerates rather than checks.
+	// server. Unlike GetAuthorizedPermissionsByResourceServer it enumerates rather than checks. A
+	// non-empty ouID counts only roles owned by that organization unit.
 	GetAllPermissions(
-		ctx context.Context, entityID string, groupIDs []string,
+		ctx context.Context, entityID string, groupIDs []string, ouID string,
 	) (security.PermissionSet, *tidcommon.ServiceError)
 	GetUserRoles(ctx context.Context, entityID string, groupIDs []string) ([]string, *tidcommon.ServiceError)
 	ResolveRoleOUHandle(
@@ -541,7 +545,7 @@ func (rs *roleService) ValidateGroupMembershipRemoval(ctx context.Context, group
 // based on roles, scoped to a resource server when provided.
 func (rs *roleService) GetAuthorizedPermissionsByResourceServer(
 	ctx context.Context, entityID string, groups, roleIDs []string, resourceServerID string,
-	requestedPermissions []string,
+	requestedPermissions []string, ouID string,
 ) ([]string, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Authorizing permissions",
@@ -573,7 +577,7 @@ func (rs *roleService) GetAuthorizedPermissionsByResourceServer(
 
 	// Get authorized permissions from store
 	authorizedPermissions, err := rs.roleStore.GetAuthorizedPermissionsByResourceServer(
-		ctx, entityID, groups, roleIDs, resourceServerID, requestedPermissions)
+		ctx, entityID, groups, roleIDs, resourceServerID, requestedPermissions, ouID)
 	if err != nil {
 		logger.Error(ctx, "Failed to get authorized permissions",
 			log.MaskedString(log.LoggerKeyUserID, entityID),
@@ -597,7 +601,7 @@ func (rs *roleService) GetAuthorizedPermissionsByResourceServer(
 // roles, keyed by resource server. Unlike GetAuthorizedPermissionsByResourceServer, no entity and no
 // groups is not an error: callers legitimately ask what a set of groups confers.
 func (rs *roleService) GetAllPermissions(
-	ctx context.Context, entityID string, groupIDs []string,
+	ctx context.Context, entityID string, groupIDs []string, ouID string,
 ) (security.PermissionSet, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
@@ -608,7 +612,7 @@ func (rs *roleService) GetAllPermissions(
 		return security.PermissionSet{}, nil
 	}
 
-	resourcePermissions, err := rs.roleStore.GetAllPermissionsForAssignees(ctx, entityID, groupIDs)
+	resourcePermissions, err := rs.roleStore.GetAllPermissionsForAssignees(ctx, entityID, groupIDs, ouID)
 	if err != nil {
 		logger.Error(ctx, "Failed to enumerate permissions for assignees",
 			log.MaskedString(log.LoggerKeyUserID, entityID),
@@ -877,7 +881,7 @@ func (rs *roleService) groupScopes(ctx context.Context, groupID string) (
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	permissionSet, svcErr := rs.GetAllPermissions(ctx, "", append([]string{groupID}, ancestors...))
+	permissionSet, svcErr := rs.GetAllPermissions(ctx, "", append([]string{groupID}, ancestors...), "")
 	if svcErr != nil {
 		return nil, svcErr
 	}

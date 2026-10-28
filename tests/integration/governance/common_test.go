@@ -65,11 +65,10 @@ const (
 	shippedSignInAction = "action_001"
 )
 
-// The console the root operator signs in to, and the bootstrap organization unit and system resource
-// server the root permission lives in.
+// The console the root operator signs in to, and the system resource server the root permission
+// lives in.
 const (
 	boundaryConsoleURI     = "https://localhost:8095/console"
-	bootstrapOUID          = "01900000-0000-7000-8000-000000000001"
 	systemResourceServerID = "01900000-0000-7000-8000-000000000020"
 )
 
@@ -585,13 +584,15 @@ func runAdministrationFlowAs(t *testing.T, token, handle string, inputs map[stri
 
 // newRootOperator creates a user in the fixture holding the system permission and signs it in to the
 // Console, so a test that regresses into governing its own operator holds a throwaway account rather
-// than the administrator every other suite runs as. The role is deleted when t ends.
+// than the administrator every other suite runs as. The role is created in the fixture's organization
+// unit, since a role grants its permissions only to a subject in the organization unit that owns it.
+// The role is deleted when t ends.
 func newRootOperator(t *testing.T, users *userFixture) (userID, username, password, accessToken string) {
 	t.Helper()
 	userID, username, password = users.newUser(t, "root", nil)
 	roleID, err := testutils.CreateRole(testutils.Role{
 		Name: "Governance Root " + users.suffix,
-		OUID: bootstrapOUID,
+		OUID: users.ouID,
 		Permissions: []testutils.ResourcePermissions{
 			{ResourceServerID: systemResourceServerID, Permissions: []string{"system"}},
 		},

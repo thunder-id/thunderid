@@ -5,6 +5,7 @@ package role
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/thunder-id/thunderid/internal/entity"
@@ -35,11 +36,24 @@ func NewEffectivePermissionResolver(
 	}
 }
 
-// ResolveForEntity returns every permission an entity holds, directly and through its groups.
+// ResolveForEntity returns the permissions an entity holds through roles owned by its own
+// organization unit, directly and through its groups in that unit. These are the roles a token
+// issued to the entity counts, so an entity with no organization unit holds none.
 func (r *EffectivePermissionResolver) ResolveForEntity(
 	ctx context.Context, entityID string,
 ) (security.PermissionSet, error) {
 	if entityID == "" {
+		return security.PermissionSet{}, nil
+	}
+
+	profile, err := r.entityService.GetEntityProfile(ctx, entityID)
+	if err != nil {
+		if errors.Is(err, entity.ErrEntityNotFound) {
+			return security.PermissionSet{}, nil
+		}
+		return nil, fmt.Errorf("failed to resolve entity: %w", err)
+	}
+	if profile.OUID == "" {
 		return security.PermissionSet{}, nil
 	}
 
@@ -50,10 +64,12 @@ func (r *EffectivePermissionResolver) ResolveForEntity(
 
 	groupIDs := make([]string, 0, len(entityGroups))
 	for _, entityGroup := range entityGroups {
-		groupIDs = append(groupIDs, entityGroup.ID)
+		if entityGroup.OUID == profile.OUID {
+			groupIDs = append(groupIDs, entityGroup.ID)
+		}
 	}
 
-	permissions, svcErr := r.roleService.GetAllPermissions(ctx, entityID, groupIDs)
+	permissions, svcErr := r.roleService.GetAllPermissions(ctx, entityID, groupIDs, profile.OUID)
 	if svcErr != nil {
 		return nil, fmt.Errorf("failed to resolve permissions for entity: %s",
 			svcErr.Error.DefaultValue)
@@ -81,7 +97,7 @@ func (r *EffectivePermissionResolver) ResolveForGroup(
 	groupIDs = append(groupIDs, groupID)
 	groupIDs = append(groupIDs, ancestors...)
 
-	permissions, svcErr := r.roleService.GetAllPermissions(ctx, "", groupIDs)
+	permissions, svcErr := r.roleService.GetAllPermissions(ctx, "", groupIDs, "")
 	if svcErr != nil {
 		return nil, fmt.Errorf("failed to resolve permissions for group: %s",
 			svcErr.Error.DefaultValue)

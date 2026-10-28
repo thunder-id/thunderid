@@ -206,13 +206,15 @@ func buildGetRolesByNamesQuery(names []string, deploymentID string) (dbmodel.DBQ
 }
 
 // buildAuthorizedPermissionsQuery constructs a database-specific query to retrieve authorized permissions
-// for an entity and/or groups from their assigned roles.
+// for an entity and/or groups from their assigned roles. A non-empty ouID counts only roles owned
+// by that organization unit.
 // It builds separate queries for PostgreSQL and SQLite to handle array parameters correctly.
 func buildAuthorizedPermissionsQuery(
 	entityID string,
 	groupIDs, roleIDs []string,
 	resourceServerID string,
 	requestedPermissions []string,
+	ouID string,
 	deploymentID string,
 ) (dbmodel.DBQuery, []interface{}) {
 	// Base query structure. LEFT JOIN, not INNER JOIN: a role named directly in roleIDs (an
@@ -231,6 +233,9 @@ func buildAuthorizedPermissionsQuery(
 		argsCapacity++
 	}
 	if resourceServerID != "" {
+		argsCapacity++
+	}
+	if ouID != "" {
 		argsCapacity++
 	}
 	args := make([]interface{}, 0, argsCapacity)
@@ -294,6 +299,15 @@ func buildAuthorizedPermissionsQuery(
 		args = append(args, resourceServerID)
 		paramIndex++
 	}
+	if ouID != "" {
+		postgresScopeWhere = append(postgresScopeWhere, fmt.Sprintf(
+			`rp.ROLE_ID IN (SELECT r.ID FROM "ROLE" r WHERE r.DEPLOYMENT_ID = $1 AND r.OU_ID = $%d)`,
+			paramIndex))
+		sqliteScopeWhere = append(sqliteScopeWhere,
+			`rp.ROLE_ID IN (SELECT r.ID FROM "ROLE" r WHERE r.DEPLOYMENT_ID = $1 AND r.OU_ID = ?)`)
+		args = append(args, ouID)
+		paramIndex++
+	}
 
 	// Build permission condition
 	permPlaceholdersPostgres := make([]string, len(requestedPermissions))
@@ -332,16 +346,18 @@ func buildAuthorizedPermissionsQuery(
 
 // buildAllPermissionsForAssigneesQuery retrieves every permission granted to an entity and/or
 // groups by their assigned roles, across all resource servers. Unlike
-// buildAuthorizedPermissionsQuery it applies no filters, since the permissions to ask about are
-// exactly what is being discovered.
+// buildAuthorizedPermissionsQuery it applies no permission filters, since the permissions to ask
+// about are exactly what is being discovered. A non-empty ouID counts only roles owned by that
+// organization unit.
 //
 // DEPLOYMENT_ID is $1 rather than the trailing parameter the db conventions call for. It occurs
-// three times, and SQLite gives the named form $1 the first free index and reuses it, so it must
+// several times, and SQLite gives the named form $1 the first free index and reuses it, so it must
 // come first for the following ? placeholders to line up with the argument order.
 // buildAuthorizedPermissionsQuery does the same.
 func buildAllPermissionsForAssigneesQuery(
 	entityID string,
 	groupIDs []string,
+	ouID string,
 	deploymentID string,
 ) (dbmodel.DBQuery, []interface{}) {
 	const queryID = "RLQ-ROLE_MGT-26"
@@ -366,6 +382,9 @@ func buildAllPermissionsForAssigneesQuery(
 
 	argsCapacity := 1 + len(groupIDs) // +1 for DEPLOYMENT_ID
 	if entityID != "" {
+		argsCapacity++
+	}
+	if ouID != "" {
 		argsCapacity++
 	}
 	args := make([]interface{}, 0, argsCapacity)
@@ -395,11 +414,22 @@ func buildAllPermissionsForAssigneesQuery(
 		sqliteWhere = append(sqliteWhere,
 			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'group' AND ra.ASSIGNEE_ID IN (%s))",
 				strings.Join(groupPlaceholdersSqlite, ",")))
+		paramIndex += len(groupIDs)
+	}
+
+	postgresQuery := baseQuery + "(" + strings.Join(postgresWhere, " OR ") + ")"
+	sqliteQuery := baseQuery + "(" + strings.Join(sqliteWhere, " OR ") + ")"
+	if ouID != "" {
+		postgresQuery += fmt.Sprintf(
+			` AND rp.ROLE_ID IN (SELECT r.ID FROM "ROLE" r WHERE r.DEPLOYMENT_ID = $1 AND r.OU_ID = $%d)`,
+			paramIndex)
+		sqliteQuery += ` AND rp.ROLE_ID IN (SELECT r.ID FROM "ROLE" r WHERE r.DEPLOYMENT_ID = $1 AND r.OU_ID = ?)`
+		args = append(args, ouID)
 	}
 
 	orderBy := " ORDER BY rp.RESOURCE_SERVER_ID, rp.PERMISSION"
-	postgresQuery := baseQuery + "(" + strings.Join(postgresWhere, " OR ") + ")" + orderBy
-	sqliteQuery := baseQuery + "(" + strings.Join(sqliteWhere, " OR ") + ")" + orderBy
+	postgresQuery += orderBy
+	sqliteQuery += orderBy
 
 	return dbmodel.DBQuery{
 		ID:            queryID,

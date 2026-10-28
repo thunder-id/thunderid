@@ -111,9 +111,13 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 				}
 			}
 
+			// The client's roles and groups belong to its owning organization unit, so the evaluation
+			// is bounded to it even when the request names another unit to act for. That unit has
+			// already narrowed the scopes above.
 			authzResp, svcErr := h.authzService.EvaluateAccessBatch(ctx,
 				tokenservice.BuildAccessEvaluationsRequest(
-					oauthApp.ID, oauthApp.EntityCategory.String(), groupIDs, nil, scopes, targetRS.ID))
+					oauthApp.ID, oauthApp.EntityCategory.String(), groupIDs, nil, scopes, targetRS.ID,
+					oauthApp.OUID))
 			if svcErr != nil {
 				logger.Error(ctx, "Failed to get authorized permissions for app",
 					log.String("appID", oauthApp.ID), log.String("error", svcErr.Error.DefaultValue))
