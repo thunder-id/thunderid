@@ -95,6 +95,12 @@ const (
 	systemFlowInputGroup  = "targetGroupId"
 )
 
+// The system flow removing a group member runs, and the input naming the member it acts on.
+const (
+	systemFlowGroupMembershipRemoval = "system-group-membership-removal"
+	systemFlowInputMember            = "targetMemberId"
+)
+
 // newGroupServiceWithStore creates a new instance of GroupService with an externally provided store.
 func newGroupServiceWithStore(
 	store groupStoreInterface,
@@ -852,7 +858,7 @@ func (gs *groupService) AddGroupMembers(
 	ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError) {
 	log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)).
 		Debug(ctx, "Adding members to group", log.String("id", groupID))
-	return gs.modifyGroupMembers(ctx, groupID, members,
+	return gs.modifyGroupMembers(ctx, groupID, members, nil,
 		gs.groupStore.AddGroupMembers,
 		"Failed to add members to group",
 		"Successfully added members to group",
@@ -864,11 +870,53 @@ func (gs *groupService) RemoveGroupMembers(
 	ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError) {
 	log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)).
 		Debug(ctx, "Removing members from group", log.String("id", groupID))
-	return gs.modifyGroupMembers(ctx, groupID, members,
+	return gs.modifyGroupMembers(ctx, groupID, members, gs.revokeRemovedMembers,
 		gs.groupStore.RemoveGroupMembers,
 		"Failed to remove members from group",
 		"Successfully removed members from group",
 	)
+}
+
+// revokeRemovedMembers revokes what each removed member got from the group before the removal is
+// written, whichever entry point asked: the tokens the member carries with the permissions of the
+// roles assigned to the group; for a member group, the tokens of its members. Removing a non-member
+// changes nothing, so it revokes nothing. A refusal leaves every membership as it was.
+func (gs *groupService) revokeRemovedMembers(ctx context.Context, groupID string,
+	members []Member) *tidcommon.ServiceError {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+	total, err := gs.groupStore.GetGroupMemberCount(ctx, groupID)
+	if err != nil {
+		logger.Error(ctx, "Failed to get group member count", log.String("id", groupID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	present := make(map[string]bool, total)
+	for offset := 0; offset < total; offset += serverconst.MaxPageSize {
+		page, err := gs.groupStore.GetGroupMembers(ctx, groupID, serverconst.MaxPageSize, offset)
+		if err != nil {
+			logger.Error(ctx, "Failed to get group members", log.String("id", groupID), log.Error(err))
+			return &tidcommon.InternalServerError
+		}
+		for _, member := range page {
+			present[member.ID] = true
+		}
+	}
+	for _, member := range members {
+		if !present[member.ID] {
+			continue
+		}
+		delete(present, member.ID)
+		if gs.executeSystemFlow == nil {
+			logger.Error(ctx, "System flow executor not set; refusing the change",
+				log.String("handle", systemFlowGroupMembershipRemoval))
+			return &tidcommon.InternalServerError
+		}
+		if svcErr := gs.executeSystemFlow(ctx, systemFlowGroupMembershipRemoval, map[string]string{
+			systemFlowInputGroup: groupID, systemFlowInputMember: member.ID,
+		}); svcErr != nil {
+			return svcErr
+		}
+	}
+	return nil
 }
 
 // ValidateRemoveGroupMembers runs the checks RemoveGroupMembers runs before it changes anything.
@@ -883,6 +931,7 @@ func (gs *groupService) modifyGroupMembers(
 	ctx context.Context,
 	groupID string,
 	members []Member,
+	beforeWrite func(context.Context, string, []Member) *tidcommon.ServiceError,
 	storeOp func(context.Context, string, []Member) error,
 	errMsg, successMsg string,
 ) (*Group, *tidcommon.ServiceError) {
@@ -893,6 +942,11 @@ func (gs *groupService) modifyGroupMembers(
 	}
 
 	members = normalizeMembers(members)
+	if beforeWrite != nil {
+		if svcErr := beforeWrite(ctx, groupID, members); svcErr != nil {
+			return nil, svcErr
+		}
+	}
 
 	var capturedSvcErr *tidcommon.ServiceError
 	var updatedGroupDAO GroupDAO

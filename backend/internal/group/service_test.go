@@ -2322,6 +2322,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_RemoveGroupMembers() {
 					Return([]providers.Entity{{ID: "usr-001", Category: providers.EntityCategoryUser}}, nil).Once()
 				storeMock.On("GetGroup", mock.Anything, "grp-001").
 					Return(GroupDAO{ID: "grp-001", Name: "test"}, nil).Once()
+				storeMock.On("GetGroupMemberCount", mock.Anything, "grp-001").Return(0, nil).Once()
 				storeMock.On("RemoveGroupMembers", mock.Anything, "grp-001", mock.Anything).
 					Return(errors.New("db error")).Once()
 			},
@@ -2336,6 +2337,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_RemoveGroupMembers() {
 					Return(GroupDAO{ID: "grp-001", Name: "test"}, nil)
 				entityServiceMock.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001"}).
 					Return([]providers.Entity{{ID: "usr-001", Category: providers.EntityCategoryUser}}, nil).Once()
+				storeMock.On("GetGroupMemberCount", mock.Anything, "grp-001").Return(0, nil).Once()
 				storeMock.On("RemoveGroupMembers", mock.Anything, "grp-001",
 					[]Member{{ID: "usr-001", Type: memberTypeEntity}}).
 					Return(nil).Once()

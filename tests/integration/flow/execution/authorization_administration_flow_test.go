@@ -72,6 +72,7 @@ const (
 	scopeGroupDeletedThroughAPI  = "group-deleted-through-api"
 	scopeUnassignedThroughAPI    = "unassigned-through-api"
 	scopeStillAssigned           = "still-assigned"
+	scopeLeftThroughAPI          = "left-through-api"
 	scopeUntouchedByPermEdit     = "untouched-by-perm-edit"
 	scopeUntouchedByGroupDelete  = "untouched-by-group-delete"
 	scopeSharedByMembers         = "shared-by-members"
@@ -133,6 +134,7 @@ var authzFlowResourceScopes = []string{
 	scopeHeldThroughNesting, scopeHeldTwice, scopeNestedGroupDeletion, scopeNestedMemberRemoval,
 	scopeReachedSeveralWays, scopeNothingDropped, scopeHeldBeyondDescentLimit, scopeRoleDeletedThroughAPI,
 	scopeGroupDeletedThroughAPI, scopeUnassignedThroughAPI, scopeStillAssigned,
+	scopeLeftThroughAPI,
 }
 
 var authzFlowActionScopes = []string{scopeRetired, scopeRetiredNeighbor}
@@ -497,6 +499,33 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestDeleteGroupThroughTheAPI
 	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, token),
 		"The member's token must be rejected: the group was the only path to the scope")
 	ts.False(ts.groupExists(groupID), "The group must be deleted")
+}
+
+// Removing a member through the management API revokes what the member got from the group, as the
+// membership removal flow does.
+func (ts *AuthorizationAdministrationFlowTestSuite) TestRemoveGroupMemberThroughTheAPI_RevokesTheMembersToken() {
+	groupID := ts.createGroup("Authz API Membership Group",
+		testutils.Member{Id: ts.appID, Type: "app"})
+	ts.createRole("Authz API Membership Administrator", []string{scopeLeftThroughAPI},
+		testutils.Assignment{ID: groupID, Type: "group"})
+	token := grantedToken(&ts.Suite, authzFlowClient, scopeLeftThroughAPI)
+
+	body, err := json.Marshal(map[string]interface{}{
+		"members": []testutils.Member{{Id: ts.appID, Type: "app"}},
+	})
+	ts.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPost, testServerURL+"/groups/"+groupID+"/members/remove",
+		bytes.NewReader(body))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err, "Failed to remove the member")
+	resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, token),
+		"The departing member's token must be rejected: the group was the only path to the scope")
+	ts.True(ts.groupExists(groupID), "Removing a member must not delete the group")
 }
 
 func (ts *AuthorizationAdministrationFlowTestSuite) TestGroupMembershipRemovalFlow_RevokesDepartingMemberToken() {
