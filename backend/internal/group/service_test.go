@@ -1494,6 +1494,8 @@ func (suite *GroupServiceTestSuite) TestGroupService_DeleteGroup() {
 				groupStore:         storeMock,
 				transactioner:      &stubTransactioner{},
 				dependencyRegistry: noopDepRegistry{},
+
+				executeSystemFlow: (&systemFlowRuns{}).execute,
 			}
 
 			err := service.DeleteGroup(context.Background(), tc.id)
@@ -3138,6 +3140,8 @@ func (suite *GroupServiceTestSuite) TestDeleteGroup_AbortedWhenCascadeFails() {
 		groupStore:         storeMock,
 		transactioner:      &stubTransactioner{},
 		dependencyRegistry: noopDepRegistry{cascadeErr: errors.New("cascade failed")},
+
+		executeSystemFlow: (&systemFlowRuns{}).execute,
 	}
 
 	err := service.DeleteGroup(context.Background(), "grp-001")

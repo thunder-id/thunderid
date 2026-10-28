@@ -71,6 +71,9 @@ type GroupServiceInterface interface {
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	CascadeDeleteDependencies(ctx context.Context, resourceType, id string) (int, error)
 	SetDependencyRegistry(r resourcedependency.Registry)
+	// SetSystemFlowExecutor injects what runs the system flows a change needs before it is written.
+	SetSystemFlowExecutor(execute func(ctx context.Context, handle string,
+		inputs map[string]string) *tidcommon.ServiceError)
 }
 
 // groupService is the default implementation of the GroupServiceInterface.
@@ -82,7 +85,15 @@ type groupService struct {
 	transactioner      providers.Transactioner
 	authzService       sysauthz.SystemAuthorizationServiceInterface
 	dependencyRegistry resourcedependency.Registry
+	// executeSystemFlow runs a system flow to completion with the given inputs.
+	executeSystemFlow func(ctx context.Context, handle string, inputs map[string]string) *tidcommon.ServiceError
 }
+
+// The system flow a group deletion runs, and the input naming the group it acts on.
+const (
+	systemFlowGroupDelete = "system-group-delete"
+	systemFlowInputGroup  = "targetGroupId"
+)
 
 // newGroupServiceWithStore creates a new instance of GroupService with an externally provided store.
 func newGroupServiceWithStore(
@@ -608,6 +619,13 @@ func (gs *groupService) DeleteGroup(ctx context.Context, groupID string) *tidcom
 		return &tidcommon.InternalServerError
 	}
 
+	// What the group passes to its members is revoked before anything is removed, whichever entry point
+	// asked: the tokens they carry with the permissions of the roles assigned to it. It runs before the
+	// cascade, which removes those role assignments. A refusal leaves the group as it was.
+	if svcErr := gs.runSystemFlow(ctx, systemFlowGroupDelete, groupID, logger); svcErr != nil {
+		return svcErr
+	}
+
 	// Remove dependents that must be deleted with the group (its role assignments and its
 	// memberships in other groups). This spans other databases, so run it before (and outside) the
 	// group-delete transaction: a failure aborts and leaves the group retriable, and the
@@ -628,6 +646,24 @@ func (gs *groupService) DeleteGroup(ctx context.Context, groupID string) *tidcom
 
 	logger.Debug(ctx, "Successfully deleted group", log.String("id", groupID))
 	return nil
+}
+
+// SetSystemFlowExecutor injects what runs the system flows a change needs before it is written. Called
+// by servicemanager once the flow engine exists, which is after this service.
+func (gs *groupService) SetSystemFlowExecutor(execute func(ctx context.Context, handle string,
+	inputs map[string]string) *tidcommon.ServiceError) {
+	gs.executeSystemFlow = execute
+}
+
+// runSystemFlow runs a system flow for the group before a change to it is written. Without an executor
+// the change is refused, so a server that forgot the wiring fails closed.
+func (gs *groupService) runSystemFlow(ctx context.Context, handle, groupID string,
+	logger *log.Logger) *tidcommon.ServiceError {
+	if gs.executeSystemFlow == nil {
+		logger.Error(ctx, "System flow executor not set; refusing the change", log.String("handle", handle))
+		return &tidcommon.InternalServerError
+	}
+	return gs.executeSystemFlow(ctx, handle, map[string]string{systemFlowInputGroup: groupID})
 }
 
 // ValidateDeleteGroup runs the checks DeleteGroup runs before it changes anything.

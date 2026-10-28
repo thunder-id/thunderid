@@ -257,6 +257,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		mux, dbprovider.GetDBProvider(), ouService, entityService, entityTypeService, ouAuthzService,
 	)
 	fatalOnError(ctx, logger, err, "Failed to initialize GroupService")
+	groupService.SetSystemFlowExecutor(noSystemFlow)
 	exporters = append(exporters, groupExporter)
 
 	httpConnectionService := httpconnection.Initialize(ouService)
