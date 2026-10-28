@@ -45,12 +45,20 @@ func TestAManagedResourceIsChangedOnlyByTheManagedImport(t *testing.T) {
 	assert.Nil(t, svc.refuseChange(ctx, "id-1"))
 }
 
-// A deployed unit reads as read only, alone and in a list; a failed read serves it without the flag.
+// A deployed or declarative unit reads as read only, alone and in a list; a failed read serves it without the flag.
 func TestADeployedUnitReadsAsReadOnly(t *testing.T) {
 	ctx := context.Background()
 	store := managedresourcemock.NewStoreInterfaceMock(t)
-	svc := &organizationUnitService{managed: store}
+	ouStore := newOrganizationUnitStoreInterfaceMock(t)
+	svc := &organizationUnitService{managed: store, ouStore: ouStore}
 
+	ouStore.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-declared").Return(true).Once()
+	store.EXPECT().IsManaged(ctx, "ou-declared", managedresource.TypeOrganizationUnit).Return(false, nil).Once()
+	declared, svcErr := svc.withManaged(ctx, OrganizationUnit{ID: "ou-declared"})
+	require.Nil(t, svcErr)
+	assert.True(t, declared.IsReadOnly)
+
+	ouStore.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").Return(false)
 	store.EXPECT().IsManaged(ctx, "ou-1", managedresource.TypeOrganizationUnit).Return(true, nil).Once()
 	unit, svcErr := svc.withManaged(ctx, OrganizationUnit{ID: "ou-1"})
 	require.Nil(t, svcErr)

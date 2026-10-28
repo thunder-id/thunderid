@@ -200,16 +200,18 @@ func (ous *organizationUnitService) refuseChange(ctx context.Context, id string)
 	return nil
 }
 
-// withManaged reports an organization unit a control plane deployed as read only. A failed read of that is
-// logged and taken as not: every write to such a unit is refused whatever the read says.
+// withManaged reports an organization unit declared in a resource file or deployed by a control plane
+// as read only. A failed read of that is logged and taken as not: every write to such a unit is refused
+// whatever the read says.
 func (ous *organizationUnitService) withManaged(
 	ctx context.Context, ou OrganizationUnit) (OrganizationUnit, *tidcommon.ServiceError) {
+	isDeclarative := ous.ouStore.IsOrganizationUnitDeclarative(ctx, ou.ID)
 	deployed, err := managedresource.IsDeployed(ctx, ous.managed, ou.ID, managedresource.TypeOrganizationUnit)
 	if err != nil {
 		log.GetLogger().Error(ctx, "Failed to read whether a control plane deployed the organization unit",
 			log.String("id", ou.ID), log.Error(err))
 	}
-	ou.IsReadOnly = deployed
+	ou.IsReadOnly = isDeclarative || deployed
 	return ou, nil
 }
 

@@ -102,6 +102,9 @@ func (s *FileBasedStoreTestSuite) TestGetOrganizationUnitList() {
 	list, err := s.store.GetOrganizationUnitList(context.Background(), 10, 0, nil)
 	assert.NoError(s.T(), err)
 	assert.Len(s.T(), list, 2)
+	for _, ou := range list {
+		assert.True(s.T(), ou.IsReadOnly, "file-based OU %s should be read-only", ou.ID)
+	}
 }
 
 func (s *FileBasedStoreTestSuite) TestUpdateNotSupported() {
@@ -179,6 +182,9 @@ func (s *FileBasedStoreTestSuite) TestGetOrganizationUnitChildren() {
 	children, err := s.store.GetOrganizationUnitChildrenList(context.Background(), testParentOUID, 10, 0, nil)
 	assert.NoError(s.T(), err)
 	assert.Len(s.T(), children, 2)
+	for _, child := range children {
+		assert.True(s.T(), child.IsReadOnly, "file-based OU %s should be read-only", child.ID)
+	}
 
 	// Get children count
 	count, err := s.store.GetOrganizationUnitChildrenCount(context.Background(), testParentOUID, nil)
@@ -625,6 +631,7 @@ func (s *FileBasedStoreTestSuite) TestFileBasedStore_GetOrganizationUnitsByIDs()
 	validIDs := map[string]bool{"ou-1": true, "ou-3": true}
 	for _, ou := range result {
 		s.Require().True(validIDs[ou.ID])
+		s.Require().True(ou.IsReadOnly)
 	}
 
 	// Test partial matching ids
@@ -796,6 +803,7 @@ func (s *FileBasedStoreTestSuite) TestProjectListing() {
 	for _, ou := range ous {
 		ids = append(ids, ou.ID)
 		s.Equal("project-1", ou.ProjectID)
+		s.True(ou.IsReadOnly)
 	}
 	s.ElementsMatch([]string{shop, "legacy"}, ids)
 
@@ -836,6 +844,7 @@ func (s *FileBasedStoreTestSuite) TestChildrenInProject() {
 	for _, child := range children {
 		ids = append(ids, child.ID)
 		s.Equal(system, *child.Parent)
+		s.True(child.IsReadOnly)
 	}
 	s.ElementsMatch([]string{"a", "b"}, ids)
 
