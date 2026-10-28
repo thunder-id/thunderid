@@ -52,6 +52,7 @@ interface CustomTreeItemProps extends TreeView.TreeItemProps {
   addChildTooltip?: string;
   addChildButtonText?: string;
   editTooltip?: string;
+  viewTooltip?: string;
   deleteTooltip?: string;
   loadingItems?: Set<string>;
   loadMoreLoadingItems?: Set<string>;
@@ -67,6 +68,7 @@ function CustomTreeItem(allProps: CustomTreeItemProps): JSX.Element {
     addChildTooltip = '',
     addChildButtonText = '',
     editTooltip = '',
+    viewTooltip = '',
     deleteTooltip = '',
     loadingItems: loadingItemsProp,
     loadMoreLoadingItems: loadMoreLoadingItemsProp,
@@ -293,8 +295,15 @@ function CustomTreeItem(allProps: CustomTreeItemProps): JSX.Element {
             )}
           </Box>
           {itemData?.isReadOnly ? (
-            <Tooltip title={t('common:status.readOnly', 'Read only')}>
-              <IconButton size="small" disableRipple sx={{cursor: 'default'}}>
+            <Tooltip title={viewTooltip}>
+              <IconButton
+                size="small"
+                aria-label={viewTooltip}
+                onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                  e.stopPropagation();
+                  onEdit?.(e as unknown as MouseEvent<HTMLElement>, {id: itemId, name: labelStr});
+                }}
+              >
                 <Eye size={16} />
               </IconButton>
             </Tooltip>
@@ -943,6 +952,7 @@ export default function OrganizationUnitsTreeView(): JSX.Element {
               addChildTooltip: t('organizationUnits:listing.treeView.addChild'),
               addChildButtonText: t('organizationUnits:listing.treeView.addChildOrganizationUnit'),
               editTooltip: t('common:actions.edit'),
+              viewTooltip: t('common:actions.view', 'View'),
               deleteTooltip: t('common:actions.delete'),
               loadingItems,
               loadMoreLoadingItems: combinedLoadMoreLoadingItems,

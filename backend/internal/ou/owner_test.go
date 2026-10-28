@@ -66,6 +66,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_ResolveOwner() {
 			setup: func(s *organizationUnitStoreInterfaceMock) {
 				s.On("GetOrganizationUnitByPath", mock.Anything, []string{"acme"}).
 					Return(OrganizationUnit{ID: "ou-acme"}, nil).Once()
+				s.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-acme").Return(false).Once()
 			},
 			wantID: "ou-acme",
 		},
@@ -127,6 +128,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_ResolveOwnerForUpda
 			setup: func(s *organizationUnitStoreInterfaceMock) {
 				s.On("GetOrganizationUnitByPath", mock.Anything, []string{"acme"}).
 					Return(OrganizationUnit{ID: "ou-1"}, nil).Once()
+				s.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").Return(false).Once()
 			},
 			wantOwner: "ou-1",
 		},

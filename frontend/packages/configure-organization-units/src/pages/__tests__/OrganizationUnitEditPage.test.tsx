@@ -214,7 +214,7 @@ vi.mock('@thunderid/components', async (importOriginal) => {
 });
 
 describe('OrganizationUnitEditPage', () => {
-  let t: (key: string) => string;
+  let t: (key: string, options?: Record<string, unknown>) => string;
 
   beforeAll(() => {
     ({t} = renderHook(() => useTranslation()).result.current);
@@ -1391,6 +1391,43 @@ describe('OrganizationUnitEditPage', () => {
           }),
         );
       });
+    });
+  });
+
+  describe('Read-only organization unit', () => {
+    const findInlineEditButton = (text: string): HTMLElement | undefined =>
+      screen
+        .getAllByRole('button')
+        .find((btn) => btn.querySelector('svg') && btn.closest('div')?.textContent?.includes(text));
+
+    it('should show the read-only notice and hide the inline edit actions', async () => {
+      mockUseGetOrganizationUnit.mockReturnValue({
+        data: {...mockOrganizationUnit, isReadOnly: true},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+
+      renderWithProviders(<OrganizationUnitEditPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Test Organization Unit')).toBeInTheDocument();
+      });
+
+      expect(screen.getByRole('alert')).toHaveTextContent('This resource is read-only and cannot be modified.');
+      expect(findInlineEditButton('Test Organization Unit')).toBeUndefined();
+      expect(findInlineEditButton('A test description')).toBeUndefined();
+    });
+
+    it('should not show the read-only notice for an editable organization unit', async () => {
+      renderWithProviders(<OrganizationUnitEditPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Test Organization Unit')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(findInlineEditButton('Test Organization Unit')).toBeDefined();
     });
   });
 });

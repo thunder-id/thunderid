@@ -425,6 +425,7 @@ func (ous *organizationUnitService) GetOrganizationUnit(
 		logger.Error(ctx, "Failed to get organization unit", log.Error(err))
 		return OrganizationUnit{}, &tidcommon.InternalServerError
 	}
+	ou.IsReadOnly = ous.ouStore.IsOrganizationUnitDeclarative(ctx, ou.ID)
 
 	return ou, nil
 }
@@ -453,6 +454,8 @@ func (ous *organizationUnitService) GetOrganizationUnitByPath(
 	if svcErr := ous.checkOUAccess(ctx, security.ActionReadOU, ou.ID); svcErr != nil {
 		return OrganizationUnit{}, svcErr
 	}
+
+	ou.IsReadOnly = ous.ouStore.IsOrganizationUnitDeclarative(ctx, ou.ID)
 
 	return ou, nil
 }

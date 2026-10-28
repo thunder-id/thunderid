@@ -69,6 +69,7 @@ type OrganizationUnit struct {
 	CookiePolicyURI           string    `json:"cookiePolicyUri,omitempty" yaml:"cookiePolicyUri,omitempty"`
 	CreatedAt                 time.Time `json:"createdAt" yaml:"createdAt"`
 	UpdatedAt                 time.Time `json:"updatedAt" yaml:"updatedAt"`
+	IsReadOnly                bool      `json:"isReadOnly" yaml:"-"`
 }
 
 // OrganizationUnitRequestWithID represents the request body for creating an organization unit

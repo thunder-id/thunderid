@@ -127,6 +127,7 @@ func (f *fileBasedStore) GetOrganizationUnitList(
 					Name:        ou.Name,
 					Description: ou.Description,
 					LogoURL:     ou.LogoURL,
+					IsReadOnly:  true,
 				})
 			}
 		}
@@ -192,6 +193,7 @@ func (f *fileBasedStore) GetOrganizationUnitsByIDs(
 					Name:        ou.Name,
 					Description: ou.Description,
 					LogoURL:     ou.LogoURL,
+					IsReadOnly:  true,
 				})
 			}
 		}
@@ -310,6 +312,7 @@ func (f *fileBasedStore) GetOrganizationUnitChildrenList(
 					Name:        ou.Name,
 					Description: ou.Description,
 					LogoURL:     ou.LogoURL,
+					IsReadOnly:  true,
 				})
 			}
 		}
