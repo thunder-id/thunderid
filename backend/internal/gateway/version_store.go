@@ -235,6 +235,15 @@ type versionStoreInterface interface {
 	// caller can put a row back exactly as it was; one only excluded keeps a standing choice standing.
 	SetExcluded(ctx context.Context, gatewayID string, exclude []excludedResource, include []string) error
 	DeleteExcluded(ctx context.Context, gatewayID string) error
+	// AddMaster records a gateway's new master, numbered one past its latest.
+	AddMaster(ctx context.Context, master Master) (*Master, error)
+	// GetMaster reads the master a gateway holds now, with its resources, or nil when it has none.
+	GetMaster(ctx context.Context, gatewayID string) (*Master, error)
+	// ListMasters reads a gateway's masters, newest first, with their entries but not their resources.
+	ListMasters(ctx context.Context, gatewayID string) ([]Master, error)
+	// PruneMasters removes a gateway's masters numbered up to and including through.
+	PruneMasters(ctx context.Context, gatewayID string, through int) error
+	DeleteMasters(ctx context.Context, gatewayID string) error
 }
 
 // versionStore keeps versions in the configuration database. It is used whatever the gateway store

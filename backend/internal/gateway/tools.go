@@ -336,6 +336,7 @@ func (t *gatewayTools) promote(ctx context.Context, _ *mcp.CallToolRequest, in p
 	}
 	result, svcErr := t.versions.Apply(ctx, in.TargetGatewayID, ApplyRequest{
 		Version: source.Applied, DryRun: in.DryRun, Skip: skip, ConfirmRemovals: in.ConfirmRemovals,
+		Origin: in.SourceGatewayID,
 	})
 	return answer("promote the version", result, svcErr)
 }

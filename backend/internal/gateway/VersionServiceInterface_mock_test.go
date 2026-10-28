@@ -385,6 +385,152 @@ func (_c *VersionServiceInterfaceMock_GetApplied_Call) RunAndReturn(run func(ctx
 	return _c
 }
 
+// GetMaster provides a mock function for the type VersionServiceInterfaceMock
+func (_mock *VersionServiceInterfaceMock) GetMaster(ctx context.Context, gatewayID string) (*Master, *common.ServiceError) {
+	ret := _mock.Called(ctx, gatewayID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetMaster")
+	}
+
+	var r0 *Master
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*Master, *common.ServiceError)); ok {
+		return returnFunc(ctx, gatewayID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *Master); ok {
+		r0 = returnFunc(ctx, gatewayID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*Master)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, gatewayID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// VersionServiceInterfaceMock_GetMaster_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetMaster'
+type VersionServiceInterfaceMock_GetMaster_Call struct {
+	*mock.Call
+}
+
+// GetMaster is a helper method to define mock.On call
+//   - ctx context.Context
+//   - gatewayID string
+func (_e *VersionServiceInterfaceMock_Expecter) GetMaster(ctx any, gatewayID any) *VersionServiceInterfaceMock_GetMaster_Call {
+	return &VersionServiceInterfaceMock_GetMaster_Call{Call: _e.mock.On("GetMaster", ctx, gatewayID)}
+}
+
+func (_c *VersionServiceInterfaceMock_GetMaster_Call) Run(run func(ctx context.Context, gatewayID string)) *VersionServiceInterfaceMock_GetMaster_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *VersionServiceInterfaceMock_GetMaster_Call) Return(master *Master, serviceError *common.ServiceError) *VersionServiceInterfaceMock_GetMaster_Call {
+	_c.Call.Return(master, serviceError)
+	return _c
+}
+
+func (_c *VersionServiceInterfaceMock_GetMaster_Call) RunAndReturn(run func(ctx context.Context, gatewayID string) (*Master, *common.ServiceError)) *VersionServiceInterfaceMock_GetMaster_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetResourceHistory provides a mock function for the type VersionServiceInterfaceMock
+func (_mock *VersionServiceInterfaceMock) GetResourceHistory(ctx context.Context, gatewayID string, key string) (*ResourceHistory, *common.ServiceError) {
+	ret := _mock.Called(ctx, gatewayID, key)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetResourceHistory")
+	}
+
+	var r0 *ResourceHistory
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*ResourceHistory, *common.ServiceError)); ok {
+		return returnFunc(ctx, gatewayID, key)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *ResourceHistory); ok {
+		r0 = returnFunc(ctx, gatewayID, key)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ResourceHistory)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, gatewayID, key)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// VersionServiceInterfaceMock_GetResourceHistory_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetResourceHistory'
+type VersionServiceInterfaceMock_GetResourceHistory_Call struct {
+	*mock.Call
+}
+
+// GetResourceHistory is a helper method to define mock.On call
+//   - ctx context.Context
+//   - gatewayID string
+//   - key string
+func (_e *VersionServiceInterfaceMock_Expecter) GetResourceHistory(ctx any, gatewayID any, key any) *VersionServiceInterfaceMock_GetResourceHistory_Call {
+	return &VersionServiceInterfaceMock_GetResourceHistory_Call{Call: _e.mock.On("GetResourceHistory", ctx, gatewayID, key)}
+}
+
+func (_c *VersionServiceInterfaceMock_GetResourceHistory_Call) Run(run func(ctx context.Context, gatewayID string, key string)) *VersionServiceInterfaceMock_GetResourceHistory_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *VersionServiceInterfaceMock_GetResourceHistory_Call) Return(resourceHistory *ResourceHistory, serviceError *common.ServiceError) *VersionServiceInterfaceMock_GetResourceHistory_Call {
+	_c.Call.Return(resourceHistory, serviceError)
+	return _c
+}
+
+func (_c *VersionServiceInterfaceMock_GetResourceHistory_Call) RunAndReturn(run func(ctx context.Context, gatewayID string, key string) (*ResourceHistory, *common.ServiceError)) *VersionServiceInterfaceMock_GetResourceHistory_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetVersion provides a mock function for the type VersionServiceInterfaceMock
 func (_mock *VersionServiceInterfaceMock) GetVersion(ctx context.Context, ref string) (*Version, *common.ServiceError) {
 	ret := _mock.Called(ctx, ref)
@@ -451,6 +597,76 @@ func (_c *VersionServiceInterfaceMock_GetVersion_Call) Return(version *Version, 
 }
 
 func (_c *VersionServiceInterfaceMock_GetVersion_Call) RunAndReturn(run func(ctx context.Context, ref string) (*Version, *common.ServiceError)) *VersionServiceInterfaceMock_GetVersion_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListMasters provides a mock function for the type VersionServiceInterfaceMock
+func (_mock *VersionServiceInterfaceMock) ListMasters(ctx context.Context, gatewayID string) ([]Master, *common.ServiceError) {
+	ret := _mock.Called(ctx, gatewayID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListMasters")
+	}
+
+	var r0 []Master
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]Master, *common.ServiceError)); ok {
+		return returnFunc(ctx, gatewayID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []Master); ok {
+		r0 = returnFunc(ctx, gatewayID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]Master)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, gatewayID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// VersionServiceInterfaceMock_ListMasters_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListMasters'
+type VersionServiceInterfaceMock_ListMasters_Call struct {
+	*mock.Call
+}
+
+// ListMasters is a helper method to define mock.On call
+//   - ctx context.Context
+//   - gatewayID string
+func (_e *VersionServiceInterfaceMock_Expecter) ListMasters(ctx any, gatewayID any) *VersionServiceInterfaceMock_ListMasters_Call {
+	return &VersionServiceInterfaceMock_ListMasters_Call{Call: _e.mock.On("ListMasters", ctx, gatewayID)}
+}
+
+func (_c *VersionServiceInterfaceMock_ListMasters_Call) Run(run func(ctx context.Context, gatewayID string)) *VersionServiceInterfaceMock_ListMasters_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *VersionServiceInterfaceMock_ListMasters_Call) Return(masters []Master, serviceError *common.ServiceError) *VersionServiceInterfaceMock_ListMasters_Call {
+	_c.Call.Return(masters, serviceError)
+	return _c
+}
+
+func (_c *VersionServiceInterfaceMock_ListMasters_Call) RunAndReturn(run func(ctx context.Context, gatewayID string) ([]Master, *common.ServiceError)) *VersionServiceInterfaceMock_ListMasters_Call {
 	_c.Call.Return(run)
 	return _c
 }

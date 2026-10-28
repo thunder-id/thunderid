@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -21,6 +22,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
+
+// maxOriginLength is the longest label an apply may give for where its version came from, since each
+// entry of a master it writes records it.
+const maxOriginLength = 255
 
 // latestVersion names the newest captured version.
 const latestVersion = "latest"
@@ -54,6 +59,12 @@ type VersionServiceInterface interface {
 	// Forget drops what a removed gateway held, so a gateway registered later under the same id does
 	// not inherit it.
 	Forget(ctx context.Context, gatewayID string)
+	// GetMaster reports what a gateway holds, resource by resource, as the gateway last accepted each.
+	GetMaster(ctx context.Context, gatewayID string) (*Master, *tidcommon.ServiceError)
+	// ListMasters reports a gateway's masters, newest first, without their entries.
+	ListMasters(ctx context.Context, gatewayID string) ([]Master, *tidcommon.ServiceError)
+	// GetResourceHistory reports one resource's entry across a gateway's masters, newest first.
+	GetResourceHistory(ctx context.Context, gatewayID, key string) (*ResourceHistory, *tidcommon.ServiceError)
 }
 
 type versionService struct {
@@ -384,6 +395,10 @@ func (s *versionService) Apply(ctx context.Context, gatewayID string,
 	if svcErr != nil {
 		return nil, svcErr
 	}
+	origin := strings.TrimSpace(req.Origin)
+	if utf8.RuneCountInString(origin) > maxOriginLength {
+		return nil, &ErrorOriginTooLong
+	}
 	target, svcErr := s.resolve(ctx, req.Version)
 	if svcErr != nil {
 		return nil, svcErr
@@ -395,7 +410,7 @@ func (s *versionService) Apply(ctx context.Context, gatewayID string,
 	coalesce := !req.DryRun && req.Selection == nil && len(req.Skip) == 0 && !req.ConfirmRemovals &&
 		asksForLatest(req.Version)
 	return s.write(ctx, gw, target, applyOptions{dryRun: req.DryRun, selection: req.Selection, skip: req.Skip,
-		confirmRemovals: req.ConfirmRemovals, coalesce: coalesce})
+		confirmRemovals: req.ConfirmRemovals, coalesce: coalesce, origin: origin})
 }
 
 // asksForLatest reports whether a reference asks for the latest version rather than naming one.
@@ -451,6 +466,9 @@ func (s *versionService) Forget(ctx context.Context, gatewayID string) {
 	if err := s.versions.DeleteLease(ctx, gatewayID); err != nil {
 		s.logger.Warn(ctx, "Failed to forget a removed gateway's apply lease", log.Error(err))
 	}
+	if err := s.versions.DeleteMasters(ctx, gatewayID); err != nil {
+		s.logger.Warn(ctx, "Failed to forget a removed gateway's masters", log.Error(err))
+	}
 }
 
 // applyOptions is how an apply or revert is to run.
@@ -463,6 +481,8 @@ type applyOptions struct {
 	selection *[]string
 	// skip leaves changes out of this apply alone, keeping them owed to the gateway.
 	skip []string
+	// origin is the label the master records for where the version came from.
+	origin string
 }
 
 // write applies a version to a gateway and, unless it is a dry run, records that the gateway holds it.
@@ -531,7 +551,11 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 		diff.Summary = summarize(diff.Changes)
 	}
 	content := contentWithout(target.Resources, choice.leftAlone)
-	if svcErr := s.refuseUnconfirmedRemovals(ctx, gw, diff, options); svcErr != nil {
+	previous, svcErr := s.masterBefore(ctx, gw.ID, dryRun)
+	if svcErr == nil {
+		svcErr = s.refuseUnconfirmedRemovals(ctx, gw, diff, options)
+	}
+	if svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -594,18 +618,19 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 	if dryRun {
 		return result, nil
 	}
-	// The import carries on past a resource it refuses. A refused write is sent again by every later
-	// apply, since each sends the version whole, so the version is recorded all the same. A refused
-	// removal is different: the deletions are worked out from the version recorded, so once it moved
-	// on that removal would never be sent again. So a version whose removals did not all succeed is
-	// not recorded, and the next apply, working from the version held before, sends them again;
-	// removing a resource already gone succeeds.
-	if len(request.Deletions) > 0 {
-		if failed, ok := failedDeletions(answer); !ok || failed > 0 {
-			s.logger.Warn(ctx, "The gateway did not complete the removals, so the version is not recorded as applied",
-				log.String("gatewayId", gw.ID), log.Int("version", target.Seq), log.Int("failed", failed))
-			return result, nil
-		}
+	// The master is written from the gateway's own account before the version is recorded: it says
+	// what the gateway holds resource by resource, whatever the import refused.
+	master, svcErr := s.recordMaster(ctx, previous, masterWrite{sent: parseBundle(content),
+		deletions: request.Deletions, answer: answer, source: target.Hash, origin: options.origin,
+		by: actorOf(ctx), at: time.Now().UTC()})
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	result.Master = master.Hash
+	if failed, incomplete := incompleteRemovals(request, answer); incomplete {
+		s.logger.Warn(ctx, "The gateway did not complete the removals, so the version is not recorded as applied",
+			log.String("gatewayId", gw.ID), log.Int("version", target.Seq), log.Int("failed", failed))
+		return result, nil
 	}
 
 	if svcErr := s.record(ctx, gw, target, applied, isRevert, values, token); svcErr != nil {
@@ -616,6 +641,34 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 		log.Int("version", target.Seq))
 	s.clearOwedTaken(ctx, gw.ID, owed, choice.leftAlone)
 	return result, nil
+}
+
+// masterBefore reads the master a gateway holds as an apply is about to send its import, under the
+// apply's lease, so what the master is updated from is what the gateway held when the import went
+// out. A dry run writes no master and reads none.
+func (s *versionService) masterBefore(ctx context.Context, gatewayID string,
+	dryRun bool) (*Master, *tidcommon.ServiceError) {
+	if dryRun {
+		return nil, nil
+	}
+	return s.master(ctx, gatewayID)
+}
+
+// incompleteRemovals reports whether an import that was sent removals did not complete them all,
+// with how many it refused.
+//
+// The import carries on past a resource it refuses. A refused write is sent again by every later
+// apply, since each sends the version whole, so the version is recorded all the same. A refused
+// removal is different: the deletions are worked out from the version recorded, so once it moved on
+// that removal would never be sent again. So a version whose removals did not all succeed is not
+// recorded, and the next apply, working from the version held before, sends them again; removing a
+// resource already gone succeeds.
+func incompleteRemovals(request gatewayImportRequest, answer json.RawMessage) (int, bool) {
+	if len(request.Deletions) == 0 {
+		return 0, false
+	}
+	failed, ok := failedDeletions(answer)
+	return failed, !ok || failed > 0
 }
 
 // mayStillSend reports whether an apply may send its import now. A lease held longer than an apply

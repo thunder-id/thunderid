@@ -211,7 +211,7 @@ func (s *GatewayToolsTestSuite) TestPromoteSkipsWhatTheSourceHoldsBack() {
 			{Key: "role/r3", Change: ChangeUpdated},
 		}}}, nil).Once()
 	s.versions.EXPECT().Apply(mock.Anything, "prod", ApplyRequest{Version: "bbb", DryRun: true,
-		Skip: []string{"role/r1"}}).Return(&ApplyResult{GatewayID: "prod", DryRun: true}, nil).Once()
+		Skip: []string{"role/r1"}, Origin: "dev"}).Return(&ApplyResult{GatewayID: "prod", DryRun: true}, nil).Once()
 
 	s.call("promote_gateway",
 		map[string]any{"sourceGatewayId": "dev", "targetGatewayId": "prod", "dryRun": true})
