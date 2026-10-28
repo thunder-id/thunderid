@@ -158,11 +158,10 @@ func (s *GatewayToolsTestSuite) TestDeployAnswersWithTheApplyResult() {
 	}
 	selection := []string{"agent/a1"}
 	s.versions.EXPECT().Apply(mock.Anything, "prod", ApplyRequest{Version: "bbb", Selection: &selection,
-		Skip: []string{"role/r1"}, ConfirmRemovals: true}).Return(result, nil).Once()
+		ConfirmRemovals: true}).Return(result, nil).Once()
 
 	answer := s.call("deploy_version", map[string]any{
-		"gatewayId": "prod", "version": "bbb", "selection": []string{"agent/a1"}, "skip": []string{"role/r1"},
-		"confirmRemovals": true,
+		"gatewayId": "prod", "version": "bbb", "selection": []string{"agent/a1"}, "confirmRemovals": true,
 	})
 
 	s.JSONEq(s.restJSON(result), answer)

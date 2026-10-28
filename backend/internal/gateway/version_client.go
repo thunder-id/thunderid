@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"strings"
@@ -95,6 +96,31 @@ func (h *HeldValues) snapshot(variables, secrets []string) string {
 		return ""
 	}
 	return string(recorded)
+}
+
+// snapshotKeeping records as snapshot does, except that each value named in keep is recorded at the
+// time the previous snapshot recorded for it, or left out when it recorded none.
+func (h *HeldValues) snapshotKeeping(variables, secrets []string, keep *MissingValues, previous string) string {
+	if len(keep.Variables) == 0 && len(keep.Secrets) == 0 {
+		return h.snapshot(variables, secrets)
+	}
+	var recorded heldTimes
+	if previous != "" {
+		_ = json.Unmarshal([]byte(previous), &recorded)
+	}
+	held := &HeldValues{Variables: map[string]time.Time{}, Secrets: map[string]time.Time{}}
+	carry := func(into, from, then map[string]time.Time, kept []string) {
+		maps.Copy(into, from)
+		for _, name := range kept {
+			delete(into, name)
+			if was, ok := then[name]; ok {
+				into[name] = was
+			}
+		}
+	}
+	carry(held.Variables, h.Variables, recorded.Variables, keep.Variables)
+	carry(held.Secrets, h.Secrets, recorded.Secrets, keep.Secrets)
+	return held.snapshot(variables, secrets)
 }
 
 // changedFrom returns the names among those asked for whose value the store says was set at another
