@@ -5,7 +5,7 @@ The quickstart pack runs three ThunderID deployments already wired together:
 | Deployment | Port | Role |
 |---|---|---|
 | **auth-dp** | 8091 | A Data Plane whose only job is signing operators into the Control Plane console. It carries one application, `CP_CONSOLE`, and serves no console UI. |
-| **dp** (managed Data Plane) | 8090 | The Data Plane the Control Plane administers. Its own console is the **Admin Console** (Users, Agents, Groups, Roles), registered as the `ADMIN_CONSOLE` application. |
+| **dp** (managed Data Plane) | 8090 | The Data Plane the Control Plane administers. Its own console is the **Admin Console** (Users, Agents, Groups, Roles), registered as the `ADMIN` application. |
 | **cp** (Control Plane) | 8095 | The Control Plane console. Applications, connections, roles, flows and users written here are captured and applied to dp automatically (`gateway.auto_apply`, on for this pack only). |
 
 There are two accounts, asked for once, in `setup`: **admin** (default username `admin`), created on auth-dp and used to sign into the Control Plane console, and **Service Desk Admin** (default username `servicedeskadmin`), authored on the Control Plane and synced to the managed Data Plane, where it signs into the Admin Console.
@@ -18,7 +18,7 @@ How a sign-in and a sync work:
 2. The console has no login of its own. It redirects to auth-dp for an OIDC sign-in (PKCE, client `CP_CONSOLE`).
 3. auth-dp returns a token for the Control Plane's own URL (the `resource` the console asks for). auth-dp's System resource server is registered under that URL at package time, and the Control Plane accepts the token because it shares auth-dp's signing keys and claims auth-dp's issuer.
 4. A write on the Control Plane (a user, a password change, an application) is synced to the Data Plane. The credential value is first written to dp's secret and variable stores, then a configuration version is captured and imported through dp's management API, authenticated with the gateway's API key.
-5. An operator opens the Data Plane Admin Console at `https://localhost:8090/console` and signs in on dp's own Gate (client `ADMIN_CONSOLE`).
+5. An operator opens the Data Plane Admin Console at `https://localhost:8090/admin` and signs in on dp's own Gate (client `ADMIN`).
 
 ## Prerequisites
 
@@ -53,7 +53,7 @@ The result is `target/dist/thunderid-quickstart-<version>-<os>-<arch>.zip`.
 - removes auth-dp's console UI
 - ships `console-cp` (the console that runs every operation as a direct API call) as the Control Plane's console, and points it at auth-dp as its trusted issuer, with client `CP_CONSOLE`
 - registers auth-dp's System resource server under the Control Plane's URL, because the console asks auth-dp for a token for that URL
-- points the managed dp's admin console at client `ADMIN_CONSOLE`
+- points the managed dp's admin console at client `ADMIN`
 - turns the default admin into the Service Desk Admin on dp and cp, with its own group and role under separate IDs, and leaves auth-dp's default `admin` as it is
 - sets auth-dp to port 8091
 - turns on `gateway.auto_apply` and `gateway.allow_private_addresses` in the Control Plane's `deployment.yaml`; the second lets it reach dp on `localhost`, which it refuses by default
@@ -64,7 +64,7 @@ The result is `target/dist/thunderid-quickstart-<version>-<os>-<arch>.zip`.
 | Directory | Layered onto | Contents |
 |---|---|---|
 | [bootstrap/auth-dp](bootstrap/auth-dp) | auth-dp | CORS allowlist for the CP console origin; the `CP_CONSOLE` application |
-| [bootstrap/dp-cp](bootstrap/dp-cp) | dp and cp | The `ADMIN_CONSOLE` application, same fixed ID on both so the Control Plane's copy replaces dp's on sync. |
+| [bootstrap/dp-cp](bootstrap/dp-cp) | dp and cp | The `ADMIN` application, same fixed ID on both so the Control Plane's copy replaces dp's on sync. |
 | [bootstrap/cp](bootstrap/cp) | cp | Registers dp as a gateway (`00-` prefix so it exists before other resources are written) |
 
 [bootstrap.sh](bootstrap.sh) holds what these templates need from the environment: the console URLs, the dp certificate, and the values seeded on dp so auto-apply is not blocked (see Run).
@@ -103,7 +103,7 @@ Press Ctrl+C to stop all three.
 | What | URL |
 |---|---|
 | Control Plane console | https://localhost:8095/console |
-| Data Plane Admin Console | https://localhost:8090/console |
+| Data Plane Admin Console | https://localhost:8090/admin |
 | Data Plane Gate (login) | https://localhost:8090/gate |
 | auth-dp Gate (login) | https://localhost:8091/gate |
 

@@ -198,7 +198,7 @@ Invoke-PlaneSetup -Directory "dp" -Script "setup.ps1" -Username $SERVICE_DESK_US
 
 Write-Host ""
 Write-Host "Setting up the Control Plane, and registering the managed Data Plane as its gateway..."
-# The Data Plane's own console is its own application (ADMIN_CONSOLE), bootstrapped from the same
+# The Data Plane's own console is its own application (ADMIN), bootstrapped from the same
 # file on the Data Plane and here with the same fixed ID, so the copy this Control Plane syncs
 # replaces the Data Plane's rather than duplicating it.
 Invoke-PlaneSetup -Directory "cp" -Script "setup-cp.ps1" -Username $SERVICE_DESK_USERNAME -Password $SERVICE_DESK_PASSWORD

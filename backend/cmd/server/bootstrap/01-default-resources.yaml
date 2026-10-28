@@ -6215,6 +6215,81 @@ inboundAuthConfig:
         ou:
           - ouId
 ---
+resource_type: application
+id: 01900000-0000-7000-8000-0000000000f1
+name: Admin Console
+description: Admin console of the Data Plane
+type: browser
+ouId: 01900000-0000-7000-8000-000000000001
+url: "{{ .PUBLIC_URL }}/admin"
+logoUrl: "avatar:shape=rounded,variant=anonymous_entity,content=cube,colors=0"
+authFlowId: 01900000-0000-7000-8000-000000000068
+registrationFlowId: 01900000-0000-7000-8000-000000000069
+isRegistrationFlowEnabled: false
+signOutFlowId: 01900000-0000-7000-8000-00000000006a
+recoveryFlowId: 01900000-0000-7000-8000-000000000070
+isRecoveryFlowEnabled: false
+allowedUserTypes:
+  - person
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: ADMIN
+      redirectUris:
+        - "{{ .PUBLIC_URL }}/admin"
+        {{- range .CONSOLE_REDIRECT_URIS }}
+        - "{{ . }}"
+        {{- end }}
+      postLogoutRedirectUris:
+        - "{{ .PUBLIC_URL }}/admin"
+        {{- range .CONSOLE_REDIRECT_URIS }}
+        - "{{ . }}"
+        {{- end }}
+      grantTypes:
+        - authorization_code
+        - refresh_token
+      responseTypes:
+        - code
+      pkceRequired: true
+      tokenEndpointAuthMethod: none
+      publicClient: true
+      token:
+        accessToken:
+          userConfig:
+            validityPeriod: 3600
+            attributes:
+              - given_name
+              - family_name
+              - email
+              - groups
+              - name
+              - ouId
+        idToken:
+          validityPeriod: 3600
+          userAttributes:
+            - given_name
+            - family_name
+            - email
+            - groups
+            - name
+            - ouId
+      scopeClaims:
+        profile:
+          - name
+          - given_name
+          - family_name
+          - picture
+        email:
+          - email
+          - email_verified
+        phone:
+          - phone_number
+          - phone_number_verified
+        group:
+          - groups
+        ou:
+          - ouId
+---
 resource_type: user
 id: 01900000-0000-7000-8000-000000000030
 type: person

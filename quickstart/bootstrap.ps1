@@ -72,11 +72,11 @@ function Get-UserPasswordSecretName {
 
 # Set-ConsoleUrls exports the console redirect URIs the bootstrap resources are templated with:
 # CP_CONSOLE_URL for the CP_CONSOLE application on auth-dp, and ADMIN_CONSOLE_URL for the
-# ADMIN_CONSOLE application on the Data Plane and the Control Plane. Call it before the first
+# ADMIN application on the Data Plane and the Control Plane. Call it before the first
 # plane's setup runs, since auth-dp's bootstrap already needs CP_CONSOLE_URL.
 function Set-ConsoleUrls {
     $env:CP_CONSOLE_URL = "https://localhost:$CP_PORT/console"
-    $env:ADMIN_CONSOLE_URL = "https://localhost:$DP_PORT/console"
+    $env:ADMIN_CONSOLE_URL = "https://localhost:$DP_PORT/admin"
 }
 
 # Set-DpCaCertificate exports DP_CA_CERTIFICATE, the managed Data Plane's certificate, which the
@@ -114,7 +114,7 @@ function Invoke-DpPut {
 # gateway. Two come from the Control Plane's own bootstrap, which runs while the Data Plane is not
 # up to capture them to:
 #
-#   - the ClientID and redirect URIs of the ADMIN_CONSOLE application
+#   - the ClientID and redirect URIs of the ADMIN application
 #     (quickstart/bootstrap/dp-cp/04-quickstart-admin-console.yaml). The redirect URIs are a list,
 #     so the variable holds a JSON array;
 #   - the identifier of the System resource server, which a gateway holds for itself and is
@@ -136,7 +136,7 @@ function Set-DpValues {
         catch { Start-Sleep -Milliseconds 500 }
     }
     if (-not $ready) { throw "The Data Plane did not become ready, so its bootstrap values were not seeded." }
-    Invoke-DpPut -Path "/variables/APPLICATION_ADMIN_CONSOLE_CLIENT_ID" -Value "ADMIN_CONSOLE"
+    Invoke-DpPut -Path "/variables/APPLICATION_ADMIN_CONSOLE_CLIENT_ID" -Value "ADMIN"
     Invoke-DpPut -Path "/variables/APPLICATION_ADMIN_CONSOLE_REDIRECT_URIS" `
         -Value (ConvertTo-Json -Compress -InputObject @($env:ADMIN_CONSOLE_URL))
     Invoke-DpPut -Path "/variables/RESOURCE_SERVER_SYSTEM_IDENTIFIER" -Value "https://localhost:$DP_PORT/mcp"

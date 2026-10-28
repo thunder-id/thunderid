@@ -39,12 +39,6 @@ const (
 	// server.security.trusted_issuer.user_lookup in ControlPlaneDeploymentYamlPath.
 	TrustedIssuerLookupClientID     = "control-plane-lookup"
 	TrustedIssuerLookupClientSecret = "control-plane-lookup-secret"
-
-	// UnscopedTokenEnv carries a token the trusted issuer signed without the system scope, for the
-	// test that such a token is refused.
-	UnscopedTokenEnv = "TEST_CP_UNSCOPED_TOKEN"
-	// StrangerTokenEnv carries a token the trusted issuer signed for TrustedIssuerStrangerSubject.
-	StrangerTokenEnv = "TEST_CP_STRANGER_TOKEN"
 )
 
 // UseControlPlane makes ReplaceResources install the Control Plane's deployment.yaml.

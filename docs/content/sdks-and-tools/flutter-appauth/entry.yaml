@@ -60,7 +60,7 @@ sections:
           A Flutter application is a public client: it has no client secret, and {{ProductName}} requires PKCE
           for it. The authorization code and refresh token grants are already enabled.
         uiPath:
-          - Open the Console at https://localhost:8090/console and navigate to Applications
+          - Open the Console at https://localhost:8090/admin and navigate to Applications
           - Click Add Application and select Flutter
           - Enter a name, select the sign-in options, and select a theme
           - Under Sign-In Approach, select Redirect to {{ProductName}} Gate

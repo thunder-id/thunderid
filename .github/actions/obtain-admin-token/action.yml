@@ -14,7 +14,7 @@ inputs:
     required: false
     default: 'https://localhost:8090'
   client-id:
-    description: 'Client ID of the console application to authenticate through (CONSOLE, or ADMIN_CONSOLE on a quickstart pack)'
+    description: 'Client ID of the console application to authenticate through (CONSOLE, or ADMIN, the Data Plane's Admin Console)'
     required: false
     default: 'CONSOLE'
 
@@ -40,6 +40,9 @@ runs:
         # Obtain one via OAuth2 authorization code + PKCE through the console app,
         # authenticating the bootstrapped admin user.
         CONSOLE_REDIRECT_URI="$SERVER_URL/console"
+        if [ "$CONSOLE_CLIENT_ID" = "ADMIN" ]; then
+          CONSOLE_REDIRECT_URI="$SERVER_URL/admin"
+        fi
         # Tokens are bound to a single resource server (RFC 8707), so the CONSOLE app targets the
         # bootstrapped System resource server, mirroring the console runtime config.
         CONSOLE_RESOURCE="$SERVER_URL/mcp"

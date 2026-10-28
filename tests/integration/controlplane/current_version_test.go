@@ -6,7 +6,6 @@ package controlplane
 import (
 	"encoding/json"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -112,11 +111,11 @@ func (ts *ControlPlaneTestSuite) TestAUserTheIssuerDoesNotKnowIsLeftOut() {
 		Version   string          `json:"version"`
 		CreatedBy json.RawMessage `json:"createdBy"`
 	}
-	stranger := os.Getenv(testutils.StrangerTokenEnv)
-	ts.Require().NotEmpty(stranger, "the harness exports a token for a user the issuer does not know")
+	stranger, ok := testutils.PersonaClient(testutils.PersonaStranger)
+	ts.Require().True(ok, "the harness provides a token for a user the issuer does not know")
 
 	var unit testutils.OrganizationUnit
-	status, raw := ts.send(testutils.GetHTTPClientWithToken(stranger), http.MethodPost, "/organization-units",
+	status, raw := ts.send(stranger, http.MethodPost, "/organization-units",
 		"application/json", []byte(`{"handle":"`+unique("actor-stranger")+`","name":"Actor stranger","parent":"`+
 			ts.ouID+`"}`))
 	ts.Require().Equal(http.StatusCreated, status, string(raw))

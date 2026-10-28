@@ -124,7 +124,7 @@ seed, then `start` to serve.
 :::
 
 :::tip Success
-Access the <ProductName /> Admin Console on **https://localhost:8090/console**. It manages users, agents, groups, roles, and organization units. Applications, connections, and flows are managed through the REST API, declarative YAML, or the Control Plane console.
+Access the <ProductName /> Admin Console on **https://localhost:8090/admin**. It manages users, agents, groups, roles, and organization units. Applications, connections, and flows are managed through the REST API, declarative YAML, or the Control Plane console.
 :::
 
 </Stepper>
@@ -159,7 +159,7 @@ This command will automatically:
 
 
 :::tip Success
-Access the <ProductName /> Admin Console on **https://localhost:8090/console**. It manages users, agents, groups, roles, and organization units. Applications, connections, and flows are managed through the REST API, declarative YAML, or the Control Plane console.
+Access the <ProductName /> Admin Console on **https://localhost:8090/admin**. It manages users, agents, groups, roles, and organization units. Applications, connections, and flows are managed through the REST API, declarative YAML, or the Control Plane console.
 :::
 
 </Stepper>
@@ -258,10 +258,10 @@ When no password is configured (the default), the setup job generates a random a
 kubectl get secret {{productSlug}}-admin-credentials -o jsonpath="{.data.admin-password}" | base64 -d; echo
 ```
 
-Open `https://localhost:8090/console` and sign in using the admin username with that password.
+Open `https://localhost:8090/admin` and sign in using the admin username with that password.
 
 :::tip Success
-Access the <ProductName /> Admin Console on **https://localhost:8090/console**. It manages users, agents, groups, roles, and organization units. Applications, connections, and flows are managed through the REST API, declarative YAML, or the Control Plane console.
+Access the <ProductName /> Admin Console on **https://localhost:8090/admin**. It manages users, agents, groups, roles, and organization units. Applications, connections, and flows are managed through the REST API, declarative YAML, or the Control Plane console.
 :::
 
 </Stepper>

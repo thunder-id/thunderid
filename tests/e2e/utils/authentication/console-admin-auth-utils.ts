@@ -408,7 +408,7 @@ async function isTokenRevoked(page: Page, baseUrl: string, authState: AuthState)
  * saveAuthState() would otherwise capture storage before the token exists.
  */
 async function waitForSessionData(page: Page): Promise<void> {
-  await page.waitForURL("**/console/**", { timeout: Timeouts.REDIRECT });
+  await page.waitForURL("**/admin/**", { timeout: Timeouts.REDIRECT });
 
   await page.waitForFunction(
     () => Object.keys(sessionStorage).some(key => key.includes("session_data-instance_0")),
@@ -433,7 +433,7 @@ Please ensure they are set in your .env file or the test environment configurati
 
   console.log("🔐 Performing inline login...");
 
-  // Enter through /console rather than the sign-in route: it's the console's own redirect into
+  // Enter through /admin rather than the sign-in route: it's the Admin Console's own redirect into
   // the OAuth2 flow that ends with the SDK writing a session, which is what this function is for.
   const signinPage = new ConsoleSigninPage(page, baseUrl);
   await signinPage.gotoHome();
@@ -445,7 +445,7 @@ Please ensure they are set in your .env file or the test environment configurati
     // The @thunderid SDK has an unguarded race: ThunderIDProvider's and ProtectedRoute's own
     // sign-in effects can each exchange the same single-use authorization code, and the loser
     // gets a 400 invalid_grant with no session ever written - no amount of waiting recovers
-    // from that. Re-visiting /console rides the IdP's SSO cookie (see
+    // from that. Re-visiting /admin rides the IdP's SSO cookie (see
     // backend/internal/flow/session/transport.go) to a fresh code without re-entering credentials.
     console.log(
       "⚠️ Sign-in did not settle (SDK code-exchange race), retrying..."

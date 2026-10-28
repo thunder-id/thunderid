@@ -6,6 +6,6 @@ import '@thunderid/test-utils/setup';
 import {configureTestUtils} from '@thunderid/test-utils';
 
 configureTestUtils({
-  base: '/console',
+  base: '/admin',
   clientId: 'CONSOLE',
 });

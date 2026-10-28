@@ -18,9 +18,11 @@ import (
 const (
 	serverPort = "8095"
 
-	// controlPlanePackages holds the suites that run against the Control Plane binary rather than
-	// the all-in-one server. Each run tests only its own plane's suites.
-	controlPlanePackages = "./controlplane/..."
+	// controlPlaneOnlyPackages holds the suites for the Control Plane binary alone. The all-in-one
+	// run leaves them out.
+	controlPlaneOnlyPackages = "./controlplane/..."
+	// sharedPackages holds the suites that run on both planes and expect each plane's own answers.
+	sharedPackages = "./mgmtauthz/..."
 
 	// managementTokenLifetime outlasts any run, since a token from the trusted issuer is never
 	// refreshed.
@@ -166,8 +168,8 @@ func parseFlags() {
 }
 
 // useTrustedIssuerTokens makes the trusted issuer's tokens the ones the Control Plane suites send:
-// one carrying the system scope for every test client, one without it for the test that it is
-// refused, and one for a user the issuer's user endpoint does not know.
+// one carrying the system scope for every test client, and the other personas' for the tests that
+// act as them.
 func useTrustedIssuerTokens(issuer *testutils.MockOIDCServer) error {
 	admin, err := testutils.IssueManagementToken(issuer, "system", managementTokenLifetime)
 	if err != nil {
@@ -180,19 +182,19 @@ func useTrustedIssuerTokens(issuer *testutils.MockOIDCServer) error {
 	if err != nil {
 		return err
 	}
-	if err := os.Setenv(testutils.UnscopedTokenEnv, unscoped); err != nil {
-		return err
-	}
 	stranger, err := testutils.IssueManagementTokenFor(issuer, testutils.TrustedIssuerStrangerSubject, "system",
 		managementTokenLifetime)
 	if err != nil {
 		return err
 	}
-	return os.Setenv(testutils.StrangerTokenEnv, stranger)
+	return testutils.SetPersonaTokens(map[testutils.Persona]string{
+		testutils.PersonaNoScope:  unscoped,
+		testutils.PersonaStranger: stranger,
+	})
 }
 
 func initTests() {
-	controlPlane = os.Getenv("INTEGRATION_PLANE") == "control"
+	controlPlane = testutils.CurrentPlane() == testutils.ControlPlane
 	if controlPlane {
 		fmt.Println("Plane: control")
 		testutils.UseControlPlane()
@@ -281,13 +283,13 @@ func packagesToTest() ([]string, error) {
 		return []string{testPackage}, nil
 	}
 	if controlPlane {
-		return []string{controlPlanePackages}, nil
+		return []string{controlPlaneOnlyPackages, sharedPackages}, nil
 	}
 	out, err := exec.Command("go", "list", "./...").Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list test packages: %w", err)
 	}
-	controlPlaneRoot := strings.TrimSuffix(strings.TrimPrefix(controlPlanePackages, "."), "/...")
+	controlPlaneRoot := strings.TrimSuffix(strings.TrimPrefix(controlPlaneOnlyPackages, "."), "/...")
 	var packages []string
 	for _, pkg := range strings.Fields(string(out)) {
 		if strings.HasSuffix(pkg, controlPlaneRoot) || strings.Contains(pkg, controlPlaneRoot+"/") {

@@ -171,7 +171,7 @@ spec:
       key: thunderid/dev     # remote path holding the environment values
     env:
       - name: CONSOLE_CLIENT_ID
-        value: CONSOLE
+        value: ADMIN
       - name: CONSOLE_REDIRECT_URIS_0
         value: "<SERVER_PUBLIC_URL>/console"
     declarativeResources: |
@@ -352,7 +352,7 @@ A second `HTTPRoute` is rendered for that hostname and the Console's
 | `runtime.port` | Port the ThunderID server listens on | `8090` |
 | `runtime.gate.clientBase` | Gate frontend base path | `/gate` |
 | `runtime.console.clientBase` | Console frontend base path | `/console` |
-| `runtime.console.clientId` | Console OAuth client ID | `CONSOLE` |
+| `runtime.console.clientId` | Console OAuth client ID | `ADMIN` |
 | `runtime.console.scopes` | Console OAuth scopes (JSON array string). The default covers the management scopes the Console requests | `["openid", "profile", "email", "group", "ou", "system"]` |
 | `runtime.jwt.validityPeriod` | JWT validity in seconds | `3600` |
 | `runtime.oauth.refreshTokenValidityPeriod` | Refresh token validity in seconds | `86400` |

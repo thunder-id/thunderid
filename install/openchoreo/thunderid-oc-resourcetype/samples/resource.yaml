@@ -67,9 +67,9 @@ spec:
     # NAME_0, NAME_1, ...
     env:
       - name: CONSOLE_CLIENT_ID
-        value: CONSOLE
+        value: ADMIN
       - name: CONSOLE_REDIRECT_URIS_0
-        value: "<SERVER_PUBLIC_URL>/console"
+        value: "<SERVER_PUBLIC_URL>/admin"
       # Resolves the System resource_server identifier below, as
       # <SERVER_PUBLIC_URL>/mcp. Keep equal to the binding's serverPublicUrl so
       # the Console's resource_identifier (serverPublicUrl + /mcp) matches.
@@ -115,8 +115,8 @@ spec:
     #   gate:
     #     clientBase: "/gate"
     #   console:
-    #     clientBase: "/console"
-    #     clientId: "CONSOLE"
+    #     clientBase: "/admin"
+    #     clientId: "ADMIN"
     #     scopes: '["openid", "profile", "email", "group", "ou", "system"]'
     #   jwt:
     #     validityPeriod: 3600             # seconds
@@ -174,7 +174,7 @@ spec:
       name: Console
       description: Management application for ThunderID
       type: browser
-      url: https://localhost:8090/console
+      url: https://localhost:8090/admin
       logoUrl: avatar:shape=rounded,variant=anonymous_entity,content=cube,colors=0,bg=#64be90
       authFlowId: 01900000-0000-7000-8000-000000000068
       registrationFlowId: 01900000-0000-7000-8000-000000000069

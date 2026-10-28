@@ -1241,7 +1241,7 @@ jobs:
         with:
           admin-username: ${{ env.ADMIN_USERNAME }}
           admin-password: ${{ env.ADMIN_PASSWORD }}
-          client-id: ADMIN_CONSOLE
+          client-id: ADMIN
 
       - name: 📦 Import Vanilla Sample Resources
         uses: ./.github/actions/import-declarative-config
@@ -1529,7 +1529,7 @@ jobs:
         with:
           admin-username: ${{ env.ADMIN_USERNAME }}
           admin-password: ${{ env.ADMIN_PASSWORD }}
-          client-id: ADMIN_CONSOLE
+          client-id: ADMIN
 
       - name: 📦 Import E2E Admin App (Wayfinder)
         if: ${{ !cancelled() }}

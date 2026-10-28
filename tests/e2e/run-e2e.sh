@@ -208,13 +208,13 @@ stop_server() {
     rm -rf "$DIST_HOME"
 }
 
-# Obtains an admin token via OAuth2 auth code + PKCE (ADMIN_CONSOLE app, Service Desk Admin credentials) and sets the
+# Obtains an admin token via OAuth2 auth code + PKCE (ADMIN app, Service Desk Admin credentials) and sets the
 # global ADMIN_TOKEN. Must be called plainly (never `ADMIN_TOKEN=$(mint_admin_token)` and never
 # inside an `if`/`||`) - its `exit 1` calls only abort the right way when the function's own exit
 # status is what `set -e` sees.
 mint_admin_token() {
     echo "Obtaining admin token..."
-    local CONSOLE_REDIRECT_URI="$SERVER_URL/console"
+    local CONSOLE_REDIRECT_URI="$SERVER_URL/admin"
     local CODE_VERIFIER CODE_CHALLENGE
     CODE_VERIFIER=$(openssl rand -hex 32 | cut -c1-43)
     CODE_CHALLENGE=$(printf '%s' "$CODE_VERIFIER" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
@@ -223,7 +223,7 @@ mint_admin_token() {
     headers_file=$(mktemp)
     curl -sk -o /dev/null -D "$headers_file" \
         -G "$SERVER_URL/oauth2/authorize" \
-        --data-urlencode "client_id=ADMIN_CONSOLE" \
+        --data-urlencode "client_id=ADMIN" \
         --data-urlencode "redirect_uri=$CONSOLE_REDIRECT_URI" \
         --data-urlencode "scope=system" \
         --data-urlencode "resource=$SERVER_URL/mcp" \
@@ -295,7 +295,7 @@ mint_admin_token() {
         --data-urlencode "grant_type=authorization_code" \
         --data-urlencode "code=$AUTH_CODE" \
         --data-urlencode "redirect_uri=$CONSOLE_REDIRECT_URI" \
-        --data-urlencode "client_id=ADMIN_CONSOLE" \
+        --data-urlencode "client_id=ADMIN" \
         --data-urlencode "resource=$SERVER_URL/mcp" \
         --data-urlencode "code_verifier=$CODE_VERIFIER")
     ADMIN_TOKEN=$(echo "$TOKEN_RESP" | jq -r '.access_token // empty' || echo "")

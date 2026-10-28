@@ -103,6 +103,7 @@ SECURITY_DIR=config/certs
 FRONTEND_BASE_DIR=frontend
 GATE_APP_DIST_DIR=apps/gate
 CONSOLE_APP_DIST_DIR=apps/console
+ADMIN_CONSOLE_APP_DIST_DIR=apps/admin
 FRONTEND_GATE_APP_SOURCE_DIR=$FRONTEND_BASE_DIR/apps/gate
 FRONTEND_CONSOLE_APP_SOURCE_DIR=$FRONTEND_BASE_DIR/apps/console
 # The console the Control Plane serves, packaged into the same apps/console slot (see
@@ -110,8 +111,7 @@ FRONTEND_CONSOLE_APP_SOURCE_DIR=$FRONTEND_BASE_DIR/apps/console
 # since a Control Plane executes no flows.
 FRONTEND_CONSOLE_CP_APP_SOURCE_DIR=$FRONTEND_BASE_DIR/apps/console-cp
 # The Data Plane's own admin app (Users, Agents, Groups, Roles). Every Data Plane distribution ships
-# it, in place of the full console, in the same apps/console slot (see
-# prepare_admin_console_for_packaging). Applications, connections and flows are authored on a
+# it in the apps/admin slot, served at /admin (see prepare_admin_console_for_packaging). Applications, connections and flows are authored on a
 # Control Plane.
 FRONTEND_ADMIN_CONSOLE_APP_SOURCE_DIR=$FRONTEND_BASE_DIR/apps/admin-console
 SAMPLE_BASE_DIR=samples
@@ -624,7 +624,6 @@ function prepare_frontend_for_packaging() {
     echo "Copying frontend artifacts..."
 
     mkdir -p "$DIST_DIR/$PRODUCT_FOLDER/$GATE_APP_DIST_DIR"
-    mkdir -p "$DIST_DIR/$PRODUCT_FOLDER/$CONSOLE_APP_DIST_DIR"
 
     # Copy gate app build output
     if [ -d "$FRONTEND_GATE_APP_SOURCE_DIR/dist" ]; then
@@ -635,22 +634,11 @@ function prepare_frontend_for_packaging() {
     else
         echo "Warning: Gate app build output not found at $FRONTEND_GATE_APP_SOURCE_DIR/dist"
     fi
-    
-    # Copy console app build output
-    if [ -d "$FRONTEND_CONSOLE_APP_SOURCE_DIR/dist" ]; then
-        echo "Copying Console app build output..."
-        shopt -s dotglob
-        cp -r "$FRONTEND_CONSOLE_APP_SOURCE_DIR/dist/"* "$DIST_DIR/$PRODUCT_FOLDER/$CONSOLE_APP_DIST_DIR"
-        shopt -u dotglob
-    else
-        echo "Warning: Console app build output not found at $FRONTEND_CONSOLE_APP_SOURCE_DIR/dist"
-    fi
-
     echo "================================================================"
 }
 
-# prepare_admin_console_for_packaging replaces the full console in the Data Plane folder named by
-# $1 with the admin console (Users, Agents, Groups, Roles). Applications, connections, flows and
+# prepare_admin_console_for_packaging copies the admin console (Users, Agents, Groups, Roles) into
+# the Data Plane folder named by $1, where the Data Plane serves it at /admin. Applications, connections, flows and
 # roles are authored on a Control Plane, so a Data Plane only needs what manages its own local
 # identity data.
 function prepare_admin_console_for_packaging() {
@@ -659,11 +647,11 @@ function prepare_admin_console_for_packaging() {
         echo "Warning: Admin Console build output not found at $FRONTEND_ADMIN_CONSOLE_APP_SOURCE_DIR/dist"
         return
     fi
-    echo "Replacing the Console with the Admin Console in $pack_dir..."
-    rm -rf "${pack_dir:?}/$CONSOLE_APP_DIST_DIR"
-    mkdir -p "$pack_dir/$CONSOLE_APP_DIST_DIR"
+    echo "Copying the Admin Console into $pack_dir..."
+    rm -rf "${pack_dir:?}/$ADMIN_CONSOLE_APP_DIST_DIR"
+    mkdir -p "$pack_dir/$ADMIN_CONSOLE_APP_DIST_DIR"
     shopt -s dotglob
-    cp -r "$FRONTEND_ADMIN_CONSOLE_APP_SOURCE_DIR/dist/"* "$pack_dir/$CONSOLE_APP_DIST_DIR"
+    cp -r "$FRONTEND_ADMIN_CONSOLE_APP_SOURCE_DIR/dist/"* "$pack_dir/$ADMIN_CONSOLE_APP_DIST_DIR"
     shopt -u dotglob
 }
 
@@ -791,13 +779,13 @@ function assert_patched() {
     fi
 }
 
-# strip_console_application drops the default CONSOLE application from a plane's copy of
+# strip_console_application drops the default CONSOLE and ADMIN applications from a plane's copy of
 # 01-default-resources.yaml. Documents are split on "---"; the one declaring clientId CONSOLE is
 # skipped.
 function strip_console_application() {
     local plane_dir="$1"
     awk '
-        function flush() { if (doc != "" && doc !~ /clientId: CONSOLE\n/) printf "%s", doc; doc = "" }
+        function flush() { if (doc != "" && doc !~ /clientId: (CONSOLE|ADMIN)\n/) printf "%s", doc; doc = "" }
         /^---$/ { flush() }
         { doc = doc $0 "\n" }
         END { flush() }
@@ -905,11 +893,12 @@ function package_quickstart() {
     # since there is no known Control Plane console origin to allow there.
     cp "$QUICKSTART_BOOTSTRAP_DIR/auth-dp"/*.yaml "$auth_dp_dir/bootstrap/"
 
-    # No plane in this pack uses the default CONSOLE application: auth-dp only signs operators
-    # into the Control Plane's console, so it carries just that console's own client
+    # No plane in this pack uses the default CONSOLE or ADMIN application: auth-dp only signs
+    # operators into the Control Plane's console, so it carries just that console's own client
     # (04-quickstart-cp-console.yaml above) and serves no console UI; the Control Plane's console
-    # signs in through auth-dp; and the managed dp's admin console has its own ADMIN_CONSOLE
-    # client. It is dropped from every bootstrap, so it appears nowhere.
+    # signs in through auth-dp; and the managed dp's admin console has its own ADMIN client
+    # (dp-cp/04-quickstart-admin-console.yaml, templated with the pack's URL). Both defaults are
+    # dropped from every bootstrap, so they appear nowhere.
     strip_console_application "$auth_dp_dir"
     strip_console_application "$dp_dir"
     strip_console_application "$cp_dir"
@@ -924,18 +913,12 @@ function package_quickstart() {
     sed -i.bak "s#^identifier: https://localhost:8090/mcp\$#identifier: https://localhost:$QUICKSTART_CP_PORT#" \
         "$auth_dp_dir/bootstrap/01-default-resources.yaml"
     rm -f "$auth_dp_dir/bootstrap/01-default-resources.yaml.bak"
-    rm -rf "${auth_dp_dir:?}/$CONSOLE_APP_DIST_DIR"
 
     # Layer the Data Plane's own admin console application onto the managed dp and the cp. It is
     # the same resource, with the same fixed ID, on both: the cp is where it is administered and
     # synced from, and the dp needs it to exist before the first sync so its console can sign in.
     cp "$QUICKSTART_BOOTSTRAP_DIR/dp-cp"/*.yaml "$dp_dir/bootstrap/"
     cp "$QUICKSTART_BOOTSTRAP_DIR/dp-cp"/*.yaml "$cp_dir/bootstrap/"
-
-    # The managed dp's admin console signs in with its own ADMIN_CONSOLE client rather than the
-    # CONSOLE one every other copy of this app (auth-dp, a standalone Data Plane) uses.
-    sed -i.bak "s/client_id: 'CONSOLE'/client_id: 'ADMIN_CONSOLE'/" "$dp_dir/$CONSOLE_APP_DIST_DIR/config.js"
-    rm -f "$dp_dir/$CONSOLE_APP_DIST_DIR/config.js.bak"
 
     # auth-dp runs on its own port, distinct from the managed dp it shares a generated
     # certificate and signing keys with (see quickstart/setup.sh). Patched into this copy of
@@ -1012,7 +995,6 @@ function package_quickstart() {
     assert_patched "$auth_dp_dir/deployment.yaml" "port: $QUICKSTART_AUTH_DP_PORT"
     assert_patched "$dp_dir/bootstrap/01-default-resources.yaml" "Service Desk Administrators"
     assert_patched "$cp_dir/bootstrap/01-default-resources.yaml" "Service Desk Administrators"
-    assert_patched "$dp_dir/$CONSOLE_APP_DIST_DIR/config.js" "client_id: 'ADMIN_CONSOLE'"
     assert_patched "$dp_dir/deployment.yaml" "  security:"
     assert_patched "$cp_dir/deployment.yaml" "issuer: \"https://localhost:$QUICKSTART_AUTH_DP_PORT\""
     assert_patched "$cp_dir/$CONSOLE_APP_DIST_DIR/config.js" "trusted_issuer"
@@ -1547,7 +1529,7 @@ EOF
         ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}" \
         PUBLIC_URL="$PUBLIC_URL" \
         go run . bootstrap --console-redirect-uris \
-            "https://localhost:$CONSOLE_APP_DEFAULT_PORT/console,https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT/console" ); then
+            "https://localhost:$CONSOLE_APP_DEFAULT_PORT/console,https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT/admin" ); then
         echo "❌ Initial data setup failed"
         echo "💡 Check the logs above for more details"
         exit 1
@@ -1562,7 +1544,7 @@ EOF
     echo "  📱 Frontend :"
     echo "      🚪 Gate (Login/Register): https://localhost:$GATE_APP_DEFAULT_PORT/gate"
     echo "      🛠️  Console (System Management): https://localhost:$CONSOLE_APP_DEFAULT_PORT/console"
-    echo "      🛠️  Admin Console (Users, Agents, Groups, Roles): https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT/console"
+    echo "      🛠️  Admin Console (Users, Agents, Groups, Roles): https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT/admin"
     echo ""
 
     echo "Press Ctrl+C to stop."

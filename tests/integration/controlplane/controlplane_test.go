@@ -246,10 +246,10 @@ func (ts *ControlPlaneTestSuite) TestAnUpdateReportsTheDerivedStatus() {
 
 // A token from the trusted issuer is accepted only when it carries the system scope.
 func (ts *ControlPlaneTestSuite) TestATokenWithoutTheSystemScopeIsRefused() {
-	unscoped := os.Getenv(testutils.UnscopedTokenEnv)
-	ts.Require().NotEmpty(unscoped, "the harness exports a token without the system scope")
+	unscoped, ok := testutils.PersonaClient(testutils.PersonaNoScope)
+	ts.Require().True(ok, "the harness provides a token without the system scope")
 
-	status, _ := ts.send(testutils.GetHTTPClientWithToken(unscoped), http.MethodGet, "/applications", "", nil)
+	status, _ := ts.send(unscoped, http.MethodGet, "/applications", "", nil)
 	ts.Equal(http.StatusForbidden, status)
 
 	status, _ = ts.call(http.MethodGet, "/applications", nil, nil)

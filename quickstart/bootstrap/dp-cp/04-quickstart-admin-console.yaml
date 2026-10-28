@@ -26,7 +26,7 @@ allowedUserTypes:
 inboundAuthConfig:
   - type: oauth2
     config:
-      clientId: ADMIN_CONSOLE
+      clientId: ADMIN
       redirectUris:
         - "{{ .ADMIN_CONSOLE_URL }}"
       postLogoutRedirectUris:

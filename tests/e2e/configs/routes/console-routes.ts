@@ -23,91 +23,91 @@ export const ConsoleRoutes = {
   signout: "/gate/signout",
 
   /** Console home page */
-  home: "/console",
+  home: "/admin",
 
   /** Dashboard page */
-  dashboard: "/console/dashboard",
+  dashboard: "/admin/dashboard",
 
   /** Applications list page */
-  applications: "/console/applications",
+  applications: "/admin/applications",
 
   /** Application type gallery page */
-  applicationTypes: "/console/applications/types",
+  applicationTypes: "/admin/applications/types",
 
   /** Create new application wizard page */
-  applicationCreate: "/console/applications/create",
+  applicationCreate: "/admin/applications/create",
 
   /**
    * Application details page
    * @param appId - The application identifier
    */
-  applicationDetails: (appId: string) => `/console/applications/${appId}`,
+  applicationDetails: (appId: string) => `/admin/applications/${appId}`,
 
   /** APIs list page */
-  apis: "/console/apis",
+  apis: "/admin/apis",
 
   /**
    * API details page
    * @param apiId - The API identifier
    */
-  apiDetails: (apiId: string) => `/console/apis/${apiId}`,
+  apiDetails: (apiId: string) => `/admin/apis/${apiId}`,
 
   /** Users list page */
-  users: "/console/users",
+  users: "/admin/users",
 
   /** Create new user page */
-  userCreate: "/console/users/create",
+  userCreate: "/admin/users/create",
 
   /**
    * User details page
    * @param userId - The user identifier
    */
-  userDetails: (userId: string) => `/console/users/${userId}`,
+  userDetails: (userId: string) => `/admin/users/${userId}`,
 
   /** User types list page */
-  userTypes: "/console/user-types",
+  userTypes: "/admin/user-types",
 
   /** Create new user type wizard page */
-  userTypeCreate: "/console/user-types/create",
+  userTypeCreate: "/admin/user-types/create",
 
   /** Settings page */
-  settings: "/console/settings",
+  settings: "/admin/settings",
 
   /** User profile settings page */
-  profile: "/console/settings/profile",
+  profile: "/admin/settings/profile",
 
   /** Welcome screen (landing page shown on first login) */
-  welcome: "/console/welcome",
+  welcome: "/admin/welcome",
 
   /** Wayfinder "Secured Web Application" tryout page (embeds the Wayfinder sample setup) */
-  welcomeTryoutApp: "/console/welcome/tryout/securing-application",
+  welcomeTryoutApp: "/admin/welcome/tryout/securing-application",
 
   /** Agents list page */
-  agents: "/console/agents",
+  agents: "/admin/agents",
 
   /** Agent onboarding page, which runs the configured agent onboarding flow */
-  agentCreate: "/console/agents/create",
+  agentCreate: "/admin/agents/create",
 
   /**
    * Agent details page
    * @param agentId - The agent identifier
    */
-  agentDetails: (agentId: string) => `/console/agents/${agentId}`,
+  agentDetails: (agentId: string) => `/admin/agents/${agentId}`,
   /** Connections list page */
-  connections: "/console/connections",
+  connections: "/admin/connections",
 
   /**
    * Configure wizard for a branded (singleton) connection vendor, e.g. "google"
    * @param type - The connection vendor type
    */
-  connectionConfigure: (type: string) => `/console/connections/${type}/configure`,
+  connectionConfigure: (type: string) => `/admin/connections/${type}/configure`,
 
   /**
    * Connection details page
    * @param type - The connection vendor type
    * @param id - The connection identifier
    */
-  connectionDetails: (type: string, id: string) => `/console/connections/${type}/${id}`,
+  connectionDetails: (type: string, id: string) => `/admin/connections/${type}/${id}`,
 } as const;
 
 export type ConsoleRoute = (typeof ConsoleRoutes)[keyof typeof ConsoleRoutes];

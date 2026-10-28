@@ -224,8 +224,8 @@ configuration:
 
   # Console client configuration
   consoleClient:
-    path: "/console"
-    clientId: "CONSOLE"
+    path: "/admin"
+    clientId: "ADMIN"
     scopes: "['openid', 'profile', 'email', 'group', 'ou', 'system']"
     # Resource indicator (audience) the console sends on token requests. Must match the
     # identifier of the System resource server seeded by the bootstrap defaults, which is

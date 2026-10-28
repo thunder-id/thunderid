@@ -37,7 +37,7 @@ const VISIBLE_INTERACTIVE_SELECTOR =
 test.describe("Accessibility — Authentication Flows @accessibility", () => {
   test.describe("Sign-In Page", () => {
     test.beforeEach(async ({ page }) => {
-      // The console is served under /console; requesting it unauthenticated redirects to the gate's
+      // The Admin Console is served under /admin; requesting it unauthenticated redirects to the gate's
       // sign-in page, which is what this suite audits. Navigating to "/" instead would land on the
       // API root and audit its 401 response.
       await page.goto(ConsoleRoutes.home, { timeout: Timeouts.PAGE_LOAD });

@@ -57,6 +57,7 @@ Testify suites in `tests/integration/<area>/`, run with `make test_integration`.
 | Declarative or composite store mode | a fixture under `tests/integration/resources/declarative_resources/<type>/` and a declarative test in the area (Ex: `tests/integration/group/group_declarative_test.go`) |
 | An exportable resource | coverage in `tests/integration/importexport` |
 | Control Plane only code | tests in `tests/integration/controlplane`, run with `make test_integration_cp` |
+| Management API behaviour that differs between the Data Plane and the Control Plane | a case in `tests/integration/mgmtauthz`, which runs under both `make test_integration` and `make test_integration_cp`; give each plane its status with `Same` or `Differ`, and act as a persona from `testutils` (`PersonaClient`, `RequirePlane`) |
 
 ## E2E Tests
 
