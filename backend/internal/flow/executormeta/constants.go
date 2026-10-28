@@ -54,6 +54,7 @@ const (
 	ExecutorNameExtension                    = "ExtensionExecutor"
 	ExecutorNameAuthorizationDetail          = "AuthorizationDetailExecutor"
 	ExecutorNameSharing                      = "SharingExecutor"
+	ExecutorNameExtensionAuthResolver        = "ExtensionAuthResolver"
 	ExecutorNameDeviceCode                   = "DeviceCodeExecutor"
 )
 

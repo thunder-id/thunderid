@@ -340,7 +340,7 @@ func (s *ModelTestSuite) TestParseExtensionProperties_RefusesUnusableValues() {
 		{"runtime data key outside the allow list", NodePropertyRuntimeDataKeys, []interface{}{"userID", "clientId"}},
 		{"runtime data key a credential", NodePropertyRuntimeDataKeys, []interface{}{"password"}},
 		{"runtime data key an attempt count", NodePropertyRuntimeDataKeys,
-			[]interface{}{ExtensionAttemptCountKey("risk_check")}},
+			[]interface{}{RuntimeKeyExtensionAttemptCount + ":risk_check"}},
 		{"runtime data key in another case", NodePropertyRuntimeDataKeys, []interface{}{"userId"}},
 		{"response keys empty", NodePropertyResponseKeys, []interface{}{}},
 		{"response keys blank name", NodePropertyResponseKeys, []interface{}{"riskScore", "\t"}},
@@ -400,4 +400,8 @@ func (s *ModelTestSuite) TestToValidationRules_EmptyAndInvalid() {
 
 	_, err = ToValidationRules([]providers.ValidationRuleDefinition{{Type: "regex", Value: "("}})
 	s.Error(err)
+}
+
+func (s *ModelTestSuite) TestExtensionNamespace() {
+	s.Equal("extension.pin_check.", ExtensionNamespace("pin_check"))
 }

@@ -164,6 +164,28 @@ func (suite *HTTPUtilTestSuite) TestIsLoopbackRedirectHost() {
 	}
 }
 
+func (suite *HTTPUtilTestSuite) TestIsHTTPURL() {
+	testCases := []struct {
+		uri      string
+		expected bool
+	}{
+		{uri: "https://pin.example.com/verify?state=1", expected: true},
+		{uri: "http://localhost:8080/verify", expected: true},
+		{uri: "", expected: false},
+		{uri: "/verify", expected: false},
+		{uri: "//pin.example.com/verify", expected: false},
+		{uri: "https:///verify", expected: false},
+		{uri: "javascript:alert(1)", expected: false},
+		{uri: "data:text/html,hi", expected: false},
+		{uri: "ftp://pin.example.com/verify", expected: false},
+		{uri: "HTTPS://pin.example.com", expected: true},
+		{uri: "https://pin.example.com/%zz", expected: false},
+	}
+	for _, tc := range testCases {
+		suite.Equal(tc.expected, IsHTTPURL(tc.uri), tc.uri)
+	}
+}
+
 func (suite *HTTPUtilTestSuite) TestIsValidLogoURI() {
 	testCases := []struct {
 		name     string

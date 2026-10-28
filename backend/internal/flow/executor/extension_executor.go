@@ -28,6 +28,7 @@ import (
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
+	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -60,8 +61,7 @@ const (
 var extensionFailureReasonPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
 
 // extensionOutcome is how an extension execution ended. The first four are the actionStatus values a
-// service answers with; extensionOutcomeConfigError and extensionOutcomeAttemptsExceeded are the
-// executor's own and are never accepted from a service.
+// service answers with; the others are the executor's own and are never accepted from a service.
 type extensionOutcome string
 
 const (
@@ -71,6 +71,8 @@ const (
 	extensionOutcomeError            extensionOutcome = "ERROR"
 	extensionOutcomeConfigError      extensionOutcome = "CONFIG_ERROR"
 	extensionOutcomeAttemptsExceeded extensionOutcome = "ATTEMPTS_EXCEEDED"
+	// extensionOutcomeReturnRefused is a return from the service's page without the code that proves it.
+	extensionOutcomeReturnRefused extensionOutcome = "RETURN_REFUSED"
 )
 
 // extensionErrorKind tells an operator why an execution ended in ERROR.
@@ -178,19 +180,24 @@ func (e *extensionExecutor) Execute(ctx *providers.NodeContext) (*providers.Exec
 		return nil, err
 	}
 	if attempts >= props.MaxAttempts {
-		return e.attemptsExceeded(ctx, call), nil
+		return e.attemptsExceeded(ctx, call)
+	}
+	returnCode, returning := e.returnCode(ctx)
+	if returning && returnCode == "" {
+		return e.returnRefused(ctx, attempts, call), nil
 	}
 	connection, err := e.resolveConnection(ctx.Context, props.ConnectionID, call)
 	if err != nil {
 		return nil, err
 	}
-	body, err := e.call(ctx, props, connection, call)
+	body, err := e.call(ctx, props, connection, returnCode, call)
 	if err != nil {
 		return nil, err
 	}
 	// The request may have sent the step's earlier answer; once the service answers, it replaces it.
 	if call.httpStatus != 0 {
 		e.clearNamespace(ctx)
+		delete(ctx.RuntimeData, extensionRedirectPendingKey(ctx.CurrentNodeID))
 	}
 	e.evaluate(body, call)
 	return e.respond(ctx, props, body, attempts, call), nil
@@ -210,7 +217,7 @@ func (e *extensionExecutor) readProperties(ctx *providers.NodeContext, call *ext
 
 // attempts returns the FAILED and INCOMPLETE answers the step has had in this execution.
 func (e *extensionExecutor) attempts(ctx *providers.NodeContext, call *extensionCall) (int, error) {
-	count := ctx.RuntimeData[common.ExtensionAttemptCountKey(ctx.CurrentNodeID)]
+	count := ctx.RuntimeData[extensionAttemptCountKey(ctx.CurrentNodeID)]
 	if count == "" {
 		return 0, nil
 	}
@@ -222,17 +229,51 @@ func (e *extensionExecutor) attempts(ctx *providers.NodeContext, call *extension
 	return attempts, nil
 }
 
-// attemptsExceeded returns the response of a step that has reached its attempt limit.
+// attemptsExceeded returns the response of a step that has reached its attempt limit. While a redirect
+// is pending only returns without the code are counted, which a copied execution ID and challenge token
+// can send, so the limit ends the flow rather than following onFailure.
 func (e *extensionExecutor) attemptsExceeded(ctx *providers.NodeContext,
-	call *extensionCall) *providers.ExecutorResponse {
+	call *extensionCall) (*providers.ExecutorResponse, error) {
+	call.outcome = extensionOutcomeAttemptsExceeded
+	if ctx.RuntimeData[extensionRedirectPendingKey(ctx.CurrentNodeID)] != "" {
+		return nil, errors.New("extension step reached its attempt limit while waiting for a return from " +
+			"the service's page")
+	}
 	e.logger.Debug(ctx.Context, "Extension step reached its attempt limit",
 		log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	call.outcome = extensionOutcomeAttemptsExceeded
 	return &providers.ExecutorResponse{
 		Status:         providers.ExecFailure,
 		Error:          &ErrExtensionAttemptsExceeded,
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
+	}, nil
+}
+
+// returnCode takes the code the browser brought back from the service's page, and reports whether the
+// step is waiting for that return. The code leaves the user inputs so no later step receives it.
+func (e *extensionExecutor) returnCode(ctx *providers.NodeContext) (string, bool) {
+	if ctx.RuntimeData[extensionRedirectPendingKey(ctx.CurrentNodeID)] == "" {
+		return "", false
+	}
+	code := ctx.UserInputs[userInputCode]
+	delete(ctx.UserInputs, userInputCode)
+	return code, true
+}
+
+// returnRefused sends the browser back to the service's page when a return from it carries no code, so
+// a copied execution ID and challenge token cannot resume the step. It redirects rather than fails,
+// since onFailure would carry that client on.
+func (e *extensionExecutor) returnRefused(ctx *providers.NodeContext, attempts int,
+	call *extensionCall) *providers.ExecutorResponse {
+	call.outcome = extensionOutcomeReturnRefused
+	return &providers.ExecutorResponse{
+		Status:         providers.ExecExternalRedirection,
+		RedirectURL:    ctx.RuntimeData[extensionRedirectPendingKey(ctx.CurrentNodeID)],
+		Error:          &ErrExtensionReturnNotVerified,
+		AdditionalData: make(map[string]string),
+		RuntimeData: map[string]string{
+			extensionAttemptCountKey(ctx.CurrentNodeID): strconv.Itoa(attempts + 1),
+		},
 	}
 }
 
@@ -260,8 +301,9 @@ func (e *extensionExecutor) resolveConnection(ctx context.Context, connectionID 
 // call posts the request to the connection and returns the response body as a JSON object. A failure
 // of the service is recorded on call; only a failure to build the request is returned as an error.
 func (e *extensionExecutor) call(ctx *providers.NodeContext, props common.ExtensionProperties,
-	connection *httpconnection.ResolvedHTTPConnection, call *extensionCall) (map[string]interface{}, error) {
-	payload, err := json.Marshal(e.buildRequest(ctx, props))
+	connection *httpconnection.ResolvedHTTPConnection, returnCode string,
+	call *extensionCall) (map[string]interface{}, error) {
+	payload, err := json.Marshal(e.buildRequest(ctx, props, returnCode))
 	if err != nil {
 		call.outcome, call.errorKind = extensionOutcomeError, extensionErrorKindInternal
 		return nil, fmt.Errorf("failed to encode the extension request: %w", err)
@@ -339,15 +381,10 @@ func (e *extensionExecutor) decodeJSONObject(raw []byte) (map[string]interface{}
 
 // clearNamespace removes every key the step stored from an earlier answer.
 func (e *extensionExecutor) clearNamespace(ctx *providers.NodeContext) {
-	prefix := e.namespace(ctx.CurrentNodeID)
+	prefix := common.ExtensionNamespace(ctx.CurrentNodeID)
 	maps.DeleteFunc(ctx.RuntimeData, func(key, _ string) bool {
 		return strings.HasPrefix(key, prefix)
 	})
-}
-
-// namespace returns the prefix of the runtime-data keys the step with nodeID stores.
-func (e *extensionExecutor) namespace(nodeID string) string {
-	return common.ExtensionDataKeyPrefix + nodeID + "."
 }
 
 // evaluate records on call the outcome of the service's answer and its failure reason.
@@ -361,8 +398,7 @@ func (e *extensionExecutor) evaluate(body map[string]interface{}, call *extensio
 }
 
 // answerOutcome returns the outcome a well-formed body reports, or ERROR with the kind of contract
-// breach. This build cannot send the browser to the service's page, so a redirectUrl with INCOMPLETE
-// is a breach rather than ignored.
+// breach.
 func (e *extensionExecutor) answerOutcome(body map[string]interface{}) (extensionOutcome, extensionErrorKind) {
 	value, ok := body[extensionFieldActionStatus].(string)
 	if !ok {
@@ -372,9 +408,10 @@ func (e *extensionExecutor) answerOutcome(body map[string]interface{}) (extensio
 	case extensionOutcomeSuccess, extensionOutcomeFailed:
 		return outcome, ""
 	case extensionOutcomeIncomplete:
-		if redirectURL, present := body[extensionFieldRedirectURL]; present && redirectURL != nil &&
-			redirectURL != "" {
-			return extensionOutcomeError, extensionErrorKindContract
+		if redirectURL := body[extensionFieldRedirectURL]; redirectURL != nil && redirectURL != "" {
+			if _, ok := e.browserRedirectURL(redirectURL); !ok {
+				return extensionOutcomeError, extensionErrorKindContract
+			}
 		}
 		return outcome, ""
 	case extensionOutcomeError:
@@ -391,7 +428,7 @@ func (e *extensionExecutor) respond(ctx *providers.NodeContext, props common.Ext
 		RuntimeData:    make(map[string]string),
 	}
 	description := e.cleanFailureDescription(body[extensionFieldFailureDescription])
-	attemptKey := common.ExtensionAttemptCountKey(ctx.CurrentNodeID)
+	attemptKey := extensionAttemptCountKey(ctx.CurrentNodeID)
 	switch call.outcome {
 	case extensionOutcomeSuccess:
 		execResp.RuntimeData = e.answerRuntimeData(body, ctx.CurrentNodeID, props.ResponseKeys)
@@ -402,6 +439,13 @@ func (e *extensionExecutor) respond(ctx *providers.NodeContext, props common.Ext
 		execResp.Status = providers.ExecFailure
 	case extensionOutcomeIncomplete:
 		execResp.RuntimeData = e.answerRuntimeData(body, ctx.CurrentNodeID, props.ResponseKeys)
+		// A redirect carries no decision, so it shows no error and is not counted as an attempt.
+		if redirectURL, ok := e.browserRedirectURL(body[extensionFieldRedirectURL]); ok {
+			execResp.RuntimeData[extensionRedirectPendingKey(ctx.CurrentNodeID)] = redirectURL
+			execResp.RedirectURL = redirectURL
+			execResp.Status = providers.ExecExternalRedirection
+			break
+		}
 		if description != "" || e.isCredentialFailure(call.failureReason) {
 			execResp.Error = e.answerError(ErrExtensionInputRequired, call.failureReason, description)
 		}
@@ -414,6 +458,16 @@ func (e *extensionExecutor) respond(ctx *providers.NodeContext, props common.Ext
 	e.logger.Debug(ctx.Context, "Extension call completed", log.String(log.LoggerKeyExecutionID, ctx.ExecutionID),
 		log.String("outcome", string(call.outcome)))
 	return execResp
+}
+
+// browserRedirectURL returns value when it is an absolute http or https URL. Any other scheme, such as
+// javascript: or data:, would run in the sign-in page instead of leaving it.
+func (e *extensionExecutor) browserRedirectURL(value interface{}) (string, bool) {
+	text, ok := value.(string)
+	if !ok || !systemutils.IsHTTPURL(text) {
+		return "", false
+	}
+	return text, true
 }
 
 // failureReason returns the body's failureReason when it has the allowed form, otherwise "".
@@ -473,9 +527,10 @@ func (e *extensionExecutor) answerError(base tidcommon.ServiceError,
 }
 
 // buildRequest builds the request body from the node context, with the user inputs and runtime data
-// the step selects.
+// the step selects. The code of a return from the service's page is always sent, so the service can
+// check that it issued it to the browser that completed its page.
 func (e *extensionExecutor) buildRequest(ctx *providers.NodeContext,
-	props common.ExtensionProperties) extensionRequest {
+	props common.ExtensionProperties, returnCode string) extensionRequest {
 	request := extensionRequest{
 		Version:       extensionContractVersion,
 		ExecutionID:   ctx.ExecutionID,
@@ -491,6 +546,9 @@ func (e *extensionExecutor) buildRequest(ctx *providers.NodeContext,
 			Type: ctx.Application.Type,
 		},
 		AuthUser: make(map[string]extensionAuthState),
+	}
+	if returnCode != "" {
+		request.UserInputs[userInputCode] = returnCode
 	}
 	for _, name := range ctx.AuthUser.ProviderNames() {
 		state, _ := ctx.AuthUser.StateFor(name)
@@ -514,7 +572,7 @@ func (e *extensionExecutor) selectPresent(values map[string]string, keys []strin
 // every field outside the contract that is not null, limited to responseKeys when it names any.
 func (e *extensionExecutor) answerRuntimeData(body map[string]interface{}, nodeID string,
 	responseKeys []string) map[string]string {
-	prefix := e.namespace(nodeID)
+	prefix := common.ExtensionNamespace(nodeID)
 	data := make(map[string]string)
 	for key, value := range body {
 		switch key {
