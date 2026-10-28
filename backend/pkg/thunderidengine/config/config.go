@@ -207,14 +207,23 @@ type RedisConfig struct {
 
 // ServerConfig holds the server configuration details.
 type ServerConfig struct {
-	Hostname                   string         `yaml:"hostname"   json:"hostname"`
-	Port                       int            `yaml:"port"       json:"port"`
-	HTTPOnly                   bool           `yaml:"http_only"  json:"http_only"`
-	PublicURL                  string         `yaml:"public_url" json:"public_url"`
-	Identifier                 string         `yaml:"identifier" json:"identifier"`
-	SecurityConfig             SecurityConfig `yaml:"security"   json:"security"`
-	EnableOUQualifiedEndpoints bool           `yaml:"enable_ou_qualified_endpoints" json:"enable_ou_qualified_endpoints"` //nolint:lll // one tag pair
-	Timeouts                   ServerTimeouts `yaml:"timeouts"   json:"timeouts"`
+	Hostname                   string               `yaml:"hostname"   json:"hostname"`
+	Port                       int                  `yaml:"port"       json:"port"`
+	HTTPOnly                   bool                 `yaml:"http_only"  json:"http_only"`
+	PublicURL                  string               `yaml:"public_url" json:"public_url"`
+	Identifier                 string               `yaml:"identifier" json:"identifier"`
+	SecurityConfig             SecurityConfig       `yaml:"security"   json:"security"`
+	EnableOUQualifiedEndpoints bool                 `yaml:"enable_ou_qualified_endpoints" json:"enable_ou_qualified_endpoints"` //nolint:lll // one tag pair
+	TrustedProxies             []TrustedProxyConfig `yaml:"trusted_proxies" json:"trusted_proxies"`
+	Timeouts                   ServerTimeouts       `yaml:"timeouts"   json:"timeouts"`
+}
+
+// TrustedProxyConfig is a reverse proxy, or a range of them, and the header it reports the client IP in.
+type TrustedProxyConfig struct {
+	// CIDR is the range the proxy connects from, such as "10.0.1.0/24" or "172.28.0.10/32".
+	CIDR string `yaml:"cidr" json:"cidr"`
+	// Header is the request header the proxy sets the client IP in. Defaults to "x-forwarded-for".
+	Header string `yaml:"header" json:"header"`
 }
 
 // The timeouts a server uses for a value that is not positive, the same as default.json ships. Go's

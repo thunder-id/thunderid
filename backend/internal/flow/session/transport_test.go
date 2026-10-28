@@ -7,10 +7,13 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/suite"
+
+	"github.com/thunder-id/thunderid/internal/system/clientip"
 )
 
 // flow1CookieName is the wire name of the SSO cookie for "flow-1": "tid_sso_" followed by the first
@@ -52,6 +55,53 @@ func (s *TransportTestSuite) TestInboundFrom_NothingAttached() {
 	got, ok := InboundFrom(context.Background())
 	s.False(ok)
 	s.Nil(got)
+}
+
+func (s *TransportTestSuite) TestClientInfo_ContextRoundTrip() {
+	in := ClientInfo{IP: "203.0.113.10", UserAgent: "Mozilla/5.0"}
+
+	s.Equal(in, ClientInfoFrom(WithClientInfo(context.Background(), in)))
+	s.Equal(ClientInfo{}, ClientInfoFrom(context.Background()))
+}
+
+func (s *TransportTestSuite) TestClientInfoFromRequest() {
+	r := httptest.NewRequest(http.MethodPost, "/flow/execute", nil)
+	r.Header.Set("User-Agent", "Mozilla/5.0")
+	r = r.WithContext(clientip.WithIP(r.Context(), "203.0.113.10"))
+
+	s.Equal(ClientInfo{IP: "203.0.113.10", UserAgent: "Mozilla/5.0"}, ClientInfoFromRequest(r))
+}
+
+func (s *TransportTestSuite) TestClientInfoFromRequest_NoIPOnContext() {
+	// RemoteAddr is never read: a route that misses the ClientIPMiddleware records no IP, rather
+	// than a proxy's address.
+	r := httptest.NewRequest(http.MethodPost, "/flow/execute", nil)
+	r.RemoteAddr = "10.0.0.5:443"
+
+	s.Empty(ClientInfoFromRequest(r).IP)
+}
+
+func (s *TransportTestSuite) TestClientInfoFromRequest_DropsInvalidUTF8() {
+	r := httptest.NewRequest(http.MethodPost, "/flow/execute", nil)
+	r.Header.Set("User-Agent", "Mozilla/5.0 \xff\xfe(Test)")
+
+	s.Equal("Mozilla/5.0 (Test)", ClientInfoFromRequest(r).UserAgent)
+}
+
+func (s *TransportTestSuite) TestClientInfoFromRequest_TruncatesUserAgent() {
+	r := httptest.NewRequest(http.MethodPost, "/flow/execute", nil)
+	r.Header.Set("User-Agent", strings.Repeat("x", 600))
+
+	s.Len(ClientInfoFromRequest(r).UserAgent, maxUserAgentLength)
+}
+
+func (s *TransportTestSuite) TestTruncate_KeepsCharactersWhole() {
+	// "é" is two bytes, so a five-byte limit falls inside the third character and must back off to
+	// the character boundary rather than leave invalid UTF-8.
+	got := truncate("ééé", 5)
+
+	s.Equal("éé", got)
+	s.Equal("abc", truncate("abc", 5), "a string within the limit is returned unchanged")
 }
 
 func (s *TransportTestSuite) TestInboundFrom_NilAttached() {

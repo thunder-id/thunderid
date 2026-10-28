@@ -14,6 +14,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/thunder-id/thunderid/internal/system/clientip"
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 )
 
 const testRemoteAddr = "192.168.1.1:12345"
@@ -71,6 +74,38 @@ func (suite *AccessLogTestSuite) TestAccessLogHandler() {
 	assert.NotContains(suite.T(), output, "token=secret")
 	// Verify that escape characters are not present in the log output
 	assert.NotContains(suite.T(), output, `\"`)
+}
+
+func (suite *AccessLogTestSuite) TestAccessLogHandler_LogsClientIP() {
+	tests := []struct {
+		name     string
+		clientIP string
+		suffix   string
+	}{
+		{"client IP from the context", "203.0.113.10", " trace-1 203.0.113.10"},
+		{"no client IP on the context", "", " trace-1 -"},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			var buf bytes.Buffer
+			log := &Logger{internal: slog.New(slog.NewTextHandler(&buf, nil))}
+			handler := AccessLogHandler(log, nil, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			req := httptest.NewRequest("GET", "/test", nil)
+			req.RemoteAddr = testRemoteAddr
+			ctx := sysContext.WithTraceID(req.Context(), "trace-1")
+			if tc.clientIP != "" {
+				ctx = clientip.WithIP(ctx, tc.clientIP)
+			}
+			handler.ServeHTTP(httptest.NewRecorder(), req.WithContext(ctx))
+
+			output := buf.String()
+			assert.Contains(suite.T(), output, "192.168.1.1 - - [", "the connecting address stays the first field")
+			assert.Contains(suite.T(), output, tc.suffix+`"`, "the client IP follows the correlation ID")
+		})
+	}
 }
 
 func (suite *AccessLogTestSuite) TestAccessLogHandlerSkipPrefixes() {

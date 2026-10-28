@@ -248,7 +248,7 @@ func createHTTPServer(ctx context.Context, logger *log.Logger, cfg *config.Confi
 	securityMiddleware := createSecurityMiddleware(ctx, logger, cfg, mux, jwtService, revocationEnforcer)
 
 	// Build the middleware chain with proper execution order.
-	// Request flow: CorrelationID (outermost) -> DeploymentID -> SecurityHeaders -> AccessLog ->
+	// Request flow: CorrelationID (outermost) -> ClientIP -> DeploymentID -> SecurityHeaders -> AccessLog ->
 	// Security -> Route Handler (innermost)
 	// Note: Middlewares are wrapped in reverse order - the last added will execute first.
 	// The Gate and Console frontend paths are always excluded from the access log to keep it
@@ -258,6 +258,11 @@ func createHTTPServer(ctx context.Context, logger *log.Logger, cfg *config.Confi
 	// Outside the security layer, so that every request carries the deployment id it acts for by the
 	// time any store is reached.
 	handler = middleware.DeploymentIDMiddleware(handler)
+	clientIPMiddleware, err := middleware.ClientIPMiddleware(cfg.Server.TrustedProxies)
+	if err != nil {
+		logger.Fatal(ctx, "Failed to initialize client IP middleware", log.Error(err))
+	}
+	handler = clientIPMiddleware(handler)
 	handler = middleware.CorrelationIDMiddleware(handler)
 
 	// Build the server address using hostname and port from the configurations.

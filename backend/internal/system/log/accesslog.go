@@ -10,11 +10,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/thunder-id/thunderid/internal/system/clientip"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 )
 
-// AccessLogHandler logs HTTP requests in Apache CLF with response time and correlation ID.
-// The correlation ID should be set in the context by the CorrelationIDMiddleware.
+// AccessLogHandler logs HTTP requests in Apache CLF with response time, correlation ID and client IP.
+// The correlation ID should be set in the context by the CorrelationIDMiddleware, and the client IP by
+// the ClientIPMiddleware. The connecting address stays the first field, since it cannot be spoofed and
+// the client IP is only as reliable as the trusted proxy configuration.
 // Paths matching skipPrefixes are served without an access log line (e.g. /console/, /gate/).
 func AccessLogHandler(logger *Logger, skipPrefixes []string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -41,11 +44,15 @@ func AccessLogHandler(logger *Logger, skipPrefixes []string, next http.Handler) 
 		if host == "" {
 			host = r.RemoteAddr
 		}
+		clientIP := clientip.FromContext(r.Context())
+		if clientIP == "" {
+			clientIP = "-"
+		}
 
 		// Apache CLF-style format with correlation ID and response time
-		// Format: host - - [timestamp] method uri protocol status size elapsed_ms correlation_id
+		// Format: host - - [timestamp] method uri protocol status size elapsed_ms correlation_id client_ip
 		logger.Info(r.Context(), fmt.Sprintf(
-			"%s - - [%s] %s %s %s %d %d %d %s",
+			"%s - - [%s] %s %s %s %d %d %d %s %s",
 			host,
 			start.Format("02/Jan/2006:15:04:05 -0700"),
 			r.Method,
@@ -55,6 +62,7 @@ func AccessLogHandler(logger *Logger, skipPrefixes []string, next http.Handler) 
 			lrw.size,
 			elapsedMs,
 			correlationID,
+			clientIP,
 		))
 	})
 }
