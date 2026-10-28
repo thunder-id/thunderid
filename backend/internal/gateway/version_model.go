@@ -128,10 +128,15 @@ type appliedState struct {
 // Selection names, by key, the changes to send in this apply; the rest are neither written nor
 // removed, and stay on offer for the next apply. Without a selection every change the diff reports
 // is sent; an empty one sends nothing. Nothing about a selection is kept.
+//
+// WithDependencies, on by default, widens a selection to what the selected resources need that the
+// gateway lacks or holds differently, so an application brings the flows and the unit it names.
+// Off, a selection whose resource needs something the gateway lacks is refused.
 type ApplyRequest struct {
-	Version   string    `json:"version,omitempty"`
-	DryRun    bool      `json:"dryRun,omitempty"`
-	Selection *[]string `json:"selection,omitempty"`
+	Version          string    `json:"version,omitempty"`
+	DryRun           bool      `json:"dryRun,omitempty"`
+	Selection        *[]string `json:"selection,omitempty"`
+	WithDependencies *bool     `json:"withDependencies,omitempty"`
 	// ConfirmRemovals lets the apply go ahead when it would remove more resources than the
 	// deployment's threshold; without it such an apply is refused, so a rollback that would empty
 	// a gateway is seen before it is sent.
@@ -176,6 +181,12 @@ type Change struct {
 	// ValueChanged marks a resource offered as updated because a value it refers to was set on the
 	// gateway again since the last apply, although its document did not change.
 	ValueChanged bool `json:"valueChanged,omitempty"`
+	// Needs lists the keys of the resources this one names by id in the version, which it needs on
+	// the gateway to run. Required marks, on an apply's answer, a change sent because a selected
+	// resource needs it, with RequiredBy the selected key.
+	Needs      []string `json:"needs,omitempty"`
+	Required   bool     `json:"required,omitempty"`
+	RequiredBy string   `json:"requiredBy,omitempty"`
 	// Lines is the resource's document diffed line by line, from what the gateway holds to what is
 	// applied. An unchanged resource has none.
 	Lines []LineOp `json:"lines,omitempty"`

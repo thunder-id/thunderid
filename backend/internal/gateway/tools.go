@@ -356,9 +356,11 @@ func (t *gatewayTools) promote(ctx context.Context, _ *mcp.CallToolRequest, in p
 		}
 		selection = append(selection, change.Key)
 	}
+	// What the source holds is promoted as it is, never widened with what the source does not hold.
+	withDependencies := false
 	result, svcErr := t.versions.Apply(ctx, in.TargetGatewayID, ApplyRequest{
 		Version: source.Applied, DryRun: in.DryRun, Selection: &selection, ConfirmRemovals: in.ConfirmRemovals,
-		Origin: in.SourceGatewayID,
+		Origin: in.SourceGatewayID, WithDependencies: &withDependencies,
 	})
 	return answer("promote the version", result, svcErr)
 }

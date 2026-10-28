@@ -220,8 +220,10 @@ func (s *GatewayToolsTestSuite) TestPromoteSendsWhatTheSourceHolds() {
 		{Key: "role/r5", Change: ChangeAdded},
 	}}, nil)
 	selection := []string{"role/r3", "role/r4"}
+	withDependencies := false
 	s.versions.EXPECT().Apply(mock.Anything, "prod", ApplyRequest{Version: "bbb", DryRun: true,
-		Selection: &selection, Origin: "dev"}).Return(&ApplyResult{GatewayID: "prod", DryRun: true}, nil).Once()
+		Selection: &selection, Origin: "dev", WithDependencies: &withDependencies}).Return(
+		&ApplyResult{GatewayID: "prod", DryRun: true}, nil).Once()
 
 	s.call("promote_gateway",
 		map[string]any{"sourceGatewayId": "dev", "targetGatewayId": "prod", "dryRun": true})
