@@ -1304,7 +1304,7 @@ func (suite *UtilsTestSuite) TestResolveTokenConfig_RefreshToken_FallsBackToServ
 
 func (suite *UtilsTestSuite) TestBuildAccessEvaluationsRequest_SetsTheContextOnEveryEvaluation() {
 	details := json.RawMessage(`[{"type":"payment_initiation"}]`)
-	request := BuildAccessEvaluationsRequest("app-1", "app", nil, nil, []string{"read", "write"}, "rs-1",
+	request := BuildAccessEvaluationsRequest("app-1", "app", nil, nil, []string{"read", "write"}, "rs-1", "",
 		map[string]interface{}{providers.AccessEvaluationContextAuthorizationDetails: details})
 
 	suite.Require().Len(request.Evaluations, 2)
@@ -1312,6 +1312,6 @@ func (suite *UtilsTestSuite) TestBuildAccessEvaluationsRequest_SetsTheContextOnE
 		suite.Equal(details, evaluation.Context[providers.AccessEvaluationContextAuthorizationDetails])
 	}
 
-	request = BuildAccessEvaluationsRequest("app-1", "app", nil, nil, []string{"read"}, "rs-1", nil)
+	request = BuildAccessEvaluationsRequest("app-1", "app", nil, nil, []string{"read"}, "rs-1", "", nil)
 	suite.Nil(request.Evaluations[0].Context, "no context is sent when there is none")
 }

@@ -55,16 +55,19 @@ type RoleServiceInterface interface {
 	ValidateGroupMembershipRemoval(ctx context.Context, groupID, memberID string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	IsRoleDeclarative(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
-	// GetAuthorizedPermissionsByResourceServer counts only the assignments made in assignmentOUID
-	// when one is given, and assignments made anywhere otherwise.
+	// GetAuthorizedPermissionsByResourceServer returns the requested permissions the entity, its
+	// groups, or the named roles hold. A non-empty assignmentOUID counts only the assignments made in
+	// that organization unit and the named roles it owns; otherwise assignments made anywhere and
+	// every named role count.
 	GetAuthorizedPermissionsByResourceServer(
 		ctx context.Context, entityID string, groups, roleIDs []string, assignmentOUID, resourceServerID string,
 		requestedPermissions []string,
 	) ([]string, *tidcommon.ServiceError)
 	// GetAllPermissions returns every permission the entity and/or groups hold, keyed by resource
-	// server. Unlike GetAuthorizedPermissionsByResourceServer it enumerates rather than checks.
+	// server. Unlike GetAuthorizedPermissionsByResourceServer it enumerates rather than checks. A
+	// non-empty assignmentOUID counts only the assignments made in that organization unit.
 	GetAllPermissions(
-		ctx context.Context, entityID string, groupIDs []string,
+		ctx context.Context, entityID string, groupIDs []string, assignmentOUID string,
 	) (security.PermissionSet, *tidcommon.ServiceError)
 	// GetUserRoles returns the names of the roles assigned to the entity directly or through its
 	// groups, counting only the assignments made in assignmentOUID when one is given.
@@ -739,7 +742,7 @@ func (rs *roleService) GetAuthorizedPermissionsByResourceServer(
 // roles, keyed by resource server. Unlike GetAuthorizedPermissionsByResourceServer, no entity and no
 // groups is not an error: callers legitimately ask what a set of groups confers.
 func (rs *roleService) GetAllPermissions(
-	ctx context.Context, entityID string, groupIDs []string,
+	ctx context.Context, entityID string, groupIDs []string, assignmentOUID string,
 ) (security.PermissionSet, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
@@ -750,7 +753,7 @@ func (rs *roleService) GetAllPermissions(
 		return security.PermissionSet{}, nil
 	}
 
-	resourcePermissions, err := rs.roleStore.GetAllPermissionsForAssignees(ctx, entityID, groupIDs)
+	resourcePermissions, err := rs.roleStore.GetAllPermissionsForAssignees(ctx, entityID, groupIDs, assignmentOUID)
 	if err != nil {
 		logger.Error(ctx, "Failed to enumerate permissions for assignees",
 			log.MaskedString(log.LoggerKeyUserID, entityID),
@@ -1011,7 +1014,7 @@ func (rs *roleService) groupScopes(ctx context.Context, groupID string) (
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	permissionSet, svcErr := rs.GetAllPermissions(ctx, "", append([]string{groupID}, ancestors...))
+	permissionSet, svcErr := rs.GetAllPermissions(ctx, "", append([]string{groupID}, ancestors...), "")
 	if svcErr != nil {
 		return nil, svcErr
 	}

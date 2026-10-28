@@ -586,23 +586,23 @@ func (c *compositeRoleStore) crossStoreAuthorizedPermissions(
 // assignment, a declarative role with a YAML-declared assignment, and a declarative role whose
 // assignment was added at runtime. The third case is why no single store can answer this.
 func (c *compositeRoleStore) GetAllPermissionsForAssignees(
-	ctx context.Context, entityID string, groupIDs []string,
+	ctx context.Context, entityID string, groupIDs []string, assignmentOUID string,
 ) ([]ResourcePermissions, error) {
 	if entityID == "" && len(groupIDs) == 0 {
 		return []ResourcePermissions{}, nil
 	}
 
-	dbPerms, err := c.dbStore.GetAllPermissionsForAssignees(ctx, entityID, groupIDs)
+	dbPerms, err := c.dbStore.GetAllPermissionsForAssignees(ctx, entityID, groupIDs, assignmentOUID)
 	if err != nil {
 		return nil, err
 	}
 
-	filePerms, err := c.fileStore.GetAllPermissionsForAssignees(ctx, entityID, groupIDs)
+	filePerms, err := c.fileStore.GetAllPermissionsForAssignees(ctx, entityID, groupIDs, assignmentOUID)
 	if err != nil {
 		return nil, err
 	}
 
-	crossStorePerms, err := c.crossStoreAllPermissions(ctx, entityID, groupIDs)
+	crossStorePerms, err := c.crossStoreAllPermissions(ctx, entityID, groupIDs, assignmentOUID)
 	if err != nil {
 		return nil, err
 	}
@@ -615,9 +615,9 @@ func (c *compositeRoleStore) GetAllPermissionsForAssignees(
 // confers nothing and is skipped, while a corrupt one is returned as an error, since its contents
 // are unknown.
 func (c *compositeRoleStore) crossStoreAllPermissions(
-	ctx context.Context, entityID string, groupIDs []string,
+	ctx context.Context, entityID string, groupIDs []string, assignmentOUID string,
 ) ([]ResourcePermissions, error) {
-	roleIDs, err := c.dbStore.GetEntityRoleIDs(ctx, entityID, groupIDs, "")
+	roleIDs, err := c.dbStore.GetEntityRoleIDs(ctx, entityID, groupIDs, assignmentOUID)
 	if err != nil {
 		return nil, err
 	}

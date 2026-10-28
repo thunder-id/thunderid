@@ -219,7 +219,6 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_E
 		context.Background(),
 		"",
 		[]string{}, nil, "", "",
-
 		[]string{"perm1"})
 
 	assert.NoError(suite.T(), err)
@@ -318,6 +317,30 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetUserRoles_RestrictedToA
 	inChild, err := suite.store.GetUserRoles(context.Background(), "app1", nil, "ou-child")
 	suite.Require().NoError(err)
 	suite.Equal([]string{"Admin"}, inChild)
+}
+
+func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_RoleOUFilter() {
+	for _, role := range []RoleWithPermissionsAndAssignments{
+		{ID: "role-ou1", Name: "OU1 Admin", OUID: "ou1"},
+		{ID: "role-ou2", Name: "OU2 Admin", OUID: "ou2"},
+	} {
+		role.Assignments = []RoleAssignment{{ID: "user1", Type: assigneeTypeEntity}}
+		role.Permissions = []ResourcePermissions{
+			{ResourceServerID: "rs1", Permissions: []string{"perm-" + role.OUID}},
+		}
+		suite.seedRole(role)
+	}
+	requested := []string{"perm-ou1", "perm-ou2"}
+
+	perms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
+		context.Background(), "user1", nil, nil, "ou1", "", requested)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), []string{"perm-ou1"}, perms)
+
+	perms, err = suite.store.GetAuthorizedPermissionsByResourceServer(
+		context.Background(), "user1", nil, nil, "", "", requested)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), requested, perms)
 }
 
 // Test GetAuthorizedPermissions with multiple roles and multiple resource servers
@@ -535,24 +558,24 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_M
 
 	// App entity resolves permissions via entity ID.
 	appPerms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		context.Background(), "app-uuid-1", []string{}, nil, "", "",
-		[]string{"perm1", "perm2", "perm3"})
+		context.Background(), "app-uuid-1", []string{}, nil, "",
+		"", []string{"perm1", "perm2", "perm3"})
 
 	assert.NoError(suite.T(), err)
 	assert.ElementsMatch(suite.T(), []string{"perm1", "perm2"}, appPerms)
 
 	// User entity resolves permissions via entity ID.
 	userPerms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		context.Background(), "user-uuid-1", []string{}, nil, "", "",
-		[]string{"perm1", "perm2", "perm3"})
+		context.Background(), "user-uuid-1", []string{}, nil, "",
+		"", []string{"perm1", "perm2", "perm3"})
 
 	assert.NoError(suite.T(), err)
 	assert.ElementsMatch(suite.T(), []string{"perm1", "perm2"}, userPerms)
 
 	// Group-only resolution still works.
 	groupPerms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		context.Background(), "", []string{"group1"}, nil, "", "",
-		[]string{"perm1"})
+		context.Background(), "", []string{"group1"}, nil, "",
+		"", []string{"perm1"})
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), []string{"perm1"}, groupPerms)

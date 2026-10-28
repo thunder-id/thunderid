@@ -65,11 +65,10 @@ const (
 	shippedSignInAction = "action_001"
 )
 
-// The console the root operator signs in to, and the bootstrap organization unit and system resource
-// server the root permission lives in.
+// The console the root operator signs in to, and the system resource server the root permission
+// lives in.
 const (
 	boundaryConsoleURI     = "https://localhost:8095/console"
-	bootstrapOUID          = "01900000-0000-7000-8000-000000000001"
 	systemResourceServerID = "01900000-0000-7000-8000-000000000020"
 )
 

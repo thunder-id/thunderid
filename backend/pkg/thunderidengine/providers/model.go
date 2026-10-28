@@ -1573,10 +1573,11 @@ type AccessEvaluationRequest struct {
 	Subject        Subject                        `json:"subject"`
 	ResourceServer AccessEvaluationResourceServer `json:"resourceServer"`
 	Permission     Permission                     `json:"permission"`
-	Context        map[string]interface{}         `json:"context,omitempty"`
-	// OUID, when set, evaluates the subject's role assignments, direct and through its groups, in
-	// this organization unit only. Without it, assignments made in any organization unit count.
-	OUID string `json:"ouId,omitempty"`
+	// OUID is the organization unit the evaluation is bounded to: only the subject's role assignments,
+	// direct and through its groups, made in it count. Optional: when empty, the request's accessing
+	// organization unit applies, and otherwise the subject's own organization unit.
+	OUID    string                 `json:"ouId,omitempty"`
+	Context map[string]interface{} `json:"context,omitempty"`
 }
 
 // AccessEvaluationResponse represents a single fine-grained access evaluation response.

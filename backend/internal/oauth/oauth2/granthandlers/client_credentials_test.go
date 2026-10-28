@@ -25,6 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzdetailprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
@@ -175,11 +176,12 @@ func TestBuildAccessEvaluationsRequestUsesEntityCategory(t *testing.T) {
 		{category: providers.EntityCategoryUser, typeName: providers.EntityCategoryUser.String()},
 	} {
 		request := tokenservice.BuildAccessEvaluationsRequest(
-			"entity-1", test.category.String(), nil, nil, []string{"bookings:view"}, "rs-1", nil,
+			"entity-1", test.category.String(), nil, nil, []string{"bookings:view"}, "rs-1", "ou-1", nil,
 		)
 
 		assert.Len(t, request.Evaluations, 1)
 		assert.Equal(t, test.typeName, request.Evaluations[0].Subject.Category)
+		assert.Equal(t, "ou-1", request.Evaluations[0].OUID)
 	}
 }
 
@@ -376,6 +378,28 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_JWTGenerati
 	assert.Equal(suite.T(), "Failed to generate token", errResp.ErrorDescription)
 
 	suite.mockTokenBuilder.AssertExpectations(suite.T())
+}
+
+// An OU-qualified request evaluates the client's roles and groups in its owner's organization unit,
+// not in the unit the request names.
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_OUQualifiedRequestEvaluatesInOwnerOU() {
+	tokenRequest := &model.TokenRequest{
+		GrantType:    "client_credentials",
+		ClientID:     testClientID,
+		ClientSecret: "secret123",
+		Scope:        "read",
+	}
+
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, testAppOUID, defaultRSID,
+		[]string{"read"}, []string{"read"})
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).
+		Return(nil, errors.New("stop after the evaluation"))
+
+	ctx := syscontext.WithAccessingOUID(context.Background(), "customer-ou")
+	_, errResp := suite.handler.HandleGrant(ctx, tokenRequest, suite.oauthApp)
+
+	assert.NotNil(suite.T(), errResp)
+	suite.mockAuthzService.AssertExpectations(suite.T())
 }
 
 func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_NilTokenAttributes() {

@@ -1542,6 +1542,34 @@ func (suite *RoleStoreTestSuite) TestGetUserRoles_RestrictedToAnOU() {
 	suite.Equal([]string{"Admin"}, roles)
 }
 
+// An organization unit bounds the assignments to the ones made there, and a named role, which needs no
+// assignment, to the roles that unit owns.
+func (suite *RoleStoreTestSuite) TestBuildAuthorizedPermissionsQuery_NamedRolesBoundedToOwnerOU() {
+	query, args := buildAuthorizedPermissionsQuery(
+		testUserID1, []string{"group1"}, []string{"role1"}, "ou1", "rs1", []string{"system:ou"}, testDeploymentID)
+
+	suite.Contains(query.PostgresQuery, "ra.ASSIGNEE_ID = $2 AND ra.ASSIGNMENT_OU_ID = $3)")
+	suite.Contains(query.PostgresQuery, "ra.ASSIGNEE_ID IN ($4) AND ra.ASSIGNMENT_OU_ID = $5)")
+	suite.Contains(query.PostgresQuery,
+		`(rp.ROLE_ID IN ($6) AND rp.ROLE_ID IN `+
+			`(SELECT r.ID FROM "ROLE" r WHERE r.DEPLOYMENT_ID = $1 AND r.OU_ID = $7))`)
+	suite.Contains(query.SQLiteQuery,
+		`(rp.ROLE_ID IN (?) AND rp.ROLE_ID IN (SELECT r.ID FROM "ROLE" r WHERE r.DEPLOYMENT_ID = $1 AND r.OU_ID = ?))`)
+	suite.Contains(query.PostgresQuery, "rp.RESOURCE_SERVER_ID = $8")
+	suite.Contains(query.PostgresQuery, "rp.PERMISSION IN ($9)")
+	suite.Equal([]interface{}{testDeploymentID, testUserID1, "ou1", "group1", "ou1", "role1", "ou1", "rs1",
+		"system:ou"}, args)
+}
+
+func (suite *RoleStoreTestSuite) TestBuildAuthorizedPermissionsQuery_NoOUFilter() {
+	query, args := buildAuthorizedPermissionsQuery(
+		testUserID1, nil, []string{"role1"}, "", "rs1", []string{"system:ou"}, testDeploymentID)
+
+	suite.NotContains(query.PostgresQuery, "OU_ID")
+	suite.NotContains(query.SQLiteQuery, "OU_ID")
+	suite.Equal([]interface{}{testDeploymentID, testUserID1, "role1", "rs1", "system:ou"}, args)
+}
+
 func (suite *RoleStoreTestSuite) TestGetAuthorizedPermissions_NilGroupsHandled() {
 	userID := testUserID1
 	requestedPermissions := []string{"perm1"}

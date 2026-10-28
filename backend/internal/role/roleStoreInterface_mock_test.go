@@ -644,8 +644,8 @@ func (_c *roleStoreInterfaceMock_DeleteRolePermission_Call) RunAndReturn(run fun
 }
 
 // GetAllPermissionsForAssignees provides a mock function for the type roleStoreInterfaceMock
-func (_mock *roleStoreInterfaceMock) GetAllPermissionsForAssignees(ctx context.Context, entityID string, groupIDs []string) ([]ResourcePermissions, error) {
-	ret := _mock.Called(ctx, entityID, groupIDs)
+func (_mock *roleStoreInterfaceMock) GetAllPermissionsForAssignees(ctx context.Context, entityID string, groupIDs []string, assignmentOUID string) ([]ResourcePermissions, error) {
+	ret := _mock.Called(ctx, entityID, groupIDs, assignmentOUID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetAllPermissionsForAssignees")
@@ -653,18 +653,18 @@ func (_mock *roleStoreInterfaceMock) GetAllPermissionsForAssignees(ctx context.C
 
 	var r0 []ResourcePermissions
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string) ([]ResourcePermissions, error)); ok {
-		return returnFunc(ctx, entityID, groupIDs)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string, string) ([]ResourcePermissions, error)); ok {
+		return returnFunc(ctx, entityID, groupIDs, assignmentOUID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string) []ResourcePermissions); ok {
-		r0 = returnFunc(ctx, entityID, groupIDs)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string, string) []ResourcePermissions); ok {
+		r0 = returnFunc(ctx, entityID, groupIDs, assignmentOUID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]ResourcePermissions)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, []string) error); ok {
-		r1 = returnFunc(ctx, entityID, groupIDs)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, []string, string) error); ok {
+		r1 = returnFunc(ctx, entityID, groupIDs, assignmentOUID)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -680,11 +680,12 @@ type roleStoreInterfaceMock_GetAllPermissionsForAssignees_Call struct {
 //   - ctx context.Context
 //   - entityID string
 //   - groupIDs []string
-func (_e *roleStoreInterfaceMock_Expecter) GetAllPermissionsForAssignees(ctx any, entityID any, groupIDs any) *roleStoreInterfaceMock_GetAllPermissionsForAssignees_Call {
-	return &roleStoreInterfaceMock_GetAllPermissionsForAssignees_Call{Call: _e.mock.On("GetAllPermissionsForAssignees", ctx, entityID, groupIDs)}
+//   - assignmentOUID string
+func (_e *roleStoreInterfaceMock_Expecter) GetAllPermissionsForAssignees(ctx any, entityID any, groupIDs any, assignmentOUID any) *roleStoreInterfaceMock_GetAllPermissionsForAssignees_Call {
+	return &roleStoreInterfaceMock_GetAllPermissionsForAssignees_Call{Call: _e.mock.On("GetAllPermissionsForAssignees", ctx, entityID, groupIDs, assignmentOUID)}
 }
 
-func (_c *roleStoreInterfaceMock_GetAllPermissionsForAssignees_Call) Run(run func(ctx context.Context, entityID string, groupIDs []string)) *roleStoreInterfaceMock_GetAllPermissionsForAssignees_Call {
+func (_c *roleStoreInterfaceMock_GetAllPermissionsForAssignees_Call) Run(run func(ctx context.Context, entityID string, groupIDs []string, assignmentOUID string)) *roleStoreInterfaceMock_GetAllPermissionsForAssignees_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -698,10 +699,15 @@ func (_c *roleStoreInterfaceMock_GetAllPermissionsForAssignees_Call) Run(run fun
 		if args[2] != nil {
 			arg2 = args[2].([]string)
 		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -712,7 +718,7 @@ func (_c *roleStoreInterfaceMock_GetAllPermissionsForAssignees_Call) Return(reso
 	return _c
 }
 
-func (_c *roleStoreInterfaceMock_GetAllPermissionsForAssignees_Call) RunAndReturn(run func(ctx context.Context, entityID string, groupIDs []string) ([]ResourcePermissions, error)) *roleStoreInterfaceMock_GetAllPermissionsForAssignees_Call {
+func (_c *roleStoreInterfaceMock_GetAllPermissionsForAssignees_Call) RunAndReturn(run func(ctx context.Context, entityID string, groupIDs []string, assignmentOUID string) ([]ResourcePermissions, error)) *roleStoreInterfaceMock_GetAllPermissionsForAssignees_Call {
 	_c.Call.Return(run)
 	return _c
 }

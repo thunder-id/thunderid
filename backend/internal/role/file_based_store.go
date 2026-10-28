@@ -482,7 +482,7 @@ func (f *fileBasedStore) CheckRoleNameExistsExcludingID(
 // GetAllPermissionsForAssignees returns every permission granted to the entity and/or groups by
 // declarative roles assigned to them, grouped by resource server.
 func (f *fileBasedStore) GetAllPermissionsForAssignees(
-	ctx context.Context, entityID string, groupIDs []string,
+	ctx context.Context, entityID string, groupIDs []string, assignmentOUID string,
 ) ([]ResourcePermissions, error) {
 	if entityID == "" && len(groupIDs) == 0 {
 		return []ResourcePermissions{}, nil
@@ -511,7 +511,7 @@ func (f *fileBasedStore) GetAllPermissionsForAssignees(
 			return nil, fmt.Errorf("declarative role %q could not be parsed while enumerating "+
 				"permissions: %w", item.ID.ID, err)
 		}
-		if !matchesAssignee(roleData.Assignments, entityID, groupSet) {
+		if !matchesAssignee(declaredAssignments(roleData, assignmentOUID, ""), entityID, groupSet) {
 			continue
 		}
 		for _, resourcePerms := range roleData.Permissions {
@@ -570,9 +570,11 @@ func (f *fileBasedStore) GetAuthorizedPermissionsByResourceServer(
 			continue
 		}
 		// A role named directly in roleIDs counts even with no matching assignment, the same way
-		// the DB store matches it against ROLE_PERMISSION without requiring a ROLE_ASSIGNMENT row.
+		// the DB store matches it against ROLE_PERMISSION without requiring a ROLE_ASSIGNMENT row,
+		// as long as the organization unit the check is bounded to owns it.
 		assignments := declaredAssignments(roleData, assignmentOUID, "")
-		if !matchesAssignee(assignments, entityID, groupSet) && !roleIDSet[item.ID.ID] {
+		namedInOU := roleIDSet[item.ID.ID] && (assignmentOUID == "" || roleData.OUID == assignmentOUID)
+		if !matchesAssignee(assignments, entityID, groupSet) && !namedInOU {
 			continue
 		}
 		for _, resourcePerms := range roleData.Permissions {

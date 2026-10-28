@@ -146,14 +146,13 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 				evaluationContext = map[string]interface{}{
 					providers.AccessEvaluationContextAuthorizationDetails: authorizationDetails}
 			}
-			evaluationsRequest := tokenservice.BuildAccessEvaluationsRequest(
-				oauthApp.ID, oauthApp.EntityCategory.String(), groupIDs, nil, scopes, targetRS.ID, evaluationContext)
 			// Only the roles the application holds in its own organization unit count, not those an
-			// organization unit it is shared with assigned it, even when the token is for that unit.
-			for i := range evaluationsRequest.Evaluations {
-				evaluationsRequest.Evaluations[i].OUID = oauthApp.OUID
-			}
-			authzResp, svcErr := h.authzService.EvaluateAccessBatch(ctx, evaluationsRequest)
+			// organization unit it is shared with assigned it, even when the request names another unit
+			// to act for. That unit has already narrowed the scopes above.
+			authzResp, svcErr := h.authzService.EvaluateAccessBatch(ctx,
+				tokenservice.BuildAccessEvaluationsRequest(
+					oauthApp.ID, oauthApp.EntityCategory.String(), groupIDs, nil, scopes, targetRS.ID,
+					oauthApp.OUID, evaluationContext))
 			if svcErr != nil {
 				logger.Error(ctx, "Failed to get authorized permissions for app",
 					log.String("appID", oauthApp.ID), log.String("error", svcErr.Error.DefaultValue))
