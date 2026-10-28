@@ -134,10 +134,15 @@ type appliedState struct {
 // Selection names, by key, the changes to send in this apply; the rest are neither written nor
 // removed, and stay on offer for the next apply. Without a selection every change the diff reports
 // is sent; an empty one sends nothing. Nothing about a selection is kept.
+//
+// WithDependencies, on by default, widens a selection to what the selected resources need that the
+// gateway lacks or holds differently, so an application brings the flows and the unit it names.
+// Off, a selection whose resource needs something the gateway lacks is refused.
 type ApplyRequest struct {
-	Version   string    `json:"version,omitempty"`
-	DryRun    bool      `json:"dryRun,omitempty"`
-	Selection *[]string `json:"selection,omitempty"`
+	Version          string    `json:"version,omitempty"`
+	DryRun           bool      `json:"dryRun,omitempty"`
+	Selection        *[]string `json:"selection,omitempty"`
+	WithDependencies *bool     `json:"withDependencies,omitempty"`
 	// LeaveOut names changes to leave out of this apply and the applies after it, until one selects
 	// them. Without a selection, an apply sends every change except those left out.
 	LeaveOut []string `json:"leaveOut,omitempty"`
@@ -197,6 +202,12 @@ type Change struct {
 	// HeldBack marks a change an earlier apply left out for the applies after it. An apply without a
 	// selection leaves it out again; one that selects it sends it and stops holding it back.
 	HeldBack bool `json:"heldBack,omitempty"`
+	// Needs lists the keys of the resources this one names by id in the version, which it needs on
+	// the gateway to run. Required marks, on an apply's answer, a change sent because a selected
+	// resource needs it, with RequiredBy the selected key.
+	Needs      []string `json:"needs,omitempty"`
+	Required   bool     `json:"required,omitempty"`
+	RequiredBy string   `json:"requiredBy,omitempty"`
 	// Lines is the resource's document diffed line by line, from what the gateway holds to what is
 	// applied. An unchanged resource has none.
 	Lines []LineOp `json:"lines,omitempty"`

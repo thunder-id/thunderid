@@ -39,18 +39,21 @@ type appliedVersion struct {
 }
 
 type change struct {
-	Key          string `json:"key"`
-	ResourceType string `json:"resourceType"`
-	ID           string `json:"id"`
-	Change       string `json:"change"`
-	Failed       bool   `json:"failed"`
-	Selected     bool   `json:"selected"`
+	Key          string   `json:"key"`
+	ResourceType string   `json:"resourceType"`
+	ID           string   `json:"id"`
+	Change       string   `json:"change"`
+	Failed       bool     `json:"failed"`
+	Selected     bool     `json:"selected"`
+	Needs        []string `json:"needs"`
+	Required     bool     `json:"required"`
+	RequiredBy   string   `json:"requiredBy"`
 }
 
 type diffResult struct {
-	FromMaster  string   `json:"fromMaster"`
-	ToVersion   string   `json:"toVersion"`
-	Changes     []change `json:"changes"`
+	FromMaster string   `json:"fromMaster"`
+	ToVersion  string   `json:"toVersion"`
+	Changes    []change `json:"changes"`
 }
 
 type applyResult struct {
