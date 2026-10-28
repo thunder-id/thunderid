@@ -264,7 +264,7 @@ The `deployments` tools move configuration from <ProductName /> to the gateways 
 | `capture_configuration_version` | `POST /configuration-versions` |
 | `diff_version` | `GET /gateways/{id}/diff` |
 | `deploy_version` | `POST /gateways/{id}/apply` |
-| `promote_gateway` | Deploys the version one gateway runs to another, leaving out the changes the source holds back, as the Console promotes |
+| `promote_gateway` | Deploys the version one gateway runs to another, leaving out what the source gateway does not hold, and records the source as where each resource came from |
 | `rollback_gateway` | `POST /gateways/{id}/revert` |
 | `list_gateway_variables`, `list_gateway_secrets` | `GET /gateways/{id}/variables`, `GET /gateways/{id}/secrets` |
 | `set_gateway_variable`, `set_gateway_secret` | `PUT /gateways/{id}/variables/{name}`, `PUT /gateways/{id}/secrets/{name}` |

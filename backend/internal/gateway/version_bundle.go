@@ -356,9 +356,6 @@ func changeOf(resource bundleResource, kind ChangeKind) Change {
 func summarize(changes []Change) DiffSummary {
 	var summary DiffSummary
 	for _, change := range changes {
-		if change.Excluded {
-			continue
-		}
 		switch change.Change {
 		case ChangeAdded:
 			summary.Added++

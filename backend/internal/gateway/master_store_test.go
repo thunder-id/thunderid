@@ -131,3 +131,25 @@ func (s *VersionStoreTestSuite) TestAddMasterReportsANumberTakenByAnotherWrite()
 	s.Error(err)
 	s.NotErrorIs(err, errMasterNumberTaken)
 }
+
+// One master is read by its number, with its resources; a number no longer kept reads as none.
+func (s *VersionStoreTestSuite) TestGetMasterAtReadsOneMasterByItsNumber() {
+	master := deployedMaster("v1", "ou-a")
+	manifest, err := manifestOf(master.Entries)
+	s.Require().NoError(err)
+	s.dbClientMock.On("QueryContext", mock.Anything, queryGetMasterAt, "gw-1", 2, storeDeploymentID).
+		Return([]map[string]interface{}{{"seq": int64(2), "hash": master.Hash, "resources": master.Resources,
+			"manifest": manifest, "created_at": "2026-10-28T09:00:00Z"}}, nil).Once()
+	s.dbClientMock.On("QueryContext", mock.Anything, queryGetMasterAt, "gw-1", 1, storeDeploymentID).
+		Return([]map[string]interface{}{}, nil).Once()
+
+	read, err := s.store.GetMasterAt(scoped(), "gw-1", 2)
+	s.Require().NoError(err)
+	s.Equal(2, read.Seq)
+	s.Equal(master.Resources, read.Resources)
+	s.Equal(master.Entries, read.Entries)
+
+	none, err := s.store.GetMasterAt(scoped(), "gw-1", 1)
+	s.Require().NoError(err)
+	s.Nil(none)
+}

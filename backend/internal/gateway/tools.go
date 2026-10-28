@@ -60,9 +60,7 @@ type deployInput struct {
 	Version string `json:"version,omitempty" jsonschema:"The version's hash or a prefix of it, or latest. Defaults to latest"`
 	DryRun  bool   `json:"dryRun,omitempty" jsonschema:"Report what the deploy would do, changing nothing"`
 	//nolint:lll
-	Selection *[]string `json:"selection,omitempty" jsonschema:"The keys, from a dry run's changes, of the changes to deploy. The gateway goes on leaving the others alone until a later deploy selects them. Omit to keep the gateway's standing choice"`
-	//nolint:lll
-	Skip []string `json:"skip,omitempty" jsonschema:"The keys of changes to leave alone in this deploy only, keeping the gateway's standing choice for them"`
+	Selection *[]string `json:"selection,omitempty" jsonschema:"The keys, from a dry run's changes, of the changes to deploy in this deploy only, with what they need. Omit to deploy every change"`
 	//nolint:lll
 	ConfirmRemovals bool `json:"confirmRemovals,omitempty" jsonschema:"Allow a deploy that removes more resources than the deployment's threshold. Set it only after a dry run showed the removals and the user agreed"`
 }
@@ -303,14 +301,15 @@ func (t *gatewayTools) diff(ctx context.Context, _ *mcp.CallToolRequest, in diff
 func (t *gatewayTools) deploy(ctx context.Context, _ *mcp.CallToolRequest, in deployInput,
 ) (*mcp.CallToolResult, restBody, error) {
 	result, svcErr := t.versions.Apply(ctx, in.GatewayID, ApplyRequest{
-		Version: in.Version, DryRun: in.DryRun, Selection: in.Selection, Skip: in.Skip,
+		Version: in.Version, DryRun: in.DryRun, Selection: in.Selection,
 		ConfirmRemovals: in.ConfirmRemovals,
 	})
 	return answer("deploy the version", result, svcErr)
 }
 
 // promote applies the version the source runs to the target, as the console promotes one stage to
-// the next: the changes the source holds back are skipped, because the source does not run them.
+// the next: a resource the source's master does not hold as deployed, because the source refused it
+// or never received it, is not sent, and each resource sent records the source as its origin.
 func (t *gatewayTools) promote(ctx context.Context, _ *mcp.CallToolRequest, in promoteInput,
 ) (*mcp.CallToolResult, restBody, error) {
 	if in.SourceGatewayID == in.TargetGatewayID {
@@ -323,19 +322,42 @@ func (t *gatewayTools) promote(ctx context.Context, _ *mcp.CallToolRequest, in p
 	if source.Applied == "" {
 		return nil, nil, fmt.Errorf("failed to promote: the source gateway runs no version yet")
 	}
-	// What the source holds back of the version it runs is what applying it there again leaves alone.
-	held, svcErr := t.versions.Apply(ctx, in.SourceGatewayID, ApplyRequest{Version: source.Applied, DryRun: true})
+	master, svcErr := t.versions.GetMaster(ctx, in.SourceGatewayID)
 	if svcErr != nil {
-		return nil, nil, toolError("read what the source gateway holds back", svcErr)
+		return nil, nil, toolError("read what the source gateway holds", svcErr)
 	}
-	skip := []string{}
-	for _, change := range held.Diff.Changes {
-		if change.Excluded && change.Change != ChangeUnchanged {
-			skip = append(skip, change.Key)
+	version, svcErr := t.versions.GetVersion(ctx, source.Applied)
+	if svcErr != nil {
+		return nil, nil, toolError("read the version the source gateway runs", svcErr)
+	}
+	// A resource is promoted only when the source holds it deployed as the version has it: an apply
+	// that left it out recorded the version all the same while the source kept an earlier document.
+	inVersion := map[string]string{}
+	for _, resource := range parseBundle(version.Resources) {
+		inVersion[resource.key()] = contentHash(resource.Content)
+	}
+	deployed := map[string]bool{}
+	for _, entry := range master.Entries {
+		if entry.State == EntryDeployed && entry.ContentHash == inVersion[entry.Key] {
+			deployed[entry.Key] = true
 		}
 	}
+	diff, svcErr := t.versions.Diff(ctx, in.TargetGatewayID, source.Applied)
+	if svcErr != nil {
+		return nil, nil, toolError("diff the target gateway", svcErr)
+	}
+	selection := []string{}
+	for _, change := range diff.Changes {
+		if change.Change == ChangeUnchanged {
+			continue
+		}
+		if (change.Change == ChangeAdded || change.Change == ChangeUpdated) && !deployed[change.Key] {
+			continue
+		}
+		selection = append(selection, change.Key)
+	}
 	result, svcErr := t.versions.Apply(ctx, in.TargetGatewayID, ApplyRequest{
-		Version: source.Applied, DryRun: in.DryRun, Skip: skip, ConfirmRemovals: in.ConfirmRemovals,
+		Version: source.Applied, DryRun: in.DryRun, Selection: &selection, ConfirmRemovals: in.ConfirmRemovals,
 		Origin: in.SourceGatewayID,
 	})
 	return answer("promote the version", result, svcErr)

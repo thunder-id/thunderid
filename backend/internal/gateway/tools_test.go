@@ -162,11 +162,10 @@ func (s *GatewayToolsTestSuite) TestDeployAnswersWithTheApplyResult() {
 	}
 	selection := []string{"agent/a1"}
 	s.versions.EXPECT().Apply(mock.Anything, "prod", ApplyRequest{Version: "bbb", Selection: &selection,
-		Skip: []string{"role/r1"}, ConfirmRemovals: true}).Return(result, nil).Once()
+		ConfirmRemovals: true}).Return(result, nil).Once()
 
 	answer := s.call("deploy_version", map[string]any{
-		"gatewayId": "prod", "version": "bbb", "selection": []string{"agent/a1"}, "skip": []string{"role/r1"},
-		"confirmRemovals": true,
+		"gatewayId": "prod", "version": "bbb", "selection": []string{"agent/a1"}, "confirmRemovals": true,
 	})
 
 	s.JSONEq(s.restJSON(result), answer)
@@ -201,17 +200,28 @@ func (s *GatewayToolsTestSuite) TestAServiceErrorIsReportedWithItsCode() {
 	s.Contains(string(raw), "GTW-1010")
 }
 
-// A promotion applies what the source runs, leaving out what the source holds back.
-func (s *GatewayToolsTestSuite) TestPromoteSkipsWhatTheSourceHoldsBack() {
+// A promotion applies what the source runs, leaving out an addition or update the source's master does
+// not hold as deployed with the version's content, and names the source as the origin.
+func (s *GatewayToolsTestSuite) TestPromoteSendsWhatTheSourceHolds() {
 	s.versions.EXPECT().GetApplied(mock.Anything, "dev").Return(devApplied, nil)
-	s.versions.EXPECT().Apply(mock.Anything, "dev", ApplyRequest{Version: "bbb", DryRun: true}).Return(
-		&ApplyResult{GatewayID: "dev", DryRun: true, Diff: Diff{Changes: []Change{
-			{Key: "role/r1", Change: ChangeAdded, Excluded: true},
-			{Key: "role/r2", Change: ChangeUnchanged, Excluded: true},
-			{Key: "role/r3", Change: ChangeUpdated},
-		}}}, nil).Once()
+	role := func(id string) string { return "resource_type: role\nid: " + id + "\nname: " + id }
+	s.versions.EXPECT().GetMaster(mock.Anything, "dev").Return(&Master{GatewayID: "dev", Entries: []MasterEntry{
+		{Key: "role/r1", State: EntryFailed, ContentHash: contentHash(role("r1"))},
+		{Key: "role/r3", State: EntryDeployed, ContentHash: contentHash(role("r3"))},
+		{Key: "role/r5", State: EntryDeployed, ContentHash: contentHash(role("r5-earlier"))},
+	}}, nil)
+	s.versions.EXPECT().GetVersion(mock.Anything, "bbb").Return(&Version{Hash: "bbb",
+		Resources: joinBundle([]string{role("r1"), role("r2"), role("r3"), role("r5")})}, nil)
+	s.versions.EXPECT().Diff(mock.Anything, "prod", "bbb").Return(&Diff{Changes: []Change{
+		{Key: "role/r1", Change: ChangeAdded},
+		{Key: "role/r2", Change: ChangeUnchanged},
+		{Key: "role/r3", Change: ChangeUpdated},
+		{Key: "role/r4", Change: ChangeDeleted},
+		{Key: "role/r5", Change: ChangeAdded},
+	}}, nil)
+	selection := []string{"role/r3", "role/r4"}
 	s.versions.EXPECT().Apply(mock.Anything, "prod", ApplyRequest{Version: "bbb", DryRun: true,
-		Skip: []string{"role/r1"}, Origin: "dev"}).Return(&ApplyResult{GatewayID: "prod", DryRun: true}, nil).Once()
+		Selection: &selection, Origin: "dev"}).Return(&ApplyResult{GatewayID: "prod", DryRun: true}, nil).Once()
 
 	s.call("promote_gateway",
 		map[string]any{"sourceGatewayId": "dev", "targetGatewayId": "prod", "dryRun": true})

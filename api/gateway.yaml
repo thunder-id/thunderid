@@ -215,7 +215,7 @@ paths:
     get:
       tags: [Gateways]
       summary: Get the version a gateway holds
-      description: Reports the version last applied to the gateway, and the one a revert would return it to. A gateway nothing was applied to holds neither.
+      description: Reports the version last applied to the gateway, whether the gateway holds it whole or partly (N of M of its resources), and the one a revert would return it to. A gateway nothing was applied to holds neither.
       responses:
         "200":
           description: What the gateway holds
@@ -236,8 +236,8 @@ paths:
       tags: [Gateways]
       summary: Get the configuration a gateway runs
       description: |
-        Returns every resource of the version last applied to the gateway, each in the shape the
-        resource's own read returns, for example what `GET /applications/{id}` returns for an
+        Returns every resource the gateway's master holds, which is what the gateway accepted, each in
+        the shape the resource's own read returns and tagged with the version that sent it, for example what `GET /applications/{id}` returns for an
         application. A console shows the configuration as the gateway runs it from this, rather than
         as this deployment holds it now, which may have moved on since the apply.
 
@@ -246,13 +246,13 @@ paths:
         masked the same way, and user credentials are never returned. A gateway nothing was applied to
         runs nothing: `resources` is empty and there is no `version`.
 
-        This is the version recorded as applied, whole. An apply is recorded even when the gateway
-        refused to write some of its resources, since every later apply sends the version whole and
-        tries them again (see `ApplyResult.recorded`), so a resource the gateway refused on the last
-        apply is listed here all the same. The apply's own result names what the gateway refused.
+        A version applied in part, because a selection left changes out or the gateway refused some
+        resources, is shown as far as the gateway holds it: `complete` is false, a resource the gateway
+        never accepted is not listed, and one it still runs from an earlier version is listed with
+        that version as its `sourceVersion`.
       responses:
         "200":
-          description: The version recorded as applied to the gateway
+          description: What the gateway holds
           content:
             application/json:
               schema:
@@ -395,8 +395,11 @@ paths:
       tags: [Gateways]
       summary: Revert a gateway to the version it held before
       description: |
-        Applies the version the gateway held before the one it holds now, removing what that version
-        does not have. It goes back one step only: afterwards the gateway has no earlier version to
+        Returns the gateway to the master it held before the version it holds now, which is that
+        earlier version as far as the gateway held it: a version applied in part is returned to in
+        part, and each resource keeps the version that sent it. What that master does not hold is
+        removed. A gateway whose earlier master is no longer kept is returned to the earlier version
+        whole. It goes back one step only: afterwards the gateway has no earlier version to
         revert to, and another revert is refused (`GTW-1016`) until a later apply. Like an apply, it is
         refused while the gateway lacks a value that version refers to.
       requestBody:
@@ -837,7 +840,10 @@ components:
           type: string
         version:
           type: string
-          description: The hash of the version the gateway applied. Absent when nothing was applied.
+          description: The hash of the version recorded as applied. Absent when nothing was applied.
+        complete:
+          type: boolean
+          description: Whether the gateway holds that version whole. False while it is partly applied.
         appliedAt:
           type: string
           format: date-time
@@ -861,6 +867,9 @@ components:
         id:
           type: string
           description: The resource's id, or its name for a resource exported without one.
+        sourceVersion:
+          type: string
+          description: The hash of the version the apply that wrote the resource sent it from.
         resource:
           type: object
           additionalProperties: true
@@ -921,6 +930,22 @@ components:
           description: The user who applied the version, or reverted the gateway to it. Left out when the user's name cannot be read.
           allOf:
             - $ref: '#/components/schemas/Actor'
+        complete:
+          type: boolean
+          description: |
+            Whether the gateway holds the version whole. An apply whose selection left changes out, or
+            whose import the gateway refused in part, records the version as partly applied; the diff
+            goes on offering the rest, and the apply that brings the gateway level with the version
+            records it complete.
+        resourcesHeld:
+          type: integer
+          description: How many of the version's resources the gateway holds as the version has them.
+        resourcesTotal:
+          type: integer
+          description: How many resources the version has.
+        master:
+          type: string
+          description: The hash of the master the apply left.
     Actor:
       type: object
       description: |
@@ -1074,11 +1099,13 @@ components:
         recorded:
           type: boolean
           description: |
-            Whether the gateway is now recorded as holding the version. A dry run never records. A
-            resource the gateway refused to write, which `import` names, does not stop it, since every
-            later apply sends the version whole. A removal it refused, or did not confirm, does: the
-            version is left unrecorded, so the next apply works from the version held before and sends
-            the removal again.
+            Whether the version is now recorded as applied to the gateway. A dry run never records.
+            A selection that left changes out, or a resource the gateway refused to write or remove,
+            which `import` names, does not stop it: the version is recorded as partly applied, and
+            the next diff offers what the gateway lacks.
+        complete:
+          type: boolean
+          description: Whether the gateway holds the recorded version whole after the apply.
         missing:
           type: object
           description: |

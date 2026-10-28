@@ -123,9 +123,9 @@ func TestEachApplyWritesANewMasterAndADryRunNone(t *testing.T) {
 	assert.Empty(t, masters[0].Resources)
 }
 
-// A master is recorded whatever the applied version does: an apply whose removal the gateway refused
-// is not recorded as the applied version, but the master says what the gateway holds.
-func TestTheMasterIsRecordedEvenWhenTheAppliedVersionIsNot(t *testing.T) {
+// An apply whose removal the gateway refused records the version as partly applied, and the master
+// says what the gateway holds.
+func TestTheMasterKeepsAResourceWhoseRemovalWasRefused(t *testing.T) {
 	f := newVersionFixture(t)
 	f.capture(t, "ou-a", "ou-b")
 	f.capture(t, "ou-a")
@@ -137,7 +137,8 @@ func TestTheMasterIsRecordedEvenWhenTheAppliedVersionIsNot(t *testing.T) {
 	result, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2)})
 
 	require.Nil(t, svcErr)
-	assert.False(t, result.Recorded)
+	assert.True(t, result.Recorded)
+	assert.False(t, result.Complete)
 	assert.NotEmpty(t, result.Master)
 	master, _ := f.svc.GetMaster(context.Background(), "gw-1")
 	assert.Equal(t, 2, master.Seq)
@@ -154,10 +155,12 @@ func TestAGatewayWithAnAppliedVersionIsGivenItsFirstMaster(t *testing.T) {
 	f := newVersionFixture(t)
 	f.capture(t, "ou-a", "ou-b")
 	bob := signedIn("u-2", nil)
-	_, svcErr := f.svc.Apply(bob, "gw-1", ApplyRequest{Selection: &[]string{"organization_unit/ou-a"}})
+	_, svcErr := f.svc.Apply(bob, "gw-1", ApplyRequest{})
 	require.Nil(t, svcErr)
-	// As a gateway stood before masters were recorded.
+	// As a gateway stood before masters were recorded: a version applied, and a unit left alone.
 	delete(f.versions.masters, "gw-1")
+	f.versions.excluded = map[string]map[string]excludedResource{"gw-1": {
+		"organization_unit/ou-b": {Key: "organization_unit/ou-b", Type: "organization_unit", ID: "ou-b"}}}
 
 	master, svcErr := f.svc.GetMaster(context.Background(), "gw-1")
 
@@ -285,7 +288,7 @@ func (c *collidingMasterStore) AddMaster(context.Context, Master) (*Master, erro
 func TestAMasterThatFailsToRecordFailsTheApply(t *testing.T) {
 	f := newVersionFixture(t)
 	f.capture(t, "ou-a")
-	f.versions.masters = map[string][]Master{"gw-1": {*deployedMaster("other", "ou-a")}}
+	f.versions.masters = map[string][]Master{"gw-1": {*deployedMaster("other", "ou-b")}}
 	f.versions.masters["gw-1"][0].Seq = 1
 	store := &failingMasterStore{fakeVersionStore: f.versions}
 	f.svc = newVersionService(&fakeStore{gateways: []Gateway{{ID: "gw-1", BaseURL: "https://dp.test",
