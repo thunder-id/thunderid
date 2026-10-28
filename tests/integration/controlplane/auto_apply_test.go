@@ -68,11 +68,11 @@ func (ts *ControlPlaneTestSuite) TestAChangeIsAppliedToTheDefaultGatewayWhenAuto
 
 	// The first gateway registered becomes the default, so this one is registered first and then
 	// loses that to the next: only the default gateway is applied to.
-	other := newApplyGateway(0)
-	ts.T().Cleanup(other.server.Close)
+	other := newApplyGateway()
+	ts.T().Cleanup(other.close)
 	ts.registerGateway(other.server)
-	g := newApplyGateway(0)
-	ts.T().Cleanup(g.server.Close)
+	g := newApplyGateway()
+	ts.T().Cleanup(g.close)
 	ts.registerDefaultGateway(g.server)
 
 	ts.createResourceServer(unique("CP Auto Apply Orders"), "https://"+unique("cp-auto-apply")+".example.com")

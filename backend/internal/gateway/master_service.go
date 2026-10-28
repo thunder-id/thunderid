@@ -116,9 +116,13 @@ func (s *versionService) master(ctx context.Context, gatewayID string) (*Master,
 		s.logger.Error(ctx, "Failed to read what the gateway leaves alone", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	// A version a gateway holds is never pruned, and only a version still kept is recorded, so it is
+	// always there. Were it not, what the gateway holds could not be told.
 	version, svcErr := s.bySeq(ctx, applied.AppliedVersion)
 	if svcErr != nil {
-		return nil, svcErr
+		s.logger.Error(ctx, "The version a gateway holds is not kept", log.String("gatewayId", gatewayID),
+			log.Int("version", applied.AppliedVersion))
+		return nil, &tidcommon.InternalServerError
 	}
 	at := time.Now().UTC()
 	if applied.AppliedAt != nil {

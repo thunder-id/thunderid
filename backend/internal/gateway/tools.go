@@ -60,9 +60,7 @@ type deployInput struct {
 	Version string `json:"version,omitempty" jsonschema:"The version's hash or a prefix of it, or latest. Defaults to latest"`
 	DryRun  bool   `json:"dryRun,omitempty" jsonschema:"Report what the deploy would do, changing nothing"`
 	//nolint:lll
-	Selection *[]string `json:"selection,omitempty" jsonschema:"The keys, from a dry run's changes, of the changes to deploy. The gateway goes on leaving the others alone until a later deploy selects them. Omit to keep the gateway's standing choice"`
-	//nolint:lll
-	Skip []string `json:"skip,omitempty" jsonschema:"The keys of changes to leave alone in this deploy only, keeping the gateway's standing choice for them"`
+	Selection *[]string `json:"selection,omitempty" jsonschema:"The keys, from a dry run's changes, of the changes to deploy in this deploy only, with what they need. Omit to deploy every change"`
 	//nolint:lll
 	ConfirmRemovals bool `json:"confirmRemovals,omitempty" jsonschema:"Allow a deploy that removes more resources than the deployment's threshold. Set it only after a dry run showed the removals and the user agreed"`
 }
@@ -163,17 +161,22 @@ func registerMCPTools(server *mcp.Server, tools *gatewayTools) {
 
 Run it with dryRun first and show the user what it would add, update and remove, and any values the
 gateway is missing. A deploy is refused while the gateway lacks a value the version refers to; set it
-on the gateway, then deploy again. The answer's import lists any resource the gateway refused: the rest
-was deployed, and deploying the same version again retries it. Deploying the version a gateway already
-runs again is also how values changed on the gateway take effect.`,
+on the gateway, then deploy again. The answer's import lists any resource the gateway refused among the
+changes this deploy sent; deploying the same version again retries it. A deploy with a selection, or one
+that leaves out changes held back from an earlier deploy, sends only part of the version, so an import
+with no refusals does not mean the gateway holds all of it: the answer's complete says whether it does,
+and diff_version shows what is still owed. Deploying the version a gateway already runs again is also
+how values changed on the gateway take effect.`,
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive},
 	}, tools.deploy)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "promote_gateway",
 		Description: `Deploy the version one gateway runs to another, as the Console promotes one stage to the ` +
-			`next. Only what the source runs is promoted: changes the source holds back stay out. The target's ` +
-			`master records the source gateway's ID as the origin of each resource the promotion writes.
+			`next. It follows the version the source is recorded as running: an addition or update is sent only ` +
+			`when the source holds it deployed as that version has it, and what that version no longer has is ` +
+			`removed from the target. Changes the target holds back stay out. The target's master records the ` +
+			`source gateway's ID as the origin of each resource the promotion writes.
 
 Run it with dryRun first and show the user what it would change on the target.`,
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive},
@@ -304,7 +307,7 @@ func (t *gatewayTools) diff(ctx context.Context, _ *mcp.CallToolRequest, in diff
 func (t *gatewayTools) deploy(ctx context.Context, _ *mcp.CallToolRequest, in deployInput,
 ) (*mcp.CallToolResult, restBody, error) {
 	result, svcErr := t.versions.Apply(ctx, in.GatewayID, ApplyRequest{
-		Version: in.Version, DryRun: in.DryRun, Selection: in.Selection, Skip: in.Skip,
+		Version: in.Version, DryRun: in.DryRun, Selection: in.Selection,
 		ConfirmRemovals: in.ConfirmRemovals,
 	})
 	return answer("deploy the version", result, svcErr)

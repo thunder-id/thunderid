@@ -165,19 +165,17 @@ var (
 		},
 	}
 	// ErrorInvalidSelection is returned when an apply's selection names a resource the diff does not
-	// report, or would leave out a resource too long to keep.
+	// report.
 	ErrorInvalidSelection = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "GTW-1025",
 		Error: tidcommon.I18nMessage{
 			Key:          "error.gatewayservice.invalid_selection",
-			DefaultValue: "The selection or skip names a resource this apply does not report",
+			DefaultValue: "The selection names a resource this apply does not report",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key: "error.gatewayservice.invalid_selection.description",
-			DefaultValue: "Select or skip changes by the keys a diff of this version reports for this gateway. " +
-				"A change cannot be both selected and skipped. A resource whose key is longer than 512 characters, " +
-				"or whose id or name is longer than 255, cannot be left out.",
+			Key:          "error.gatewayservice.invalid_selection.description",
+			DefaultValue: "Select changes by the keys a diff of this version reports for this gateway.",
 		},
 	}
 	// ErrorGatewayPrivateAddress is returned when a call to a gateway was refused before it was made,
