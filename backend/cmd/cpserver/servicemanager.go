@@ -197,6 +197,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	resourceService, resourceExporter, err := resource.Initialize(mux, ouService, authZENPDPService, valueCapture)
 	fatalOnError(ctx, logger, err, "Failed to initialize Resource Service")
+	resourceService.SetSystemFlowExecutor(noSystemFlow)
 	exporters = append(exporters, resourceExporter)
 
 	// Initialize authorization details type management.

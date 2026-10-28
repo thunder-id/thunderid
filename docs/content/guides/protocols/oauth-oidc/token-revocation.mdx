@@ -117,6 +117,10 @@ Deleting a group revokes the tokens its members carry with the permissions of th
 
 Removing a member from a group revokes the tokens the member carries with the permissions of the roles assigned to the group; for a member group, the tokens of its members. This happens whichever way the member is removed: from the Console, through the `POST /groups/{id}/members/remove` API, or through SCIM. Removing a user or group that is not a member revokes nothing. If the revocation fails, no member is removed.
 
+### Action Deletion
+
+Deleting an action revokes every token carrying its scope for the resource server's audience, whoever holds it, and then removes the action. This happens whichever way the action is deleted: from the Console, or through the resource server actions API. If the revocation fails, the action is not deleted.
+
 ### Account Suspension
 
 The suspend flow revokes tokens for the target subject and ends its sessions before placing the suspension. For an application or an agent with an OAuth client, it also revokes tokens issued through that client ID, including user tokens.

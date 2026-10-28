@@ -120,6 +120,7 @@ type ResourceServiceTestSuite struct {
 	mockOU            *oumock.OrganizationUnitServiceInterfaceMock
 	mockTransactioner *fakeTransactioner
 	service           ResourceServiceInterface
+	runs              *systemFlowRuns
 }
 
 // registerCascadeDeleter re-registers the dependency registry with the given cascade deleter
@@ -166,6 +167,8 @@ func (suite *ResourceServiceTestSuite) SetupTest() {
 	// The resource service is its own dependency provider: deletion consults the registry, which
 	// resolves resource/action dependents back through the service.
 	suite.service.SetDependencyRegistry(resourcedependency.Initialize(suite.service))
+	suite.runs = &systemFlowRuns{}
+	suite.service.SetSystemFlowExecutor(suite.runs.execute)
 }
 
 func (suite *ResourceServiceTestSuite) TearDownTest() {

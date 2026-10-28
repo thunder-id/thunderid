@@ -75,6 +75,8 @@ const (
 	scopeLeftThroughAPI          = "left-through-api"
 	scopeKeptThroughAPI          = "kept-through-api"
 	scopeDroppedThroughAPI       = "dropped-through-api"
+	scopeRetiredThroughAPI       = "retired-through-api"
+	scopeRetiredNeighborOfAPI    = "retired-neighbor-of-api"
 	scopeUntouchedByPermEdit     = "untouched-by-perm-edit"
 	scopeUntouchedByGroupDelete  = "untouched-by-group-delete"
 	scopeSharedByMembers         = "shared-by-members"
@@ -139,7 +141,9 @@ var authzFlowResourceScopes = []string{
 	scopeLeftThroughAPI, scopeKeptThroughAPI, scopeDroppedThroughAPI,
 }
 
-var authzFlowActionScopes = []string{scopeRetired, scopeRetiredNeighbor}
+var authzFlowActionScopes = []string{
+	scopeRetired, scopeRetiredNeighbor, scopeRetiredThroughAPI, scopeRetiredNeighborOfAPI,
+}
 
 var authzAdminFlowTestOU = testutils.OrganizationUnit{
 	Handle:      "authz_admin_flow_test_ou",
@@ -616,6 +620,29 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestActionDeletionFlow_Revok
 		"The row is keyed on one scope, so a token carrying a different one must be untouched")
 	ts.False(ts.actionExists(ts.actionIDs[scopeRetired]), "The action must be deleted")
 	delete(ts.actionIDs, scopeRetired)
+}
+
+// Deleting an action through the management API revokes every token carrying its scope, as the action
+// deletion flow does, and leaves tokens carrying another scope alone.
+func (ts *AuthorizationAdministrationFlowTestSuite) TestDeleteActionThroughTheAPI_RevokesTheScope() {
+	ts.createRole("Authz API Retiring Administrator", []string{scopeRetiredThroughAPI, scopeRetiredNeighborOfAPI},
+		testutils.Assignment{ID: ts.appID, Type: "app"})
+	retired := grantedToken(&ts.Suite, authzFlowClient, scopeRetiredThroughAPI)
+	neighbor := grantedToken(&ts.Suite, authzFlowClient, scopeRetiredNeighborOfAPI)
+
+	req, err := http.NewRequest(http.MethodDelete, testServerURL+"/resource-servers/"+ts.resourceServerID+
+		"/actions/"+ts.actionIDs[scopeRetiredThroughAPI], nil)
+	ts.Require().NoError(err)
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err, "Failed to delete the action")
+	resp.Body.Close()
+	ts.Require().Equal(http.StatusNoContent, resp.StatusCode)
+
+	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, retired), "A token carrying the retired scope must be rejected")
+	ts.True(tokenIsActive(&ts.Suite, authzFlowClient, neighbor),
+		"The row is keyed on one scope, so a token carrying a different one must be untouched")
+	ts.False(ts.actionExists(ts.actionIDs[scopeRetiredThroughAPI]), "The action must be deleted")
+	delete(ts.actionIDs, scopeRetiredThroughAPI)
 }
 
 func (ts *AuthorizationAdministrationFlowTestSuite) TestActionDeletionFlow_MissingTargetDoesNotComplete() {
