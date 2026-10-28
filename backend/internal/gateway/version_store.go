@@ -235,6 +235,18 @@ type versionStoreInterface interface {
 	// caller can put a row back exactly as it was; one only excluded keeps a standing choice standing.
 	SetExcluded(ctx context.Context, gatewayID string, exclude []excludedResource, include []string) error
 	DeleteExcluded(ctx context.Context, gatewayID string) error
+	// AddMaster records a gateway's new master, numbered one past its latest. With a token it is
+	// recorded only while that token holds the gateway's lease, and errLeaseLost otherwise.
+	AddMaster(ctx context.Context, master Master, token string) (*Master, error)
+	// GetMaster reads the master a gateway holds now, with its resources, or nil when it has none.
+	GetMaster(ctx context.Context, gatewayID string) (*Master, error)
+	// ListMasters reads a gateway's masters, newest first, with their entries but not their resources.
+	ListMasters(ctx context.Context, gatewayID string) ([]Master, error)
+	// PruneMasters removes a gateway's masters numbered up to and including through.
+	PruneMasters(ctx context.Context, gatewayID string, through int) error
+	DeleteMasters(ctx context.Context, gatewayID string) error
+	// Transact runs work in one transaction, rolled back when work returns an error.
+	Transact(ctx context.Context, work func(txCtx context.Context) error) error
 }
 
 // versionStore keeps versions in the configuration database. It is used whatever the gateway store
@@ -542,6 +554,10 @@ func (s *versionStore) DeleteExcluded(ctx context.Context, gatewayID string) err
 // errVersionRemoved reports that the version being recorded was removed, or replaced as the current
 // version, while it was applied.
 var errVersionRemoved = errors.New("the version was removed while it was applied")
+
+// errApplyNotRecorded rolls back the transaction an apply records its outcome in, when a write in it
+// was refused.
+var errApplyNotRecorded = errors.New("the apply's outcome was not recorded")
 
 // errAppliedChanged reports that another apply recorded the gateway after this one read it.
 var errAppliedChanged = errors.New("another apply to the gateway finished first")

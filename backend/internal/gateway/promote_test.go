@@ -28,7 +28,7 @@ func (s *PromoteTestSuite) SetupTest() {
 }
 
 // A promotion applies the version the source runs to the target, leaving out what the source holds
-// back.
+// back, and records the source as where each resource came from.
 func (s *PromoteTestSuite) TestPromoteSendsWhatTheSourceRuns() {
 	s.f.capture(s.T(), "ou-a", "ou-b")
 	_, svcErr := s.f.svc.Apply(context.Background(), "gw-1",
@@ -44,6 +44,10 @@ func (s *PromoteTestSuite) TestPromoteSendsWhatTheSourceRuns() {
 	applied, svcErr := s.f.svc.GetApplied(context.Background(), "gw-2")
 	s.Require().Nil(svcErr)
 	s.Equal(s.f.hash(1), applied.Applied)
+	master, svcErr := s.f.svc.GetMaster(context.Background(), "gw-2")
+	s.Require().Nil(svcErr)
+	s.Require().Len(master.Entries, 1)
+	s.Equal("gw-1", master.Entries[0].Origin)
 }
 
 // A promotion to the source itself, or from a source that runs nothing, is refused before anything is
