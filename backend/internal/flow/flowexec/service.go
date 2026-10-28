@@ -361,7 +361,7 @@ func (s *flowExecService) loadNewContext(ctx context.Context, flowID, appID, flo
 		return nil, err
 	}
 
-	prepareContext(engineCtx, action, inputs)
+	prepareContext(engineCtx, action, withoutConstantInputs(engineCtx.Graph, inputs))
 	return engineCtx, nil
 }
 
@@ -602,7 +602,7 @@ func (s *flowExecService) loadPrevContext(ctx context.Context, executionID, acti
 		return nil, err
 	}
 
-	prepareContext(engineCtx, action, inputs)
+	prepareContext(engineCtx, action, withoutConstantInputs(engineCtx.Graph, inputs))
 	return engineCtx, nil
 }
 
@@ -898,6 +898,21 @@ func (s *flowExecService) getSystemFlowGraph(ctx context.Context, flowType provi
 // isComplete checks if the flow step status indicates completion.
 func isComplete(step FlowStep) bool {
 	return step.Status == providers.FlowStatusComplete
+}
+
+// withoutConstantInputs returns the submitted inputs without the ones the flow holds constant.
+func withoutConstantInputs(graph core.GraphInterface, inputs map[string]string) map[string]string {
+	if graph == nil || len(inputs) == 0 {
+		return inputs
+	}
+
+	accepted := make(map[string]string, len(inputs))
+	for identifier, value := range inputs {
+		if !graph.IsConstantInput(identifier) {
+			accepted[identifier] = value
+		}
+	}
+	return accepted
 }
 
 // prepareContext prepares the flow context by merging any data.

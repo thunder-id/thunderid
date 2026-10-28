@@ -2022,6 +2022,39 @@ describe('ExecutionExtendedProperties', () => {
       expect(screen.getByText('flows:core.executions.inputs.title')).toBeInTheDocument();
     });
 
+    it('should show the validation message of the inputs under the editor title', () => {
+      const resourceWithInputs = {
+        id: 'resource-1',
+        data: {action: {executor: {name: 'UnknownExecutor', inputs: []}}},
+      } as unknown as Resource;
+      mockSelectedNotification.hasResourceFieldNotification.mockImplementation(
+        (...args: unknown[]) => args[0] === 'resource-1_data.action.executor.inputs',
+      );
+      mockSelectedNotification.getResourceFieldNotification.mockReturnValue('Inputs are not valid');
+
+      try {
+        render(<ExecutionExtendedProperties resource={resourceWithInputs} onChange={mockOnChange} />);
+
+        expect(screen.getByText('Inputs are not valid')).toBeInTheDocument();
+      } finally {
+        mockSelectedNotification.hasResourceFieldNotification.mockReturnValue(false);
+        mockSelectedNotification.getResourceFieldNotification.mockReturnValue('');
+      }
+    });
+
+    it('should not show an inputs message when the inputs are valid', () => {
+      const resourceWithInputs = {
+        id: 'resource-1',
+        data: {action: {executor: {name: 'UnknownExecutor', inputs: []}}},
+      } as unknown as Resource;
+      mockSelectedNotification.hasResourceFieldNotification.mockReturnValue(false);
+      mockSelectedNotification.getResourceFieldNotification.mockReturnValue('');
+
+      render(<ExecutionExtendedProperties resource={resourceWithInputs} onChange={mockOnChange} />);
+
+      expect(screen.queryByText('Inputs are not valid')).not.toBeInTheDocument();
+    });
+
     it('should handle undefined resource gracefully', () => {
       const {container} = render(
         <ExecutionExtendedProperties resource={undefined as unknown as Resource} onChange={mockOnChange} />,

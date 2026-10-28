@@ -133,6 +133,21 @@ func onboardingFlowNodes(allowedUserTypes []string) []map[string]interface{} {
 						"type":       "TEXT_INPUT",
 						"required":   true,
 					},
+					{
+						"ref":        "input_department",
+						"identifier": "department",
+						"type":       "TEXT_INPUT",
+						"required":   false,
+						"default":    "Computer Science",
+					},
+					{
+						"ref":        "input_faculty",
+						"identifier": "faculty",
+						"type":       "TEXT_INPUT",
+						"required":   false,
+						"default":    "Engineering",
+						"constant":   true,
+					},
 				},
 			},
 			"onSuccess":    "end",
@@ -181,6 +196,12 @@ func onboardingUserTypeSchema(handle, ouID string) testutils.UserType {
 				"type": "string",
 			},
 			"email": map[string]interface{}{
+				"type": "string",
+			},
+			"department": map[string]interface{}{
+				"type": "string",
+			},
+			"faculty": map[string]interface{}{
 				"type": "string",
 			},
 		},
@@ -433,4 +454,61 @@ func (ts *UserOnboardingTestSuite) TestOnboarding_UserTypeNotValidForSelectedOUR
 	ts.Require().NotNil(step.Error, "A user type invalid for the selected OU must be reported")
 	ts.Equal(errCodeUserTypeNotValidForOU, step.Error.Code,
 		"A user type attached below the selected OU must be refused for it")
+}
+
+// userAttribute reads one attribute of a provisioned user.
+func (ts *UserOnboardingTestSuite) userAttribute(user *testutils.User, name string) string {
+	ts.T().Helper()
+
+	var attributes map[string]interface{}
+	ts.Require().NoError(json.Unmarshal(user.Attributes, &attributes), "Failed to read the user attributes")
+	value, _ := attributes[name].(string)
+	return value
+}
+
+// The provisioning node carries a default for the department and a constant for the faculty, so the
+// flow asks for neither and the new user still ends up with both.
+func (ts *UserOnboardingTestSuite) TestOnboarding_DefaultAndConstantAreAppliedWithoutPrompting() {
+	step := ts.initiateOnboarding(nil)
+	step, err := common.CompleteFlow(step.ExecutionID,
+		map[string]string{"ouId": ts.rootOUID}, "action_ou", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the OU selection")
+	ts.Require().True(common.HasInput(step.Data.Inputs, "username"),
+		"The flow should move on to collecting user details")
+	ts.False(common.HasInput(step.Data.Inputs, "department"), "A default must not be prompted for")
+	ts.False(common.HasInput(step.Data.Inputs, "faculty"), "A constant must not be prompted for")
+
+	username := common.GenerateUniqueUsername("onboard_defaults")
+	completed, err := common.CompleteFlow(step.ExecutionID, map[string]string{
+		"username": username,
+		"email":    username + "@onboarding.test",
+	}, "action_details", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit user details")
+	ts.Require().Equal("COMPLETE", completed.FlowStatus, "Onboarding should provision the user")
+
+	user := ts.findOnboardedUser(username)
+	ts.Equal("Computer Science", ts.userAttribute(user, "department"), "The default must be applied")
+	ts.Equal("Engineering", ts.userAttribute(user, "faculty"), "The constant must be applied")
+}
+
+// A value the flow already holds wins over a default, but never over a constant.
+func (ts *UserOnboardingTestSuite) TestOnboarding_SuppliedValueBeatsDefaultButNotConstant() {
+	step := ts.initiateOnboarding(map[string]string{"department": "Mathematics", "faculty": "Arts"})
+	step, err := common.CompleteFlow(step.ExecutionID,
+		map[string]string{"ouId": ts.rootOUID}, "action_ou", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the OU selection")
+	ts.Require().True(common.HasInput(step.Data.Inputs, "username"),
+		"The flow should move on to collecting user details")
+
+	username := common.GenerateUniqueUsername("onboard_supplied")
+	completed, err := common.CompleteFlow(step.ExecutionID, map[string]string{
+		"username": username,
+		"email":    username + "@onboarding.test",
+	}, "action_details", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit user details")
+	ts.Require().Equal("COMPLETE", completed.FlowStatus, "Onboarding should provision the user")
+
+	user := ts.findOnboardedUser(username)
+	ts.Equal("Mathematics", ts.userAttribute(user, "department"), "The supplied value must beat the default")
+	ts.Equal("Engineering", ts.userAttribute(user, "faculty"), "The constant must beat the supplied value")
 }

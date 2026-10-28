@@ -920,5 +920,111 @@ describe('flowToCanvasTransformer', () => {
         });
       });
     });
+
+    describe('Executor input defaults', () => {
+      const inputs = [
+        {ref: 'input_locale', type: 'TEXT_INPUT', identifier: 'locale', required: false, default: 'en-US'},
+        {ref: 'input_region', type: 'TEXT_INPUT', identifier: 'region', required: false, default: 'eu', constant: true},
+      ];
+
+      it('should keep the default and constant of executor inputs through a load and save', () => {
+        const canvas = transformFlowToCanvas(
+          createBaseFlowData([
+            {
+              id: 'provisioning',
+              type: 'TASK_EXECUTION',
+              executor: {name: 'ProvisioningExecutor', inputs},
+              layout: {position: {x: 0, y: 0}, size: {width: 200, height: 100}},
+            },
+          ]),
+        );
+
+        expect(canvas.nodes[0].data.action?.executor).toEqual({name: 'ProvisioningExecutor', inputs});
+
+        const saved = transformReactFlow({edges: canvas.edges, nodes: canvas.nodes});
+
+        expect(saved.nodes.find((node) => node.id === 'provisioning')?.executor?.inputs).toEqual(inputs);
+      });
+    });
+
+    describe('Prompt input defaults', () => {
+      const promptFlow = (inputType: string, metaValue?: string) =>
+        createBaseFlowData([
+          {
+            id: 'prompt-node',
+            type: 'PROMPT',
+            meta: {
+              components: [
+                {
+                  id: 'block-1',
+                  type: 'BLOCK',
+                  components: [
+                    {
+                      id: 'input_department',
+                      type: inputType,
+                      ref: 'department',
+                      ...(metaValue ? {value: metaValue} : {}),
+                    },
+                    {id: 'submit-btn', type: 'ACTION', eventType: 'SUBMIT'},
+                  ],
+                },
+              ],
+            },
+            prompts: [
+              {
+                inputs: [
+                  {
+                    ref: 'input_department',
+                    type: inputType,
+                    identifier: 'department',
+                    required: false,
+                    default: 'Computer Science',
+                  },
+                ],
+                action: {ref: 'submit-btn', nextNode: 'end-node'},
+              },
+            ],
+            layout: {position: {x: 0, y: 0}, size: {width: 300, height: 200}},
+          },
+          {
+            id: 'end-node',
+            type: 'END',
+            layout: {position: {x: 400, y: 0}, size: {width: 100, height: 50}},
+          },
+        ]);
+
+      const restoredInput = (canvas: ReturnType<typeof transformFlowToCanvas>) => {
+        const block = canvas.nodes[0].data.components?.[0] as {components: {value?: string}[]};
+
+        return block.components[0];
+      };
+
+      it('should fill the value of the component from the default of its prompt input', () => {
+        const canvas = transformFlowToCanvas(promptFlow('TEXT_INPUT'));
+
+        expect(restoredInput(canvas).value).toBe('Computer Science');
+      });
+
+      it('should prefer the default of the prompt input over a stale value in the meta', () => {
+        const canvas = transformFlowToCanvas(promptFlow('TEXT_INPUT', 'Old'));
+
+        expect(restoredInput(canvas).value).toBe('Computer Science');
+      });
+
+      it('should not fill the value of an input that cannot hold a default', () => {
+        const canvas = transformFlowToCanvas(promptFlow('PASSWORD_INPUT'));
+
+        expect(restoredInput(canvas).value).toBeUndefined();
+      });
+
+      it('should keep the default through a load and save', () => {
+        const canvas = transformFlowToCanvas(promptFlow('TEXT_INPUT'));
+
+        const saved = transformReactFlow({edges: canvas.edges, nodes: canvas.nodes});
+
+        const prompt = saved.nodes.find((node) => node.id === 'prompt-node');
+        expect(prompt?.prompts?.[0].inputs?.[0].default).toBe('Computer Science');
+      });
+    });
   });
 });

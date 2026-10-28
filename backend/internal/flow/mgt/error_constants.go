@@ -301,7 +301,8 @@ var (
 			DefaultValue: "Executor configuration is invalid",
 		},
 	}
-	// ErrorInvalidInputConfig is the error returned when an input has an invalid type or validation rule.
+	// ErrorInvalidInputConfig is the error returned when an input has an invalid type, validation rule,
+	// or default configuration.
 	ErrorInvalidInputConfig = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FLM-1024",

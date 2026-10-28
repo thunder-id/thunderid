@@ -45,6 +45,7 @@ type Inputs struct {
 	Identifier string           `json:"identifier"`
 	Type       string           `json:"type"`
 	Required   bool             `json:"required"`
+	Value      string           `json:"value,omitempty"`
 	Options    []string         `json:"options,omitempty"`
 	Validation []ValidationRule `json:"validation,omitempty"`
 }

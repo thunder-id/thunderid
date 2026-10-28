@@ -4,6 +4,7 @@
 import type {Edge, Node} from '@xyflow/react';
 import {MarkerType} from '@xyflow/react';
 import {toElementType} from './inputTypeMapping';
+import {DEFAULT_VALUE_ELEMENT_TYPES} from './promptInputDefault';
 import VisualFlowConstants from '../constants/VisualFlowConstants';
 import executors from '../data/executors.json';
 import type {Element} from '../models/elements';
@@ -249,10 +250,31 @@ function getNodeActions(apiNode: FlowNode): FlowNodeAction[] | undefined {
 }
 
 /**
+ * Gets the default of each prompt input of a node, keyed by the input ref, which is the id of its component.
+ */
+function getPromptDefaults(apiNode: FlowNode): Record<string, string> {
+  const defaults: Record<string, string> = {};
+  apiNode.prompts?.forEach((prompt) => {
+    prompt.inputs?.forEach((input) => {
+      if (input.ref && input.default) {
+        defaults[input.ref] = input.default;
+      }
+    });
+  });
+  return defaults;
+}
+
+/**
  * Recursively restores components from the API format to canvas format.
  * This handles nested components (like forms containing inputs and buttons).
+ * A prompt input default becomes the value of its component, so a flow written through the API keeps its
+ * defaults when it is saved again.
  */
-function restoreComponents(components: unknown[] | undefined, nodeActions: FlowNodeAction[] | undefined): Element[] {
+function restoreComponents(
+  components: unknown[] | undefined,
+  nodeActions: FlowNodeAction[] | undefined,
+  promptDefaults: Record<string, string> = {},
+): Element[] {
   if (!components || components.length === 0) {
     return [];
   }
@@ -268,6 +290,11 @@ function restoreComponents(components: unknown[] | undefined, nodeActions: FlowN
       restoredComponent = normalizeInputProperties(restoredComponent);
     }
 
+    const promptDefault = promptDefaults[restoredComponent['id'] as string];
+    if (promptDefault && DEFAULT_VALUE_ELEMENT_TYPES.has(restoredComponent['type'] as string)) {
+      restoredComponent = {...restoredComponent, value: promptDefault};
+    }
+
     // Restore action for ACTION elements
     if (component['type'] === ElementTypes.Action || component['type'] === ElementTypes.Resend) {
       restoredComponent = restoreButtonAction(restoredComponent, nodeActions);
@@ -277,7 +304,7 @@ function restoreComponents(components: unknown[] | undefined, nodeActions: FlowN
     if (restoredComponent['components'] && Array.isArray(restoredComponent['components'])) {
       restoredComponent = {
         ...restoredComponent,
-        components: restoreComponents(restoredComponent['components'] as unknown[], nodeActions),
+        components: restoreComponents(restoredComponent['components'] as unknown[], nodeActions, promptDefaults),
       };
     }
 
@@ -321,7 +348,7 @@ function transformNodeToCanvas(apiNode: FlowNode): CanvasNode {
   if (stepType === StepTypes.View && apiNode.meta?.components) {
     // Get actions from prompts
     const nodeActions = getNodeActions(apiNode);
-    const restoredComponents = restoreComponents(apiNode.meta.components, nodeActions);
+    const restoredComponents = restoreComponents(apiNode.meta.components, nodeActions, getPromptDefaults(apiNode));
 
     canvasNode.data = {
       components: restoredComponents,

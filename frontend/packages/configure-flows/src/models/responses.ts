@@ -122,6 +122,15 @@ export interface FlowNodeInput {
    * Whether this input is required
    */
   required: boolean;
+  /**
+   * Value written to the flow before the executor runs. It fills the input only when no value is
+   * available, unless {@link FlowNodeInput.constant} is set.
+   */
+  default?: string;
+  /**
+   * When true, {@link FlowNodeInput.default} always replaces any existing value for this input.
+   */
+  constant?: boolean;
 }
 
 /**

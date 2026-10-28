@@ -334,6 +334,28 @@ func collectMissingInputs(ctx *providers.NodeContext, presentedOptionalInputs ma
 	return missing
 }
 
+// hasUsableInputValue reports whether the flow context already holds a non-empty value for the input
+// in the user inputs, runtime data, forwarded data or external identity claims. Unlike
+// collectMissingInputs, an empty value counts as missing.
+func hasUsableInputValue(ctx *providers.NodeContext, input providers.Input) bool {
+	if ctx.UserInputs[input.Identifier] != "" || ctx.RuntimeData[input.Identifier] != "" {
+		return true
+	}
+	if value, ok := ctx.ForwardedData[input.Identifier].(string); ok && value != "" {
+		return true
+	}
+	value, ok := GetExternalClaim(ctx.RuntimeData, input.Identifier)
+	return ok && value != ""
+}
+
+// writeInputDefault stores the input's default value in the user inputs.
+func writeInputDefault(ctx *providers.NodeContext, input providers.Input) {
+	if ctx.UserInputs == nil {
+		ctx.UserInputs = make(map[string]string)
+	}
+	ctx.UserInputs[input.Identifier] = input.Default
+}
+
 // MergePresentedOptionalInputIdentifiers appends identifiers to an existing serialized identifier string.
 // Duplicates are acceptable since ParsePresentedOptionalInputIdentifiers deduplicates on read.
 func MergePresentedOptionalInputIdentifiers(raw string, identifiers []string) string {
