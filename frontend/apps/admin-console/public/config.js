@@ -17,7 +17,7 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
     },
   },
   client: {
-    base: '/console',
+    base: '/admin',
     client_id: 'CONSOLE',
     resource_identifier: 'https://localhost:8090/mcp',
     scopes: ['openid', 'profile', 'email', 'ou', 'system'],

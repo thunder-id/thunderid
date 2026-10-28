@@ -18,7 +18,7 @@ How a sign-in and a sync work:
 2. The console has no login of its own. It redirects to auth-dp for an OIDC sign-in (PKCE, client `CP_CONSOLE`).
 3. auth-dp returns a token for the Control Plane's own URL (the `resource` the console asks for). auth-dp's System resource server is registered under that URL at package time, and the Control Plane accepts the token because it shares auth-dp's signing keys and claims auth-dp's issuer.
 4. A write on the Control Plane (a user, a password change, an application) is synced to the Data Plane. The credential value is first written to dp's secret and variable stores, then a configuration version is captured and imported through dp's management API, authenticated with the gateway's API key.
-5. An operator opens the Data Plane Admin Console at `https://localhost:8090/console` and signs in on dp's own Gate (client `ADMIN_CONSOLE`).
+5. An operator opens the Data Plane Admin Console at `https://localhost:8090/admin` and signs in on dp's own Gate (client `ADMIN_CONSOLE`).
 
 ## Prerequisites
 
@@ -103,7 +103,7 @@ Press Ctrl+C to stop all three.
 | What | URL |
 |---|---|
 | Control Plane console | https://localhost:8095/console |
-| Data Plane Admin Console | https://localhost:8090/console |
+| Data Plane Admin Console | https://localhost:8090/admin |
 | Data Plane Gate (login) | https://localhost:8090/gate |
 | auth-dp Gate (login) | https://localhost:8091/gate |
 

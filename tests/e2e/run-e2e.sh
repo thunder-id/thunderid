@@ -214,7 +214,7 @@ stop_server() {
 # status is what `set -e` sees.
 mint_admin_token() {
     echo "Obtaining admin token..."
-    local CONSOLE_REDIRECT_URI="$SERVER_URL/console"
+    local CONSOLE_REDIRECT_URI="$SERVER_URL/admin"
     local CODE_VERIFIER CODE_CHALLENGE
     CODE_VERIFIER=$(openssl rand -hex 32 | cut -c1-43)
     CODE_CHALLENGE=$(printf '%s' "$CODE_VERIFIER" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')

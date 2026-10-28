@@ -102,7 +102,7 @@ export class ConsoleSigninPage extends BasePage {
 
   /** Wait for successful login */
   async waitForLoginSuccess() {
-    await this.page.waitForURL(/\/console(\/|$)/, { timeout: Timeouts.PAGE_LOAD });
+    await this.page.waitForURL(/\/admin(\/|$)/, { timeout: Timeouts.PAGE_LOAD });
   }
 
   /** Verify login was successful */

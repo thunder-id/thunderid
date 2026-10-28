@@ -15,11 +15,9 @@ import {defineConfig} from 'vitest/config';
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ? Number(process.env.PORT) : 5192;
 const HOST = process.env.HOST ?? 'localhost';
-// Served from the Data Plane's existing `/console` mount (see build.sh's
-// prepare_frontend_for_packaging, which copies this app's build output into that slot) rather
-// than its own `/admin-console` path, so the already-registered CONSOLE OAuth2 client's redirect
-// URI keeps working unchanged.
-const BASE_URL = process.env.BASE_URL ?? '/console';
+// Served from the Data Plane's `/admin` mount (see build.sh's prepare_admin_console_for_packaging,
+// which copies this app's build output into the `apps/admin` slot).
+const BASE_URL = process.env.BASE_URL ?? '/admin';
 const ANALYZER_ENABLED = process.env.ANALYZE === 'true';
 const BUNDLE_ANALYSIS_ENABLED = process.env.CODECOV_BUNDLE_UPLOAD === 'true';
 

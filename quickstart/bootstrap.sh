@@ -66,7 +66,7 @@ user_password_secret_name() {
 # plane's setup runs, since auth-dp's bootstrap already needs CP_CONSOLE_URL.
 export_console_urls() {
     export CP_CONSOLE_URL="https://localhost:$CP_PORT/console"
-    export ADMIN_CONSOLE_URL="https://localhost:$DP_PORT/console"
+    export ADMIN_CONSOLE_URL="https://localhost:$DP_PORT/admin"
 }
 
 # export_dp_ca_certificate exports DP_CA_CERTIFICATE, the managed Data Plane's certificate, which

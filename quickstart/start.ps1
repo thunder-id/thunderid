@@ -62,7 +62,7 @@ try {
     Write-Host "      Gate (Login/Register): https://localhost:$AUTH_DP_PORT/gate"
     Write-Host "  Data Plane (managed):"
     Write-Host "      Gate (Login/Register): https://localhost:$DP_PORT/gate"
-    Write-Host "      Admin Console (Users, Agents, Groups, Roles): https://localhost:$DP_PORT/console"
+    Write-Host "      Admin Console (Users, Agents, Groups, Roles): https://localhost:$DP_PORT/admin"
     Write-Host "  Control Plane Console: https://localhost:$CP_PORT/console"
     Write-Host ""
     Write-Host "  The Data Plane is already registered as a gateway on the Control Plane: an application,"

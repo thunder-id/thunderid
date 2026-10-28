@@ -158,11 +158,11 @@ This is the <ProductName /> **application log** (the `INFO`/`WARN`/`ERROR` lines
 
 ### Access Log
 
-<ProductName /> writes an access log line for every HTTP request. The Gate and Console frontend paths (`/gate/` and `/console/`) are always excluded.
+<ProductName /> writes an access log line for every HTTP request. The Gate and Console frontend paths (`/gate/` and `/admin/`) are always excluded.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `log.access.exclude_paths` | `[]` | Additional path prefixes to exclude, alongside the always-excluded `/gate/` and `/console/` paths |
+| `log.access.exclude_paths` | `[]` | Additional path prefixes to exclude, alongside the always-excluded `/gate/` and `/admin/` paths |
 
 To exclude other paths, add their prefixes in `deployment.yaml`. For example, to also exclude the health probe endpoints:
 
@@ -971,14 +971,14 @@ CSP headers are not enforced in development. The policy is applied only when sta
 
 Controls where the browser may load scripts, styles, images, fonts, and other resources for the <ProductName /> Console and Gate UIs. The policy is deny-first: any resource that is not explicitly allowed is blocked.
 
-The CSP header is sent only on <ProductName /> Console (`/console/`) and Gate (`/gate/`) responses.
+The CSP header is sent only on <ProductName /> Admin Console (`/admin/`) and Gate (`/gate/`) responses.
 
 | Field | Description |
 |-------|-------------|
 | `reportOnly` | When `true` (the default), the browser reports violations to its console but still loads the resource, using the `Content-Security-Policy-Report-Only` header. Set it to `false` to enforce the policy and block disallowed resources. |
 | `reportUri` | Optional endpoint the browser posts violation reports to, mapped to the `report-uri` directive. Use a relative path or an `http`/`https` URL. |
 | `directives` | Map of directive name (for example `img-src`) to its list of allowed sources. A directive you list here replaces that directive's baseline value on every CSP path. |
-| `paths` | List of per-path overrides. Each entry has a `location` prefix (for example `/console/`) and its own `directives`. The longest matching `location` applies, and its directives override `directives`, which override the baseline. |
+| `paths` | List of per-path overrides. Each entry has a `location` prefix (for example `/admin/`) and its own `directives`. The longest matching `location` applies, and its directives override `directives`, which override the baseline. |
 
 ### Deny-First Baseline
 
@@ -1011,7 +1011,7 @@ Set the policy in either of these ways:
   value:
     reportOnly: false
     paths:
-      - location: "/console/"
+      - location: "/admin/"
         directives:
           img-src:
             - "'self'"
@@ -1032,7 +1032,7 @@ Set the policy in either of these ways:
     "reportOnly": false,
     "paths": [
       {
-        "location": "/console/",
+        "location": "/admin/",
         "directives": {"img-src": ["'self'", "https://cdn.example.com"]}
       }
     ]

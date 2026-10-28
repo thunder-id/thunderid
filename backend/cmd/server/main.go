@@ -138,9 +138,9 @@ func main() {
 	}
 
 	serverURL := config.GetServerURL(&cfg.Server)
-	consoleURL := fmt.Sprintf("%s/console", strings.TrimSuffix(serverURL, "/"))
+	adminConsoleURL := fmt.Sprintf("%s/admin", strings.TrimSuffix(serverURL, "/"))
 	logger.Info(ctx, "ThunderID Server URL", log.String("url", serverURL))
-	logger.Info(ctx, "ThunderID Console URL", log.String("url", consoleURL))
+	logger.Info(ctx, "ThunderID Admin Console URL", log.String("url", adminConsoleURL))
 
 	// Start server in a goroutine
 	go func() {
@@ -230,10 +230,10 @@ func loadCertConfig(ctx context.Context, logger *log.Logger, runtimeSvc common.T
 }
 
 // accessLogExcludePaths returns the path prefixes excluded from the access log: the always-excluded
-// Gate and Console frontend paths plus any configured extras. Empty and root ("/") entries are
+// Gate and Admin Console frontend paths plus any configured extras. Empty and root ("/") entries are
 // dropped because they match every request and would silently disable all access logging.
 func accessLogExcludePaths(configured []string) []string {
-	paths := []string{"/gate/", "/console/"}
+	paths := []string{"/gate/", "/admin/"}
 	for _, prefix := range configured {
 		if prefix != "" && prefix != "/" {
 			paths = append(paths, prefix)
@@ -251,7 +251,7 @@ func createHTTPServer(ctx context.Context, logger *log.Logger, cfg *config.Confi
 	// Request flow: CorrelationID (outermost) -> DeploymentID -> SecurityHeaders -> AccessLog ->
 	// Security -> Route Handler (innermost)
 	// Note: Middlewares are wrapped in reverse order - the last added will execute first.
-	// The Gate and Console frontend paths are always excluded from the access log to keep it
+	// The Gate and Admin Console frontend paths are always excluded from the access log to keep it
 	// focused on API traffic. Additional prefixes can be excluded via log.access.exclude_paths.
 	handler := log.AccessLogHandler(logger, accessLogExcludePaths(cfg.Log.Access.ExcludePaths), securityMiddleware)
 	handler = middleware.SecurityHeadersMiddleware()(handler)
@@ -392,14 +392,14 @@ func registerStaticFileHandlers(ctx context.Context, logger *log.Logger, mux *ht
 		mux.Handle("/gate/", handler)
 	}
 
-	// Serve console application from /console
-	consoleDir := path.Join(serverHome, "apps", "console")
-	if handler, err := createStaticFileHandler("/console/", consoleDir, logger); err != nil {
-		logger.Warn(ctx, "Console application not registered", log.String("directory", consoleDir), log.Error(err))
+	// Serve admin console application from /admin
+	adminDir := path.Join(serverHome, "apps", "admin")
+	if handler, err := createStaticFileHandler("/admin/", adminDir, logger); err != nil {
+		logger.Warn(ctx, "Admin Console application not registered", log.String("directory", adminDir), log.Error(err))
 	} else {
-		logger.Debug(ctx, "Registering static file handler for Console application",
-			log.String("path", "/console/"), log.String("directory", consoleDir))
-		mux.Handle("/console/", handler)
+		logger.Debug(ctx, "Registering static file handler for Admin Console application",
+			log.String("path", "/admin/"), log.String("directory", adminDir))
+		mux.Handle("/admin/", handler)
 	}
 }
 

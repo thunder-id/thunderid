@@ -162,7 +162,7 @@ spec:
               mountPath: /opt/thunderid/apps/gate/config.js
               subPath: gate-config.js
             - name: console-config-volume
-              mountPath: /opt/thunderid/apps/console/config.js
+              mountPath: /opt/thunderid/apps/admin/config.js
               subPath: console-config.js
             {{- if .Values.declarativeResources.enabled }}
             {{- if .Values.declarativeResources.singleFile.keys }}

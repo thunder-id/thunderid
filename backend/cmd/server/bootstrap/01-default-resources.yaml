@@ -6165,11 +6165,13 @@ inboundAuthConfig:
       clientId: CONSOLE
       redirectUris:
         - "{{ .PUBLIC_URL }}/console"
+        - "{{ .PUBLIC_URL }}/admin"
         {{- range .CONSOLE_REDIRECT_URIS }}
         - "{{ . }}"
         {{- end }}
       postLogoutRedirectUris:
         - "{{ .PUBLIC_URL }}/console"
+        - "{{ .PUBLIC_URL }}/admin"
         {{- range .CONSOLE_REDIRECT_URIS }}
         - "{{ . }}"
         {{- end }}
