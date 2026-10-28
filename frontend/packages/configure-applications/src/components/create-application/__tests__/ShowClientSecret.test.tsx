@@ -61,6 +61,14 @@ describe('ShowClientSecret', () => {
       expect(input).toHaveAttribute('readonly');
     });
 
+    it('should render the client secret purpose using OAuth 2.0 terminology', () => {
+      renderComponent();
+
+      expect(
+        screen.getByText('Used to authenticate your application at the OAuth 2.0 token endpoint.'),
+      ).toBeInTheDocument();
+    });
+
     it('should render security reminder alert', () => {
       renderComponent();
 
