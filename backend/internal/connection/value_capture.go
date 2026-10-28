@@ -55,7 +55,7 @@ func (s *service) captureModel(ctx context.Context, id string, model connectionE
 	if err != nil {
 		log.GetLogger().With(log.String(log.LoggerKeyComponentName, valueCaptureLoggerComponentName)).Warn(ctx,
 			"Failed to read a connection's values, so none were captured",
-			log.String("connectionId", id), log.Error(err))
+			log.String("connectionID", id), log.Error(err))
 		return
 	}
 	s.valueCapturer.CaptureValues(ctx, resourceTypeConnection, &model)

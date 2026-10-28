@@ -89,10 +89,10 @@ type ActorProvider interface {
 	AuthenticateActor(
 		ctx context.Context, identifiers, credentials map[string]interface{},
 	) *common.ServiceError
-	GetActor(actorID string) (*Entity, *common.ServiceError)
-	GetActorGroups(actorID string) ([]EntityGroup, *common.ServiceError)
-	GetActorRoles(actorID string, groupIDs []string) ([]string, *common.ServiceError)
-	GetTransitiveGroupAncestors(groupID string) ([]string, *common.ServiceError)
+	GetActor(ctx context.Context, actorID string) (*Entity, *common.ServiceError)
+	GetActorGroups(ctx context.Context, actorID string) ([]EntityGroup, *common.ServiceError)
+	GetActorRoles(ctx context.Context, actorID string, groupIDs []string) ([]string, *common.ServiceError)
+	GetTransitiveGroupAncestors(ctx context.Context, groupID string) ([]string, *common.ServiceError)
 }
 
 // AgentMgtProvider provisions agents on behalf of runtime capabilities. The rules and semantics of an

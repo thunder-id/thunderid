@@ -649,7 +649,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_BestEffortCompletesWhe
 	lookupFails := bestEffortContext(sendable)
 	lookupFails.UserInputs = nil
 	lookupFails.RuntimeData = map[string]string{userAttributeUserID: "test-user-id"}
-	suite.mockEntityProvider.On("GetEntityProfile", "test-user-id").Return(
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, "test-user-id").Return(
 		nil, entityprovider.NewEntityProviderError(
 			entityprovider.ErrorCodeSystemError, "provider error", "system failure")).Once()
 	noSender, noRenderer := *suite.executor, *suite.executor
@@ -1218,7 +1218,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_ResolvesEmailFromEntit
 		ID:         "test-db-user-id",
 		Attributes: []byte(`{"workEmail":"database-resolved@example.com"}`),
 	}
-	suite.mockEntityProvider.On("GetEntityProfile", "test-db-user-id").Return(mockEntity, nil)
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, "test-db-user-id").Return(mockEntity, nil)
 
 	suite.mockTemplateRenderer.On("Resolve",
 		ctx.Context,
@@ -1296,7 +1296,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_EntityProviderMissingE
 		ID:         "test-db-user-id",
 		Attributes: []byte(`{"other":"data"}`),
 	}
-	suite.mockEntityProvider.On("GetEntityProfile", "test-db-user-id").Return(mockEntity, nil)
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, "test-db-user-id").Return(mockEntity, nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -1338,7 +1338,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_EntityProviderError() 
 		},
 	}
 
-	suite.mockEntityProvider.On("GetEntityProfile", "test-user-id").Return(
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, "test-user-id").Return(
 		nil, entityprovider.NewEntityProviderError(
 			entityprovider.ErrorCodeSystemError, "provider error", "system failure"))
 
@@ -1362,7 +1362,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_EntityProviderUserNotF
 		},
 	}
 
-	suite.mockEntityProvider.On("GetEntityProfile", "non-existent-user-id").Return(
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, "non-existent-user-id").Return(
 		nil, entityprovider.NewEntityProviderError(
 			entityprovider.ErrorCodeEntityNotFound, "user not found", "entity not found"))
 

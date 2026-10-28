@@ -549,7 +549,7 @@ func (s *entityService) LinkAccount(ctx context.Context, entityID, idpID, sub st
 		return ErrBadAttributesInRequest
 	}
 	s.logger.Debug(ctx, "Linking account", log.MaskedString("id", entityID),
-		log.String("idpId", idpID))
+		log.String(log.LoggerKeyIDPID, idpID))
 
 	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		current, err := s.store.LockEntity(txCtx, entityID)

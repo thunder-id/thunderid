@@ -55,7 +55,8 @@ func (s *UtilsTestSuite) TestBuildApplication_Success() {
 	entity := &providers.Entity{ID: "app-1", SystemAttributes: attrs}
 
 	s.mockInbound.On("GetInboundClientByEntityID", mock.Anything, "app-1").Return(client, nil)
-	s.mockEntity.On("GetEntityProfile", "app-1").Return(entity, (*entityprovider.EntityProviderError)(nil))
+	s.mockEntity.On("GetEntityProfile", mock.Anything, "app-1").
+		Return(entity, (*entityprovider.EntityProviderError)(nil))
 
 	app, svcErr := BuildApplication(context.Background(), s.provider, "app-1")
 
@@ -81,7 +82,7 @@ func (s *UtilsTestSuite) TestBuildApplication_NilClient() {
 func (s *UtilsTestSuite) TestBuildApplication_EntityLoadError() {
 	client := &inboundmodel.InboundClient{ID: "app-1"}
 	s.mockInbound.On("GetInboundClientByEntityID", mock.Anything, "app-1").Return(client, nil)
-	s.mockEntity.On("GetEntityProfile", "app-1").Return(
+	s.mockEntity.On("GetEntityProfile", mock.Anything, "app-1").Return(
 		(*providers.Entity)(nil),
 		entityprovider.NewEntityProviderError("INTERNAL_ERROR", "boom", ""))
 
@@ -94,7 +95,7 @@ func (s *UtilsTestSuite) TestBuildApplication_EntityLoadError() {
 func (s *UtilsTestSuite) TestBuildApplication_EntityNotFound() {
 	client := &inboundmodel.InboundClient{ID: "app-1", AllowedUserTypes: []string{"customer"}}
 	s.mockInbound.On("GetInboundClientByEntityID", mock.Anything, "app-1").Return(client, nil)
-	s.mockEntity.On("GetEntityProfile", "app-1").Return(
+	s.mockEntity.On("GetEntityProfile", mock.Anything, "app-1").Return(
 		(*providers.Entity)(nil),
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "missing", ""))
 

@@ -52,7 +52,7 @@ func (s *importService) logDeletionFailure(
 	ctx context.Context, deletion ResourceDeletion, outcome ImportItemOutcome) {
 	fields := []log.Field{
 		log.String("resourceType", deletion.ResourceType),
-		log.String("resourceId", deletion.ID),
+		log.String("resourceID", deletion.ID),
 		log.String("code", outcome.Code),
 	}
 	if outcome.Message != "" {

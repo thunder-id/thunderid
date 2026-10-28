@@ -127,13 +127,13 @@ func (p *actorProvider) AuthenticateActor(
 }
 
 // GetActor returns the backing entity record for the given actor ID.
-func (p *actorProvider) GetActor(actorID string) (*providers.Entity, *tidcommon.ServiceError) {
-	entity, epErr := p.entityProvider.GetEntityProfile(actorID)
+func (p *actorProvider) GetActor(ctx context.Context, actorID string) (*providers.Entity, *tidcommon.ServiceError) {
+	entity, epErr := p.entityProvider.GetEntityProfile(ctx, actorID)
 	if epErr != nil {
 		return nil, mapEntityProviderError(epErr)
 	}
 	if entity.Category == providers.EntityCategoryAgent {
-		ctx := security.WithRuntimeContext(context.Background())
+		ctx := security.WithRuntimeContext(ctx)
 		displayPaths := entitytype.ResolveDisplayAttributePaths(
 			ctx, entitytype.TypeCategoryAgent, []string{entity.Type}, p.entityTypeSvc, p.logger)
 		entity.Display = utils.ResolveDisplay(entity.ID, entity.Type, entity.Attributes, displayPaths)
@@ -143,9 +143,9 @@ func (p *actorProvider) GetActor(actorID string) (*providers.Entity, *tidcommon.
 
 // GetActorGroups returns transitive group memberships for the given actor ID.
 func (p *actorProvider) GetActorGroups(
-	actorID string,
+	ctx context.Context, actorID string,
 ) ([]providers.EntityGroup, *tidcommon.ServiceError) {
-	groups, epErr := p.entityProvider.GetTransitiveEntityGroups(actorID)
+	groups, epErr := p.entityProvider.GetTransitiveEntityGroups(ctx, actorID)
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeNotImplemented {
 			return nil, nil
@@ -157,9 +157,9 @@ func (p *actorProvider) GetActorGroups(
 
 // GetTransitiveGroupAncestors returns the ancestor chain of a single group.
 func (p *actorProvider) GetTransitiveGroupAncestors(
-	groupID string,
+	ctx context.Context, groupID string,
 ) ([]string, *tidcommon.ServiceError) {
-	ancestors, epErr := p.entityProvider.GetTransitiveGroupAncestors(groupID)
+	ancestors, epErr := p.entityProvider.GetTransitiveGroupAncestors(ctx, groupID)
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeNotImplemented {
 			return nil, nil
@@ -171,12 +171,12 @@ func (p *actorProvider) GetTransitiveGroupAncestors(
 
 // GetActorRoles returns the roles assigned to the actor, directly and through the given groups.
 func (p *actorProvider) GetActorRoles(
-	actorID string, groupIDs []string,
+	ctx context.Context, actorID string, groupIDs []string,
 ) ([]string, *tidcommon.ServiceError) {
 	if p.roleService == nil {
 		return nil, nil
 	}
-	return p.roleService.GetUserRoles(context.Background(), actorID, groupIDs)
+	return p.roleService.GetUserRoles(ctx, actorID, groupIDs)
 }
 
 func mapEntityProviderError(epErr *entityprovider.EntityProviderError) *tidcommon.ServiceError {

@@ -1037,6 +1037,7 @@ func (s *flowExecService) InitiateAndExecute(ctx context.Context,
 		return nil, svcErr
 	}
 
+	engineCtx.TraceID = sysContext.GetTraceID(ctx)
 	engineCtx.RuntimeData = initContext.RuntimeData
 	engineCtx.SetInitiatorRequest(initContext.InitiatorRequest)
 	prepareContext(engineCtx, "", initContext.InitialInputs)

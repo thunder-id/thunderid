@@ -275,7 +275,7 @@ func (a *authorizationExecutor) extractGroupIDs(ctx *providers.NodeContext, user
 			"Groups not found in context, fetching transitive groups from entity provider",
 			log.MaskedString(log.LoggerKeyUserID, userID))
 
-		groups, err := a.entityProvider.GetTransitiveEntityGroups(userID)
+		groups, err := a.entityProvider.GetTransitiveEntityGroups(ctx.Context, userID)
 		if err != nil {
 			return nil, err
 		}
@@ -300,10 +300,10 @@ func (a *authorizationExecutor) expandMappedGroupAncestors(
 	}
 	expanded := mappedGroupIDs
 	for _, groupID := range mappedGroupIDs {
-		ancestors, err := a.entityProvider.GetTransitiveGroupAncestors(groupID)
+		ancestors, err := a.entityProvider.GetTransitiveGroupAncestors(ctx.Context, groupID)
 		if err != nil {
 			a.logger.Warn(ctx.Context, "Failed to resolve ancestors of a mapped group, continuing without them",
-				log.String("groupId", groupID), log.Error(err))
+				log.String("groupID", groupID), log.Error(err))
 			continue
 		}
 		expanded = utils.MergeUniqueStrings(expanded, ancestors)

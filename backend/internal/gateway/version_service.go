@@ -128,7 +128,7 @@ func (s *versionService) capture(ctx context.Context, req CaptureRequest) (*Vers
 	}
 	for _, failed := range skipped {
 		s.logger.Warn(ctx, "A resource the export could not write is left out of the version",
-			log.String("resourceType", failed.ResourceType), log.MaskedString("resourceId", failed.ResourceID),
+			log.String("resourceType", failed.ResourceType), log.MaskedString("resourceID", failed.ResourceID),
 			log.String("error", failed.Error))
 	}
 
@@ -582,7 +582,7 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 	// Once the gateway may have written any of it, the version is kept as it is.
 	delivered = mayHaveWritten(err)
 	if err != nil {
-		s.logger.Error(ctx, "Failed to apply a version to a gateway", log.String("gatewayId", gw.ID),
+		s.logger.Error(ctx, "Failed to apply a version to a gateway", log.String("gatewayID", gw.ID),
 			log.Int("version", target.Seq), log.Error(err))
 		if kept && errors.Is(err, errImportNotWritten) {
 			s.restoreExclusions(ctx, gw.ID, before, exclude, include)
@@ -603,7 +603,7 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 	if len(request.Deletions) > 0 {
 		if failed, ok := failedDeletions(answer); !ok || failed > 0 {
 			s.logger.Warn(ctx, "The gateway did not complete the removals, so the version is not recorded as applied",
-				log.String("gatewayId", gw.ID), log.Int("version", target.Seq), log.Int("failed", failed))
+				log.String("gatewayID", gw.ID), log.Int("version", target.Seq), log.Int("failed", failed))
 			return result, nil
 		}
 	}
@@ -612,7 +612,7 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 		return nil, svcErr
 	}
 	result.Recorded = true
-	s.logger.Info(ctx, "Applied a configuration version to a gateway", log.String("gatewayId", gw.ID),
+	s.logger.Info(ctx, "Applied a configuration version to a gateway", log.String("gatewayID", gw.ID),
 		log.Int("version", target.Seq))
 	s.clearOwedTaken(ctx, gw.ID, owed, choice.leftAlone)
 	return result, nil
@@ -626,7 +626,7 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 func (s *versionService) mayStillSend(ctx context.Context, gw *Gateway, target *Version, token string,
 	prepared time.Time) *tidcommon.ServiceError {
 	if time.Since(prepared) > prepareBudget {
-		s.logger.Warn(ctx, "An apply took too long to prepare and sends nothing", log.String("gatewayId", gw.ID),
+		s.logger.Warn(ctx, "An apply took too long to prepare and sends nothing", log.String("gatewayID", gw.ID),
 			log.Int("version", target.Seq))
 		return &ErrorApplyTookTooLong
 	}
@@ -637,7 +637,7 @@ func (s *versionService) mayStillSend(ctx context.Context, gw *Gateway, target *
 	}
 	if !holds {
 		s.logger.Warn(ctx, "Another apply took over the gateway before the import was sent",
-			log.String("gatewayId", gw.ID), log.Int("version", target.Seq))
+			log.String("gatewayID", gw.ID), log.Int("version", target.Seq))
 		return &ErrorAppliedChanged
 	}
 	return nil
@@ -654,7 +654,7 @@ func (s *versionService) clearOwedTaken(ctx context.Context, gatewayID string, o
 	}
 	if err := s.versions.SetExcluded(ctx, gatewayID, nil, taken); err != nil {
 		s.logger.Error(ctx, "Failed to clear what the gateway was owed after it was applied",
-			log.String("gatewayId", gatewayID), log.Error(err))
+			log.String("gatewayID", gatewayID), log.Error(err))
 	}
 }
 
@@ -682,10 +682,10 @@ func (s *versionService) record(ctx context.Context, gw *Gateway, target *Versio
 		return nil
 	case errors.Is(err, errVersionRemoved):
 		s.logger.Warn(ctx, "A version was removed or replaced while it was applied to a gateway",
-			log.String("gatewayId", gw.ID), log.Int("version", target.Seq))
+			log.String("gatewayID", gw.ID), log.Int("version", target.Seq))
 		return &ErrorVersionRemoved
 	case errors.Is(err, errAppliedChanged):
-		s.logger.Warn(ctx, "Another apply to the gateway finished first", log.String("gatewayId", gw.ID),
+		s.logger.Warn(ctx, "Another apply to the gateway finished first", log.String("gatewayID", gw.ID),
 			log.Int("version", target.Seq))
 		return &ErrorAppliedChanged
 	default:
@@ -708,7 +708,7 @@ func (s *versionService) refuseUnconfirmedRemovals(ctx context.Context, gw *Gate
 		return nil
 	}
 	s.logger.Info(ctx, "Refused an apply that removes more than the threshold until it is confirmed",
-		log.String("gatewayId", gw.ID), log.Int("removals", removals), log.Int("threshold", limit))
+		log.String("gatewayID", gw.ID), log.Int("removals", removals), log.Int("threshold", limit))
 	return &ErrorRemovalsNeedConfirmation
 }
 
@@ -759,7 +759,7 @@ func (s *versionService) requiredValues(ctx context.Context, gw *Gateway, key, c
 	variables, secrets := referencesIn(content)
 	held, err := s.client.HeldValues(ctx, gw, key, variables, secrets)
 	if err != nil {
-		s.logger.Error(ctx, "Failed to read which values a gateway holds", log.String("gatewayId", gw.ID),
+		s.logger.Error(ctx, "Failed to read which values a gateway holds", log.String("gatewayID", gw.ID),
 			log.Error(err))
 		return nil, nil, "", unreachable(err)
 	}
@@ -827,7 +827,7 @@ func (s *versionService) restoreExclusions(ctx context.Context, gatewayID string
 	}
 	if err := s.versions.SetExcluded(ctx, gatewayID, reexclude, touched); err != nil {
 		s.logger.Error(ctx, "Failed to put back what the gateway leaves alone after a failed apply",
-			log.String("gatewayId", gatewayID), log.Error(err))
+			log.String("gatewayID", gatewayID), log.Error(err))
 	}
 }
 
@@ -853,7 +853,7 @@ func (s *versionService) plan(ctx context.Context, gatewayID string, target *Ver
 		// is always there. Were it not, the deletions could not be worked out, and applying without
 		// them would leave behind what the new version dropped.
 		if heldVersion == nil {
-			s.logger.Error(ctx, "The version a gateway holds is not kept", log.String("gatewayId", gatewayID),
+			s.logger.Error(ctx, "The version a gateway holds is not kept", log.String("gatewayID", gatewayID),
 				log.Int("version", applied.AppliedVersion))
 			return nil, nil, &tidcommon.InternalServerError
 		}

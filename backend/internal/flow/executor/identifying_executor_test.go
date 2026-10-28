@@ -73,7 +73,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyEntity_Success() {
 	}
 	// Use package-level testUserID constant
 	userID := testUserID
-	suite.mockEntityProvider.On("IdentifyEntity", filters).Return(&userID, nil)
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, filters).Return(&userID, nil)
 
 	result, err := suite.executor.IdentifyEntity(context.Background(), filters, execResp, entitytype.TypeCategoryUser)
 
@@ -89,7 +89,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyEntity_UserNotFound() {
 		RuntimeData: make(map[string]string),
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", filters).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, filters).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 	result, err := suite.executor.IdentifyEntity(context.Background(), filters, execResp, entitytype.TypeCategoryUser)
@@ -118,7 +118,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyEntity_ErrorNamesTheCateg
 			RuntimeData: make(map[string]string),
 		}
 
-		suite.mockEntityProvider.On("IdentifyEntity", filters).Return(nil,
+		suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, filters).Return(nil,
 			entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", "")).Once()
 
 		result, err := suite.executor.IdentifyEntity(context.Background(), filters, execResp, tc.category)
@@ -138,7 +138,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyEntity_ServiceError() {
 		RuntimeData: make(map[string]string),
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", filters).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, filters).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "", ""))
 
 	result, err := suite.executor.IdentifyEntity(context.Background(), filters, execResp, entitytype.TypeCategoryUser)
@@ -157,7 +157,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyEntity_EmptyUserID() {
 	}
 	emptyID := ""
 
-	suite.mockEntityProvider.On("IdentifyEntity", filters).Return(&emptyID, nil)
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, filters).Return(&emptyID, nil)
 
 	result, err := suite.executor.IdentifyEntity(context.Background(), filters, execResp, entitytype.TypeCategoryUser)
 
@@ -179,7 +179,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyEntity_FilterNonSearchabl
 		RuntimeData: make(map[string]string),
 	}
 	// Use package-level testUserID constant
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		"username": "testuser",
 	}).Return(func() *string {
 		userID := testUserID
@@ -201,7 +201,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyEntity_WithEmail() {
 	}
 	emailUserID := "user-456"
 
-	suite.mockEntityProvider.On("IdentifyEntity", filters).Return(&emailUserID, nil)
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, filters).Return(&emailUserID, nil)
 
 	result, err := suite.executor.IdentifyEntity(context.Background(), filters, execResp, entitytype.TypeCategoryUser)
 
@@ -218,7 +218,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyEntity_Withmobile_number(
 	}
 	mobileUserID := "user-789"
 
-	suite.mockEntityProvider.On("IdentifyEntity", filters).Return(&mobileUserID, nil)
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, filters).Return(&mobileUserID, nil)
 
 	result, err := suite.executor.IdentifyEntity(context.Background(), filters, execResp, entitytype.TypeCategoryUser)
 
@@ -241,7 +241,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_Success_UserInputs() {
 		{Identifier: "username", Type: "string", Required: true},
 	})
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		"username": "testuser",
 	}).Return(func() *string {
 		userID := testUserID
@@ -269,7 +269,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_Success_RuntimeData() {
 		{Identifier: "username", Type: "string", Required: true},
 	})
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		"username": "testuser",
 	}).Return(func() *string {
 		userID := testUserID
@@ -312,7 +312,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_Failure_IdentifyEntityErr
 		{Identifier: "username", Type: "string", Required: true},
 	})
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		"username": "testuser",
 	}).Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
@@ -340,7 +340,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_Failure_UserNotFound() {
 	})
 
 	emptyID := ""
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		"username": "nonexistent",
 	}).Return(&emptyID, nil)
 
@@ -378,7 +378,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_Success_WithVariousAttrib
 				{Identifier: tc.attribute, Type: "string", Required: true},
 			})
 
-			suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+			suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 				tc.attribute: tc.value,
 			}).Return(&tc.expectedID, nil)
 
@@ -410,7 +410,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_Success_WithMultipleAttri
 		{Identifier: "email", Type: "string", Required: true},
 	})
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		"username": "testuser",
 		"email":    "test@example.com",
 	}).Return(&multiAttrUserID, nil)
@@ -449,7 +449,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_Failure_UserNotFoundByAtt
 				{Identifier: tc.attribute, Type: "string", Required: true},
 			})
 
-			suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+			suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 				tc.attribute: tc.value,
 			}).Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
@@ -491,7 +491,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_Success_FromRuntimeData()
 				{Identifier: tc.attribute, Type: "string", Required: true},
 			})
 
-			suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+			suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 				tc.attribute: tc.value,
 			}).Return(&tc.expectedID, nil)
 
@@ -531,7 +531,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_Failure_EmptyInput() {
 			})
 
 			emptyID := ""
-			suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+			suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 				tc.attribute: "",
 			}).Return(&emptyID, nil)
 
@@ -577,7 +577,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_UserInputsPriorityOverRun
 			})
 
 			// The mock should be called with the UserInputs value, not the RuntimeData value
-			suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+			suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 				tc.attribute: tc.userInputValue,
 			}).Return(&tc.expectedID, nil)
 
@@ -617,7 +617,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecuteResolve_UniqueUser() {
 		{Identifier: "given_name", Type: "TEXT_INPUT", Required: true},
 	})
 
-	suite.mockEntityProvider.On("SearchEntities", map[string]interface{}{
+	suite.mockEntityProvider.On("SearchEntities", mock.Anything, map[string]interface{}{
 		"given_name": "Alex",
 	}).Return([]*providers.Entity{
 		{ID: "user-1", Type: "Person", Attributes: attrsAlex},
@@ -644,7 +644,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecuteResolve_AmbiguousUser() {
 		{Identifier: "given_name", Type: "TEXT_INPUT", Required: true},
 	})
 
-	suite.mockEntityProvider.On("SearchEntities", map[string]interface{}{
+	suite.mockEntityProvider.On("SearchEntities", mock.Anything, map[string]interface{}{
 		"given_name": "Alex",
 	}).Return([]*providers.Entity{
 		{ID: "user-1", Type: "Person", Attributes: attrsAlexJohnson},
@@ -764,7 +764,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecuteCheckState_NoMatch() {
 		{Identifier: "given_name", Type: "TEXT_INPUT", Required: true},
 	})
 
-	suite.mockEntityProvider.On("SearchEntities", map[string]interface{}{
+	suite.mockEntityProvider.On("SearchEntities", mock.Anything, map[string]interface{}{
 		"given_name": "Alex",
 	}).Return([]*providers.Entity{}, nil)
 
@@ -789,7 +789,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecuteCheckState_SingleMatch() {
 		{Identifier: "given_name", Type: "TEXT_INPUT", Required: true},
 	})
 
-	suite.mockEntityProvider.On("SearchEntities", map[string]interface{}{
+	suite.mockEntityProvider.On("SearchEntities", mock.Anything, map[string]interface{}{
 		"given_name": "Alex",
 	}).Return([]*providers.Entity{
 		{ID: "user-1", Type: "Person", Attributes: attrsAlex},
@@ -816,7 +816,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecuteCheckState_MultipleMatches
 		{Identifier: "given_name", Type: "TEXT_INPUT", Required: true},
 	})
 
-	suite.mockEntityProvider.On("SearchEntities", map[string]interface{}{
+	suite.mockEntityProvider.On("SearchEntities", mock.Anything, map[string]interface{}{
 		"given_name": "Alex",
 	}).Return([]*providers.Entity{
 		{ID: "user-1", Type: "Person", Attributes: attrsAlexJohnson},
@@ -844,7 +844,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_IdentifyMode_AmbiguousUse
 		{Identifier: "given_name", Type: "TEXT_INPUT", Required: true},
 	})
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		"given_name": "Alex",
 	}).Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeAmbiguousEntity, "Ambiguous user", ""))
 
@@ -869,7 +869,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_IdentifyMode_UserNotFound
 	mockBase.On("GetRequiredInputs", mock.Anything).Return(inputs)
 
 	// IdentifyEntity sets ExecFailure + userNotFound; executeIdentify must promote to UserInputRequired
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		"username": "nonexistent",
 	}).Return(nil, entityprovider.NewEntityProviderError(
 		entityprovider.ErrorCodeEntityNotFound, "not found", ""))
@@ -897,7 +897,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_IdentifyMode_SystemError(
 		{Identifier: "username", Type: "TEXT_INPUT", Required: true},
 	})
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		"username": "testuser",
 	}).Return(nil, entityprovider.NewEntityProviderError(
 		entityprovider.ErrorCodeSystemError, "System error", "db unavailable"))
@@ -981,11 +981,11 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_RetryableIdentificationEr
 
 			if tt.emptyID {
 				emptyID := ""
-				suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+				suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 					tt.attribute: tt.value,
 				}).Return(&emptyID, nil)
 			} else {
-				suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+				suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 					tt.attribute: tt.value,
 				}).Return(nil, tt.entityError)
 			}
@@ -1034,7 +1034,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyEntity_WithEntityID_Succe
 	filters := map[string]interface{}{userAttributeUserID: entityID}
 	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
 
-	suite.mockEntityProvider.On("GetEntityProfile", entityID).
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, entityID).
 		Return(&providers.Entity{ID: entityID}, nil)
 
 	result, err := suite.executor.IdentifyEntity(context.Background(), filters, execResp, entitytype.TypeCategoryUser)
@@ -1049,7 +1049,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyEntity_WithEntityID_NotFo
 	filters := map[string]interface{}{userAttributeUserID: "missing-id"}
 	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
 
-	suite.mockEntityProvider.On("GetEntityProfile", "missing-id").
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, "missing-id").
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 	result, err := suite.executor.IdentifyEntity(context.Background(), filters, execResp, entitytype.TypeCategoryUser)
@@ -1065,7 +1065,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyEntity_WithEntityID_Syste
 	filters := map[string]interface{}{userAttributeUserID: testUserID}
 	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
 
-	suite.mockEntityProvider.On("GetEntityProfile", testUserID).
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, testUserID).
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "", ""))
 
 	result, err := suite.executor.IdentifyEntity(context.Background(), filters, execResp, entitytype.TypeCategoryUser)
@@ -1082,7 +1082,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyEntity_WithEntityID_Empty
 	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
 
 	emptyID := ""
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{userAttributeUserID: ""}).
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{userAttributeUserID: ""}).
 		Return(&emptyID, nil)
 
 	result, err := suite.executor.IdentifyEntity(context.Background(), filters, execResp, entitytype.TypeCategoryUser)
@@ -1135,7 +1135,7 @@ func (suite *IdentifyingExecutorTestSuite) expectBind(entityID string, svcErr *t
 // The holders come from the link, with no typed inputs asked for, and the user is offered what tells
 // them apart.
 func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_FirstPassOffersHolders() {
-	suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return(linkHolders(), nil).Once()
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").Return(linkHolders(), nil).Once()
 
 	resp, err := suite.executor.Execute(linkHolderCtx(nil, nil))
 
@@ -1146,13 +1146,13 @@ func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_FirstPassOffer
 	suite.Require().Len(options, 1)
 	suite.Equal("ouHandle", options[0].Identifier)
 	suite.ElementsMatch([]string{"sales", "support"}, options[0].Options)
-	suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything)
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything, mock.Anything)
 }
 
 // A pick narrows the holders to one, which is bound to the AuthUser. Inputs other than the offered
 // options do not filter the holders.
 func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_PickBindsHolder() {
-	suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return(linkHolders(), nil).Once()
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").Return(linkHolders(), nil).Once()
 	suite.expectBind("holder-support", nil)
 	ctx := linkHolderCtx(nil, map[string]string{"ouHandle": "support", "code": "auth-code"})
 
@@ -1168,7 +1168,7 @@ func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_PickBindsHolde
 // Candidates an attribute-based resolve left behind are not link holders. They are never offered or
 // bound, so a pick of one is offered the holders again.
 func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_IgnoresStoredCandidates() {
-	suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return(linkHolders(), nil).Once()
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").Return(linkHolders(), nil).Once()
 	stale := storedLinkHolders([]*providers.Entity{
 		{ID: "other-user-hr", OUHandle: "hr", Type: "person"},
 		{ID: "other-user-it", OUHandle: "it", Type: "person"},
@@ -1188,7 +1188,7 @@ func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_IgnoresStoredC
 
 // A pick that matches no holder is offered the holders again rather than read as no user.
 func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_UnofferedPickIsOfferedAgain() {
-	suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return(linkHolders(), nil).Once()
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").Return(linkHolders(), nil).Once()
 	ctx := linkHolderCtx(nil, map[string]string{"ouHandle": "elsewhere"})
 
 	resp, err := suite.executor.Execute(ctx)
@@ -1205,7 +1205,7 @@ func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_UnofferedPickI
 
 // Holders nothing tells apart cannot be picked between, so the flow fails.
 func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_IndistinguishableHoldersFail() {
-	suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return([]*providers.Entity{
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").Return([]*providers.Entity{
 		{ID: "holder-1", OUHandle: "sales", Type: "person"},
 		{ID: "holder-2", OUHandle: "sales", Type: "person"},
 	}, nil).Once()
@@ -1219,7 +1219,7 @@ func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_Indistinguisha
 
 // Holders in the same OU are still picked between on what else tells them apart.
 func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_SameOUHoldersPickedOnType() {
-	suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return([]*providers.Entity{
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").Return([]*providers.Entity{
 		{ID: "holder-1", OUHandle: "sales", Type: "person"},
 		{ID: "holder-2", OUHandle: "sales", Type: "partner"},
 	}, nil).Once()
@@ -1234,7 +1234,7 @@ func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_SameOUHoldersP
 }
 
 func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_SingleHolderBindsWithoutPrompt() {
-	suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").
 		Return([]*providers.Entity{{ID: "holder-1", OUHandle: "sales"}}, nil).Once()
 	suite.expectBind("holder-1", nil)
 
@@ -1246,7 +1246,8 @@ func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_SingleHolderBi
 }
 
 func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_NoHolderFails() {
-	suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return([]*providers.Entity{}, nil).Once()
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").
+		Return([]*providers.Entity{}, nil).Once()
 
 	resp, err := suite.executor.Execute(linkHolderCtx(nil, nil))
 
@@ -1256,7 +1257,7 @@ func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_NoHolderFails(
 }
 
 func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_HolderLookupFails() {
-	suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "", "")).Once()
 
 	resp, err := suite.executor.Execute(linkHolderCtx(nil, nil))
@@ -1269,7 +1270,8 @@ func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_HolderLookupFa
 func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_BindFailures() {
 	suite.Run("client error fails the node", func() {
 		suite.SetupTest()
-		suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return(linkHolders(), nil).Once()
+		suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").
+			Return(linkHolders(), nil).Once()
 		suite.expectBind("holder-sales", &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "X"})
 
 		resp, err := suite.executor.Execute(linkHolderCtx(nil, map[string]string{"ouHandle": "sales"}))
@@ -1279,7 +1281,8 @@ func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_BindFailures()
 	})
 	suite.Run("unauthenticated result fails the node", func() {
 		suite.SetupTest()
-		suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return(linkHolders(), nil).Once()
+		suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").
+			Return(linkHolders(), nil).Once()
 		suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 			mock.Anything, mock.Anything, mock.Anything).
 			Return(providers.AuthUser{}, providers.AuthenticatedClaims{}, (*tidcommon.ServiceError)(nil)).Once()
@@ -1301,7 +1304,8 @@ func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_BindFailures()
 		}
 		for _, tc := range cases {
 			suite.SetupTest()
-			suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return(linkHolders(), nil).Once()
+			suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").
+				Return(linkHolders(), nil).Once()
 			suite.expectBind("holder-sales", &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: tc.code})
 
 			resp, err := suite.executor.Execute(linkHolderCtx(nil, map[string]string{"ouHandle": "sales"}))
@@ -1314,7 +1318,8 @@ func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_BindFailures()
 	})
 	suite.Run("server error is returned", func() {
 		suite.SetupTest()
-		suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return(linkHolders(), nil).Once()
+		suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").
+			Return(linkHolders(), nil).Once()
 		suite.expectBind("holder-sales", &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "X"})
 
 		_, err := suite.executor.Execute(linkHolderCtx(nil, map[string]string{"ouHandle": "sales"}))
@@ -1375,7 +1380,8 @@ func (suite *IdentifyingExecutorTestSuite) TestCheckStateFederated_CountsLinkHol
 	} {
 		suite.Run(name, func() {
 			suite.SetupTest()
-			suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return(tc.holders, nil).Once()
+			suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").
+				Return(tc.holders, nil).Once()
 			ctx := linkHolderCtx(nil, nil)
 			ctx.ExecutorMode = ExecutorModeCheckState
 			ctx.NodeInputs = []providers.Input{{Identifier: "sub", Required: true}}
@@ -1386,7 +1392,7 @@ func (suite *IdentifyingExecutorTestSuite) TestCheckStateFederated_CountsLinkHol
 			suite.Equal(providers.ExecComplete, resp.Status)
 			suite.Empty(resp.Inputs)
 			suite.Equal(tc.wantState, resp.RuntimeData[common.RuntimeKeyEntityState])
-			suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything)
+			suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything, mock.Anything)
 		})
 	}
 }
@@ -1409,7 +1415,8 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyFederated_UsesLinkHolder(
 	} {
 		suite.Run(name, func() {
 			suite.SetupTest()
-			suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return(tc.holders, nil).Once()
+			suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").
+				Return(tc.holders, nil).Once()
 			ctx := linkHolderCtx(nil, nil)
 			ctx.ExecutorMode = ExecutorModeIdentify
 			ctx.RuntimeData[common.RuntimeKeyExternalIdentity] = externalIdentityEntry("idp-a", "sub-1",
@@ -1425,14 +1432,14 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyFederated_UsesLinkHolder(
 			if tc.wantError != "" {
 				suite.Equal(tc.wantError, resp.Error.Code)
 			}
-			suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything)
-			suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything)
+			suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything, mock.Anything)
+			suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything, mock.Anything)
 		})
 	}
 }
 
 func (suite *IdentifyingExecutorTestSuite) TestIdentifyFederated_HolderLookupFails() {
-	suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "", "")).Once()
 	ctx := linkHolderCtx(nil, nil)
 	ctx.ExecutorMode = ExecutorModeIdentify
@@ -1446,7 +1453,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyFederated_HolderLookupFai
 
 // A provider that cannot list the link's holders keeps the state the federated executor recorded.
 func (suite *IdentifyingExecutorTestSuite) TestCheckStateFederated_KeepsStateWithoutHolderListing() {
-	suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeNotImplemented, "", "")).Once()
 	ctx := linkHolderCtx(nil, nil)
 	ctx.ExecutorMode = ExecutorModeCheckState
@@ -1459,7 +1466,7 @@ func (suite *IdentifyingExecutorTestSuite) TestCheckStateFederated_KeepsStateWit
 }
 
 func (suite *IdentifyingExecutorTestSuite) TestCheckStateFederated_HolderLookupFails() {
-	suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "", "")).Once()
 	ctx := linkHolderCtx(nil, nil)
 	ctx.ExecutorMode = ExecutorModeCheckState
@@ -1479,7 +1486,7 @@ func (suite *IdentifyingExecutorTestSuite) identifyRecoveryTarget(decision provi
 		[]providers.Input{}, suite.mockFlowFactory, suite.mockEntityProvider, nil,
 		newAccessGuard(expectAccess(suite.T(), testUserID, providers.AccessPlaneRecovery, "", decision, fault)))
 	userID := testUserID
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{"username": "testuser"}).
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{"username": "testuser"}).
 		Return(&userID, nil)
 
 	ctx := &providers.NodeContext{
