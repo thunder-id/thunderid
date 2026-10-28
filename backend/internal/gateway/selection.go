@@ -5,6 +5,7 @@ package gateway
 
 import (
 	"context"
+	"strings"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
 
@@ -35,10 +36,15 @@ type shipment struct {
 // chosen works out what an apply sends from a diff and a selection. Without a selection every change
 // is sent. A selection names changes by key, and is refused when it names one the diff does not
 // report: a typo or a key from a stale diff would otherwise leave out the resource that was meant.
-// Naming a change that changes nothing is allowed; there is nothing to send for it. The changes sent
-// are flagged Selected on the diff.
-func chosen(diff *Diff, target *Version, selection *[]string) (shipment, bool) {
+// Naming a change that changes nothing is allowed; there is nothing to send for it. With
+// dependencies, the selection is widened to what the selected resources need that the gateway lacks,
+// and refused when one of those is held back; without, a selection needing such a resource is
+// refused. The changes sent are flagged Selected on the diff, and those sent for another's need
+// Required.
+func chosen(diff *Diff, target *Version, selection *[]string,
+	withDependencies bool) (shipment, *tidcommon.ServiceError) {
 	wanted := map[string]bool{}
+	required := map[string]string{}
 	if selection != nil {
 		wanted = toSet(*selection)
 		named := 0
@@ -48,7 +54,22 @@ func chosen(diff *Diff, target *Version, selection *[]string) (shipment, bool) {
 			}
 		}
 		if named != len(wanted) {
-			return shipment{}, false
+			return shipment{}, &ErrorInvalidSelection
+		}
+		if withDependencies {
+			var expanded []string
+			expanded, required = withNeeded(*selection, diff.Changes)
+			if missing := lacking(expanded, diff.Changes); len(missing) > 0 {
+				return shipment{}, tidcommon.CustomServiceError(ErrorDependencyNotDeployed, tidcommon.I18nMessage{
+					Key: ErrorDependencyNotDeployed.ErrorDescription.Key,
+					DefaultValue: strings.Join(missing, "; ") + ". This gateway holds that back: select it as " +
+						"well to send it, or leave out what needs it."})
+			}
+			wanted = toSet(expanded)
+		} else if missing := lacking(*selection, diff.Changes); len(missing) > 0 {
+			return shipment{}, tidcommon.CustomServiceError(ErrorDependencyNotDeployed, tidcommon.I18nMessage{
+				Key:          ErrorDependencyNotDeployed.ErrorDescription.Key,
+				DefaultValue: strings.Join(missing, "; ") + ". Select them as well, or apply with withDependencies."})
 		}
 	}
 	take := func(change Change) bool { return selection == nil || wanted[change.Key] }
@@ -60,6 +81,10 @@ func chosen(diff *Diff, target *Version, selection *[]string) (shipment, bool) {
 			continue
 		}
 		diff.Changes[i].Selected = true
+		if by, ok := required[change.Key]; ok {
+			diff.Changes[i].Required = true
+			diff.Changes[i].RequiredBy = by
+		}
 		switch change.Change {
 		case ChangeDeleted:
 			// A resource without an id cannot be named to the gateway, so it is left in place.
@@ -76,7 +101,23 @@ func chosen(diff *Diff, target *Version, selection *[]string) (shipment, bool) {
 			documents = append(documents, resource.Content)
 		}
 	}
-	return shipment{content: joinBundle(documents), deletions: deletions}, true
+	return shipment{content: joinBundle(documents), deletions: deletions}, nil
+}
+
+// refuseRemovalsInUse refuses removals that a document the gateway keeps still names. The documents
+// are read from the master, not from what this apply sends: the import carries on past a refused
+// update, so an update in the same apply could fail and leave the removal made under a resource that
+// still names it.
+func refuseRemovalsInUse(sent shipment, master *Master) *tidcommon.ServiceError {
+	referenced := stillReferenced(sent.deletions, parseBundle(master.Resources))
+	if len(referenced) == 0 {
+		return nil
+	}
+	return tidcommon.CustomServiceError(ErrorRemovalInUse, tidcommon.I18nMessage{
+		Key: ErrorRemovalInUse.ErrorDescription.Key,
+		DefaultValue: strings.Join(referenced, "; ") +
+			". Remove them in the same apply, deploy an update that stops them needing it first, or leave it " +
+			"in place."})
 }
 
 func keysOf(excluded []excludedResource) map[string]bool {

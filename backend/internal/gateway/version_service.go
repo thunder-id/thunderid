@@ -384,7 +384,7 @@ func (s *versionService) Diff(ctx context.Context, gatewayID, ref string) (*Diff
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	_, diff, svcErr := s.plan(ctx, gatewayID, target)
+	_, diff, _, svcErr := s.plan(ctx, gatewayID, target)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -419,8 +419,9 @@ func (s *versionService) Apply(ctx context.Context, gatewayID string,
 	coalesce := !req.DryRun && req.Selection == nil && len(req.LeaveOut) == 0 && !req.ConfirmRemovals &&
 		asksForLatest(req.Version)
 	return s.write(ctx, gw, target, applyOptions{dryRun: req.DryRun, selection: req.Selection,
-		leaveOut:        req.LeaveOut,
-		confirmRemovals: req.ConfirmRemovals, coalesce: coalesce, origin: origin})
+		leaveOut:         req.LeaveOut,
+		withDependencies: req.WithDependencies == nil || *req.WithDependencies,
+		confirmRemovals:  req.ConfirmRemovals, coalesce: coalesce, origin: origin})
 }
 
 // asksForLatest reports whether a reference asks for the latest version rather than naming one.
@@ -433,7 +434,7 @@ func asksForLatest(ref string) bool {
 // now, before the apply is queued behind another.
 func (s *versionService) refuseUnconfirmedRemovalsOf(ctx context.Context, gw *Gateway,
 	target *Version) *tidcommon.ServiceError {
-	_, diff, svcErr := s.plan(ctx, gw.ID, target)
+	_, diff, _, svcErr := s.plan(ctx, gw.ID, target)
 	if svcErr != nil {
 		return svcErr
 	}
@@ -442,7 +443,10 @@ func (s *versionService) refuseUnconfirmedRemovalsOf(ctx context.Context, gw *Ga
 	if svcErr != nil {
 		return svcErr
 	}
-	sent, _ := chosen(diff, target, selection)
+	sent, svcErr := chosen(diff, target, selection, true)
+	if svcErr != nil {
+		return svcErr
+	}
 	return s.refuseUnconfirmedRemovals(ctx, gw, len(sent.deletions), applyOptions{})
 }
 
@@ -474,8 +478,11 @@ func (s *versionService) Promote(ctx context.Context, req PromoteRequest) (*Appl
 		return nil, svcErr
 	}
 	selection := promoteSelection(master, version, diff)
+	// What the source holds is promoted as it is, never widened with what the source does not hold.
+	withDependencies := false
 	return s.Apply(ctx, req.TargetGatewayID, ApplyRequest{Version: source.Applied, DryRun: req.DryRun,
-		Selection: &selection, ConfirmRemovals: req.ConfirmRemovals, Origin: req.SourceGatewayID})
+		Selection: &selection, ConfirmRemovals: req.ConfirmRemovals, Origin: req.SourceGatewayID,
+		WithDependencies: &withDependencies})
 }
 
 // promoteSelection picks the target's changes a promotion sends: a removal, or an addition or update
@@ -570,6 +577,8 @@ type applyOptions struct {
 	selection *[]string
 	// leaveOut names changes to hold back from this apply and the ones after it.
 	leaveOut []string
+	// withDependencies widens the selection to what it needs that the gateway lacks.
+	withDependencies bool
 	// origin is the label the master records for where the version came from.
 	origin string
 	// revertTo is the earlier master a revert returns the gateway to, and whole the version recorded
@@ -620,7 +629,9 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 			}
 		}()
 	}
-	applied, diff, svcErr := s.plan(ctx, gw.ID, target)
+	// The master is read under the lease, before the import, so what it is updated from is what the
+	// gateway held when the import was sent.
+	applied, diff, previous, svcErr := s.plan(ctx, gw.ID, target)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -641,18 +652,17 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 			return nil, svcErr
 		}
 	}
-	sent, ok := chosen(diff, target, selection)
-	if !ok {
-		return nil, &ErrorInvalidSelection
+	sent, svcErr := chosen(diff, target, selection, options.withDependencies)
+	if svcErr == nil {
+		svcErr = refuseRemovalsInUse(sent, previous)
 	}
-	values := valuesToRecord(held, target, changed, diff, applied)
-	previous, svcErr := s.masterBefore(ctx, gw.ID, dryRun)
 	if svcErr == nil {
 		svcErr = s.refuseUnconfirmedRemovals(ctx, gw, len(sent.deletions), options)
 	}
 	if svcErr != nil {
 		return nil, svcErr
 	}
+	values := valuesToRecord(held, target, changed, diff, applied)
 	missing, svcErr := s.missingValues(ctx, gw, held, sent.content, dryRun)
 	if svcErr != nil {
 		return nil, svcErr
@@ -801,17 +811,6 @@ func levelWith(master *Master, version *Version) appliedState {
 	}
 	state.complete = state.held == state.total && !extra
 	return state
-}
-
-// masterBefore reads the master a gateway holds as an apply is about to send its import, under the
-// apply's lease, so what the master is updated from is what the gateway held when the import went
-// out. A dry run writes no master and reads none.
-func (s *versionService) masterBefore(ctx context.Context, gatewayID string,
-	dryRun bool) (*Master, *tidcommon.ServiceError) {
-	if dryRun {
-		return nil, nil
-	}
-	return s.master(ctx, gatewayID)
 }
 
 // mayStillSend reports whether an apply may send its import now. A lease held longer than an apply
@@ -1055,27 +1054,33 @@ func (s *versionService) unsettle(ctx context.Context, target *Version) {
 	}
 }
 
-// plan diffs a version against what a gateway holds, as its master records it. A resource the
-// gateway refused on its last apply is offered again, as updated even when the version and the master
-// do not differ on it, since the gateway does not run it as the master holds it.
+// plan diffs a version against what a gateway holds, as its master records it, and returns the
+// master with it. A resource the gateway refused on its last apply is offered again, as updated even
+// when the version and the master do not differ on it, since the gateway does not run it as the
+// master holds it. Each change says what its resource needs, read from the version.
 func (s *versionService) plan(ctx context.Context, gatewayID string,
-	target *Version) (*AppliedVersion, *Diff, *tidcommon.ServiceError) {
+	target *Version) (*AppliedVersion, *Diff, *Master, *tidcommon.ServiceError) {
 	applied, err := s.versions.GetApplied(ctx, gatewayID)
 	if err != nil {
 		s.logger.Error(ctx, "Failed to read what the gateway holds", log.Error(err))
-		return nil, nil, &tidcommon.InternalServerError
+		return nil, nil, nil, &tidcommon.InternalServerError
 	}
 	master, svcErr := s.master(ctx, gatewayID)
 	if svcErr != nil {
-		return nil, nil, svcErr
+		return nil, nil, nil, svcErr
 	}
+	resources := parseBundle(target.Resources)
 	diff := &Diff{FromMaster: master.Hash, ToVersion: target.Hash}
-	diff.Changes = markFailed(diffBundles(parseBundle(master.Resources), parseBundle(target.Resources)), master)
+	diff.Changes = markFailed(diffBundles(parseBundle(master.Resources), resources), master)
+	needs := needsOf(resources)
+	for i := range diff.Changes {
+		diff.Changes[i].Needs = needs[diff.Changes[i].Key]
+	}
 	diff.Summary = summarize(diff.Changes)
 	// A version captured before captures refused one may still refer to a secret from a field that
 	// holds no credential; the diff says so, since the gateway will refuse that resource.
 	diff.MisplacedSecrets = misplacedSecretsIn(target.Resources, s.secretFields)
-	return applied, diff, nil
+	return applied, diff, master, nil
 }
 
 // markFailed flags the changes whose resource the gateway refused on its last apply, and offers one
