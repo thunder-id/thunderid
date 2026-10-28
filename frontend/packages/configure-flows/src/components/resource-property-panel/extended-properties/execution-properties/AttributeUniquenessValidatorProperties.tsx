@@ -1,7 +1,16 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {FormHelperText, FormLabel, MenuItem, Select, Stack, Typography} from '@wso2/oxygen-ui';
+import {
+  Checkbox,
+  FormControlLabel,
+  FormHelperText,
+  FormLabel,
+  MenuItem,
+  Select,
+  Stack,
+  Typography,
+} from '@wso2/oxygen-ui';
 import {useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {ENTITY_MODE_OPTIONS} from './constants';
@@ -45,6 +54,23 @@ function AttributeUniquenessValidatorProperties({
         </Select>
         <FormHelperText>{t('flows:core.executions.attributeUniquenessValidator.mode.hint')}</FormHelperText>
       </div>
+
+      {/* The target OU check matches users by email, so it only applies when validating users. */}
+      {currentMode === 'user' && (
+        <div>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={!!properties['allowCrossOUProvisioning']}
+                onChange={(e) => onChange('data.properties.allowCrossOUProvisioning', e.target.checked, resource)}
+                size="small"
+              />
+            }
+            label={t('flows:core.executions.federation.allowCrossOUProvisioning.label')}
+          />
+          <FormHelperText>{t('flows:core.executions.federation.allowCrossOUProvisioning.hint')}</FormHelperText>
+        </div>
+      )}
     </Stack>
   );
 }

@@ -1833,6 +1833,43 @@ describe('ExecutionExtendedProperties', () => {
 
       expect(mockOnChange).toHaveBeenCalledWith('data.properties.mode', 'agent', attributeUniquenessResource);
     });
+
+    it('should render the allowCrossOUProvisioning checkbox', () => {
+      render(<ExecutionExtendedProperties resource={attributeUniquenessResource} onChange={mockOnChange} />);
+
+      expect(screen.getByText('flows:core.executions.federation.allowCrossOUProvisioning.label')).toBeInTheDocument();
+      expect(screen.queryByText('flows:core.executions.noConfig.description')).not.toBeInTheDocument();
+    });
+
+    it('should call onChange when allowCrossOUProvisioning checkbox is toggled', () => {
+      render(<ExecutionExtendedProperties resource={attributeUniquenessResource} onChange={mockOnChange} />);
+
+      fireEvent.click(screen.getByRole('checkbox'));
+
+      expect(mockOnChange).toHaveBeenCalledWith(
+        'data.properties.allowCrossOUProvisioning',
+        true,
+        attributeUniquenessResource,
+      );
+    });
+
+    it('should hide the allowCrossOUProvisioning checkbox in agent mode', () => {
+      const agentResource = {
+        id: 'attribute-uniqueness-agent',
+        data: {
+          action: {
+            executor: {
+              name: ExecutionTypes.AttributeUniquenessValidator,
+            },
+          },
+          properties: {mode: 'agent'},
+        },
+      } as unknown as Resource;
+
+      render(<ExecutionExtendedProperties resource={agentResource} onChange={mockOnChange} />);
+
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    });
   });
 
   describe('Account Linking Executor', () => {

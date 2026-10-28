@@ -5,10 +5,12 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -45,6 +47,7 @@ func newAttributeUniquenessValidator(
 		[]providers.Input{}, prerequisites, &providers.ExecutorMeta{
 			SupportedProperties: []providers.ExecutorSupportedProperties{
 				{Property: propertyKeyProvisioningMode},
+				{Property: common.NodePropertyAllowCrossOUProvisioning},
 			},
 		})
 	return &attributeUniquenessValidator{
@@ -92,7 +95,14 @@ func (e *attributeUniquenessValidator) Execute(ctx *providers.NodeContext) (*pro
 			category, entityType, svcErr.Error.DefaultValue)
 	}
 
+	// With cross-OU provisioning the same email may belong to users in other OUs, so a deployment-wide
+	// lookup would reject valid invites (or fail as ambiguous). Email is checked against the target OU below.
+	scopeEmailToTargetOU := category == entitytype.TypeCategoryUser && isCrossOUProvisioningAllowed(ctx)
+
 	for _, attr := range uniqueAttrs {
+		if scopeEmailToTargetOU && attr == userAttributeEmail {
+			continue
+		}
 		value, exists := ctx.UserInputs[attr]
 		if !exists || value == "" {
 			continue
@@ -114,6 +124,52 @@ func (e *attributeUniquenessValidator) Execute(ctx *providers.NodeContext) (*pro
 		}
 	}
 
+	if scopeEmailToTargetOU {
+		inTargetOU, err := e.emailExistsInTargetOU(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if inTargetOU {
+			logger.Debug(ctx.Context, "User with the provided email already exists in the target OU")
+			execResp.Status = providers.ExecUserInputRequired
+			execResp.Error = errForEntityCategory(ErrEntityAlreadyExistsInTargetOU, category)
+			return execResp, nil
+		}
+	}
+
 	execResp.Status = providers.ExecComplete
 	return execResp, nil
+}
+
+// emailExistsInTargetOU reports whether a user with the provided email already belongs to the OU
+// the flow provisions into. Users with the same email in other OUs are allowed, since cross-OU
+// provisioning permits one identity per OU. It fails when no target OU has been resolved, since the
+// check cannot rule out a duplicate without one.
+func (e *attributeUniquenessValidator) emailExistsInTargetOU(ctx *providers.NodeContext) (bool, error) {
+	email := ctx.UserInputs[userAttributeEmail]
+	if email == "" {
+		return false, nil
+	}
+	targetOUID := ctx.RuntimeData[ouIDKey]
+	if targetOUID == "" {
+		targetOUID = ctx.RuntimeData[defaultOUIDKey]
+	}
+	if targetOUID == "" {
+		return false, errors.New("cannot check email against the target OU: no target OU is resolved")
+	}
+
+	matches, svcErr := e.entityProvider.SearchEntities(map[string]interface{}{userAttributeEmail: email})
+	if svcErr != nil {
+		if svcErr.Code == entityprovider.ErrorCodeEntityNotFound {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to search users by email: %s", svcErr.Message)
+	}
+
+	for _, m := range matches {
+		if m != nil && m.Category == providers.EntityCategoryUser && m.OUID == targetOUID {
+			return true, nil
+		}
+	}
+	return false, nil
 }

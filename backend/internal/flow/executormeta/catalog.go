@@ -31,6 +31,7 @@ var catalog = map[string]providers.ExecutorMeta{
 	ExecutorNameAttributeUniquenessValidator: {
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "mode"},
+			{Property: "allowCrossOUProvisioning"},
 		},
 	},
 	ExecutorNameAuthAssert: {
