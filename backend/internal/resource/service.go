@@ -108,6 +108,9 @@ type ResourceServiceInterface interface {
 	) *tidcommon.ServiceError
 
 	SetDependencyRegistry(r resourcedependency.Registry)
+	// SetSystemFlowExecutor injects what runs the system flows a change needs before it is written.
+	SetSystemFlowExecutor(execute func(ctx context.Context, handle string,
+		inputs map[string]string) *tidcommon.ServiceError)
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 }
@@ -122,7 +125,17 @@ type resourceService struct {
 	transactioner      providers.Transactioner
 	dependencyRegistry resourcedependency.Registry
 	valueCapturer      declarativeresource.ValueCapturer
+	// executeSystemFlow runs a system flow to completion with the given inputs.
+	executeSystemFlow func(ctx context.Context, handle string, inputs map[string]string) *tidcommon.ServiceError
 }
+
+// The system flow an action deletion runs, and the inputs naming the action it acts on.
+const (
+	systemFlowActionDelete        = "system-action-delete"
+	systemFlowInputResourceServer = "targetResourceServerId"
+	systemFlowInputResource       = "targetResourceId"
+	systemFlowInputAction         = "targetActionId"
+)
 
 // authZENPDPConnectionLookup retrieves AuthZEN PDP connections for resource-server validation.
 type authZENPDPConnectionLookup interface {
@@ -133,6 +146,13 @@ type authZENPDPConnectionLookup interface {
 // provider services are initialized to avoid a cyclic import.
 func (rs *resourceService) SetDependencyRegistry(r resourcedependency.Registry) {
 	rs.dependencyRegistry = r
+}
+
+// SetSystemFlowExecutor injects what runs the system flows a change needs before it is written. Called
+// by servicemanager once the flow engine exists, which is after this service.
+func (rs *resourceService) SetSystemFlowExecutor(execute func(ctx context.Context, handle string,
+	inputs map[string]string) *tidcommon.ServiceError) {
+	rs.executeSystemFlow = execute
 }
 
 // ensureNoBlockingDependencies refuses deletion when other resources depend on the target
@@ -1253,6 +1273,21 @@ func (rs *resourceService) DeleteAction(
 	}
 	if !exists {
 		return nil // Idempotent delete
+	}
+
+	// What the action's scope granted is revoked before it is removed, whichever entry point asked:
+	// every token carrying the scope, deployment-wide. A refusal leaves the action as it was.
+	if rs.executeSystemFlow == nil {
+		rs.logger.Error(ctx, "System flow executor not set; refusing the change",
+			log.String("handle", systemFlowActionDelete))
+		return &tidcommon.InternalServerError
+	}
+	inputs := map[string]string{systemFlowInputResourceServer: resourceServerID, systemFlowInputAction: id}
+	if resID != nil {
+		inputs[systemFlowInputResource] = *resID
+	}
+	if svcErr := rs.executeSystemFlow(ctx, systemFlowActionDelete, inputs); svcErr != nil {
+		return svcErr
 	}
 
 	// Use transaction for write operation

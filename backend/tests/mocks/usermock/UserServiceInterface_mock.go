@@ -1286,6 +1286,46 @@ func (_c *UserServiceInterfaceMock_SetDependencyRegistry_Call) RunAndReturn(run 
 	return _c
 }
 
+// SetSystemFlowExecutor provides a mock function for the type UserServiceInterfaceMock
+func (_mock *UserServiceInterfaceMock) SetSystemFlowExecutor(execute func(ctx context.Context, handle string, inputs map[string]string) *common.ServiceError) {
+	_mock.Called(execute)
+	return
+}
+
+// UserServiceInterfaceMock_SetSystemFlowExecutor_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetSystemFlowExecutor'
+type UserServiceInterfaceMock_SetSystemFlowExecutor_Call struct {
+	*mock.Call
+}
+
+// SetSystemFlowExecutor is a helper method to define mock.On call
+//   - execute func(ctx context.Context, handle string, inputs map[string]string) *common.ServiceError
+func (_e *UserServiceInterfaceMock_Expecter) SetSystemFlowExecutor(execute any) *UserServiceInterfaceMock_SetSystemFlowExecutor_Call {
+	return &UserServiceInterfaceMock_SetSystemFlowExecutor_Call{Call: _e.mock.On("SetSystemFlowExecutor", execute)}
+}
+
+func (_c *UserServiceInterfaceMock_SetSystemFlowExecutor_Call) Run(run func(execute func(ctx context.Context, handle string, inputs map[string]string) *common.ServiceError)) *UserServiceInterfaceMock_SetSystemFlowExecutor_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 func(ctx context.Context, handle string, inputs map[string]string) *common.ServiceError
+		if args[0] != nil {
+			arg0 = args[0].(func(ctx context.Context, handle string, inputs map[string]string) *common.ServiceError)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_SetSystemFlowExecutor_Call) Return() *UserServiceInterfaceMock_SetSystemFlowExecutor_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_SetSystemFlowExecutor_Call) RunAndReturn(run func(execute func(ctx context.Context, handle string, inputs map[string]string) *common.ServiceError)) *UserServiceInterfaceMock_SetSystemFlowExecutor_Call {
+	_c.Run(run)
+	return _c
+}
+
 // UpdateSharingPolicy provides a mock function for the type UserServiceInterfaceMock
 func (_mock *UserServiceInterfaceMock) UpdateSharingPolicy(ctx context.Context, userID string, policyID string, req sharing.PolicyRequest) (sharing.Policy, *common.ServiceError) {
 	ret := _mock.Called(ctx, userID, policyID, req)

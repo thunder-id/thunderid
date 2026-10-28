@@ -4,6 +4,7 @@
 package execution
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -67,6 +68,15 @@ const (
 	scopeRetired                 = "retired"
 	scopeRetiredNeighbor         = "retired-neighbor"
 	scopeUntouchedByRoleDeletion = "untouched-by-role-deletion"
+	scopeRoleDeletedThroughAPI   = "role-deleted-through-api"
+	scopeGroupDeletedThroughAPI  = "group-deleted-through-api"
+	scopeUnassignedThroughAPI    = "unassigned-through-api"
+	scopeStillAssigned           = "still-assigned"
+	scopeLeftThroughAPI          = "left-through-api"
+	scopeKeptThroughAPI          = "kept-through-api"
+	scopeDroppedThroughAPI       = "dropped-through-api"
+	scopeRetiredThroughAPI       = "retired-through-api"
+	scopeRetiredNeighborOfAPI    = "retired-neighbor-of-api"
 	scopeUntouchedByPermEdit     = "untouched-by-perm-edit"
 	scopeUntouchedByGroupDelete  = "untouched-by-group-delete"
 	scopeSharedByMembers         = "shared-by-members"
@@ -126,10 +136,14 @@ var authzFlowResourceScopes = []string{
 	scopeDoomedRole, scopeDoomedPermission, scopeDoomedGroup,
 	scopeRefusedPermEdit, scopeRefusedMemberRemoval,
 	scopeHeldThroughNesting, scopeHeldTwice, scopeNestedGroupDeletion, scopeNestedMemberRemoval,
-	scopeReachedSeveralWays, scopeNothingDropped, scopeHeldBeyondDescentLimit,
+	scopeReachedSeveralWays, scopeNothingDropped, scopeHeldBeyondDescentLimit, scopeRoleDeletedThroughAPI,
+	scopeGroupDeletedThroughAPI, scopeUnassignedThroughAPI, scopeStillAssigned,
+	scopeLeftThroughAPI, scopeKeptThroughAPI, scopeDroppedThroughAPI,
 }
 
-var authzFlowActionScopes = []string{scopeRetired, scopeRetiredNeighbor}
+var authzFlowActionScopes = []string{
+	scopeRetired, scopeRetiredNeighbor, scopeRetiredThroughAPI, scopeRetiredNeighborOfAPI,
+}
 
 var authzAdminFlowTestOU = testutils.OrganizationUnit{
 	Handle:      "authz_admin_flow_test_ou",
@@ -343,6 +357,56 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestRoleDeletionFlow_Revokes
 	ts.False(ts.roleExists(roleID), "The role must be deleted")
 }
 
+// Deleting a role through the management API revokes what it granted, as the deletion flow does: the
+// service runs the same revocation before the role is removed, whichever entry point asked.
+func (ts *AuthorizationAdministrationFlowTestSuite) TestDeleteRoleThroughTheAPI_RevokesTokenAndDeletesRole() {
+	roleID := ts.createRole("Authz API Deleted Administrator", []string{scopeRoleDeletedThroughAPI},
+		testutils.Assignment{ID: ts.appID, Type: "app"})
+	token := grantedToken(&ts.Suite, authzFlowClient, scopeRoleDeletedThroughAPI)
+
+	// Straight to the endpoint: testutils.DeleteRole removes the assignments first.
+	req, err := http.NewRequest(http.MethodDelete, testServerURL+"/roles/"+roleID, nil)
+	ts.Require().NoError(err)
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err, "Failed to delete the role")
+	resp.Body.Close()
+	ts.Require().Equal(http.StatusNoContent, resp.StatusCode)
+
+	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, token),
+		"The token carrying the deleted role's scope must be rejected")
+	ts.False(ts.roleExists(roleID), "The role must be deleted")
+}
+
+// Removing a role assignment through the management API revokes what the assignment granted, and
+// leaves another role of the same assignee alone.
+func (ts *AuthorizationAdministrationFlowTestSuite) TestRemoveRoleAssignmentThroughTheAPI_RevokesTheAssigneesToken() {
+	roleID := ts.createRole("Authz API Unassigned Administrator", []string{scopeUnassignedThroughAPI},
+		testutils.Assignment{ID: ts.appID, Type: "app"})
+	ts.createRole("Authz API Still Assigned Administrator", []string{scopeStillAssigned},
+		testutils.Assignment{ID: ts.appID, Type: "app"})
+	token := grantedToken(&ts.Suite, authzFlowClient, scopeUnassignedThroughAPI)
+	bystander := grantedToken(&ts.Suite, authzFlowClient, scopeStillAssigned)
+
+	body, err := json.Marshal(map[string]interface{}{
+		"assignments": []testutils.Assignment{{ID: ts.appID, Type: "app"}},
+	})
+	ts.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPost, testServerURL+"/roles/"+roleID+"/assignments/remove",
+		bytes.NewReader(body))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err, "Failed to remove the assignment")
+	resp.Body.Close()
+	ts.Require().Equal(http.StatusNoContent, resp.StatusCode)
+
+	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, token),
+		"The token carrying the removed role's scope must be rejected")
+	ts.True(tokenIsActive(&ts.Suite, authzFlowClient, bystander),
+		"A token carrying another role's scope must stay valid")
+	ts.True(ts.roleExists(roleID), "Removing an assignment must not delete the role")
+}
+
 func (ts *AuthorizationAdministrationFlowTestSuite) TestRoleDeletionFlow_UnknownRoleCarriesValidatorCode() {
 	step := executeAsAdmin(&ts.Suite, ts.flowIDs[roleDeletionFlowHandle], map[string]string{
 		roleTargetInput: "01900000-0000-7000-8000-0000000000fe",
@@ -373,6 +437,34 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestRolePermissionRemovalFlo
 		"The role still grants the kept permission, so a token carrying only it must stay accepted")
 	ts.Equal([]string{scopePermissionKept}, ts.rolePermissions(roleID),
 		"The role must grant exactly the permissions the flow was given")
+}
+
+// Updating a role through the management API revokes what the permissions it drops granted, as the
+// permission removal flow does, and an update that drops nothing revokes nothing.
+func (ts *AuthorizationAdministrationFlowTestSuite) TestUpdateRoleThroughTheAPI_RevokesOnlyTheDroppedPermission() {
+	const name = "Authz API Narrowed Administrator"
+	roleID := ts.createRole(name, []string{scopeKeptThroughAPI, scopeDroppedThroughAPI},
+		testutils.Assignment{ID: ts.appID, Type: "app"})
+	dropped := grantedToken(&ts.Suite, authzFlowClient, scopeDroppedThroughAPI)
+	kept := grantedToken(&ts.Suite, authzFlowClient, scopeKeptThroughAPI)
+	update := func(permissions ...string) {
+		ts.T().Helper()
+		ts.Require().NoError(testutils.UpdateRole(roleID, testutils.Role{
+			Name: name, OUID: ts.ouID,
+			Permissions: []testutils.ResourcePermissions{
+				{ResourceServerID: ts.resourceServerID, Permissions: permissions},
+			},
+		}), "Failed to update the role")
+	}
+
+	update(scopeKeptThroughAPI, scopeDroppedThroughAPI)
+	ts.True(tokenIsActive(&ts.Suite, authzFlowClient, dropped), "An update that drops nothing must revoke nothing")
+
+	update(scopeKeptThroughAPI)
+	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, dropped),
+		"The token carrying the dropped permission must be rejected")
+	ts.True(tokenIsActive(&ts.Suite, authzFlowClient, kept),
+		"The role still grants the kept permission, so a token carrying only it must stay accepted")
 }
 
 func (ts *AuthorizationAdministrationFlowTestSuite) TestRolePermissionRemovalFlow_NothingDroppedRevokesNothing() {
@@ -420,6 +512,54 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestGroupDeletionFlow_Revoke
 	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, token),
 		"The member's token must be rejected: the group was the only path to the scope")
 	ts.False(ts.groupExists(groupID), "The group must be deleted")
+}
+
+// Deleting a group through the management API revokes what it passed to its members, as the deletion
+// flow does.
+func (ts *AuthorizationAdministrationFlowTestSuite) TestDeleteGroupThroughTheAPI_RevokesMemberTokenAndDeletesGroup() {
+	groupID := ts.createGroup("Authz API Deleted Group",
+		testutils.Member{Id: ts.appID, Type: "app"})
+	ts.createRole("Authz API Group Deletion Administrator", []string{scopeGroupDeletedThroughAPI},
+		testutils.Assignment{ID: groupID, Type: "group"})
+	token := grantedToken(&ts.Suite, authzFlowClient, scopeGroupDeletedThroughAPI)
+
+	req, err := http.NewRequest(http.MethodDelete, testServerURL+"/groups/"+groupID, nil)
+	ts.Require().NoError(err)
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err, "Failed to delete the group")
+	resp.Body.Close()
+	ts.Require().Equal(http.StatusNoContent, resp.StatusCode)
+
+	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, token),
+		"The member's token must be rejected: the group was the only path to the scope")
+	ts.False(ts.groupExists(groupID), "The group must be deleted")
+}
+
+// Removing a member through the management API revokes what the member got from the group, as the
+// membership removal flow does.
+func (ts *AuthorizationAdministrationFlowTestSuite) TestRemoveGroupMemberThroughTheAPI_RevokesTheMembersToken() {
+	groupID := ts.createGroup("Authz API Membership Group",
+		testutils.Member{Id: ts.appID, Type: "app"})
+	ts.createRole("Authz API Membership Administrator", []string{scopeLeftThroughAPI},
+		testutils.Assignment{ID: groupID, Type: "group"})
+	token := grantedToken(&ts.Suite, authzFlowClient, scopeLeftThroughAPI)
+
+	body, err := json.Marshal(map[string]interface{}{
+		"members": []testutils.Member{{Id: ts.appID, Type: "app"}},
+	})
+	ts.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPost, testServerURL+"/groups/"+groupID+"/members/remove",
+		bytes.NewReader(body))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err, "Failed to remove the member")
+	resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, token),
+		"The departing member's token must be rejected: the group was the only path to the scope")
+	ts.True(ts.groupExists(groupID), "Removing a member must not delete the group")
 }
 
 func (ts *AuthorizationAdministrationFlowTestSuite) TestGroupMembershipRemovalFlow_RevokesDepartingMemberToken() {
@@ -480,6 +620,29 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestActionDeletionFlow_Revok
 		"The row is keyed on one scope, so a token carrying a different one must be untouched")
 	ts.False(ts.actionExists(ts.actionIDs[scopeRetired]), "The action must be deleted")
 	delete(ts.actionIDs, scopeRetired)
+}
+
+// Deleting an action through the management API revokes every token carrying its scope, as the action
+// deletion flow does, and leaves tokens carrying another scope alone.
+func (ts *AuthorizationAdministrationFlowTestSuite) TestDeleteActionThroughTheAPI_RevokesTheScope() {
+	ts.createRole("Authz API Retiring Administrator", []string{scopeRetiredThroughAPI, scopeRetiredNeighborOfAPI},
+		testutils.Assignment{ID: ts.appID, Type: "app"})
+	retired := grantedToken(&ts.Suite, authzFlowClient, scopeRetiredThroughAPI)
+	neighbor := grantedToken(&ts.Suite, authzFlowClient, scopeRetiredNeighborOfAPI)
+
+	req, err := http.NewRequest(http.MethodDelete, testServerURL+"/resource-servers/"+ts.resourceServerID+
+		"/actions/"+ts.actionIDs[scopeRetiredThroughAPI], nil)
+	ts.Require().NoError(err)
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err, "Failed to delete the action")
+	resp.Body.Close()
+	ts.Require().Equal(http.StatusNoContent, resp.StatusCode)
+
+	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, retired), "A token carrying the retired scope must be rejected")
+	ts.True(tokenIsActive(&ts.Suite, authzFlowClient, neighbor),
+		"The row is keyed on one scope, so a token carrying a different one must be untouched")
+	ts.False(ts.actionExists(ts.actionIDs[scopeRetiredThroughAPI]), "The action must be deleted")
+	delete(ts.actionIDs, scopeRetiredThroughAPI)
 }
 
 func (ts *AuthorizationAdministrationFlowTestSuite) TestActionDeletionFlow_MissingTargetDoesNotComplete() {

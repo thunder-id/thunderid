@@ -1324,6 +1324,46 @@ func (_c *ResourceServiceInterfaceMock_SetDependencyRegistry_Call) RunAndReturn(
 	return _c
 }
 
+// SetSystemFlowExecutor provides a mock function for the type ResourceServiceInterfaceMock
+func (_mock *ResourceServiceInterfaceMock) SetSystemFlowExecutor(execute func(ctx context.Context, handle string, inputs map[string]string) *common.ServiceError) {
+	_mock.Called(execute)
+	return
+}
+
+// ResourceServiceInterfaceMock_SetSystemFlowExecutor_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetSystemFlowExecutor'
+type ResourceServiceInterfaceMock_SetSystemFlowExecutor_Call struct {
+	*mock.Call
+}
+
+// SetSystemFlowExecutor is a helper method to define mock.On call
+//   - execute func(ctx context.Context, handle string, inputs map[string]string) *common.ServiceError
+func (_e *ResourceServiceInterfaceMock_Expecter) SetSystemFlowExecutor(execute any) *ResourceServiceInterfaceMock_SetSystemFlowExecutor_Call {
+	return &ResourceServiceInterfaceMock_SetSystemFlowExecutor_Call{Call: _e.mock.On("SetSystemFlowExecutor", execute)}
+}
+
+func (_c *ResourceServiceInterfaceMock_SetSystemFlowExecutor_Call) Run(run func(execute func(ctx context.Context, handle string, inputs map[string]string) *common.ServiceError)) *ResourceServiceInterfaceMock_SetSystemFlowExecutor_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 func(ctx context.Context, handle string, inputs map[string]string) *common.ServiceError
+		if args[0] != nil {
+			arg0 = args[0].(func(ctx context.Context, handle string, inputs map[string]string) *common.ServiceError)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ResourceServiceInterfaceMock_SetSystemFlowExecutor_Call) Return() *ResourceServiceInterfaceMock_SetSystemFlowExecutor_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *ResourceServiceInterfaceMock_SetSystemFlowExecutor_Call) RunAndReturn(run func(execute func(ctx context.Context, handle string, inputs map[string]string) *common.ServiceError)) *ResourceServiceInterfaceMock_SetSystemFlowExecutor_Call {
+	_c.Run(run)
+	return _c
+}
+
 // UpdateAction provides a mock function for the type ResourceServiceInterfaceMock
 func (_mock *ResourceServiceInterfaceMock) UpdateAction(ctx context.Context, resourceServerID string, resourceID *string, id string, action providers.Action) (*providers.Action, *common.ServiceError) {
 	ret := _mock.Called(ctx, resourceServerID, resourceID, id, action)

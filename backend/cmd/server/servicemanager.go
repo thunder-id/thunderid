@@ -116,6 +116,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/variablestore"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -611,6 +612,12 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		graphBuilder, jwtService, runtimeStoreProvider, transactioner, serverConfigService, ssoTransport,
 		governanceProvider, flowConfig)
 	fatalOnError(ctx, logger, err, "Failed to initialize flow execution service")
+	// The services that revoke before they write run system flows, and the engine exists only now.
+	userService.SetSystemFlowExecutor(systemFlowRunner(flowExecService))
+	roleService.SetSystemFlowExecutor(systemFlowRunner(flowExecService))
+	roleAssignmentService.SetSystemFlowExecutor(systemFlowRunner(flowExecService))
+	groupService.SetSystemFlowExecutor(systemFlowRunner(flowExecService))
+	resourceService.SetSystemFlowExecutor(systemFlowRunner(flowExecService))
 
 	// Initialize OAuth services.
 	tokenValidator, dispatcher, err := oauth.Initialize(mux, actorProvider, authnProvider, jwtService, jweService,
@@ -824,5 +831,15 @@ func buildHashConfig() (cryptolib.HashConfig, error) {
 			Parallelism: cfg.Argon2ID.Parallelism, KeySize: cfg.Argon2ID.KeySize}, nil
 	default:
 		return cryptolib.HashConfig{}, fmt.Errorf("unrecognized password hashing algorithm %q", cfg.Algorithm)
+	}
+}
+
+// systemFlowRunner runs a system flow by handle on the flow engine, for a service that cannot import it.
+func systemFlowRunner(flowExecService flowexec.FlowExecServiceInterface) func(ctx context.Context,
+	handle string, inputs map[string]string) *tidcommon.ServiceError {
+	return func(ctx context.Context, handle string, inputs map[string]string) *tidcommon.ServiceError {
+		_, svcErr := flowExecService.ExecuteSystemFlow(ctx,
+			&flowexec.SystemFlowContext{Handle: handle, Inputs: inputs})
+		return svcErr
 	}
 }

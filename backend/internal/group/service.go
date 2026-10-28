@@ -71,6 +71,9 @@ type GroupServiceInterface interface {
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	CascadeDeleteDependencies(ctx context.Context, resourceType, id string) (int, error)
 	SetDependencyRegistry(r resourcedependency.Registry)
+	// SetSystemFlowExecutor injects what runs the system flows a change needs before it is written.
+	SetSystemFlowExecutor(execute func(ctx context.Context, handle string,
+		inputs map[string]string) *tidcommon.ServiceError)
 }
 
 // groupService is the default implementation of the GroupServiceInterface.
@@ -82,7 +85,21 @@ type groupService struct {
 	transactioner      providers.Transactioner
 	authzService       sysauthz.SystemAuthorizationServiceInterface
 	dependencyRegistry resourcedependency.Registry
+	// executeSystemFlow runs a system flow to completion with the given inputs.
+	executeSystemFlow func(ctx context.Context, handle string, inputs map[string]string) *tidcommon.ServiceError
 }
+
+// The system flow a group deletion runs, and the input naming the group it acts on.
+const (
+	systemFlowGroupDelete = "system-group-delete"
+	systemFlowInputGroup  = "targetGroupId"
+)
+
+// The system flow removing a group member runs, and the input naming the member it acts on.
+const (
+	systemFlowGroupMembershipRemoval = "system-group-membership-removal"
+	systemFlowInputMember            = "targetMemberId"
+)
 
 // newGroupServiceWithStore creates a new instance of GroupService with an externally provided store.
 func newGroupServiceWithStore(
@@ -608,6 +625,13 @@ func (gs *groupService) DeleteGroup(ctx context.Context, groupID string) *tidcom
 		return &tidcommon.InternalServerError
 	}
 
+	// What the group passes to its members is revoked before anything is removed, whichever entry point
+	// asked: the tokens they carry with the permissions of the roles assigned to it. It runs before the
+	// cascade, which removes those role assignments. A refusal leaves the group as it was.
+	if svcErr := gs.runSystemFlow(ctx, systemFlowGroupDelete, groupID, logger); svcErr != nil {
+		return svcErr
+	}
+
 	// Remove dependents that must be deleted with the group (its role assignments and its
 	// memberships in other groups). This spans other databases, so run it before (and outside) the
 	// group-delete transaction: a failure aborts and leaves the group retriable, and the
@@ -628,6 +652,24 @@ func (gs *groupService) DeleteGroup(ctx context.Context, groupID string) *tidcom
 
 	logger.Debug(ctx, "Successfully deleted group", log.String("id", groupID))
 	return nil
+}
+
+// SetSystemFlowExecutor injects what runs the system flows a change needs before it is written. Called
+// by servicemanager once the flow engine exists, which is after this service.
+func (gs *groupService) SetSystemFlowExecutor(execute func(ctx context.Context, handle string,
+	inputs map[string]string) *tidcommon.ServiceError) {
+	gs.executeSystemFlow = execute
+}
+
+// runSystemFlow runs a system flow for the group before a change to it is written. Without an executor
+// the change is refused, so a server that forgot the wiring fails closed.
+func (gs *groupService) runSystemFlow(ctx context.Context, handle, groupID string,
+	logger *log.Logger) *tidcommon.ServiceError {
+	if gs.executeSystemFlow == nil {
+		logger.Error(ctx, "System flow executor not set; refusing the change", log.String("handle", handle))
+		return &tidcommon.InternalServerError
+	}
+	return gs.executeSystemFlow(ctx, handle, map[string]string{systemFlowInputGroup: groupID})
 }
 
 // ValidateDeleteGroup runs the checks DeleteGroup runs before it changes anything.
@@ -816,7 +858,7 @@ func (gs *groupService) AddGroupMembers(
 	ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError) {
 	log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)).
 		Debug(ctx, "Adding members to group", log.String("id", groupID))
-	return gs.modifyGroupMembers(ctx, groupID, members,
+	return gs.modifyGroupMembers(ctx, groupID, members, nil,
 		gs.groupStore.AddGroupMembers,
 		"Failed to add members to group",
 		"Successfully added members to group",
@@ -828,11 +870,53 @@ func (gs *groupService) RemoveGroupMembers(
 	ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError) {
 	log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)).
 		Debug(ctx, "Removing members from group", log.String("id", groupID))
-	return gs.modifyGroupMembers(ctx, groupID, members,
+	return gs.modifyGroupMembers(ctx, groupID, members, gs.revokeRemovedMembers,
 		gs.groupStore.RemoveGroupMembers,
 		"Failed to remove members from group",
 		"Successfully removed members from group",
 	)
+}
+
+// revokeRemovedMembers revokes what each removed member got from the group before the removal is
+// written, whichever entry point asked: the tokens the member carries with the permissions of the
+// roles assigned to the group; for a member group, the tokens of its members. Removing a non-member
+// changes nothing, so it revokes nothing. A refusal leaves every membership as it was.
+func (gs *groupService) revokeRemovedMembers(ctx context.Context, groupID string,
+	members []Member) *tidcommon.ServiceError {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+	total, err := gs.groupStore.GetGroupMemberCount(ctx, groupID)
+	if err != nil {
+		logger.Error(ctx, "Failed to get group member count", log.String("id", groupID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	present := make(map[string]bool, total)
+	for offset := 0; offset < total; offset += serverconst.MaxPageSize {
+		page, err := gs.groupStore.GetGroupMembers(ctx, groupID, serverconst.MaxPageSize, offset)
+		if err != nil {
+			logger.Error(ctx, "Failed to get group members", log.String("id", groupID), log.Error(err))
+			return &tidcommon.InternalServerError
+		}
+		for _, member := range page {
+			present[member.ID] = true
+		}
+	}
+	for _, member := range members {
+		if !present[member.ID] {
+			continue
+		}
+		delete(present, member.ID)
+		if gs.executeSystemFlow == nil {
+			logger.Error(ctx, "System flow executor not set; refusing the change",
+				log.String("handle", systemFlowGroupMembershipRemoval))
+			return &tidcommon.InternalServerError
+		}
+		if svcErr := gs.executeSystemFlow(ctx, systemFlowGroupMembershipRemoval, map[string]string{
+			systemFlowInputGroup: groupID, systemFlowInputMember: member.ID,
+		}); svcErr != nil {
+			return svcErr
+		}
+	}
+	return nil
 }
 
 // ValidateRemoveGroupMembers runs the checks RemoveGroupMembers runs before it changes anything.
@@ -847,6 +931,7 @@ func (gs *groupService) modifyGroupMembers(
 	ctx context.Context,
 	groupID string,
 	members []Member,
+	beforeWrite func(context.Context, string, []Member) *tidcommon.ServiceError,
 	storeOp func(context.Context, string, []Member) error,
 	errMsg, successMsg string,
 ) (*Group, *tidcommon.ServiceError) {
@@ -857,6 +942,11 @@ func (gs *groupService) modifyGroupMembers(
 	}
 
 	members = normalizeMembers(members)
+	if beforeWrite != nil {
+		if svcErr := beforeWrite(ctx, groupID, members); svcErr != nil {
+			return nil, svcErr
+		}
+	}
 
 	var capturedSvcErr *tidcommon.ServiceError
 	var updatedGroupDAO GroupDAO
