@@ -169,7 +169,13 @@ export default function ViewUserTypePage(): JSX.Element {
 
   // Edited fields (partial — only fields the user has changed)
   const [editedUserType, setEditedUserType] = useState<
-    Partial<{displayName: string; ouId: string; allowSelfRegistration: boolean; displayAttribute: string}>
+    Partial<{
+      displayName: string;
+      ouId: string;
+      allowSelfRegistration: boolean;
+      displayAttribute: string;
+      pictureAttribute: string;
+    }>
   >({});
 
   // Edited schema properties (null = no changes, non-null = user edited)
@@ -215,6 +221,14 @@ export default function ViewUserTypePage(): JSX.Element {
     [effectiveProperties],
   );
 
+  const eligiblePictureProperties = useMemo(
+    () =>
+      effectiveProperties.filter(
+        (property) => property.type === 'string' && !property.credential && property.name.trim().length > 0,
+      ),
+    [effectiveProperties],
+  );
+
   // Clear display attribute if selected property becomes ineligible
   const effectiveDisplayAttribute = editedUserType.displayAttribute ?? userType?.systemAttributes?.display ?? '';
   const [prevEligible, setPrevEligible] = useState(eligibleDisplayProperties);
@@ -228,6 +242,18 @@ export default function ViewUserTypePage(): JSX.Element {
     }
   }
 
+  const effectivePictureAttribute = editedUserType.pictureAttribute ?? userType?.systemAttributes?.picture ?? '';
+  const [prevEligiblePicture, setPrevEligiblePicture] = useState(eligiblePictureProperties);
+  if (prevEligiblePicture !== eligiblePictureProperties) {
+    setPrevEligiblePicture(eligiblePictureProperties);
+    if (effectivePictureAttribute) {
+      const eligibleNames = eligiblePictureProperties.map((property) => property.name.trim());
+      if (!eligibleNames.includes(effectivePictureAttribute)) {
+        setEditedUserType((prev) => ({...prev, pictureAttribute: ''}));
+      }
+    }
+  }
+
   // Change detection — compares each edited field against its saved value (fields don't map 1:1
   // to userType keys, e.g. displayAttribute lives under systemAttributes.display) and the edited
   // schema properties against the server's, so reverting every edit by hand clears the bar.
@@ -237,6 +263,7 @@ export default function ViewUserTypePage(): JSX.Element {
       ouId: userType?.ouId,
       allowSelfRegistration: userType?.allowSelfRegistration,
       displayAttribute: userType?.systemAttributes?.display ?? '',
+      pictureAttribute: userType?.systemAttributes?.picture ?? '',
     };
     const fieldsChanged = Object.entries(editedUserType).some(
       ([key, value]) => !isEqualIgnoringEmpty(value, originalOf[key]),
@@ -302,11 +329,13 @@ export default function ViewUserTypePage(): JSX.Element {
     const ouId = (editedUserType.ouId ?? userType.ouId).trim();
     const allowSelfRegistration = editedUserType.allowSelfRegistration ?? userType.allowSelfRegistration;
     const displayAttribute = editedUserType.displayAttribute ?? userType.systemAttributes?.display ?? '';
+    const pictureAttribute = editedUserType.pictureAttribute ?? userType.systemAttributes?.picture ?? '';
 
     const schema = convertPropertiesToSchema(effectiveProperties);
     const systemAttributes = {
       ...primaryContactMappings(effectiveProperties),
       ...(displayAttribute ? {display: displayAttribute} : {}),
+      ...(pictureAttribute ? {picture: pictureAttribute} : {}),
     };
 
     try {
@@ -558,8 +587,10 @@ export default function ViewUserTypePage(): JSX.Element {
             editedOuId={editedUserType.ouId}
             editedAllowSelfRegistration={editedUserType.allowSelfRegistration}
             editedDisplayAttribute={editedUserType.displayAttribute}
+            editedPictureAttribute={editedUserType.pictureAttribute}
             onFieldChange={handleFieldChange}
             eligibleDisplayProperties={eligibleDisplayProperties}
+            eligiblePictureProperties={eligiblePictureProperties}
           />
         </TabPanel>
 

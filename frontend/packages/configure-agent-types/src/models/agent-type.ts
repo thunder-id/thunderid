@@ -8,6 +8,7 @@ import type {AgentTypeDefinition} from './property-definition';
  */
 export interface SystemAttributes {
   display?: string;
+  picture?: string;
 }
 
 /**

@@ -2756,6 +2756,9 @@ components:
             display:
               type: string
               description: "The schema attribute to use as the human-readable display name for agents of this type"
+            picture:
+              type: string
+              description: "The schema attribute containing the profile image URL for agents of this type"  
           additionalProperties: false
         schema:
           type: object

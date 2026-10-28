@@ -332,6 +332,7 @@ func sanitizeSystemAttributes(sa *SystemAttributes) *SystemAttributes {
 	}
 	return &SystemAttributes{
 		Display:       sysutils.SanitizeString(sa.Display),
+		Picture:       sysutils.SanitizeString(sa.Picture),
 		PrimaryEmail:  sysutils.SanitizeString(sa.PrimaryEmail),
 		PrimaryMobile: sysutils.SanitizeString(sa.PrimaryMobile),
 	}
