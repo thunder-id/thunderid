@@ -385,7 +385,10 @@ paths:
             remove more resources than `gateway.removal_confirmation_threshold` and was not confirmed
             (`GTW-1030`); another apply or revert to the gateway was still running after this one had
             waited as long as an import may take (`GTW-1029`); a capture removed the version before
-            the apply could record it (`GTW-1018`); or another apply finished first (`GTW-1019`).
+            the apply could record it (`GTW-1018`); another apply finished first (`GTW-1019`); a
+            selected resource needs one the gateway lacks and does not get it, because
+            `withDependencies` is off or the gateway holds it back (`GTW-1032`); or a resource to
+            remove is still named by one the gateway keeps (`GTW-1033`).
           content:
             application/json:
               schema:
@@ -443,8 +446,9 @@ paths:
           description: |
             The gateway does not hold every value the version refers to (`GTW-1017`); the revert
             would remove more resources than `gateway.removal_confirmation_threshold` and was not
-            confirmed (`GTW-1030`); or another apply or revert to the gateway was still running
-            after this one had waited as long as an import may take (`GTW-1029`).
+            confirmed (`GTW-1030`); a resource to remove is still named by one the gateway keeps
+            (`GTW-1033`); or another apply or revert to the gateway was still running after this one
+            had waited as long as an import may take (`GTW-1029`).
           content:
             application/json:
               schema:
@@ -1111,6 +1115,14 @@ components:
             until a selection names them again. Each is offered by later diffs with `heldBack` set. A
             key that names no change in the diff, or one the selection also names, is refused with
             `400` (`GTW-1025`).
+        withDependencies:
+          type: boolean
+          description: |
+            Widens the selection to the resources the selected ones name by id that the gateway lacks
+            or holds differently, through what those need in turn. On unless set to `false`; with it
+            off, a selection needing such a resource is refused with `409` (`GTW-1032`). A needed
+            resource the gateway holds back is never taken in: with it on, a selection needing one is
+            refused the same way until the selection names it too.
     RevertRequest:
       type: object
       properties:

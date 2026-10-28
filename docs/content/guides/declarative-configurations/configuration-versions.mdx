@@ -101,8 +101,9 @@ remove, without contacting the gateway. The version defaults to `latest`.
 
 Each entry in `changes` names a resource, its `change` (`added`, `updated`, `deleted` or `unchanged`), and
 a `key` such as `application/550e8400-e29b-41d4-a716-446655440000`. Each change also carries `lines`, the
-resource's document compared line by line. The documents hold references, so a diff never shows a
-secret value.
+resource's document compared line by line, and `needs`, the keys of the resources it names by id (see
+[Deploy a Resource With What It Needs](#deploy-a-resource-with-what-it-needs)). The documents hold
+references, so a diff never shows a secret value.
 
 `GET /gateways/{id}/applied-version` reports the version the gateway holds and the one a revert returns
 it to, with when it was applied and who applied it (`appliedAt`, `appliedBy`, the latter under the same
@@ -243,6 +244,34 @@ the gateway holds as the version has them. A console shows this as "9f3c4a1 part
 resources". The diff goes on offering the rest, and the apply that brings the gateway level with the
 version, sending the rest or retrying what was refused, records it with `"complete": true`. An apply's
 own answer says the same in `complete`.
+
+### Deploy a Resource With What It Needs
+
+Each change in a diff carries `needs`: the keys of the resources its document names by id in the
+version, such as the flows and the unit an application names, the resource server a role names, or
+the parent a unit names. Nothing is declared per resource type: every scalar in a document that is
+the id of another document in the version counts, and a resource named by name or handle is expected
+to be on the gateway already.
+
+With `withDependencies` (on by default), a selection is widened to what the selected resources need
+that the gateway lacks or holds in another form, through what those need in turn, so selecting an
+application also sends its flows and its unit when the gateway does not have them. A dependency the
+gateway already holds as the version has it is not sent again. The answer's `diff` marks a change sent
+for another's sake with `"required": true` and `requiredBy`, the selected key that needed it. A dry
+run shows the same, which is how a console answers "deploying this brings these too".
+
+With `"withDependencies": false`, a selection whose resource needs something the gateway lacks is
+refused with `409` (`GTW-1032`), naming what is missing, before anything is sent. A needed resource the
+gateway holds back is never taken in either: with dependencies on, a selection needing one is refused
+the same way until it names that resource too, which also stops holding it back.
+
+A removal is refused with `409` (`GTW-1033`) while a document the gateway keeps still names the
+resource by id, such as a unit whose child unit stays, so an apply never leaves a resource pointing at
+nothing. Remove or update the resources that need it in the same apply, or leave it in place. A
+removal that only an update in the same apply frees, such as an application updated to stop naming a
+flow that the version also removes, is sent in a second import once the gateway has accepted the
+update; if the gateway refuses the update, the resource stays in place and the diff offers the removal
+again.
 
 ## Revert a Gateway
 

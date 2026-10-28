@@ -95,15 +95,15 @@ func TestChosenSendsOnlyTheChangesChosen(t *testing.T) {
 		{Key: "organization_unit/ou-4", ResourceType: "organization_unit", ID: "ou-4", Change: ChangeUnchanged},
 	}
 
-	all, ok := chosen(&Diff{Changes: append([]Change{}, changes...)}, target, nil)
-	assert.True(t, ok)
+	all, svcErr := chosen(&Diff{Changes: append([]Change{}, changes...)}, target, nil, true)
+	assert.Nil(t, svcErr)
 	assert.Equal(t, []gatewayDeletion{{ResourceType: "organization_unit", ID: "ou-1"}}, all.deletions)
 	assert.Equal(t, joinBundle([]string{unit("ou-2"), unit("ou-3")}), all.content)
 
 	diff := &Diff{Changes: append([]Change{}, changes...)}
-	some, ok := chosen(diff, target, &[]string{"organization_unit/ou-3", "organization_unit/ou-1",
-		"organization_unit/ou-4"})
-	assert.True(t, ok)
+	some, svcErr := chosen(diff, target, &[]string{"organization_unit/ou-3", "organization_unit/ou-1",
+		"organization_unit/ou-4"}, true)
+	assert.Nil(t, svcErr)
 	assert.Equal(t, []gatewayDeletion{{ResourceType: "organization_unit", ID: "ou-1"}}, some.deletions)
 	assert.Equal(t, unit("ou-3"), some.content)
 	selected := make([]bool, 0, len(diff.Changes))
@@ -112,13 +112,13 @@ func TestChosenSendsOnlyTheChangesChosen(t *testing.T) {
 	}
 	assert.Equal(t, []bool{true, false, false, true, false}, selected)
 
-	none, ok := chosen(&Diff{Changes: append([]Change{}, changes...)}, target, &[]string{})
-	assert.True(t, ok)
+	none, svcErr := chosen(&Diff{Changes: append([]Change{}, changes...)}, target, &[]string{}, true)
+	assert.Nil(t, svcErr)
 	assert.Empty(t, none.content)
 	assert.Empty(t, none.deletions)
 
-	_, ok = chosen(&Diff{Changes: changes}, target, &[]string{"organization_unit/ou-9"})
-	assert.False(t, ok, "a key the diff does not report was accepted")
+	_, svcErr = chosen(&Diff{Changes: changes}, target, &[]string{"organization_unit/ou-9"}, true)
+	assert.Equal(t, &ErrorInvalidSelection, svcErr, "a key the diff does not report was accepted")
 }
 
 func TestParseEnvFileReadsKeyValueLines(t *testing.T) {
