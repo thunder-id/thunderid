@@ -4,6 +4,7 @@
 package execution
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -69,6 +70,8 @@ const (
 	scopeUntouchedByRoleDeletion = "untouched-by-role-deletion"
 	scopeRoleDeletedThroughAPI   = "role-deleted-through-api"
 	scopeGroupDeletedThroughAPI  = "group-deleted-through-api"
+	scopeUnassignedThroughAPI    = "unassigned-through-api"
+	scopeStillAssigned           = "still-assigned"
 	scopeUntouchedByPermEdit     = "untouched-by-perm-edit"
 	scopeUntouchedByGroupDelete  = "untouched-by-group-delete"
 	scopeSharedByMembers         = "shared-by-members"
@@ -129,7 +132,7 @@ var authzFlowResourceScopes = []string{
 	scopeRefusedPermEdit, scopeRefusedMemberRemoval,
 	scopeHeldThroughNesting, scopeHeldTwice, scopeNestedGroupDeletion, scopeNestedMemberRemoval,
 	scopeReachedSeveralWays, scopeNothingDropped, scopeHeldBeyondDescentLimit, scopeRoleDeletedThroughAPI,
-	scopeGroupDeletedThroughAPI,
+	scopeGroupDeletedThroughAPI, scopeUnassignedThroughAPI, scopeStillAssigned,
 }
 
 var authzFlowActionScopes = []string{scopeRetired, scopeRetiredNeighbor}
@@ -364,6 +367,36 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestDeleteRoleThroughTheAPI_
 	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, token),
 		"The token carrying the deleted role's scope must be rejected")
 	ts.False(ts.roleExists(roleID), "The role must be deleted")
+}
+
+// Removing a role assignment through the management API revokes what the assignment granted, and
+// leaves another role of the same assignee alone.
+func (ts *AuthorizationAdministrationFlowTestSuite) TestRemoveRoleAssignmentThroughTheAPI_RevokesTheAssigneesToken() {
+	roleID := ts.createRole("Authz API Unassigned Administrator", []string{scopeUnassignedThroughAPI},
+		testutils.Assignment{ID: ts.appID, Type: "app"})
+	ts.createRole("Authz API Still Assigned Administrator", []string{scopeStillAssigned},
+		testutils.Assignment{ID: ts.appID, Type: "app"})
+	token := grantedToken(&ts.Suite, authzFlowClient, scopeUnassignedThroughAPI)
+	bystander := grantedToken(&ts.Suite, authzFlowClient, scopeStillAssigned)
+
+	body, err := json.Marshal(map[string]interface{}{
+		"assignments": []testutils.Assignment{{ID: ts.appID, Type: "app"}},
+	})
+	ts.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPost, testServerURL+"/roles/"+roleID+"/assignments/remove",
+		bytes.NewReader(body))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err, "Failed to remove the assignment")
+	resp.Body.Close()
+	ts.Require().Equal(http.StatusNoContent, resp.StatusCode)
+
+	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, token),
+		"The token carrying the removed role's scope must be rejected")
+	ts.True(tokenIsActive(&ts.Suite, authzFlowClient, bystander),
+		"A token carrying another role's scope must stay valid")
+	ts.True(ts.roleExists(roleID), "Removing an assignment must not delete the role")
 }
 
 func (ts *AuthorizationAdministrationFlowTestSuite) TestRoleDeletionFlow_UnknownRoleCarriesValidatorCode() {

@@ -267,6 +267,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	)
 	fatalOnError(ctx, logger, err, "Failed to initialize RoleService")
 	roleService.SetSystemFlowExecutor(noSystemFlow)
+	roleAssignmentService.SetSystemFlowExecutor(noSystemFlow)
 	exporters = append(exporters, roleExporter)
 
 	// Two-phase initialization: inject user/group/role resolvers into OU service.
