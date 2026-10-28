@@ -58,6 +58,9 @@ type masterWrite struct {
 	origin    string
 	by        *Actor
 	at        time.Time
+	// earlier is the master a revert returns to: a resource it sends keeps the source and origin that
+	// master records for it.
+	earlier *Master
 }
 
 // nextMaster builds the master a gateway holds after an apply from the one it held before and the
@@ -91,6 +94,11 @@ func nextMaster(previous *Master, write masterWrite) *Master {
 		key := resource.key()
 		entry := MasterEntry{Key: key, ResourceType: resource.Type, ID: resource.ID, Name: resource.Name,
 			SourceVersion: write.source, Origin: write.origin, At: write.at, By: write.by}
+		if write.earlier != nil && !removal {
+			if was, ok := entryOf(write.earlier, key); ok {
+				entry.SourceVersion, entry.Origin = was.SourceVersion, was.Origin
+			}
+		}
 		switch {
 		case outcome.Status != outcomeSuccess:
 			entry.State = EntryFailed

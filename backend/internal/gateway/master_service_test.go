@@ -143,9 +143,9 @@ func (s *MasterServiceTestSuite) TestEachApplyWritesANewMasterAndADryRunNone() {
 	s.Empty(masters[0].Resources)
 }
 
-// A master is recorded whatever the applied version does: an apply whose removal the gateway refused
-// is not recorded as the applied version, but the master says what the gateway holds.
-func (s *MasterServiceTestSuite) TestTheMasterIsRecordedEvenWhenTheAppliedVersionIsNot() {
+// An apply whose removal the gateway refused records the version as partly applied, and the master
+// says what the gateway holds.
+func (s *MasterServiceTestSuite) TestTheMasterKeepsAResourceWhoseRemovalWasRefused() {
 	f := newVersionFixture(s.T())
 	f.capture(s.T(), "ou-a", "ou-b")
 	f.capture(s.T(), "ou-a")
@@ -157,7 +157,8 @@ func (s *MasterServiceTestSuite) TestTheMasterIsRecordedEvenWhenTheAppliedVersio
 	result, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2)})
 
 	s.Require().Nil(svcErr)
-	s.False(result.Recorded)
+	s.True(result.Recorded)
+	s.False(result.Complete)
 	s.NotEmpty(result.Master)
 	master, _ := f.svc.GetMaster(context.Background(), "gw-1")
 	s.Equal(2, master.Seq)
@@ -174,10 +175,12 @@ func (s *MasterServiceTestSuite) TestAGatewayWithAnAppliedVersionIsGivenItsFirst
 	f := newVersionFixture(s.T())
 	f.capture(s.T(), "ou-a", "ou-b")
 	bob := signedIn("u-2", nil)
-	_, svcErr := f.svc.Apply(bob, "gw-1", ApplyRequest{Selection: &[]string{"organization_unit/ou-a"}})
+	_, svcErr := f.svc.Apply(bob, "gw-1", ApplyRequest{})
 	s.Require().Nil(svcErr)
-	// As a gateway stood before masters were recorded.
+	// As a gateway stood before masters were recorded: a version applied, and a unit left alone.
 	delete(f.versions.masters, "gw-1")
+	f.versions.excluded = map[string]map[string]excludedResource{"gw-1": {
+		"organization_unit/ou-b": {Key: "organization_unit/ou-b", Type: "organization_unit", ID: "ou-b"}}}
 
 	master, svcErr := f.svc.GetMaster(context.Background(), "gw-1")
 
@@ -408,8 +411,8 @@ func (s *MasterServiceTestSuite) TestARefusalForAnotherReasonIsANewMaster() {
 // with the master the gateway held before.
 func (s *MasterServiceTestSuite) TestAMasterThatFailsToRecordFailsTheApply() {
 	f := newVersionFixture(s.T())
-	f.capture(s.T(), "ou-a", "ou-b")
-	f.versions.masters = map[string][]Master{"gw-1": {*deployedMaster("other", "ou-a")}}
+	f.capture(s.T(), "ou-a")
+	f.versions.masters = map[string][]Master{"gw-1": {*deployedMaster("other", "ou-b")}}
 	f.versions.masters["gw-1"][0].Seq = 1
 	store := &failingMasterStore{fakeVersionStore: f.versions}
 	f.svc = newVersionService(&fakeStore{gateways: []Gateway{{ID: "gw-1", BaseURL: "https://dp.test",

@@ -117,11 +117,12 @@ func TestTheAppliedConfigurationShowsEveryResource(t *testing.T) {
 	assert.Equal(t, "gw-1", configuration.GatewayID)
 	assert.Equal(t, f.hash(1), configuration.Version)
 	require.Len(t, configuration.Resources, 3)
-	assert.Equal(t, AppliedResource{ResourceType: "organization_unit", ID: "ou-a",
+	// The master holds its resources in key order.
+	assert.Equal(t, "no-id", configuration.Resources[0].ID, "a resource exported without an id is named")
+	assert.Equal(t, AppliedResource{ResourceType: "organization_unit", ID: "ou-a", SourceVersion: f.hash(1),
 		Resource: map[string]interface{}{"resource_type": "organization_unit", "id": "ou-a", "name": "ou-a"}},
-		configuration.Resources[0])
-	assert.Equal(t, map[string]interface{}{"members": map[string]int{"count": 2}}, configuration.Resources[1].Parts)
-	assert.Equal(t, "no-id", configuration.Resources[2].ID, "a resource exported without an id is named")
+		configuration.Resources[1])
+	assert.Equal(t, map[string]interface{}{"members": map[string]int{"count": 2}}, configuration.Resources[2].Parts)
 	assert.Equal(t, []SkippedResource{
 		{ResourceType: "group", ID: "g-1", Code: ErrorResourceNotViewable.Code,
 			Reason: ErrorResourceNotViewable.Error.DefaultValue},

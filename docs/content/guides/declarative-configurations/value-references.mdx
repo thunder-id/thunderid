@@ -77,7 +77,9 @@ not change resources already written. Import the configuration again to apply a 
 A `sec:` reference is accepted only in a field that holds a credential: an application's or agent's
 `clientSecret`, a connection's secret such as `clientSecret`, `authToken`, `apiSecret` or an outbound
 authentication password, and a user's `credentials`. These are the fields an export writes a `sec:`
-placeholder into, and the fields whose stored value is never returned.
+placeholder into, and the fields whose stored value is never returned. A user's stored credential is
+a hash, so an export of it carries no value: an import that updates a user and resolves such a
+credential to nothing leaves the stored one as it is, while a user it creates is refused without one.
 
 A document that refers to a secret from any other field, such as a name, a description, a redirect
 URI or a user attribute, is refused with `IMP-1007` before the secret is read. Resolved there, the
