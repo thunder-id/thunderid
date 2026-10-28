@@ -113,7 +113,7 @@ func (s *AccessChangeValidatorTestSuite) TestMetaDeclaresEveryModeAndNoDefault()
 		ExecutorModeActionDeletion, ExecutorModeGroupDeletion, ExecutorModeGroupMembershipRemoval,
 		ExecutorModeRoleAssignmentRemoval, ExecutorModeRoleDeletion, ExecutorModeRolePermissionRemoval,
 	}, meta.SupportedModes)
-	s.Equal([]providers.FlowType{providers.FlowTypeAdministration}, meta.SupportedFlowTypes)
+	s.Equal([]providers.FlowType{providers.FlowTypeAdministration, providers.FlowTypeSystem}, meta.SupportedFlowTypes)
 }
 
 func (s *AccessChangeValidatorTestSuite) TestUnknownModeIsAnError() {
