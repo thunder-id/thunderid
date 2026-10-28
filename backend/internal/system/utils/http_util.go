@@ -406,6 +406,15 @@ func IsValidURI(uri string) bool {
 	return true
 }
 
+// IsHTTPURL reports whether uri is an absolute http or https URL with a host.
+func IsHTTPURL(uri string) bool {
+	parsed, err := url.Parse(uri)
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	return parsed.Scheme == "http" || parsed.Scheme == "https"
+}
+
 // IsLoopbackRedirectHost reports whether a redirect URI host is one of the loopback hosts an http
 // redirect URI may name: localhost, 127.0.0.1 or ::1.
 func IsLoopbackRedirectHost(host string) bool {

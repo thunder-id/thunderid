@@ -71,3 +71,13 @@ export const clampToInteger = (raw: string, min: number, max?: number): string |
 
   return String(max === undefined ? floored : Math.min(max, floored));
 };
+
+/**
+ * Returns the node properties without the given property.
+ *
+ * @param properties - The node's properties.
+ * @param property - The property to drop.
+ * @returns A copy of the properties without it.
+ */
+export const omitProperty = (properties: Record<string, unknown>, property: string): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(properties).filter(([key]) => key !== property));

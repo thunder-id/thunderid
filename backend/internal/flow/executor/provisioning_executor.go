@@ -898,6 +898,7 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 	}
 
 	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
+	verifiedAttribute := ctx.RuntimeData[common.RuntimeKeyExtensionVerifiedAttribute]
 	for _, a := range schemaAttrs {
 		if a.Credential {
 			if value, exists := ctx.UserInputs[a.Attribute]; exists && value != "" {
@@ -906,6 +907,14 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 				credentialAttrs[a.Attribute] = runtimeValue
 			}
 		} else {
+			// The value an extension verified is the one its next sign-in matches on, so a submitted or
+			// stored value never replaces it.
+			if a.Attribute == verifiedAttribute {
+				if claimValue, exists := extIdentity.Claim(a.Attribute); exists && claimValue != "" {
+					identifyingAttrs[a.Attribute] = convertToSchemaType(claimValue, a.Type)
+					continue
+				}
+			}
 			// External claims are only a fallback and must never take priority over runtime data.
 			if value, exists := ctx.UserInputs[a.Attribute]; exists && value != "" {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(value, a.Type)

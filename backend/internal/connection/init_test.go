@@ -185,6 +185,13 @@ func (s *InitTestSuite) TestInitializeFailsWhenADeclarativeConnectionIsInvalid()
 	s.ErrorContains(err, "needs an organization unit")
 }
 
+func (s *InitTestSuite) TestInitializeHandsTheHTTPConnectionWriter() {
+	_, _, synced, err := Initialize(http.NewServeMux(), nil, s.mockIDP, s.mockNotif, s.mockResource,
+		s.authZENPDP, s.mockHTTP, nil, newSharingServiceMock(s.T()))
+	s.Require().NoError(err)
+	s.IsType(&httpConnectionWriter{}, synced)
+}
+
 func (s *InitTestSuite) TestRouteTable() {
 	githubDTO := &providers.IDPDTO{ID: "gh-1", Name: "GH", Type: providers.IDPTypeGitHub}
 	s.mockIDP.On("GetIdentityProviderList", mock.Anything).

@@ -173,6 +173,14 @@ const (
 	// NodePropertyMaxAttempts bounds the attempts a step accepts in one flow execution, such as OTP
 	// sends, wrong codes for one OTP, or an extension step's FAILED and INCOMPLETE answers.
 	NodePropertyMaxAttempts = "maxAttempts"
+	// NodePropertySourceKey names the extension data key an extension auth resolver reads the verified
+	// identifier from.
+	NodePropertySourceKey = "sourceKey"
+	// NodePropertyMatchAttribute names the user attribute an extension auth resolver matches on.
+	NodePropertyMatchAttribute = "matchAttribute"
+	// NodePropertyAttributeMapping maps user attributes to the extension data keys an extension auth
+	// resolver offers to provisioning.
+	NodePropertyAttributeMapping = "attributeMapping"
 )
 
 // RuntimeData keys.
@@ -367,7 +375,7 @@ const (
 	// targets a federated login's authorization mapping (rule-based or direct) resolved.
 	RuntimeKeyMappedPermissions = "mapped_permissions"
 	// RuntimeKeyExtensionAttemptCount holds the number of FAILED and INCOMPLETE answers an extension
-	// step has had in the current flow execution, scoped to the step by ExtensionAttemptCountKey.
+	// step has had in the current flow execution, scoped to the step by its node ID.
 	RuntimeKeyExtensionAttemptCount = "extensionAttemptCount"
 	// RuntimeKeyAttributeVerificationEvidence holds the attribute verification evidence on shared runtime
 	// data: the pinned contact and whether a challenge issued for it was passed.
@@ -379,6 +387,12 @@ const (
 	// RuntimeKeyDeliveredRecipients holds, on shared runtime data, the JSON list of distinct recipients
 	// sent to since an earlier node cleared it.
 	RuntimeKeyDeliveredRecipients = "deliveredRecipients"
+	// RuntimeKeyExtensionRedirectPending holds the URL of the service's page an extension step sent the
+	// browser to while it waits for the browser to return, scoped to the step by its node ID.
+	RuntimeKeyExtensionRedirectPending = "extensionRedirectPending"
+	// RuntimeKeyExtensionVerifiedAttribute names the user attribute whose external claim an extension
+	// auth resolver verified, so provisioning takes that claim over a submitted or stored value.
+	RuntimeKeyExtensionVerifiedAttribute = "extensionVerifiedAttribute"
 )
 
 // ExtensionDataKeyPrefix starts every runtime-data key an extension step stores from its service's
@@ -386,18 +400,15 @@ const (
 // attribute or a credential.
 const ExtensionDataKeyPrefix = "extension."
 
+// UserAttributeUsername is the user attribute that holds the username.
+const UserAttributeUsername = "username"
+
 // Bounds and default of an extension step's maxAttempts property.
 const (
 	extensionMinAttempts     = 1
 	extensionMaxAttempts     = 20
 	extensionDefaultAttempts = 5
 )
-
-// ExtensionAttemptCountKey scopes RuntimeKeyExtensionAttemptCount to an extension step's node ID, so
-// two extension steps in one flow count separately.
-func ExtensionAttemptCountKey(nodeID string) string {
-	return RuntimeKeyExtensionAttemptCount + ":" + nodeID
-}
 
 // SSOCheckpointKey scopes a per-checkpoint SSO control key (RuntimeKeySSOSessionPresent,
 // RuntimeKeySSOSessionSaved) to a checkpoint id, so multiple skip/join checkpoints in one flow keep

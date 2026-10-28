@@ -90,6 +90,19 @@ func (e *connectionExporter) GetParameterizerType() string {
 // GetAllResourceIDs returns the IDs of every configured connection instance across both
 // backing services, restricted to vendors registered with /connections.
 func (e *connectionExporter) GetAllResourceIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
+	return e.resourceIDs(ctx, false)
+}
+
+// GetReferringResourceIDs returns the IDs GetAllResourceIDs does, and those of the HTTP and AuthZEN PDP
+// connections declared in a file, whose values a gateway still has to hold.
+func (e *connectionExporter) GetReferringResourceIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
+	return e.resourceIDs(ctx, true)
+}
+
+// resourceIDs returns the IDs of the connections across the backing services, those declared in a file
+// only with withReadOnly.
+func (e *connectionExporter) resourceIDs(ctx context.Context, withReadOnly bool) ([]string,
+	*tidcommon.ServiceError) {
 	ids := make([]string, 0)
 
 	idps, svcErr := e.idpService.GetIdentityProviderList(ctx)
@@ -125,7 +138,7 @@ func (e *connectionExporter) GetAllResourceIDs(ctx context.Context) ([]string, *
 			return nil, svcErr
 		}
 		for _, connection := range pdpConnections {
-			if !connection.IsReadOnly {
+			if withReadOnly || !connection.IsReadOnly {
 				ids = append(ids, connection.ID)
 			}
 		}
@@ -137,7 +150,7 @@ func (e *connectionExporter) GetAllResourceIDs(ctx context.Context) ([]string, *
 			return nil, svcErr
 		}
 		for _, connection := range httpConnections {
-			if !connection.IsReadOnly {
+			if withReadOnly || !connection.IsReadOnly {
 				ids = append(ids, connection.ID)
 			}
 		}

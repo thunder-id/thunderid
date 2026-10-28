@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
@@ -1308,6 +1309,10 @@ func (v *flowValidator) validateExecutorSpecificConstraints(
 		return v.validateAccountLinkingExecutor(node, nodeIndex)
 	case executormeta.ExecutorNameOUResolver:
 		return v.validateOUResolverExecutor(node, flowType)
+	case executormeta.ExecutorNameExtensionAuthResolver:
+		return v.validateExtensionAuthResolver(node, nodeIndex, nodes)
+	case executormeta.ExecutorNameCredentialsAuth:
+		return v.validateCredentialInputs(node)
 	}
 	return nil
 }
@@ -1652,16 +1657,7 @@ func (v *flowValidator) validateExtensionExecutor(
 ) *tidcommon.ServiceError {
 	props, invalidProperty := common.ParseExtensionProperties(node.Properties)
 	if invalidProperty != "" {
-		return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
-			Key: "error.flowmgtservice.invalid_executor_property_value_description",
-			DefaultValue: "Node '{{param(nodeID)}}': executor '{{param(executorName)}}' " +
-				"has an invalid value for property '{{param(propertyKey)}}'",
-			Params: map[string]string{
-				"nodeID":       node.ID,
-				"executorName": node.Executor.Name,
-				"propertyKey":  invalidProperty,
-			},
-		})
+		return v.invalidExecutorPropertyError(node, invalidProperty)
 	}
 	_, svcErr := v.httpConnectionProvider.GetHTTPConnection(ctx, props.ConnectionID)
 	if svcErr == nil {
@@ -1680,6 +1676,75 @@ func (v *flowValidator) validateExtensionExecutor(
 		})
 	}
 	return &tidcommon.InternalServerError
+}
+
+// validateExtensionAuthResolver refuses an extension auth resolver that has an unusable property value,
+// or reads a key outside the namespace of the one extension step that routes to it. Every route into
+// the resolver must be that step's onSuccess, so the value it reads is the answer that step gave with
+// SUCCESS in this pass.
+func (v *flowValidator) validateExtensionAuthResolver(node *providers.NodeDefinition,
+	nodeIndex map[string]*providers.NodeDefinition, nodes []providers.NodeDefinition) *tidcommon.ServiceError {
+	props, invalidProperty := common.ParseExtensionAuthResolverProperties(node.Properties)
+	if invalidProperty == "" && !v.isBoundToRoutingExtension(node.ID, props.SourceKey,
+		collectAllNodeReferences(nodes), nodeIndex) {
+		invalidProperty = common.NodePropertySourceKey
+	}
+	if invalidProperty != "" {
+		return v.invalidExecutorPropertyError(node, invalidProperty)
+	}
+	return nil
+}
+
+// invalidExecutorPropertyError returns the error that refuses node for an unusable value of property.
+func (v *flowValidator) invalidExecutorPropertyError(node *providers.NodeDefinition,
+	property string) *tidcommon.ServiceError {
+	return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+		Key: "error.flowmgtservice.invalid_executor_property_value_description",
+		DefaultValue: "Node '{{param(nodeID)}}': executor '{{param(executorName)}}' " +
+			"has an invalid value for property '{{param(propertyKey)}}'",
+		Params: map[string]string{
+			"nodeID":       node.ID,
+			"executorName": node.Executor.Name,
+			"propertyKey":  property,
+		},
+	})
+}
+
+// isBoundToRoutingExtension reports whether the only route into resolverID is the onSuccess of an
+// extension step whose namespace holds sourceKey.
+func (v *flowValidator) isBoundToRoutingExtension(resolverID, sourceKey string, refs []nodeReference,
+	nodeIndex map[string]*providers.NodeDefinition) bool {
+	bound := false
+	for _, ref := range refs {
+		if ref.targetNodeID != resolverID {
+			continue
+		}
+		source := nodeIndex[ref.sourceNodeID]
+		if bound || ref.fieldName != "onSuccess" || source == nil || source.Executor == nil ||
+			source.Executor.Name != executormeta.ExecutorNameExtension ||
+			!strings.HasPrefix(sourceKey, common.ExtensionNamespace(source.ID)) {
+			return false
+		}
+		bound = true
+	}
+	return bound
+}
+
+// validateCredentialInputs refuses a credentials step that declares a credential input named after a
+// credential type reserved for internal use, which would let the user select that mechanism.
+func (v *flowValidator) validateCredentialInputs(node *providers.NodeDefinition) *tidcommon.ServiceError {
+	for _, input := range node.Executor.Inputs {
+		if !input.IsSensitive() || !authnprovidercm.IsReservedCredentialType(input.Identifier) {
+			continue
+		}
+		return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+			Key: "error.flowmgtservice.reserved_credential_input_description",
+			DefaultValue: "Node '{{param(nodeID)}}': input '{{param(inputIdentifier)}}' names a " +
+				"credential type reserved for internal use",
+			Params: map[string]string{"nodeID": node.ID, "inputIdentifier": input.Identifier},
+		})
+	}
+	return nil
 }
 
 // validateAccountLinkingExecutor checks that a linking node has an onIncomplete prompt whose

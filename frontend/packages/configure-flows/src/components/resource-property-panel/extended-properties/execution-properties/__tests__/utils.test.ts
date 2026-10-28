@@ -3,7 +3,7 @@
 
 import {describe, it, expect} from 'vitest';
 import type {NotificationTemplateSummary} from '../../../../../models/notification-templates';
-import {buildTemplateLabels, buildTemplateOptions, clampToInteger, parseCommaSeparated} from '../utils';
+import {buildTemplateLabels, buildTemplateOptions, clampToInteger, omitProperty, parseCommaSeparated} from '../utils';
 
 const templates: NotificationTemplateSummary[] = [
   {id: 'id-1', handle: 'user-invite', displayName: 'User Invite', self: '/self/id-1'},
@@ -106,5 +106,15 @@ describe('buildTemplateLabels', () => {
 
   it('should return an empty map when no templates are loaded yet', () => {
     expect(buildTemplateLabels(undefined)).toEqual({});
+  });
+});
+
+describe('omitProperty', () => {
+  it('should drop only the named property', () => {
+    expect(omitProperty({a: 1, b: 2}, 'a')).toEqual({b: 2});
+  });
+
+  it('should return the properties unchanged when the property is absent', () => {
+    expect(omitProperty({a: 1}, 'b')).toEqual({a: 1});
   });
 });

@@ -5,7 +5,8 @@ package gateway
 
 import (
 	"context"
-	"sort"
+	"maps"
+	"slices"
 	"sync"
 	"time"
 
@@ -25,10 +26,12 @@ const (
 	pushAttempts      = 10
 )
 
-// placeholderValuer computes the values an export of one resource refers to by name.
+// placeholderValuer computes the values an export of one resource refers to by name, and the secrets
+// the exports of every stored resource of a type refer to.
 type placeholderValuer interface {
 	PlaceholderValues(ctx context.Context, resourceType string, resource interface{}) (
 		map[string]string, map[string]string, error)
+	ReferencedSecretNames(ctx context.Context, resourceType string) (map[string]bool, error)
 }
 
 // ValueCapture writes the values a resource's export refers to into the default gateway's store,
@@ -59,13 +62,23 @@ type ValueCapture struct {
 
 	mu      sync.Mutex
 	pending map[string]*pendingValue
+	// scans are the releases reading what stored resources refer to, each with the values captured
+	// since its read began.
+	scans map[*releaseScan]struct{}
 }
 
-// pendingValue is one value on its way to a gateway's store: the latest value given for its name,
-// and the write in flight or waiting for it.
+// releaseScan records the values captured while a release reads what stored resources refer to, which
+// the read may have missed.
+type releaseScan struct {
+	captured map[string]bool
+}
+
+// pendingValue is one value on its way to a gateway's store: the latest value given for its name, or
+// its removal, and the write in flight or waiting for it.
 type pendingValue struct {
 	gatewayID, collection, name string
 	value                       string
+	remove                      bool
 	failures                    int
 	timer                       *time.Timer
 	running                     bool
@@ -80,6 +93,7 @@ func NewValueCapture() *ValueCapture {
 		retryDelay: pushRetryDelay,
 		attempts:   pushAttempts,
 		pending:    map[string]*pendingValue{},
+		scans:      map[*releaseScan]struct{}{},
 	}
 }
 
@@ -134,35 +148,98 @@ func (c *ValueCapture) CaptureValues(ctx context.Context, resourceType string, r
 	c.enqueue(ctx, gw.ID, collectionSecrets, secrets)
 }
 
-// enqueue puts each value in a collection on its way to the gateway's store, in the order of their
-// names. A value already on its way under the same name is replaced by the newer one.
-func (c *ValueCapture) enqueue(ctx context.Context, gatewayID, collection string, values map[string]string) {
-	names := make([]string, 0, len(values))
-	for name := range values {
-		names = append(names, name)
+// ReleaseSecrets removes from the default gateway's store each secret the resource's export referred
+// to that the export of no stored resource of the type still refers to.
+func (c *ValueCapture) ReleaseSecrets(ctx context.Context, resourceType string, resource interface{}) {
+	if c == nil || c.values == nil {
+		return
 	}
-	sort.Strings(names)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), captureTimeout)
+	defer cancel()
+
+	_, secrets, err := c.values.PlaceholderValues(ctx, resourceType, resource)
+	if err != nil {
+		c.logger.Warn(ctx, "Failed to work out the secrets a resource referred to, so none were released",
+			log.String("resourceType", resourceType), log.Error(err))
+		return
+	}
+	if len(secrets) == 0 {
+		return
+	}
+
+	gw, err := c.defaultGateway(ctx)
+	if err != nil {
+		c.logger.Warn(ctx, "Failed to find the default gateway, so no secrets were released",
+			log.String("resourceType", resourceType), log.Error(err))
+		return
+	}
+	if gw == nil {
+		return
+	}
+
+	// A resource written while the stored resources are read may be missed by the read, so a secret
+	// captured since the read began is left to that capture rather than removed.
+	scan := &releaseScan{captured: map[string]bool{}}
+	c.mu.Lock()
+	c.scans[scan] = struct{}{}
+	c.mu.Unlock()
+	referenced, err := c.values.ReferencedSecretNames(ctx, resourceType)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for _, name := range names {
-		key := gatewayID + "/" + collection + "/" + name
-		p := c.pending[key]
-		if p == nil {
-			p = &pendingValue{gatewayID: gatewayID, collection: collection, name: name}
-			c.pending[key] = p
-		}
-		p.value = values[name]
-		p.failures = 0
-		if p.running {
-			p.again = true
-			continue
-		}
-		if p.timer != nil {
-			p.timer.Stop()
-		}
-		p.timer = time.AfterFunc(0, func() { c.push(ctx, key) })
+	delete(c.scans, scan)
+	if err != nil {
+		c.logger.Warn(ctx, "Failed to work out the secrets stored resources refer to, so none were released",
+			log.String("resourceType", resourceType), log.Error(err))
+		return
 	}
+	for _, name := range slices.Sorted(maps.Keys(secrets)) {
+		if !referenced[name] && !scan.captured[pendingKey(gw.ID, collectionSecrets, name)] {
+			c.queue(ctx, gw.ID, collectionSecrets, name, "", true)
+		}
+	}
+}
+
+// enqueue puts each value in a collection on its way to the gateway's store, in the order of their
+// names. A value already on its way under the same name is replaced by the newer one.
+func (c *ValueCapture) enqueue(ctx context.Context, gatewayID, collection string, values map[string]string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, name := range slices.Sorted(maps.Keys(values)) {
+		c.queue(ctx, gatewayID, collection, name, values[name], false)
+	}
+}
+
+// queue makes a value, or its removal, the latest write for its name, and starts it unless a write for
+// the name is in flight, which this one follows once it returns. A value, not a removal, is recorded
+// for each release reading meanwhile. The caller holds c.mu.
+func (c *ValueCapture) queue(ctx context.Context, gatewayID, collection, name, value string, remove bool) {
+	key := pendingKey(gatewayID, collection, name)
+	if !remove {
+		for scan := range c.scans {
+			scan.captured[key] = true
+		}
+	}
+	p := c.pending[key]
+	if p == nil {
+		p = &pendingValue{gatewayID: gatewayID, collection: collection, name: name}
+		c.pending[key] = p
+	}
+	p.value, p.remove = value, remove
+	p.failures = 0
+	if p.running {
+		p.again = true
+		return
+	}
+	if p.timer != nil {
+		p.timer.Stop()
+	}
+	p.timer = time.AfterFunc(0, func() { c.push(ctx, key) })
+}
+
+// pendingKey names one value in one collection of one gateway's store.
+func pendingKey(gatewayID, collection, name string) string {
+	return gatewayID + "/" + collection + "/" + name
 }
 
 // push writes one pending value to the gateway's store, and keeps it pending to be tried again when
@@ -177,12 +254,18 @@ func (c *ValueCapture) push(ctx context.Context, key string) {
 	}
 	p.timer = nil
 	p.running = true
-	value := p.value
+	value, remove := p.value, p.remove
 	c.mu.Unlock()
 
 	// The write is the capture's own work, on a context of its own, bounded like the rest.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), captureTimeout)
-	refusal, svcErr := c.set(ctx, p.gatewayID, p.collection, p.name, value)
+	var refusal *StoreRefusal
+	var svcErr *tidcommon.ServiceError
+	if remove {
+		refusal, svcErr = c.deleteSecret(ctx, p.gatewayID, p.name)
+	} else {
+		refusal, svcErr = c.set(ctx, p.gatewayID, p.collection, p.name, value)
+	}
 	cancel()
 
 	c.mu.Lock()
@@ -197,19 +280,19 @@ func (c *ValueCapture) push(ctx context.Context, key string) {
 		p.failures++
 		c.logger.Warn(ctx, "Failed to capture a value in the default gateway's store; it will be tried again",
 			log.String("gatewayID", p.gatewayID), log.String("collection", p.collection),
-			log.String("name", p.name), log.Int("failures", p.failures),
+			log.String("name", p.name), log.Bool("removal", remove), log.Int("failures", p.failures),
 			log.String("error", svcErr.Error.DefaultValue))
 		p.timer = time.AfterFunc(c.pushDelay(p.failures), func() { c.push(ctx, key) })
 	case svcErr != nil:
 		c.logger.Error(ctx, "Gave up capturing a value in the default gateway's store",
 			log.String("gatewayID", p.gatewayID), log.String("collection", p.collection),
-			log.String("name", p.name), log.Int("failures", p.failures+1),
+			log.String("name", p.name), log.Bool("removal", remove), log.Int("failures", p.failures+1),
 			log.String("error", svcErr.Error.DefaultValue))
 		delete(c.pending, key)
 	case refusal != nil:
 		c.logger.Warn(ctx, "The default gateway's store refused a captured value",
 			log.String("gatewayID", p.gatewayID), log.String("collection", p.collection),
-			log.String("name", p.name), log.Int("status", refusal.Status))
+			log.String("name", p.name), log.Bool("removal", remove), log.Int("status", refusal.Status))
 		delete(c.pending, key)
 	default:
 		delete(c.pending, key)
@@ -240,6 +323,17 @@ func (c *ValueCapture) set(ctx context.Context, gatewayID, collection, name, val
 		return answer.Refusal, nil
 	}
 	answer, svcErr := c.store.SetVariable(ctx, gatewayID, name, variablestore.VariableUpdateRequest{Value: value})
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return answer.Refusal, nil
+}
+
+// deleteSecret removes one secret from the gateway's store. Removing a name the store does not hold
+// succeeds.
+func (c *ValueCapture) deleteSecret(ctx context.Context, gatewayID, name string) (*StoreRefusal,
+	*tidcommon.ServiceError) {
+	answer, svcErr := c.store.DeleteSecret(ctx, gatewayID, name)
 	if svcErr != nil {
 		return nil, svcErr
 	}

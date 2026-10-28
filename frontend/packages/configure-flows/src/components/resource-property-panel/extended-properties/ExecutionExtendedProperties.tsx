@@ -10,6 +10,7 @@ import {EXECUTOR_TO_IDP_TYPE_MAP, EXECUTORS_WITH_FIXED_INPUTS} from './execution
 import CriteriaRevocationProperties from './execution-properties/CriteriaRevocationProperties';
 import EmailProperties from './execution-properties/EmailProperties';
 import ExecutorInputsEditor from './execution-properties/ExecutorInputsEditor';
+import ExtensionAuthResolverProperties from './execution-properties/ExtensionAuthResolverProperties';
 import ExtensionProperties from './execution-properties/ExtensionProperties';
 import FederationProperties from './execution-properties/FederationProperties';
 import GroupExecutorProperties from './execution-properties/GroupExecutorProperties';
@@ -139,6 +140,11 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
       break;
     case ExecutionTypes.ExtensionExecutor:
       executorSpecificProperties = <ExtensionProperties resource={resource} onChange={onChange} />;
+      break;
+    case ExecutionTypes.ExtensionAuthResolver:
+      executorSpecificProperties = (
+        <ExtensionAuthResolverProperties key={resource?.id} resource={resource} onChange={onChange} />
+      );
       break;
     case ExecutionTypes.MagicLinkExecutor:
       executorSpecificProperties = <MagicLinkProperties resource={resource} onChange={onChange} />;

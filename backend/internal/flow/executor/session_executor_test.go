@@ -557,7 +557,9 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_LeavesExtensionDataOutOfThe
 	ctx := freshCtx()
 	ctx.RuntimeData["extension.risk_check.riskScore"] = "12"
 	ctx.RuntimeData["extension.risk_check.email"] = "svc@example.com"
-	ctx.RuntimeData[common.ExtensionAttemptCountKey("risk_check")] = "1"
+	ctx.RuntimeData[extensionAttemptCountKey("risk_check")] = "1"
+	ctx.RuntimeData[extensionRedirectPendingKey("risk_check")] = dataValueTrue
+	ctx.RuntimeData[common.RuntimeKeyExtensionVerifiedAttribute] = userAttributeUsername
 	ctx.RuntimeData["failureReason"] = "flow-owned"
 	sso := sessionmock.NewServiceMock(suite.T())
 	var in session.SaveCheckpointInput
@@ -570,7 +572,9 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_LeavesExtensionDataOutOfThe
 	for key := range in.RuntimeData {
 		suite.False(strings.HasPrefix(key, common.ExtensionDataKeyPrefix), "%s entered the snapshot", key)
 	}
-	suite.NotContains(in.RuntimeData, common.ExtensionAttemptCountKey("risk_check"))
+	suite.NotContains(in.RuntimeData, extensionAttemptCountKey("risk_check"))
+	suite.NotContains(in.RuntimeData, extensionRedirectPendingKey("risk_check"))
+	suite.NotContains(in.RuntimeData, common.RuntimeKeyExtensionVerifiedAttribute)
 	suite.Equal("alice@example.com", in.RuntimeData["email"], "the flow's own data is still snapshotted")
 	suite.Equal("flow-owned", in.RuntimeData["failureReason"], "a key named failureReason is not special")
 }
