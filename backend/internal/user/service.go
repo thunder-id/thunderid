@@ -57,6 +57,9 @@ type UserServiceInterface interface {
 	ValidateDeleteUser(ctx context.Context, userID string) *tidcommon.ServiceError
 	ResolveUserOUHandle(ctx context.Context, user *providers.User) *tidcommon.ServiceError
 	SetDependencyRegistry(r resourcedependency.Registry)
+	// SetSystemFlowExecutor injects what runs the system flows a change needs before it is written.
+	SetSystemFlowExecutor(execute func(ctx context.Context, handle string,
+		inputs map[string]string) *tidcommon.ServiceError)
 	GetUserUsages(ctx context.Context, userID string) (
 		*resourcedependency.DependenciesResponse, *tidcommon.ServiceError)
 	CreateSharingPolicy(ctx context.Context, userID string,
@@ -83,7 +86,15 @@ type userService struct {
 	dependencyRegistry resourcedependency.Registry
 	valueCapturer      declarativeresource.ValueCapturer
 	sharingService     sharing.SharingServiceInterface
+	// executeSystemFlow runs a system flow to completion with the given inputs.
+	executeSystemFlow func(ctx context.Context, handle string, inputs map[string]string) *tidcommon.ServiceError
 }
+
+// The system flow a user deletion runs, and the input naming the user it acts on.
+const (
+	systemFlowUserDelete   = "system-user-delete"
+	systemFlowInputSubject = "subject"
+)
 
 // newUserService creates a new instance of userService with injected dependencies.
 func newUserService(
@@ -890,6 +901,12 @@ func (us *userService) DeleteUser(ctx context.Context, userID string) *tidcommon
 		return svcErr
 	}
 
+	// What the user holds is revoked before anything is removed, whichever entry point asked: every
+	// token issued to the user and the sessions the user holds. A refusal leaves the user as it was.
+	if svcErr := us.runSystemFlow(ctx, systemFlowUserDelete, userID, logger); svcErr != nil {
+		return svcErr
+	}
+
 	// Remove dependents that must be deleted with the user (e.g. role assignments). Run before the
 	// entity delete so a cleanup failure aborts the operation and leaves the user retriable. The
 	// registry is guaranteed non-nil here because ensureNoBlockingDependencies fails closed otherwise.
@@ -982,6 +999,24 @@ func summarizeBlockingUsages(usages []resourcedependency.ResourceDependency) str
 // provider services are initialized to avoid a cyclic import.
 func (us *userService) SetDependencyRegistry(r resourcedependency.Registry) {
 	us.dependencyRegistry = r
+}
+
+// SetSystemFlowExecutor injects what runs the system flows a change needs before it is written. Called
+// by servicemanager once the flow engine exists, which is after this service.
+func (us *userService) SetSystemFlowExecutor(execute func(ctx context.Context, handle string,
+	inputs map[string]string) *tidcommon.ServiceError) {
+	us.executeSystemFlow = execute
+}
+
+// runSystemFlow runs a system flow for the user before a change to it is written. Without an executor
+// the change is refused, so a server that forgot the wiring fails closed.
+func (us *userService) runSystemFlow(ctx context.Context, handle, userID string,
+	logger *log.Logger) *tidcommon.ServiceError {
+	if us.executeSystemFlow == nil {
+		logger.Error(ctx, "System flow executor not set; refusing the change", log.String("handle", handle))
+		return &tidcommon.InternalServerError
+	}
+	return us.executeSystemFlow(ctx, handle, map[string]string{systemFlowInputSubject: userID})
 }
 
 // GetUserUsages returns the resources that reference this user, such as agents that list the user
