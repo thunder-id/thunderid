@@ -174,14 +174,18 @@ func (s *systemAuthorizationService) IsActionAllowed(ctx context.Context, action
 //
 // Returns true only when:
 //   - The ActionContext carries a non-empty ResourceID.
-//   - The resource type supports owner-based access (currently only ResourceTypeUser).
-//   - The caller's subject matches the ResourceID.
+//   - The ActionContext carries a ResourceOwnerID and the caller's subject matches it, or the resource is a user
+//     and the caller's subject matches the ResourceID.
 func isResourceOwner(ctx context.Context, actionCtx *ActionContext) bool {
 	if actionCtx == nil || actionCtx.ResourceID == "" {
 		return false
 	}
 
-	// Currently only user resources support owner-based access.
+	if actionCtx.ResourceOwnerID != "" {
+		return !security.IsDelegated(ctx) && security.GetSubject(ctx) == actionCtx.ResourceOwnerID
+	}
+
+	// A user owns their own record.
 	if actionCtx.ResourceType != security.ResourceTypeUser {
 		return false
 	}

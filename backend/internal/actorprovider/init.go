@@ -14,13 +14,16 @@ import (
 )
 
 // Initialize creates the default ActorProvider backed by inbound-client, entity-provider,
-// authentication provider, and role services.
+// authentication provider, and role services. rulesResolvers holds the client rules resolver of each
+// entity category that has rules.
 func Initialize(
 	inboundClient inboundclient.InboundClientServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 	authnProvider providers.AuthnProviderManager,
 	roleService role.RoleServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	rulesResolvers map[providers.EntityCategory]ClientRulesResolver,
 ) providers.ActorProvider {
-	return newActorProvider(inboundClient, entityProvider, authnProvider, roleService, entityTypeService)
+	return newActorProvider(inboundClient, entityProvider, authnProvider, roleService, entityTypeService,
+		rulesResolvers)
 }

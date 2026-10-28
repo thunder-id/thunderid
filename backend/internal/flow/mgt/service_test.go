@@ -73,6 +73,10 @@ func (r *stubDependencyRegistry) CascadeDelete(context.Context, string, string) 
 	return 0, nil
 }
 
+func (r *stubDependencyRegistry) SuspensionDependents(context.Context, string, string) ([]string, error) {
+	return nil, nil
+}
+
 func (r *stubDependencyRegistry) ValidateReferenceUpdate(
 	context.Context, string, string) *tidcommon.ServiceError {
 	return r.validateErr

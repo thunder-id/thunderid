@@ -344,6 +344,7 @@ type AccessStatusDetails struct {
 	Reason        string         `json:"reason"`
 	Since         string         `json:"since"`
 	OperatorNote  string         `json:"operatorNote"`
+	AppliedBy     []string       `json:"appliedBy"`
 	LockedMethods []LockedMethod `json:"lockedMethods"`
 }
 
@@ -484,7 +485,16 @@ type Agent struct {
 	ThemeID                   string                   `json:"themeId,omitempty"`
 	LayoutID                  string                   `json:"layoutId,omitempty"`
 	AllowedUserTypes          []string                 `json:"allowedUserTypes,omitempty"`
+	LoginConsent              *LoginConsent            `json:"loginConsent,omitempty"`
 	InboundAuthConfig         []AgentInboundAuthConfig `json:"inboundAuthConfig,omitempty"`
+
+	Kind string `json:"kind,omitempty"`
+}
+
+// LoginConsent holds a client's login consent settings.
+type LoginConsent struct {
+	ValidityPeriod int64 `json:"validityPeriod"`
+	AlwaysPrompt   *bool `json:"alwaysPrompt,omitempty"`
 }
 
 // AgentInboundAuthConfig represents an inbound auth config entry for an agent.

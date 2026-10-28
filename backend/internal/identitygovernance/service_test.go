@@ -181,6 +181,25 @@ func (s *ServiceTestSuite) TestASuspensionMemberHoldsUnderAnyState() {
 	s.Equal(providers.AccessRefusalReasonSuspended, decision.Reason)
 }
 
+// The owner's suspension holds at every plane, as the organization's does.
+func (s *ServiceTestSuite) TestAnOwnerSuspensionHoldsAtEveryPlane() {
+	for _, plane := range []providers.AccessPlane{
+		providers.AccessPlaneAuthentication, providers.AccessPlaneDispatch, providers.AccessPlaneRecovery,
+		providers.AccessPlaneSession, providers.AccessPlaneIssuance, providers.AccessPlaneApplication,
+	} {
+		s.Run(string(plane), func() {
+			s.SetupTest()
+			s.expectRead(s.ownerSuspendedEntity())
+			s.expectConfig(methodGranularityConfig())
+
+			decision, err := s.svc.EvaluateAccess(s.ctx, "e1", plane, testMethod)
+			s.Require().Nil(err)
+			s.False(decision.Admitted)
+			s.Equal(providers.AccessRefusalReasonSuspended, decision.Reason)
+		})
+	}
+}
+
 // A method lock refuses at the authentication plane as a lock.
 func (s *ServiceTestSuite) TestCredentialHoldRefusesAtTheCredentialPlane() {
 	entity := s.activeEntity()
@@ -842,6 +861,82 @@ func (s *ServiceTestSuite) suspendedEntity() GovernedEntity {
 	entity.State = providers.EntityStateSuspended
 	entity.AccessState.Suspend = &SuspendState{SuspendedAt: s.at(-time.Hour)}
 	return entity
+}
+
+// ownerSuspendedEntity is an account its owner holds suspended, with no suspension by the organization.
+func (s *ServiceTestSuite) ownerSuspendedEntity() GovernedEntity {
+	entity := s.activeEntity()
+	entity.AccessState.OwnerSuspend = &OwnerSuspendState{SuspendedAt: s.at(-2 * time.Hour)}
+	return entity
+}
+
+// The owner's suspension is placed in its own member.
+func (s *ServiceTestSuite) TestAnOwnerSuspensionIsPlacedApart() {
+	s.expectRead(s.activeEntity())
+	s.port.On("SetOwnerSuspension", mock.Anything, "e1", s.now).Return(true, nil).Once()
+
+	s.Require().Nil(s.svc.Suspend(WithOwnerApplier(s.ctx), "e1", ""))
+	s.port.AssertNotCalled(s.T(), "SetSuspension", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// The owner's suspension is placed even while the organization's is in force, and an existing one is left
+// as it is.
+func (s *ServiceTestSuite) TestAnOwnerSuspensionIgnoresTheOrganizationsHold() {
+	s.expectRead(s.suspendedEntity())
+	s.port.On("SetOwnerSuspension", mock.Anything, "e1", s.now).Return(true, nil).Once()
+	s.Require().Nil(s.svc.Suspend(WithOwnerApplier(s.ctx), "e1", ""))
+
+	s.SetupTest()
+	s.expectRead(s.ownerSuspendedEntity())
+	s.Require().Nil(s.svc.Suspend(WithOwnerApplier(s.ctx), "e1", ""))
+	s.port.AssertNotCalled(s.T(), "SetOwnerSuspension", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// The organization's suspension is placed even while the owner's is in force.
+func (s *ServiceTestSuite) TestTheOrganizationsSuspensionIgnoresTheOwnersHold() {
+	s.expectRead(s.ownerSuspendedEntity())
+	s.port.On("SetSuspension", mock.Anything, "e1", s.now, "Security advisory").Return(true, nil).Once()
+
+	s.Require().Nil(s.svc.Suspend(s.ctx, "e1", "Security advisory"))
+}
+
+// Each party lifts only its own suspension, and the other party's stays.
+func (s *ServiceTestSuite) TestEachPartyLiftsOnlyItsOwnSuspension() {
+	both := s.suspendedEntity()
+	both.Category = providers.EntityCategoryAgent
+	both.AccessState.OwnerSuspend = &OwnerSuspendState{SuspendedAt: s.at(-2 * time.Hour)}
+
+	s.expectRead(both)
+	s.port.On("ClearOwnerSuspension", mock.Anything, "e1").Return(true, nil).Once()
+	s.Require().Nil(s.svc.Unsuspend(WithOwnerApplier(s.ctx), "e1"))
+	s.port.AssertNotCalled(s.T(), "ClearSuspension", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+
+	s.SetupTest()
+	s.expectRead(both)
+	s.port.On("ClearSuspension", mock.Anything, "e1", (*EntityHold)(nil), s.at(-time.Hour)).Return(true, nil).Once()
+	s.Require().Nil(s.svc.Unsuspend(s.ctx, "e1"))
+	s.port.AssertNotCalled(s.T(), "ClearOwnerSuspension", mock.Anything, mock.Anything)
+}
+
+// A party with no suspension of its own has nothing to lift, whatever the other party holds.
+func (s *ServiceTestSuite) TestLiftingAnotherPartysSuspensionDoesNotApply() {
+	s.expectRead(s.suspendedEntity())
+	s.requireServiceError(s.svc.Unsuspend(WithOwnerApplier(s.ctx), "e1"), ErrorNotApplicable)
+
+	s.SetupTest()
+	s.expectRead(s.ownerSuspendedEntity())
+	s.requireServiceError(s.svc.Unsuspend(s.ctx, "e1"), ErrorNotApplicable)
+
+	s.port.AssertNotCalled(s.T(), "ClearOwnerSuspension", mock.Anything, mock.Anything)
+	s.port.AssertNotCalled(s.T(), "ClearSuspension", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A lift that finds the owner's suspension already gone does not apply.
+func (s *ServiceTestSuite) TestAnOwnerLiftOfAGoneSuspensionDoesNotApply() {
+	s.expectRead(s.ownerSuspendedEntity())
+	s.port.On("ClearOwnerSuspension", mock.Anything, "e1").Return(false, nil).Once()
+
+	s.requireServiceError(s.svc.Unsuspend(WithOwnerApplier(s.ctx), "e1"), ErrorNotApplicable)
 }
 
 func (s *ServiceTestSuite) TestEitherSuspensionStoreAloneHolds() {
@@ -2129,9 +2224,27 @@ func (s *ServiceTestSuite) TestASuspensionIsPublishedForAudit() {
 	s.Require().Equal(event.PrincipalTypeUser, evt.Data[event.DataKey.SubjectType])
 	s.Require().Equal("operator", evt.Data[event.DataKey.ActorSub])
 	s.Require().Equal(true, evt.Data[event.DataKey.OperatorNoteRecorded])
+	s.Require().Equal("organization", evt.Data[event.DataKey.AppliedBy])
 	for key, value := range evt.Data {
 		s.Require().NotContains(fmt.Sprint(value), "Credential exposure", "field %s carries the note", key)
 	}
+}
+
+// The owner's suspension is published as the owner's, with no actor, since it runs with the runtime context.
+func (s *ServiceTestSuite) TestAnOwnerSuspensionIsPublishedAsTheOwners() {
+	port := newEntityStateProviderMock(s.T())
+	port.On("GetGovernedEntity", mock.Anything, "e1", true).
+		Return(new(governedSubject(providers.EntityCategoryAgent)), nil)
+	port.On("SetOwnerSuspension", mock.Anything, "e1", mock.Anything).Return(true, nil)
+	svc, published := auditedService(s.T(), port, authorizerAllowing(s.T(), true))
+
+	s.Require().Nil(svc.Suspend(WithOwnerApplier(security.WithRuntimeContext(context.Background())), "e1", ""))
+
+	s.Require().Len(*published, 1)
+	evt := (*published)[0]
+	s.Require().Equal(string(event.EventTypeIdentitySuspended), evt.Type)
+	s.Require().Equal("owner", evt.Data[event.DataKey.AppliedBy])
+	s.Require().NotContains(evt.Data, event.DataKey.ActorSub)
 }
 
 // A refused or inapplicable operation is recorded as a failure, with why, and writes nothing.

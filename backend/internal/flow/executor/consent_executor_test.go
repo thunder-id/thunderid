@@ -211,6 +211,39 @@ func (suite *ConsentExecutorTestSuite) TestExecute_NoInputs_ForceRepromptFromRun
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 }
 
+// The client's own setting asks for consent on every authorization; an explicit false leaves it remembered.
+func (suite *ConsentExecutorTestSuite) TestExecute_NoInputs_ForceRepromptFromTheClient() {
+	yes, no := true, false
+	for name, tc := range map[string]struct {
+		alwaysPrompt *bool
+		forced       bool
+	}{
+		"AlwaysPrompt": {alwaysPrompt: &yes, forced: true},
+		"Remembered":   {alwaysPrompt: &no, forced: false},
+		"NotSet":       {alwaysPrompt: nil, forced: false},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			ctx := buildConsentNodeContext()
+			ctx.Application.LoginConsent = &providers.LoginConsentConfig{AlwaysPrompt: tc.alwaysPrompt}
+			suite.setupDefaultAuthnProviderMocks()
+			suite.executor.Executor.(*coremock.ExecutorInterfaceMock).
+				On("ValidatePrerequisites", ctx, mock.AnythingOfType("*providers.ExecutorResponse"),
+					mock.Anything).Return(true)
+			suite.executor.Executor.(*coremock.ExecutorInterfaceMock).
+				On("HasRequiredInputs", ctx, mock.AnythingOfType("*providers.ExecutorResponse")).Return(false)
+			suite.mockConsentEnforcer.On("ResolveConsent", mock.Anything, "default", "app-123", "", "user-123",
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything, tc.forced, mock.Anything).
+				Return(nil, nil)
+
+			resp, err := suite.executor.Execute(ctx)
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+		})
+	}
+}
+
 func (suite *ConsentExecutorTestSuite) TestExecute_NoInputs_ForceRepromptDefaultsFalse() {
 	ctx := buildConsentNodeContext()
 	suite.setupDefaultAuthnProviderMocks()

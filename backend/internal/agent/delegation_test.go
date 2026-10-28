@@ -237,3 +237,59 @@ func (suite *DelegationTestSuite) TestOtherInboundConfigsAreKept() {
 	suite.Equal([]providers.GrantType{clientCredentials, authCode, refreshToken},
 		agent.InboundAuthConfig[1].OAuthConfig.GrantTypes)
 }
+
+func (suite *DelegationTestSuite) TestPersonalAgentFollowsThePersonalRules() {
+	tests := []struct {
+		name      string
+		delegated bool
+		requests  []providers.GrantType
+		expected  []providers.GrantType
+		codeFlow  bool
+	}{
+		{"NoGrantsGetsAuthorizationCode", false, nil, []providers.GrantType{authCode}, true},
+		{"DelegatedIsIgnored", true, nil, []providers.GrantType{authCode}, true},
+		{"ClientCredentialsIsNotAdded", false, []providers.GrantType{authCode, refreshToken},
+			[]providers.GrantType{authCode, refreshToken}, true},
+		{"CIBAAloneNeedsNoCodeFlow", false, []providers.GrantType{ciba}, []providers.GrantType{ciba}, false},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			agent := agentWithGrants(tt.delegated, tt.requests...)
+			agent.Kind = providers.AgentKindPersonalAssistant
+
+			suite.Nil(applyGrantTypes(agent))
+
+			config := suite.oauthConfig(agent)
+			suite.Equal(tt.expected, config.GrantTypes)
+			suite.Equal(tt.codeFlow, config.PKCERequired)
+			if tt.codeFlow {
+				suite.Equal([]providers.ResponseType{providers.ResponseTypeCode}, config.ResponseTypes)
+			} else {
+				suite.Empty(config.ResponseTypes)
+			}
+		})
+	}
+}
+
+func (suite *DelegationTestSuite) TestPersonalAgentRefusesAGrantOutsideThePersonalSet() {
+	for _, grantType := range []providers.GrantType{clientCredentials, tokenExchange, jwtBearer} {
+		suite.Run(string(grantType), func() {
+			agent := agentWithGrants(false, authCode, grantType)
+			agent.Kind = providers.AgentKindPersonalAssistant
+
+			svcErr := applyGrantTypes(agent)
+
+			suite.Require().NotNil(svcErr)
+			suite.Equal(ErrorGrantTypeNotAllowedForPersonalAgent.Code, svcErr.Code)
+		})
+	}
+}
+
+func (suite *DelegationTestSuite) TestPersonalAgentWithoutAnOAuthConfigGetsOne() {
+	agent := &providers.Agent{Kind: providers.AgentKindPersonalAssistant}
+
+	suite.Nil(applyGrantTypes(agent))
+
+	suite.Equal([]providers.GrantType{authCode}, suite.oauthConfig(agent).GrantTypes)
+}

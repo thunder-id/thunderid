@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
+	"github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/deployment"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -508,6 +509,41 @@ func (s *RuntimeStoreTestSuite) TestSetAccessSuspensionRecordsThePlacement() {
 			s.Require().NoError(err)
 			s.Equal(placed, got)
 		})
+	}
+}
+
+// The owner's and the cascaded suspensions each record their placement time to the nanosecond and report
+// whether they were placed; their release reports whether there was one.
+func (s *RuntimeStoreTestSuite) TestOwnerAndCascadeSuspensionsArePlacedAndReleased() {
+	at := s.now.Add(123 * time.Nanosecond)
+	members := map[string]struct {
+		setQuery, clearQuery model.DBQuery
+		set                  func(context.Context, string, time.Time) (bool, error)
+		clear                func(context.Context, string) (bool, error)
+	}{
+		"owner": {querySetAccessOwnerSuspension, queryClearAccessOwnerSuspension,
+			s.store.SetAccessOwnerSuspension, s.store.ClearAccessOwnerSuspension},
+		"cascade": {querySetAccessCascadeSuspension, queryClearAccessCascadeSuspension,
+			s.store.SetAccessCascadeSuspension, s.store.ClearAccessCascadeSuspension},
+	}
+	for name, member := range members {
+		for rowsAffected, changed := range map[int64]bool{1: true, 0: false} {
+			s.Run(fmt.Sprintf("%s/%t", name, changed), func() {
+				s.expectClient()
+				s.expectClient()
+				s.client.On("ExecuteContext", s.ctx, member.setQuery, "e1", "2026-09-08T10:00:00.000000123Z",
+					mock.AnythingOfType("time.Time"), testDeploymentID).Return(rowsAffected, nil).Once()
+				s.client.On("ExecuteContext", s.ctx, member.clearQuery, "e1",
+					mock.AnythingOfType("time.Time"), testDeploymentID).Return(rowsAffected, nil).Once()
+
+				placed, err := member.set(s.ctx, "e1", at)
+				s.Require().NoError(err)
+				s.Equal(changed, placed)
+				released, err := member.clear(s.ctx, "e1")
+				s.Require().NoError(err)
+				s.Equal(changed, released)
+			})
+		}
 	}
 }
 

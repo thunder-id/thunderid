@@ -253,6 +253,18 @@ func (ec EntityCategory) String() string {
 	return string(ec)
 }
 
+// AgentKind is the kind of an agent, fixed once the agent is created. The empty kind is an ordinary agent.
+type AgentKind string
+
+// AgentKindPersonalAssistant is the kind of a personal assistant agent: an agent owned by a user and acting
+// only on that user's behalf.
+const AgentKindPersonalAssistant AgentKind = "personal-assistant"
+
+// IsValid reports whether the kind is a known one. The empty kind, an ordinary agent, is valid.
+func (k AgentKind) IsValid() bool {
+	return k == "" || k == AgentKindPersonalAssistant
+}
+
 // IDTokenResponseType is the response format of the ID token.
 type IDTokenResponseType string
 
@@ -346,6 +358,28 @@ const (
 
 	// AccessHoldReasonAdministrativeSuspension is a suspension an administrator placed.
 	AccessHoldReasonAdministrativeSuspension AccessHoldReason = "ADMINISTRATIVE_SUSPENSION"
+
+	// AccessHoldReasonOwnerSuspension is a suspension the owner of the identity placed, such as the owner of a
+	// personal agent.
+	AccessHoldReasonOwnerSuspension AccessHoldReason = "OWNER_SUSPENSION"
+
+	// AccessHoldReasonCascadedSuspension is a suspension carried from the identity it depends on, such as a personal
+	// agent suspended together with its owner.
+	AccessHoldReasonCascadedSuspension AccessHoldReason = "CASCADED_SUSPENSION"
+)
+
+// SuspensionAppliedBy says who placed a suspension.
+type SuspensionAppliedBy string
+
+const (
+	// SuspensionAppliedByOrganization is a suspension an administrator of the organization placed.
+	SuspensionAppliedByOrganization SuspensionAppliedBy = "organization"
+
+	// SuspensionAppliedByOwner is a suspension the owner of the identity placed.
+	SuspensionAppliedByOwner SuspensionAppliedBy = "owner"
+
+	// SuspensionAppliedByCascade is a suspension carried from the identity it depends on, such as its owner's.
+	SuspensionAppliedByCascade SuspensionAppliedBy = "cascade"
 )
 
 // String returns the string representation of the hold reason.

@@ -160,13 +160,24 @@ const (
 	logoURLKey     = "logoUrl"
 	// delegatedKey marks an agent that acts on behalf of a signed-in user. Absent means false.
 	delegatedKey = "delegated"
-	// redirectURIsKey carries the callback URIs of a delegated agent, comma separated. It is the
-	// only part of an agent's OAuth configuration a flow supplies; the agent service derives the rest.
+	// redirectURIsKey carries the callback URIs of a delegated or personal agent, comma separated. With a
+	// key, it is the only part of an agent's OAuth configuration a flow supplies; the agent service derives
+	// the rest.
 	redirectURIsKey = "redirectUris"
 	// authFlowIDKey carries the authentication flow a delegated agent's users sign in through.
 	authFlowIDKey = "authFlowId"
 	// allowedUserTypesKey carries the one user type handle a delegated agent's users may belong to.
 	allowedUserTypesKey = "allowedUserTypes"
+	// publicKeyKey and jwksURIKey carry an agent's public key, as a JWKS document or as the URI that serves
+	// one. Either lets the agent authenticate with private_key_jwt.
+	publicKeyKey = "publicKey"
+	jwksURIKey   = "jwksUri"
+	// authFlowHandleKey names the login flow the agent's authorizations run.
+	authFlowHandleKey = "authFlowHandle"
+	// alwaysPromptConsentKey marks an agent whose every authorization asks for consent ("true" or "false").
+	alwaysPromptConsentKey = "alwaysPromptConsent"
+	// kindKey carries the agent's kind, such as personal-assistant. Absent means an ordinary agent.
+	kindKey = "kind"
 
 	// agentAttributeConflictCode is the agent service's unique-attribute clash code. It is repeated
 	// here rather than referenced from internal/agent: that package reaches the flow executor through

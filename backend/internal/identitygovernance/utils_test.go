@@ -402,10 +402,15 @@ func (s *UtilsTestSuite) TestStatusDetailsDescribeTheHold() {
 
 	noteless := AccessState{Suspend: &SuspendState{SuspendedAt: s.at(-time.Hour)}}
 
+	byOwner := AccessState{OwnerSuspend: &OwnerSuspendState{SuspendedAt: s.at(-2 * time.Hour)}}
+	byBoth := suspended
+	byBoth.OwnerSuspend = byOwner.OwnerSuspend
+
 	suspension := &providers.AccessStatusDetails{
 		Reason:       providers.AccessHoldReasonAdministrativeSuspension,
 		Since:        s.at(-time.Hour),
 		OperatorNote: "Credential exposure",
+		AppliedBy:    []providers.SuspensionAppliedBy{providers.SuspensionAppliedByOrganization},
 	}
 	cases := []struct {
 		name   string
@@ -433,11 +438,34 @@ func (s *UtilsTestSuite) TestStatusDetailsDescribeTheHold() {
 			suspendedAndLocked, providers.AccessStatusSuspended, suspension},
 		{"a suspension known only from the column reports no circumstances", providers.EntityStateSuspended,
 			AccessState{}, providers.AccessStatusSuspended,
-			&providers.AccessStatusDetails{Reason: providers.AccessHoldReasonAdministrativeSuspension}},
+			&providers.AccessStatusDetails{Reason: providers.AccessHoldReasonAdministrativeSuspension,
+				AppliedBy: []providers.SuspensionAppliedBy{providers.SuspensionAppliedByOrganization}}},
 		{"an operator who gave no note produces none", providers.EntityStateSuspended, noteless,
 			providers.AccessStatusSuspended, &providers.AccessStatusDetails{
-				Reason: providers.AccessHoldReasonAdministrativeSuspension,
-				Since:  s.at(-time.Hour),
+				Reason:    providers.AccessHoldReasonAdministrativeSuspension,
+				Since:     s.at(-time.Hour),
+				AppliedBy: []providers.SuspensionAppliedBy{providers.SuspensionAppliedByOrganization},
+			}},
+		{"the owner's suspension alone is the owner's", providers.EntityStateActive, byOwner,
+			providers.AccessStatusSuspended, &providers.AccessStatusDetails{
+				Reason:    providers.AccessHoldReasonOwnerSuspension,
+				Since:     s.at(-2 * time.Hour),
+				AppliedBy: []providers.SuspensionAppliedBy{providers.SuspensionAppliedByOwner},
+			}},
+		{"a cascaded suspension alone is reported as cascaded", providers.EntityStateActive,
+			AccessState{CascadeSuspend: &CascadeSuspendState{SuspendedAt: s.at(-3 * time.Hour)}},
+			providers.AccessStatusSuspended, &providers.AccessStatusDetails{
+				Reason:    providers.AccessHoldReasonCascadedSuspension,
+				Since:     s.at(-3 * time.Hour),
+				AppliedBy: []providers.SuspensionAppliedBy{providers.SuspensionAppliedByCascade},
+			}},
+		{"both suspensions name both parties and report the organization's", providers.EntityStateSuspended,
+			byBoth, providers.AccessStatusSuspended, &providers.AccessStatusDetails{
+				Reason:       providers.AccessHoldReasonAdministrativeSuspension,
+				Since:        s.at(-time.Hour),
+				OperatorNote: "Credential exposure",
+				AppliedBy: []providers.SuspensionAppliedBy{providers.SuspensionAppliedByOrganization,
+					providers.SuspensionAppliedByOwner},
 			}},
 	}
 

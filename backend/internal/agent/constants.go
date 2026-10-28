@@ -4,12 +4,16 @@
 package agent
 
 import (
+	"time"
+
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 const (
 	agentBasePath = "/agents"
+	// ownedAgentsBasePath is where an owner lists their own agents.
+	ownedAgentsBasePath = "/users/me/agents"
 )
 
 // Field keys stored in the entity SystemAttributes JSON blob.
@@ -18,7 +22,16 @@ const (
 	fieldOwner        = "owner"
 	fieldClientID     = "clientId"
 	fieldClientSecret = authnprovidercm.CredentialTypeClientSecret
+	// fieldKind holds the agent kind, set at creation and preserved across updates.
+	fieldKind = "kind"
 )
+
+// suspensionRevocationTTL is how long an owner's suspension keeps its revocation of the agent's tokens at the
+// least, the same as the suspend flow's.
+const suspensionRevocationTTL = 7 * 24 * time.Hour
+
+// personalAgentAuthFlowHandle is the shipped login flow for a personal agent whose registration flow fixes none.
+const personalAgentAuthFlowHandle = "default-personal-agent-auth-flow"
 
 // propLogoURL is the inbound-client PROPERTIES key holding the agent logo.
 const propLogoURL = "logo_url"

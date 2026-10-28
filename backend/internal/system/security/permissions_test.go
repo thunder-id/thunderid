@@ -380,6 +380,38 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 			wantPerm: "",
 		},
 		{
+			name:   "GET /users/me/agents self-service",
+			method: http.MethodGet, path: "/users/me/agents", wantPerm: "",
+		},
+		{
+			name:   "PUT /users/me/agents/{id} self-service",
+			method: http.MethodPut, path: "/users/me/agents/agent-1", wantPerm: "",
+		},
+		{
+			name:   "DELETE /users/me/agents/{id} self-service",
+			method: http.MethodDelete, path: "/users/me/agents/agent-1", wantPerm: "",
+		},
+		{
+			name:   "POST /users/me/agents/suspend self-service",
+			method: http.MethodPost, path: "/users/me/agents/suspend", wantPerm: "",
+		},
+		{
+			name:   "POST /users/me/agents/{id}/suspend self-service",
+			method: http.MethodPost, path: "/users/me/agents/agent-1/suspend", wantPerm: "",
+		},
+		{
+			name:   "POST /users/me/agents/{id}/unsuspend self-service",
+			method: http.MethodPost, path: "/users/me/agents/agent-1/unsuspend", wantPerm: "",
+		},
+		{
+			name:   "DELETE deeper under /users/me/agents keeps the user rule",
+			method: http.MethodDelete, path: "/users/me/agents/agent-1/extra", wantPerm: p.User,
+		},
+		{
+			name:   "DELETE /users/{id} keeps the user rule",
+			method: http.MethodDelete, path: "/users/user-1", wantPerm: p.User,
+		},
+		{
 			name:   "GET /register/passkey/start self-service",
 			method: http.MethodGet, path: "/register/passkey/start", wantPerm: "",
 		},

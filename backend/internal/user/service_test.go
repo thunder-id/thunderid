@@ -3985,6 +3985,10 @@ func (s *stubUsageRegistry) CascadeDelete(_ context.Context, _, _ string) (int, 
 	return 0, s.cascadeErr
 }
 
+func (s *stubUsageRegistry) SuspensionDependents(context.Context, string, string) ([]string, error) {
+	return nil, nil
+}
+
 func (s *stubUsageRegistry) ValidateReferenceUpdate(
 	_ context.Context, _, _ string) *tidcommon.ServiceError {
 	return nil

@@ -3110,6 +3110,10 @@ func (r noopDepRegistry) CascadeDelete(context.Context, string, string) (int, er
 	return 0, r.cascadeErr
 }
 
+func (r noopDepRegistry) SuspensionDependents(context.Context, string, string) ([]string, error) {
+	return nil, nil
+}
+
 func (noopDepRegistry) ValidateReferenceUpdate(
 	context.Context, string, string) *tidcommon.ServiceError {
 	return nil

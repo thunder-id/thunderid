@@ -93,6 +93,11 @@ const (
 	messageLocksReleased              = "Every automatic lock released"
 	messageSuspensionPlaced           = "Suspension placed"
 	messageSuspensionInPlace          = "Suspension already in place"
+	messageOwnerSuspensionPlaced      = "Owner's suspension placed"
+	messageOwnerSuspensionInPlace     = "Owner's suspension already in place"
+	messageOwnerSuspensionReleased    = "Owner's suspension released"
+	messageCascadedSuspensionPlaced   = "Cascaded suspension placed"
+	messageCascadedSuspensionReleased = "Cascaded suspension released"
 	messageSuspensionReleased         = "Suspension released"
 	messageSuspensionReleasedOntoHold = "Suspension released onto a post-suspension lock"
 )

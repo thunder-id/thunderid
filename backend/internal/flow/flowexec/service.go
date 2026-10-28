@@ -689,6 +689,20 @@ func (s *flowExecService) setApplicationToContext(engineCtx *EngineContext,
 	}
 	engineCtx.Application = *app
 
+	// An agent's client rules may limit the subject it accepts. Resolved for every flow type, so the
+	// constraint holds when an authentication flow is entered through a CALL in the same request.
+	if app.EntityCategory == providers.EntityCategoryAgent {
+		client, svcErr := s.actorProvider.GetOAuthClientByID(engineCtx.Context, engineCtx.AppID)
+		if svcErr != nil {
+			logger.Error(engineCtx.Context, "Failed to resolve the agent's client rules",
+				log.String("appID", engineCtx.AppID), log.String("errorCode", svcErr.Code))
+			return &tidcommon.InternalServerError
+		}
+		if client != nil {
+			engineCtx.RequiredSubjectID = client.Rules.RequiredSubjectID
+		}
+	}
+
 	// A sign-out flow runs a different flow than the one that owns the SSO session. Carry the login
 	// (auth) flow id so the session is resolved, and its cookie cleared, under that flow rather than
 	// the running sign-out flow. Re-derived here on every context load, so it is never persisted.

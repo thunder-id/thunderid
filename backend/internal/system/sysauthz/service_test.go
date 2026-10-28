@@ -174,8 +174,42 @@ func (s *SystemAuthzTestSuite) TestIsActionAllowed() {
 			wantAllowed: false,
 		},
 		{
+			// Step 5: The caller is the resource's stored owner → allowed.
+			name:   "ResourceOwner_ResourceOwnerIDMatchesSubject_Allowed",
+			ctx:    buildCtx(""),
+			action: security.ActionUpdateAgent,
+			actionCtx: &ActionContext{
+				ResourceType:    security.ResourceTypeAgent,
+				ResourceID:      "agent-1",
+				ResourceOwnerID: "user123",
+			},
+			wantAllowed: true,
+		},
+		{
+			// Step 5: Another user owns the resource → falls through to permission check.
+			name:   "ResourceOwner_ResourceOwnerIDMismatch_FallsThrough_Denied",
+			ctx:    buildCtx(""),
+			action: security.ActionReadAgent,
+			actionCtx: &ActionContext{
+				ResourceType:    security.ResourceTypeAgent,
+				ResourceID:      "agent-1",
+				ResourceOwnerID: "other-user",
+			},
+			wantAllowed: false,
+		},
+		{
+			// Step 5: An agent without an ResourceOwnerID is not owner-accessible, even when its ID is the subject.
+			name:   "ResourceOwner_AgentWithoutResourceOwnerID_FallsThrough_Denied",
+			ctx:    buildCtx(""),
+			action: security.ActionReadAgent,
+			actionCtx: &ActionContext{
+				ResourceType: security.ResourceTypeAgent,
+				ResourceID:   "user123",
+			},
+			wantAllowed: false,
+		},
+		{
 			// Step 5: Empty ResourceID → not applicable → falls through to permission check.
-			name:   "ResourceOwner_EmptyResourceID_FallsThrough_Denied",
 			ctx:    buildCtx(""),
 			action: security.ActionReadUser,
 			actionCtx: &ActionContext{

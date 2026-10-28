@@ -510,7 +510,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	exporters = append(exporters, applicationExporter)
 
 	agentService, agentExporter, err := agent.Initialize(mux, entityService, inboundClientService, ouService,
-		roleService, ouAuthzService, governanceService, nil, entityTypeService)
+		roleService, ouAuthzService, governanceService, nil, entityTypeService, revocationSvc,
+		artifactLifetime)
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)
 
@@ -534,6 +535,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		ou:            ouService,
 		resource:      resourceService,
 		notifTemplate: notifTemplateSvc,
+		governance:    governanceService,
 	}, applicationService, agentService, flowMgtService, roleAssignmentService, roleService,
 		groupService, ouService, ouUserResolver, ouGroupResolver, entityTypeService, resourceService,
 		sharingService, notifTemplateSvc, ouDependencyProvider)
@@ -544,8 +546,13 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Inject the design resolve service now that it exists (the translation resolver was passed at init).
 	notifTemplateRenderer.SetDesignResolver(designResolveService)
 
+	// The actor provider finds a client's runtime rules through the resolver of its entity category, so it does
+	// not depend on the packages that define them. Only agents have rules today.
+	clientRulesResolvers := map[providers.EntityCategory]actorprovider.ClientRulesResolver{
+		providers.EntityCategoryAgent: agentService,
+	}
 	actorProvider := actorprovider.Initialize(
-		inboundClientService, entityProvider, authnProvider, roleService, entityTypeService)
+		inboundClientService, entityProvider, authnProvider, roleService, entityTypeService, clientRulesResolvers)
 	// Two-phase initialization: inject the actor provider into the executors that resolve an actor's
 	// OAuth client.
 	fatalOnError(ctx, logger, executor.SetActorProvider(execRegistry, actorProvider),
@@ -661,6 +668,7 @@ type dependencyConsumers struct {
 	ou            ou.ConfigurableOUService
 	resource      resource.ResourceServiceInterface
 	notifTemplate notificationtemplate.NotificationTemplateServiceInterface
+	governance    identitygovernance.IdentityGovernanceServiceInterface
 }
 
 // registerDependencyRegistry builds the dependency registry from the given providers and wires it
@@ -679,6 +687,7 @@ func registerDependencyRegistry(consumers dependencyConsumers, providers ...reso
 	consumers.ou.SetDependencyRegistry(registry)
 	consumers.resource.SetDependencyRegistry(registry)
 	consumers.notifTemplate.SetDependencyRegistry(registry)
+	consumers.governance.SetDependencyRegistry(registry)
 }
 
 // unregisterServices unregisters all services that require cleanup during shutdown.

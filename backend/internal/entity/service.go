@@ -124,6 +124,10 @@ type EntityServiceInterface interface {
 		revision int64) (bool, error)
 	RecordLogin(ctx context.Context, entityID string, at, notBefore time.Time) error
 	SetSuspension(ctx context.Context, entityID string, at time.Time, operatorNote string) (bool, error)
+	SetOwnerSuspension(ctx context.Context, entityID string, at time.Time) (bool, error)
+	ClearOwnerSuspension(ctx context.Context, entityID string) (bool, error)
+	SetCascadeSuspension(ctx context.Context, entityID string, at time.Time) (bool, error)
+	ClearCascadeSuspension(ctx context.Context, entityID string) (bool, error)
 	ClearSuspension(ctx context.Context, entityID string, hold *identitygovernance.EntityHold,
 		suspendedAt string) (bool, error)
 }
@@ -1728,6 +1732,26 @@ func (s *entityService) RecordLogin(ctx context.Context, entityID string,
 func (s *entityService) SetSuspension(ctx context.Context, entityID string,
 	at time.Time, operatorNote string) (bool, error) {
 	return s.runtimeStore.SetAccessSuspension(ctx, entityID, at, operatorNote)
+}
+
+// SetOwnerSuspension records the owner's suspension. It reports false when it is already in place.
+func (s *entityService) SetOwnerSuspension(ctx context.Context, entityID string, at time.Time) (bool, error) {
+	return s.runtimeStore.SetAccessOwnerSuspension(ctx, entityID, at)
+}
+
+// ClearOwnerSuspension removes the owner's suspension. It reports false when there is none.
+func (s *entityService) ClearOwnerSuspension(ctx context.Context, entityID string) (bool, error) {
+	return s.runtimeStore.ClearAccessOwnerSuspension(ctx, entityID)
+}
+
+// SetCascadeSuspension records the cascaded suspension. It reports false when it is already in place.
+func (s *entityService) SetCascadeSuspension(ctx context.Context, entityID string, at time.Time) (bool, error) {
+	return s.runtimeStore.SetAccessCascadeSuspension(ctx, entityID, at)
+}
+
+// ClearCascadeSuspension removes the cascaded suspension. It reports false when there is none.
+func (s *entityService) ClearCascadeSuspension(ctx context.Context, entityID string) (bool, error) {
+	return s.runtimeStore.ClearAccessCascadeSuspension(ctx, entityID)
 }
 
 // ClearSuspension removes the suspension placed at suspendedAt, optionally replacing it with an

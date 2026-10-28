@@ -55,7 +55,8 @@ var categoryTraitsByCategory = map[entitytype.TypeCategory]categoryTraits{
 		},
 		allowedTypesProperty: propertyKeyAllowedAgentTypes,
 		recordFields: []string{
-			ownerIDKey, delegatedKey, redirectURIsKey, authFlowIDKey, allowedUserTypesKey,
+			ownerIDKey, delegatedKey, redirectURIsKey, authFlowIDKey, allowedUserTypesKey, publicKeyKey, jwksURIKey,
+			authFlowHandleKey, alwaysPromptConsentKey, kindKey,
 		},
 		missingRecordFields: missingAgentRecordFields,
 	},

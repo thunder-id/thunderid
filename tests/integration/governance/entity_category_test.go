@@ -86,6 +86,7 @@ func (ts *EntityCategoryTestSuite) TestAnAdministrativeHoldAppliesToAnAgent() {
 	ts.Equal("SUSPENDED", status.Value, "a management read must report the hold on an agent")
 	ts.Require().NotNil(status.Details, "an agent read must carry the suspension's details")
 	ts.Equal("ADMINISTRATIVE_SUSPENSION", status.Details.Reason)
+	ts.Equal([]string{"organization"}, status.Details.AppliedBy, "an operator's suspension is the organization's")
 	cutoffBound, err := time.Parse(time.RFC3339Nano, status.Details.Since)
 	ts.Require().NoError(err, "the read must carry when the hold was placed")
 	ts.Equal("Agent key reported leaked", status.Details.OperatorNote,

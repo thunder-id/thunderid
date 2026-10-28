@@ -5,6 +5,7 @@ package agent
 
 import (
 	"strings"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -34,4 +35,10 @@ func getAgentStoreMode() serverconst.StoreMode {
 // lookups and schema uniqueness checks.
 func getAgentIndexedAttributes() []string {
 	return []string{"name"}
+}
+
+// getTokenLeeway returns the deployment's JWT leeway. A revocation's cutoff is placed that far ahead, so a token
+// issued while it is written is still covered.
+func getTokenLeeway() time.Duration {
+	return time.Duration(max(config.GetServerRuntime().Config.JWT.Leeway, 0)) * time.Second
 }

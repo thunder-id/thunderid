@@ -52,6 +52,7 @@ var DataKey = struct {
 
 	// Administration Keys. Records whether an operator note was given, never the note itself.
 	OperatorNoteRecorded string
+	AppliedBy            string
 	// ConfigName is the server-config section a change targets.
 	ConfigName string
 
@@ -113,6 +114,7 @@ var DataKey = struct {
 
 	// Administration Keys
 	OperatorNoteRecorded: "operator_note_recorded",
+	AppliedBy:            "applied_by",
 	ConfigName:           "config_name",
 
 	// Account Lock Keys

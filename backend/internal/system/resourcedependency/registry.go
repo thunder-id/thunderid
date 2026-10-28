@@ -26,6 +26,10 @@ const BehaviorFallback = "fallback"
 // reference exists; the caller must remove or reassign the reference before the target can be deleted.
 const BehaviorRestrict = "restrict"
 
+// BehaviorCascade indicates the referencing resource is removed together with the target: the provider deletes
+// it from CascadeDeleteDependencies, so it does not block the target's deletion.
+const BehaviorCascade = "cascade"
+
 // isBlocking reports whether a behaviorOnDelete value forbids deletion of the referenced resource.
 func isBlocking(behaviorOnDelete string) bool {
 	return behaviorOnDelete == BehaviorRestrict
@@ -160,6 +164,13 @@ type CascadeDeleter interface {
 	CascadeDeleteDependencies(ctx context.Context, resourceType, id string) (int, error)
 }
 
+// SuspensionDependentsLister is an optional interface a Provider may implement to list the identities it owns that
+// are suspended together with a target resource, such as the personal agents of a user. The caller places and lifts
+// their suspension; the provider only names them.
+type SuspensionDependentsLister interface {
+	SuspensionDependents(ctx context.Context, resourceType, id string) ([]string, error)
+}
+
 // UpdateValidator is an optional interface a Provider may implement to validate that its owned
 // dependents remain consistent after the target resource has been updated. Called by the registry
 // after the target has been persisted (typically inside the update transaction) so returning a
@@ -173,6 +184,7 @@ type Registry interface {
 	RegisterProvider(p Provider)
 	GetDependencies(ctx context.Context, resourceType, id string) (*DependenciesResponse, error)
 	CascadeDelete(ctx context.Context, resourceType, id string) (int, error)
+	SuspensionDependents(ctx context.Context, resourceType, id string) ([]string, error)
 	ValidateReferenceUpdate(ctx context.Context, resourceType, id string) *tidcommon.ServiceError
 }
 
@@ -264,6 +276,27 @@ func (r *registry) CascadeDelete(ctx context.Context, resourceType, id string) (
 		total += deleted
 	}
 	return total, nil
+}
+
+// SuspensionDependents asks every provider that implements SuspensionDependentsLister for the identities suspended
+// together with (resourceType, id), returning them all. It stops and returns the error on the first provider
+// failure.
+func (r *registry) SuspensionDependents(ctx context.Context, resourceType, id string) ([]string, error) {
+	var dependents []string
+	for _, p := range r.providers {
+		lister, ok := p.(SuspensionDependentsLister)
+		if !ok {
+			continue
+		}
+		ids, err := lister.SuspensionDependents(ctx, resourceType, id)
+		if err != nil {
+			r.logger.Error(ctx, "Failed to list suspension dependents from provider",
+				log.String("resourceType", resourceType), log.String("id", id), log.Error(err))
+			return nil, err
+		}
+		dependents = append(dependents, ids...)
+	}
+	return dependents, nil
 }
 
 // ValidateReferenceUpdate asks every provider that implements UpdateValidator to verify that its

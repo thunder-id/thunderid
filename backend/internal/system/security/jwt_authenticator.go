@@ -40,6 +40,9 @@ const (
 	// present it, not sub, is the subject the deny list is evaluated against.
 	claimAccessTokenSubject = "access_token_sub"
 
+	// claimActor carries the acting client in a delegated token (RFC 8693 §4.1).
+	claimActor = "act"
+
 	// claimClientID names the OAuth client an access token was issued to.
 	claimClientID = "client_id"
 )

@@ -12,6 +12,7 @@ import (
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -71,6 +72,9 @@ type IdentityGovernanceServiceInterface interface {
 	// ReadAccess derives what management reads report for each entity, in order: the effective status
 	// and the last login time. Each category's lockout policy is resolved once per call.
 	ReadAccess(ctx context.Context, entities []providers.Entity) []AccessRead
+
+	// SetDependencyRegistry injects the registry that names the identities suspended together with another
+	SetDependencyRegistry(registry resourcedependency.Registry)
 }
 
 // entityStateProvider reads and writes the governed state. The entity service implements it.
@@ -112,6 +116,21 @@ type entityStateProvider interface {
 	// ClearSuspension removes the suspension placed at suspendedAt and writes the given hold, if any,
 	// in the same statement. It returns false, not an error, when that suspension is no longer there.
 	ClearSuspension(ctx context.Context, entityID string, hold *EntityHold, suspendedAt string) (bool, error)
+
+	// SetOwnerSuspension records the owner's suspension and when it was placed. It returns false, not an
+	// error, when the owner's suspension is already in place.
+	SetOwnerSuspension(ctx context.Context, entityID string, at time.Time) (bool, error)
+
+	// ClearOwnerSuspension removes the owner's suspension. It returns false, not an error, when there is
+	// none.
+	ClearOwnerSuspension(ctx context.Context, entityID string) (bool, error)
+
+	// SetCascadeSuspension records the suspension carried from the identity this one depends on. It returns
+	// false, not an error, when it is already in place.
+	SetCascadeSuspension(ctx context.Context, entityID string, at time.Time) (bool, error)
+
+	// ClearCascadeSuspension removes the cascaded suspension. It returns false, not an error, when there is none.
+	ClearCascadeSuspension(ctx context.Context, entityID string) (bool, error)
 }
 
 // identityGovernanceService is the governance authority.
@@ -124,8 +143,10 @@ type identityGovernanceService struct {
 	authorizer sysauthz.SystemAuthorizationServiceInterface
 	// observability receives lifecycle audit events. Optional.
 	observability providers.ObservabilityProvider
-	logger        *log.Logger
-	now           func() time.Time
+	// dependencyRegistry names the identities suspended together with another. Optional.
+	dependencyRegistry resourcedependency.Registry
+	logger             *log.Logger
+	now                func() time.Time
 }
 
 // newIdentityGovernanceService builds the governance service.
@@ -269,12 +290,15 @@ func (s *identityGovernanceService) Unlock(ctx context.Context, entityID string)
 	return nil
 }
 
-// Suspend places an administrative hold, or writes nothing when one is already in place.
+// Suspend places a hold, or writes nothing when one is already in place. A call marked with
+// WithOwnerApplier places the owner's hold; any other places the organization's. The two are held apart.
 func (s *identityGovernanceService) Suspend(ctx context.Context,
 	entityID, operatorNote string) (svcErr *tidcommon.ServiceError) {
 	noteRecorded := operatorNote != ""
+	appliedBy := suspensionApplier(ctx)
 	record := lifecycleAudit{succeeded: event.EventTypeIdentitySuspended,
-		failed: event.EventTypeIdentitySuspensionFailed, entityID: entityID, operatorNoteRecorded: &noteRecorded}
+		failed: event.EventTypeIdentitySuspensionFailed, entityID: entityID, operatorNoteRecorded: &noteRecorded,
+		appliedBy: appliedBy}
 	defer func() { s.audit(ctx, &record, svcErr) }()
 
 	entity, svcErr := s.governedForLifecycle(ctx, entityID, &record)
@@ -284,8 +308,15 @@ func (s *identityGovernanceService) Suspend(ctx context.Context,
 	if isOperatorNoteTooLong(operatorNote) {
 		return &ErrorOperatorNoteTooLong
 	}
+	if appliedBy == providers.SuspensionAppliedByOwner {
+		return s.suspendByOwner(ctx, entity, &record)
+	}
+	// The identities suspended together with this one are suspended first
+	if svcErr := s.cascadeSuspension(ctx, entity, true); svcErr != nil {
+		return svcErr
+	}
 	// Already suspended: write nothing and keep the first placement time and note.
-	if isSuspended(entity.State, entity.AccessState) {
+	if isSuspendedByOrganization(entity.State, entity.AccessState) {
 		record.message = messageSuspensionInPlace
 		return nil
 	}
@@ -297,6 +328,25 @@ func (s *identityGovernanceService) Suspend(ctx context.Context,
 	record.message = messageSuspensionPlaced
 	if !placed {
 		record.message = messageSuspensionInPlace
+	}
+	return nil
+}
+
+// suspendByOwner places the owner's hold, or writes nothing when it is already in place.
+func (s *identityGovernanceService) suspendByOwner(ctx context.Context, entity GovernedEntity,
+	record *lifecycleAudit) *tidcommon.ServiceError {
+	if entity.AccessState.OwnerSuspend != nil {
+		record.message = messageOwnerSuspensionInPlace
+		return nil
+	}
+	placed, err := s.entityState.SetOwnerSuspension(ctx, entity.ID, s.now())
+	if err != nil {
+		return s.serverError(ctx, "Failed to place the owner's suspension", entity.ID, err)
+	}
+	// A concurrent suspend by the owner placed it first.
+	record.message = messageOwnerSuspensionPlaced
+	if !placed {
+		record.message = messageOwnerSuspensionInPlace
 	}
 	return nil
 }
@@ -324,16 +374,25 @@ func (s *identityGovernanceService) ValidateSuspend(ctx context.Context,
 // statement.
 func (s *identityGovernanceService) Unsuspend(ctx context.Context,
 	entityID string) (svcErr *tidcommon.ServiceError) {
+	appliedBy := suspensionApplier(ctx)
 	record := lifecycleAudit{succeeded: event.EventTypeIdentityUnsuspended,
-		failed: event.EventTypeIdentityUnsuspensionFailed, entityID: entityID}
+		failed: event.EventTypeIdentityUnsuspensionFailed, entityID: entityID, appliedBy: appliedBy}
 	defer func() { s.audit(ctx, &record, svcErr) }()
 
 	entity, svcErr := s.governedForLifecycle(ctx, entityID, &record)
 	if svcErr != nil {
 		return svcErr
 	}
-	if !isSuspended(entity.State, entity.AccessState) {
+	if appliedBy == providers.SuspensionAppliedByOwner {
+		return s.unsuspendByOwner(ctx, entity, &record)
+	}
+	// The organization lifts only its own hold; the owner's, if any, stays.
+	if !isSuspendedByOrganization(entity.State, entity.AccessState) {
 		return &ErrorNotApplicable
+	}
+	// The identities suspended together with this one are released first.
+	if svcErr := s.cascadeSuspension(ctx, entity, false); svcErr != nil {
+		return svcErr
 	}
 
 	var hold *EntityHold
@@ -359,6 +418,78 @@ func (s *identityGovernanceService) Unsuspend(ctx context.Context,
 	if hold != nil {
 		record.message = messageSuspensionReleasedOntoHold
 	}
+	return nil
+}
+
+// SetDependencyRegistry injects the dependency registry. Called by servicemanager after the
+// provider services are initialized to avoid a cyclic import.
+func (s *identityGovernanceService) SetDependencyRegistry(r resourcedependency.Registry) {
+	s.dependencyRegistry = r
+}
+
+// cascadeSuspension suspends, or with suspend false unsuspends, every identity suspended together with entity, as
+// the dependency registry names them. Each change, or a failure to make it, is audited as that identity's own
+// suspension or unsuspension, applied by the cascade. A dependent that no longer exists, or already holds the hold as
+// asked, is left as it is.
+func (s *identityGovernanceService) cascadeSuspension(ctx context.Context, entity GovernedEntity,
+	suspend bool) *tidcommon.ServiceError {
+	// Only a user has identities suspended together with it
+	if s.dependencyRegistry == nil || entity.Category != providers.EntityCategoryUser {
+		return nil
+	}
+	dependents, err := s.dependencyRegistry.SuspensionDependents(ctx, resourcedependency.ResourceTypeUser, entity.ID)
+	if err != nil {
+		return s.serverError(ctx, "Failed to list the identities suspended together", entity.ID, err)
+	}
+	for _, dependentID := range dependents {
+		// The governance read seeds a missing runtime row, so the write has a row to update.
+		dependent, err := s.entityState.GetGovernedEntity(ctx, dependentID, true)
+		if err != nil {
+			return s.serverError(ctx, "Failed to read a dependent identity", dependentID, err)
+		}
+		if dependent == nil || (dependent.AccessState.CascadeSuspend != nil) == suspend {
+			continue
+		}
+
+		record := lifecycleAudit{succeeded: event.EventTypeIdentitySuspended,
+			failed: event.EventTypeIdentitySuspensionFailed, entityID: dependentID, category: dependent.Category,
+			message: messageCascadedSuspensionPlaced, appliedBy: providers.SuspensionAppliedByCascade}
+		var changed bool
+		if suspend {
+			changed, err = s.entityState.SetCascadeSuspension(ctx, dependentID, s.now())
+		} else {
+			record.succeeded, record.failed = event.EventTypeIdentityUnsuspended,
+				event.EventTypeIdentityUnsuspensionFailed
+			record.message = messageCascadedSuspensionReleased
+			changed, err = s.entityState.ClearCascadeSuspension(ctx, dependentID)
+		}
+		if err != nil {
+			svcErr := s.serverError(ctx, "Failed to carry a suspension to a dependent identity", dependentID, err)
+			s.audit(ctx, &record, svcErr)
+			return svcErr
+		}
+		if changed {
+			s.audit(ctx, &record, nil)
+		}
+	}
+	return nil
+}
+
+// unsuspendByOwner lifts the owner's hold. The organization's, if any, stays.
+func (s *identityGovernanceService) unsuspendByOwner(ctx context.Context, entity GovernedEntity,
+	record *lifecycleAudit) *tidcommon.ServiceError {
+	if entity.AccessState.OwnerSuspend == nil {
+		return &ErrorNotApplicable
+	}
+	cleared, err := s.entityState.ClearOwnerSuspension(ctx, entity.ID)
+	if err != nil {
+		return s.serverError(ctx, "Failed to release the owner's suspension", entity.ID, err)
+	}
+	// A concurrent unsuspend by the owner released it after the read.
+	if !cleared {
+		return &ErrorNotApplicable
+	}
+	record.message = messageOwnerSuspensionReleased
 	return nil
 }
 
@@ -689,6 +820,9 @@ func (s *identityGovernanceService) audit(ctx context.Context, record *lifecycle
 	}
 	if record.operatorNoteRecorded != nil {
 		evt.WithData(event.DataKey.OperatorNoteRecorded, *record.operatorNoteRecorded)
+	}
+	if record.appliedBy != "" {
+		evt.WithData(event.DataKey.AppliedBy, string(record.appliedBy))
 	}
 	if svcErr != nil {
 		evt.WithData(event.DataKey.Error, string(failureClass(svcErr)))

@@ -233,6 +233,80 @@ func (_c *RegistryMock_RegisterProvider_Call) RunAndReturn(run func(p Provider))
 	return _c
 }
 
+// SuspensionDependents provides a mock function for the type RegistryMock
+func (_mock *RegistryMock) SuspensionDependents(ctx context.Context, resourceType string, id string) ([]string, error) {
+	ret := _mock.Called(ctx, resourceType, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SuspensionDependents")
+	}
+
+	var r0 []string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) ([]string, error)); ok {
+		return returnFunc(ctx, resourceType, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) []string); ok {
+		r0 = returnFunc(ctx, resourceType, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, resourceType, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// RegistryMock_SuspensionDependents_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SuspensionDependents'
+type RegistryMock_SuspensionDependents_Call struct {
+	*mock.Call
+}
+
+// SuspensionDependents is a helper method to define mock.On call
+//   - ctx context.Context
+//   - resourceType string
+//   - id string
+func (_e *RegistryMock_Expecter) SuspensionDependents(ctx any, resourceType any, id any) *RegistryMock_SuspensionDependents_Call {
+	return &RegistryMock_SuspensionDependents_Call{Call: _e.mock.On("SuspensionDependents", ctx, resourceType, id)}
+}
+
+func (_c *RegistryMock_SuspensionDependents_Call) Run(run func(ctx context.Context, resourceType string, id string)) *RegistryMock_SuspensionDependents_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *RegistryMock_SuspensionDependents_Call) Return(strings []string, err error) *RegistryMock_SuspensionDependents_Call {
+	_c.Call.Return(strings, err)
+	return _c
+}
+
+func (_c *RegistryMock_SuspensionDependents_Call) RunAndReturn(run func(ctx context.Context, resourceType string, id string) ([]string, error)) *RegistryMock_SuspensionDependents_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ValidateReferenceUpdate provides a mock function for the type RegistryMock
 func (_mock *RegistryMock) ValidateReferenceUpdate(ctx context.Context, resourceType string, id string) *common.ServiceError {
 	ret := _mock.Called(ctx, resourceType, id)

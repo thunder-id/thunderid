@@ -37,6 +37,10 @@ type entityRuntimeStoreInterface interface {
 	ClearAccessStateIfUnchanged(ctx context.Context, entityID string, method providers.AuthenticationMethod,
 		revision int64) (bool, error)
 	SetAccessSuspension(ctx context.Context, entityID string, at time.Time, operatorNote string) (bool, error)
+	SetAccessOwnerSuspension(ctx context.Context, entityID string, at time.Time) (bool, error)
+	ClearAccessOwnerSuspension(ctx context.Context, entityID string) (bool, error)
+	SetAccessCascadeSuspension(ctx context.Context, entityID string, at time.Time) (bool, error)
+	ClearAccessCascadeSuspension(ctx context.Context, entityID string) (bool, error)
 	RecordAccessLogin(ctx context.Context, entityID string, at, notBefore time.Time) error
 	ClearAccessSuspension(ctx context.Context, entityID string, hold *identitygovernance.EntityHold,
 		suspendedAt string) (bool, error)
@@ -288,6 +292,72 @@ func (rs *entityRuntimeDBStore) ClearAccessSuspension(ctx context.Context, entit
 	}
 	if err != nil {
 		return false, fmt.Errorf("failed to execute clear access suspension query: %w", err)
+	}
+	return rowsAffected > 0, nil
+}
+
+// SetAccessOwnerSuspension records the owner's suspension and when it was placed. It returns false, not
+// an error, when the owner's suspension is already in place or the entity has no runtime row.
+func (rs *entityRuntimeDBStore) SetAccessOwnerSuspension(ctx context.Context, entityID string,
+	at time.Time) (bool, error) {
+	dbClient, err := rs.client()
+	if err != nil {
+		return false, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	rowsAffected, err := dbClient.ExecuteContext(ctx, querySetAccessOwnerSuspension,
+		entityID, at.UTC().Format(time.RFC3339Nano), time.Now().UTC(), deployment.Resolve(ctx))
+	if err != nil {
+		return false, fmt.Errorf("failed to execute set access owner suspension query: %w", err)
+	}
+	return rowsAffected > 0, nil
+}
+
+// ClearAccessOwnerSuspension removes the owner's suspension. It returns false, not an error, when there
+// is none.
+func (rs *entityRuntimeDBStore) ClearAccessOwnerSuspension(ctx context.Context, entityID string) (bool, error) {
+	dbClient, err := rs.client()
+	if err != nil {
+		return false, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	rowsAffected, err := dbClient.ExecuteContext(ctx, queryClearAccessOwnerSuspension,
+		entityID, time.Now().UTC(), deployment.Resolve(ctx))
+	if err != nil {
+		return false, fmt.Errorf("failed to execute clear access owner suspension query: %w", err)
+	}
+	return rowsAffected > 0, nil
+}
+
+// SetAccessCascadeSuspension records the cascaded suspension and when it was placed. It returns false, not an
+// error, when it is already in place or the entity has no runtime row.
+func (rs *entityRuntimeDBStore) SetAccessCascadeSuspension(ctx context.Context, entityID string,
+	at time.Time) (bool, error) {
+	dbClient, err := rs.client()
+	if err != nil {
+		return false, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	rowsAffected, err := dbClient.ExecuteContext(ctx, querySetAccessCascadeSuspension,
+		entityID, at.UTC().Format(time.RFC3339Nano), time.Now().UTC(), deployment.Resolve(ctx))
+	if err != nil {
+		return false, fmt.Errorf("failed to execute set access cascade suspension query: %w", err)
+	}
+	return rowsAffected > 0, nil
+}
+
+// ClearAccessCascadeSuspension removes the cascaded suspension. It returns false, not an error, when there is
+// none.
+func (rs *entityRuntimeDBStore) ClearAccessCascadeSuspension(ctx context.Context, entityID string) (bool, error) {
+	dbClient, err := rs.client()
+	if err != nil {
+		return false, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	rowsAffected, err := dbClient.ExecuteContext(ctx, queryClearAccessCascadeSuspension,
+		entityID, time.Now().UTC(), deployment.Resolve(ctx))
+	if err != nil {
+		return false, fmt.Errorf("failed to execute clear access cascade suspension query: %w", err)
 	}
 	return rowsAffected > 0, nil
 }

@@ -40,6 +40,9 @@ type ActionContext struct {
 	// ResourceID is the identifier of the specific resource being acted upon.
 	// Leave empty for collection-level actions (e.g., list, create).
 	ResourceID string
+	// ResourceOwnerID is the stored owner of the resource, read from the resource itself, never from the request.
+	// Set it only when the owner may act on the resource; leave it empty otherwise.
+	ResourceOwnerID string
 }
 
 // AccessibleResources represents the set of resources a caller is permitted to access

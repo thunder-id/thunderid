@@ -462,3 +462,77 @@ func compileFormAccessLockQuery(method providers.AuthenticationMethod) (model.DB
 		SQLiteQuery:   sqlite,
 	}, nil
 }
+
+// The owner's suspension sits in its own member, accessState.ownerSuspend, apart from the organization's
+// accessState.suspend and the state column, so placing or lifting one never touches the other.
+var (
+	// querySetAccessOwnerSuspension writes accessState.ownerSuspend, unless the owner's suspension is
+	// already in place. $2 is when it was placed.
+	querySetAccessOwnerSuspension = model.DBQuery{
+		ID: "ERD-ENTITY_MGT-13",
+		PostgresQuery: `UPDATE "ENTITY_RUNTIME_DATA" SET RUNTIME_ATTRIBUTES = ` +
+			`RUNTIME_ATTRIBUTES || jsonb_build_object('accessState', ` +
+			`COALESCE(RUNTIME_ATTRIBUTES->'accessState', '{}'::jsonb) || jsonb_build_object('ownerSuspend', ` +
+			`jsonb_build_object('suspendedAt', $2::text))), ` +
+			`REVISION = REVISION + 1, UPDATED_AT = $3 ` +
+			`WHERE ENTITY_ID = $1 AND RUNTIME_ATTRIBUTES->'accessState'->'ownerSuspend' IS NULL ` +
+			`AND DEPLOYMENT_ID = $4`,
+		SQLiteQuery: `UPDATE "ENTITY_RUNTIME_DATA" SET RUNTIME_ATTRIBUTES = json_set(RUNTIME_ATTRIBUTES, ` +
+			`'$.accessState.ownerSuspend', json_object('suspendedAt', $2)), ` +
+			`REVISION = REVISION + 1, UPDATED_AT = $3 ` +
+			`WHERE ENTITY_ID = $1 AND json_extract(RUNTIME_ATTRIBUTES, '$.accessState.ownerSuspend') IS NULL ` +
+			`AND DEPLOYMENT_ID = $4`,
+	}
+
+	// queryClearAccessOwnerSuspension removes accessState.ownerSuspend, if it is there.
+	queryClearAccessOwnerSuspension = model.DBQuery{
+		ID: "ERD-ENTITY_MGT-14",
+		PostgresQuery: `UPDATE "ENTITY_RUNTIME_DATA" SET RUNTIME_ATTRIBUTES = ` +
+			`RUNTIME_ATTRIBUTES || jsonb_build_object('accessState', ` +
+			`COALESCE(RUNTIME_ATTRIBUTES->'accessState', '{}'::jsonb) - 'ownerSuspend'), ` +
+			`REVISION = REVISION + 1, UPDATED_AT = $2 ` +
+			`WHERE ENTITY_ID = $1 AND RUNTIME_ATTRIBUTES->'accessState'->'ownerSuspend' IS NOT NULL ` +
+			`AND DEPLOYMENT_ID = $3`,
+		SQLiteQuery: `UPDATE "ENTITY_RUNTIME_DATA" SET RUNTIME_ATTRIBUTES = json_remove(RUNTIME_ATTRIBUTES, ` +
+			`'$.accessState.ownerSuspend'), REVISION = REVISION + 1, UPDATED_AT = $2 ` +
+			`WHERE ENTITY_ID = $1 AND json_extract(RUNTIME_ATTRIBUTES, '$.accessState.ownerSuspend') IS NOT NULL ` +
+			`AND DEPLOYMENT_ID = $3`,
+	}
+)
+
+// The cascaded suspension sits in its own member, accessState.cascadeSuspend, placed and lifted with the suspension
+// of the identity this one depends on, apart from the organization's and the owner's.
+var (
+	// querySetAccessCascadeSuspension writes accessState.cascadeSuspend, unless it is already in place. $2 is when it
+	// was placed.
+	querySetAccessCascadeSuspension = model.DBQuery{
+		ID: "ERD-ENTITY_MGT-15",
+		PostgresQuery: `UPDATE "ENTITY_RUNTIME_DATA" SET RUNTIME_ATTRIBUTES = ` +
+			`RUNTIME_ATTRIBUTES || jsonb_build_object('accessState', ` +
+			`COALESCE(RUNTIME_ATTRIBUTES->'accessState', '{}'::jsonb) || jsonb_build_object('cascadeSuspend', ` +
+			`jsonb_build_object('suspendedAt', $2::text))), ` +
+			`REVISION = REVISION + 1, UPDATED_AT = $3 ` +
+			`WHERE ENTITY_ID = $1 AND RUNTIME_ATTRIBUTES->'accessState'->'cascadeSuspend' IS NULL ` +
+			`AND DEPLOYMENT_ID = $4`,
+		SQLiteQuery: `UPDATE "ENTITY_RUNTIME_DATA" SET RUNTIME_ATTRIBUTES = json_set(RUNTIME_ATTRIBUTES, ` +
+			`'$.accessState.cascadeSuspend', json_object('suspendedAt', $2)), ` +
+			`REVISION = REVISION + 1, UPDATED_AT = $3 ` +
+			`WHERE ENTITY_ID = $1 AND json_extract(RUNTIME_ATTRIBUTES, '$.accessState.cascadeSuspend') IS NULL ` +
+			`AND DEPLOYMENT_ID = $4`,
+	}
+
+	// queryClearAccessCascadeSuspension removes accessState.cascadeSuspend, if it is there.
+	queryClearAccessCascadeSuspension = model.DBQuery{
+		ID: "ERD-ENTITY_MGT-16",
+		PostgresQuery: `UPDATE "ENTITY_RUNTIME_DATA" SET RUNTIME_ATTRIBUTES = ` +
+			`RUNTIME_ATTRIBUTES || jsonb_build_object('accessState', ` +
+			`COALESCE(RUNTIME_ATTRIBUTES->'accessState', '{}'::jsonb) - 'cascadeSuspend'), ` +
+			`REVISION = REVISION + 1, UPDATED_AT = $2 ` +
+			`WHERE ENTITY_ID = $1 AND RUNTIME_ATTRIBUTES->'accessState'->'cascadeSuspend' IS NOT NULL ` +
+			`AND DEPLOYMENT_ID = $3`,
+		SQLiteQuery: `UPDATE "ENTITY_RUNTIME_DATA" SET RUNTIME_ATTRIBUTES = json_remove(RUNTIME_ATTRIBUTES, ` +
+			`'$.accessState.cascadeSuspend'), REVISION = REVISION + 1, UPDATED_AT = $2 ` +
+			`WHERE ENTITY_ID = $1 AND ` +
+			`json_extract(RUNTIME_ATTRIBUTES, '$.accessState.cascadeSuspend') IS NOT NULL AND DEPLOYMENT_ID = $3`,
+	}
+)

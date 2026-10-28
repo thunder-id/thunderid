@@ -1038,6 +1038,7 @@ func (s *importService) importAgent(
 		LogoURL:     req.LogoURL,
 		Owner:       req.Owner,
 		Attributes:  attributesJSON,
+		Kind:        req.Kind,
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                req.AuthFlowID,
 			AuthFlowHandle:            req.AuthFlowHandle,

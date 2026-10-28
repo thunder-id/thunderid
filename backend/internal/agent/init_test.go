@@ -6,6 +6,7 @@ package agent
 import (
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
@@ -98,7 +100,7 @@ func (suite *InitializeTestSuite) TestInitialize_EntityLoadError_AllDeclarativeM
 				Return(errors.New("entity load error")).Once()
 
 			svc, exporter, err := Initialize(http.NewServeMux(), mockEntity, mockInbound, mockOU, mockRole,
-				newAllowAllAuthz(suite.T()), nil, nil, nil)
+				newAllowAllAuthz(suite.T()), nil, nil, nil, nil, nil)
 
 			suite.EqualError(err, "entity load error")
 			suite.Nil(svc)
@@ -128,7 +130,7 @@ func (suite *InitializeTestSuite) TestInitialize_InboundLoadError_AllDeclarative
 
 			mux := http.NewServeMux()
 			svc, exporter, err := Initialize(
-				mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil)
+				mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil, nil, nil)
 
 			suite.Error(err)
 			suite.Equal("inbound load error", err.Error())
@@ -154,7 +156,7 @@ func (suite *InitializeTestSuite) TestInitialize_DeclarativeMode_Success() {
 
 	mux := http.NewServeMux()
 	svc, exporter, err := Initialize(
-		mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil)
+		mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil, nil, nil)
 
 	suite.NoError(err)
 	suite.NotNil(svc)
@@ -174,7 +176,7 @@ func (suite *InitializeTestSuite) TestInitialize_MutableMode_SkipsDeclarativeLoa
 
 	mux := http.NewServeMux()
 	svc, exporter, err := Initialize(
-		mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil)
+		mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil, nil, nil)
 
 	suite.NoError(err)
 	suite.NotNil(svc)
@@ -182,6 +184,37 @@ func (suite *InitializeTestSuite) TestInitialize_MutableMode_SkipsDeclarativeLoa
 	// No LoadDeclarativeResources calls expected in mutable mode.
 	mockEntity.AssertNotCalled(suite.T(), "LoadDeclarativeResources")
 	mockInbound.AssertNotCalled(suite.T(), "LoadDeclarativeResources")
+}
+
+// The owner's suspension routes are registered only with a revoker, which the control plane does not have.
+func (suite *InitializeTestSuite) TestInitialize_OwnerSuspensionRoutesNeedARevoker() {
+	setupAgentConfig(suite.T(), string(serverconst.StoreModeMutable), false)
+	for name, revoker := range map[string]revocation.CriteriaRevoker{
+		"with a revoker": &recordingRevoker{calls: &[]string{}},
+		"without one":    nil,
+	} {
+		suite.Run(name, func() {
+			mockEntity := entitymock.NewEntityServiceInterfaceMock(suite.T())
+			mockEntity.On("LoadIndexedAttributes", []string{"name"}).Return(nil).Once()
+			mux := http.NewServeMux()
+			_, _, err := Initialize(mux, mockEntity,
+				inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T()),
+				oumock.NewOrganizationUnitServiceInterfaceMock(suite.T()),
+				rolemock.NewRoleServiceInterfaceMock(suite.T()),
+				newAllowAllAuthz(suite.T()), nil, nil, nil, revoker, nil)
+			suite.Require().NoError(err)
+
+			for _, target := range []string{"/users/me/agents/suspend", "/users/me/agents/agent-1/suspend",
+				"/users/me/agents/agent-1/unsuspend"} {
+				_, pattern := mux.Handler(httptest.NewRequest(http.MethodPost, target, nil))
+				if revoker != nil {
+					suite.NotEmpty(pattern, target)
+				} else {
+					suite.Empty(pattern, target)
+				}
+			}
+		})
+	}
 }
 
 func (suite *InitializeTestSuite) TestInitialize_IndexedAttributesLoadError() {
@@ -195,7 +228,8 @@ func (suite *InitializeTestSuite) TestInitialize_IndexedAttributesLoadError() {
 	mockEntity.On("LoadIndexedAttributes", []string{"name"}).Return(errors.New("indexed load error")).Once()
 
 	svc, exporter, err := Initialize(
-		http.NewServeMux(), mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil)
+		http.NewServeMux(), mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()),
+		nil, nil, nil, nil, nil)
 
 	suite.EqualError(err, "indexed load error")
 	suite.Nil(svc)

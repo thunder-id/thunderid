@@ -352,6 +352,138 @@ func (_c *EntityServiceInterfaceMock_ClearAccessStateIfUnchanged_Call) RunAndRet
 	return _c
 }
 
+// ClearCascadeSuspension provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) ClearCascadeSuspension(ctx context.Context, entityID string) (bool, error) {
+	ret := _mock.Called(ctx, entityID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ClearCascadeSuspension")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, error)); ok {
+		return returnFunc(ctx, entityID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
+		r0 = returnFunc(ctx, entityID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, entityID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EntityServiceInterfaceMock_ClearCascadeSuspension_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ClearCascadeSuspension'
+type EntityServiceInterfaceMock_ClearCascadeSuspension_Call struct {
+	*mock.Call
+}
+
+// ClearCascadeSuspension is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+func (_e *EntityServiceInterfaceMock_Expecter) ClearCascadeSuspension(ctx any, entityID any) *EntityServiceInterfaceMock_ClearCascadeSuspension_Call {
+	return &EntityServiceInterfaceMock_ClearCascadeSuspension_Call{Call: _e.mock.On("ClearCascadeSuspension", ctx, entityID)}
+}
+
+func (_c *EntityServiceInterfaceMock_ClearCascadeSuspension_Call) Run(run func(ctx context.Context, entityID string)) *EntityServiceInterfaceMock_ClearCascadeSuspension_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_ClearCascadeSuspension_Call) Return(b bool, err error) *EntityServiceInterfaceMock_ClearCascadeSuspension_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_ClearCascadeSuspension_Call) RunAndReturn(run func(ctx context.Context, entityID string) (bool, error)) *EntityServiceInterfaceMock_ClearCascadeSuspension_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ClearOwnerSuspension provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) ClearOwnerSuspension(ctx context.Context, entityID string) (bool, error) {
+	ret := _mock.Called(ctx, entityID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ClearOwnerSuspension")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, error)); ok {
+		return returnFunc(ctx, entityID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
+		r0 = returnFunc(ctx, entityID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, entityID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EntityServiceInterfaceMock_ClearOwnerSuspension_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ClearOwnerSuspension'
+type EntityServiceInterfaceMock_ClearOwnerSuspension_Call struct {
+	*mock.Call
+}
+
+// ClearOwnerSuspension is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+func (_e *EntityServiceInterfaceMock_Expecter) ClearOwnerSuspension(ctx any, entityID any) *EntityServiceInterfaceMock_ClearOwnerSuspension_Call {
+	return &EntityServiceInterfaceMock_ClearOwnerSuspension_Call{Call: _e.mock.On("ClearOwnerSuspension", ctx, entityID)}
+}
+
+func (_c *EntityServiceInterfaceMock_ClearOwnerSuspension_Call) Run(run func(ctx context.Context, entityID string)) *EntityServiceInterfaceMock_ClearOwnerSuspension_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_ClearOwnerSuspension_Call) Return(b bool, err error) *EntityServiceInterfaceMock_ClearOwnerSuspension_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_ClearOwnerSuspension_Call) RunAndReturn(run func(ctx context.Context, entityID string) (bool, error)) *EntityServiceInterfaceMock_ClearOwnerSuspension_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ClearSuspension provides a mock function for the type EntityServiceInterfaceMock
 func (_mock *EntityServiceInterfaceMock) ClearSuspension(ctx context.Context, entityID string, hold *identitygovernance.EntityHold, suspendedAt string) (bool, error) {
 	ret := _mock.Called(ctx, entityID, hold, suspendedAt)
@@ -2831,6 +2963,78 @@ func (_c *EntityServiceInterfaceMock_SearchEntities_Call) RunAndReturn(run func(
 	return _c
 }
 
+// SetCascadeSuspension provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) SetCascadeSuspension(ctx context.Context, entityID string, at time.Time) (bool, error) {
+	ret := _mock.Called(ctx, entityID, at)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetCascadeSuspension")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time) (bool, error)); ok {
+		return returnFunc(ctx, entityID, at)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time) bool); ok {
+		r0 = returnFunc(ctx, entityID, at)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, time.Time) error); ok {
+		r1 = returnFunc(ctx, entityID, at)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EntityServiceInterfaceMock_SetCascadeSuspension_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetCascadeSuspension'
+type EntityServiceInterfaceMock_SetCascadeSuspension_Call struct {
+	*mock.Call
+}
+
+// SetCascadeSuspension is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+//   - at time.Time
+func (_e *EntityServiceInterfaceMock_Expecter) SetCascadeSuspension(ctx any, entityID any, at any) *EntityServiceInterfaceMock_SetCascadeSuspension_Call {
+	return &EntityServiceInterfaceMock_SetCascadeSuspension_Call{Call: _e.mock.On("SetCascadeSuspension", ctx, entityID, at)}
+}
+
+func (_c *EntityServiceInterfaceMock_SetCascadeSuspension_Call) Run(run func(ctx context.Context, entityID string, at time.Time)) *EntityServiceInterfaceMock_SetCascadeSuspension_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_SetCascadeSuspension_Call) Return(b bool, err error) *EntityServiceInterfaceMock_SetCascadeSuspension_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_SetCascadeSuspension_Call) RunAndReturn(run func(ctx context.Context, entityID string, at time.Time) (bool, error)) *EntityServiceInterfaceMock_SetCascadeSuspension_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetGroupMembershipProvider provides a mock function for the type EntityServiceInterfaceMock
 func (_mock *EntityServiceInterfaceMock) SetGroupMembershipProvider(provider GroupMembershipProvider) {
 	_mock.Called(provider)
@@ -2868,6 +3072,78 @@ func (_c *EntityServiceInterfaceMock_SetGroupMembershipProvider_Call) Return() *
 
 func (_c *EntityServiceInterfaceMock_SetGroupMembershipProvider_Call) RunAndReturn(run func(provider GroupMembershipProvider)) *EntityServiceInterfaceMock_SetGroupMembershipProvider_Call {
 	_c.Run(run)
+	return _c
+}
+
+// SetOwnerSuspension provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) SetOwnerSuspension(ctx context.Context, entityID string, at time.Time) (bool, error) {
+	ret := _mock.Called(ctx, entityID, at)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetOwnerSuspension")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time) (bool, error)); ok {
+		return returnFunc(ctx, entityID, at)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time) bool); ok {
+		r0 = returnFunc(ctx, entityID, at)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, time.Time) error); ok {
+		r1 = returnFunc(ctx, entityID, at)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EntityServiceInterfaceMock_SetOwnerSuspension_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetOwnerSuspension'
+type EntityServiceInterfaceMock_SetOwnerSuspension_Call struct {
+	*mock.Call
+}
+
+// SetOwnerSuspension is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+//   - at time.Time
+func (_e *EntityServiceInterfaceMock_Expecter) SetOwnerSuspension(ctx any, entityID any, at any) *EntityServiceInterfaceMock_SetOwnerSuspension_Call {
+	return &EntityServiceInterfaceMock_SetOwnerSuspension_Call{Call: _e.mock.On("SetOwnerSuspension", ctx, entityID, at)}
+}
+
+func (_c *EntityServiceInterfaceMock_SetOwnerSuspension_Call) Run(run func(ctx context.Context, entityID string, at time.Time)) *EntityServiceInterfaceMock_SetOwnerSuspension_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_SetOwnerSuspension_Call) Return(b bool, err error) *EntityServiceInterfaceMock_SetOwnerSuspension_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_SetOwnerSuspension_Call) RunAndReturn(run func(ctx context.Context, entityID string, at time.Time) (bool, error)) *EntityServiceInterfaceMock_SetOwnerSuspension_Call {
+	_c.Call.Return(run)
 	return _c
 }
 

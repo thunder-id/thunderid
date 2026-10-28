@@ -557,6 +557,34 @@ func (s *ServiceTestSuite) TestGovernanceWritesGoToTheRuntimeStore() {
 			func(svc EntityServiceInterface) (any, error) { return svc.SetSuspension(s.ctx, "e1", now, "note") },
 			true,
 		},
+		"owner suspend": {
+			func(r *entityRuntimeStoreInterfaceMock) {
+				r.On("SetAccessOwnerSuspension", s.ctx, "e1", now).Return(true, s.testErr).Once()
+			},
+			func(svc EntityServiceInterface) (any, error) { return svc.SetOwnerSuspension(s.ctx, "e1", now) },
+			true,
+		},
+		"owner release": {
+			func(r *entityRuntimeStoreInterfaceMock) {
+				r.On("ClearAccessOwnerSuspension", s.ctx, "e1").Return(true, s.testErr).Once()
+			},
+			func(svc EntityServiceInterface) (any, error) { return svc.ClearOwnerSuspension(s.ctx, "e1") },
+			true,
+		},
+		"cascade suspend": {
+			func(r *entityRuntimeStoreInterfaceMock) {
+				r.On("SetAccessCascadeSuspension", s.ctx, "e1", now).Return(true, s.testErr).Once()
+			},
+			func(svc EntityServiceInterface) (any, error) { return svc.SetCascadeSuspension(s.ctx, "e1", now) },
+			true,
+		},
+		"cascade release": {
+			func(r *entityRuntimeStoreInterfaceMock) {
+				r.On("ClearAccessCascadeSuspension", s.ctx, "e1").Return(true, s.testErr).Once()
+			},
+			func(svc EntityServiceInterface) (any, error) { return svc.ClearCascadeSuspension(s.ctx, "e1") },
+			true,
+		},
 		"release": {
 			func(r *entityRuntimeStoreInterfaceMock) {
 				r.On("ClearAccessSuspension", s.ctx, "e1", hold, "2026-09-08T09:00:00Z").Return(true, s.testErr).Once()
