@@ -76,7 +76,7 @@ function Get-UserPasswordSecretName {
 # plane's setup runs, since auth-dp's bootstrap already needs CP_CONSOLE_URL.
 function Set-ConsoleUrls {
     $env:CP_CONSOLE_URL = "https://localhost:$CP_PORT/console"
-    $env:ADMIN_CONSOLE_URL = "https://localhost:$DP_PORT/console"
+    $env:ADMIN_CONSOLE_URL = "https://localhost:$DP_PORT/admin"
 }
 
 # Set-DpCaCertificate exports DP_CA_CERTIFICATE, the managed Data Plane's certificate, which the

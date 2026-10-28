@@ -161,12 +161,13 @@ $SECURITY_DIR = "config/certs"
 $FRONTEND_BASE_DIR = "frontend"
 $GATE_APP_DIST_DIR = "apps/gate"
 $CONSOLE_APP_DIST_DIR = "apps/console"
+$ADMIN_CONSOLE_APP_DIST_DIR = "apps/admin"
 $FRONTEND_GATE_APP_SOURCE_DIR = Join-Path $FRONTEND_BASE_DIR "apps/gate"
 $FRONTEND_CONSOLE_APP_SOURCE_DIR = Join-Path $FRONTEND_BASE_DIR "apps/console"
 # The console the Control Plane serves, packaged into the same apps/console slot.
 $FRONTEND_CONSOLE_CP_APP_SOURCE_DIR = Join-Path $FRONTEND_BASE_DIR "apps/console-cp"
-# The Data Plane's own admin app (Users, Agents, Groups, Roles). Only the quickstart's managed Data
-# Plane ships it, in place of the full console, in the same apps/console slot.
+# The Data Plane's own admin app (Users, Agents, Groups, Roles). Every Data Plane distribution ships
+# it in the apps/admin slot, served at /admin.
 $FRONTEND_ADMIN_CONSOLE_APP_SOURCE_DIR = Join-Path $FRONTEND_BASE_DIR "apps/admin-console"
 $SAMPLE_BASE_DIR = "samples"
 $VANILLA_SAMPLE_APP_DIR = Join-Path $SAMPLE_BASE_DIR "apps/vanilla-sample"
@@ -763,7 +764,6 @@ function Prepare-Frontend-For-Packaging {
 
     $package_folder = Join-Path $DIST_DIR $PRODUCT_FOLDER
     New-Item -Path (Join-Path $package_folder $GATE_APP_DIST_DIR) -ItemType Directory -Force | Out-Null
-    New-Item -Path (Join-Path $package_folder $CONSOLE_APP_DIST_DIR) -ItemType Directory -Force | Out-Null
 
     # Copy gate app build output
     if (Test-Path (Join-Path $FRONTEND_GATE_APP_SOURCE_DIR "dist")) {
@@ -773,16 +773,6 @@ function Prepare-Frontend-For-Packaging {
     else {
         Write-Host "Warning: Gate app build output not found at $((Join-Path $FRONTEND_GATE_APP_SOURCE_DIR "dist"))"
     }
-    
-    # Copy console app build output
-    if (Test-Path (Join-Path $FRONTEND_CONSOLE_APP_SOURCE_DIR "dist")) {
-        Write-Host "Copying Console app build output..."
-        Copy-Item -Path (Join-Path $FRONTEND_CONSOLE_APP_SOURCE_DIR "dist\*") -Destination (Join-Path $package_folder $CONSOLE_APP_DIST_DIR) -Recurse -Force
-    }
-    else {
-        Write-Host "Warning: Console app build output not found at $((Join-Path $FRONTEND_CONSOLE_APP_SOURCE_DIR "dist"))"
-    }
-
     Write-Host "================================================================"
 }
 
@@ -909,8 +899,8 @@ function Prepare-Cp-Frontend-For-Packaging {
     Write-Host "================================================================"
 }
 
-# Prepare-Admin-Console-For-Packaging replaces the full console in the Data Plane folder named by
-# $PackDir with the admin console (Users, Agents, Groups, Roles). Applications, connections, flows
+# Prepare-Admin-Console-For-Packaging copies the admin console (Users, Agents, Groups, Roles) into
+# the Data Plane folder named by $PackDir, where the Data Plane serves it at /admin. Applications, connections, flows
 # and roles are authored on a Control Plane, so a Data Plane only needs what manages its own local
 # identity data.
 function Prepare-Admin-Console-For-Packaging {
@@ -922,8 +912,8 @@ function Prepare-Admin-Console-For-Packaging {
         return
     }
 
-    Write-Host "Replacing the Console with the Admin Console in $PackDir..."
-    $console_dir = Join-Path $PackDir $CONSOLE_APP_DIST_DIR
+    Write-Host "Copying the Admin Console into $PackDir..."
+    $console_dir = Join-Path $PackDir $ADMIN_CONSOLE_APP_DIST_DIR
     Remove-Item -Path $console_dir -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -Path $console_dir -ItemType Directory -Force | Out-Null
     Copy-Item -Path (Join-Path $dist "*") -Destination $console_dir -Recurse -Force
@@ -1151,7 +1141,6 @@ function Package-Quickstart {
             (Read-QuickstartFile $auth_dp_resources),
             '(?m)^identifier: https://localhost:8090/mcp$',
             "identifier: https://localhost:$QUICKSTART_CP_PORT"))
-    Remove-Item -Path (Join-Path $auth_dp_dir $CONSOLE_APP_DIST_DIR) -Recurse -Force -ErrorAction SilentlyContinue
 
     # Layer the Data Plane's own admin console application onto the managed dp and the cp. It is
     # the same resource, with the same fixed ID, on both: the cp is where it is administered and
@@ -1161,7 +1150,7 @@ function Package-Quickstart {
 
     # The managed dp's admin console signs in with its own ADMIN_CONSOLE client rather than the
     # CONSOLE one every other copy of this app (auth-dp, a standalone Data Plane) uses.
-    $dp_console_config = Join-Path $dp_dir "$CONSOLE_APP_DIST_DIR/config.js"
+    $dp_console_config = Join-Path $dp_dir "$ADMIN_CONSOLE_APP_DIST_DIR/config.js"
     Write-QuickstartFile -Path $dp_console_config -Content ((Read-QuickstartFile $dp_console_config).Replace(
             "client_id: 'CONSOLE'", "client_id: 'ADMIN_CONSOLE'"))
 
@@ -1213,7 +1202,7 @@ function Package-Quickstart {
     Assert-QuickstartPatch (Join-Path $auth_dp_dir "deployment.yaml") "port: $QUICKSTART_AUTH_DP_PORT"
     Assert-QuickstartPatch (Join-Path $dp_dir "bootstrap/01-default-resources.yaml") "Service Desk Administrators"
     Assert-QuickstartPatch (Join-Path $cp_dir "bootstrap/01-default-resources.yaml") "Service Desk Administrators"
-    Assert-QuickstartPatch (Join-Path $dp_dir "$CONSOLE_APP_DIST_DIR/config.js") "client_id: 'ADMIN_CONSOLE'"
+    Assert-QuickstartPatch (Join-Path $dp_dir "$ADMIN_CONSOLE_APP_DIST_DIR/config.js") "client_id: 'ADMIN_CONSOLE'"
     Assert-QuickstartPatch (Join-Path $dp_dir "deployment.yaml") "  security:"
     Assert-QuickstartPatch (Join-Path $cp_dir "deployment.yaml") "issuer: `"https://localhost:$QUICKSTART_AUTH_DP_PORT`""
     Assert-QuickstartPatch (Join-Path $cp_dir "$CONSOLE_APP_DIST_DIR/config.js") "trusted_issuer"
@@ -2087,7 +2076,7 @@ value:
     try {
         # Both the Console and Admin Console dev servers use the same CONSOLE OAuth2 client, each on
         # its own origin, so both need a registered redirect URI here.
-        & go run . bootstrap --console-redirect-uris "https://localhost:${CONSOLE_APP_DEFAULT_PORT}/console,https://localhost:${ADMIN_CONSOLE_APP_DEFAULT_PORT}/console"
+        & go run . bootstrap --console-redirect-uris "https://localhost:${CONSOLE_APP_DEFAULT_PORT}/console,https://localhost:${ADMIN_CONSOLE_APP_DEFAULT_PORT}/admin"
         $bootstrapExit = $LASTEXITCODE
     }
     finally {
@@ -2108,7 +2097,7 @@ value:
     Write-Host "  📱 Frontend :"
     Write-Host "      🚪 Gate (Login/Register): https://localhost:${GATE_APP_DEFAULT_PORT}/gate"
     Write-Host "      🛠️  Console (System Management): https://localhost:${CONSOLE_APP_DEFAULT_PORT}/console"
-    Write-Host "      🛠️  Admin Console (Users, Agents, Groups, Roles): https://localhost:${ADMIN_CONSOLE_APP_DEFAULT_PORT}/console"
+    Write-Host "      🛠️  Admin Console (Users, Agents, Groups, Roles): https://localhost:${ADMIN_CONSOLE_APP_DEFAULT_PORT}/admin"
     Write-Host ""
 
     Write-Host "Press Ctrl+C to stop."

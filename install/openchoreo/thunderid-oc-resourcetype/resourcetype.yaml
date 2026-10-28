@@ -196,10 +196,10 @@ spec:
               type: object
               default: {}
               properties:
-                clientBase: { type: string, default: "/console" }
+                clientBase: { type: string, default: "/admin" }
                 clientId: { type: string, default: "CONSOLE" }
                 # Must cover the management scopes the Console requests —
-                # matches frontend/apps/console/public/config.js.
+                # matches frontend/apps/admin-console/public/config.js.
                 scopes: { type: string, default: "[\"openid\", \"profile\", \"email\", \"group\", \"ou\", \"system\"]" }
                 # Resource indicator (RFC 8707) the Console sends on token requests.
                 # Must match the System resource_server identifier in declarativeResources.
@@ -804,7 +804,7 @@ spec:
                     ${[
                       {"name": "thunderid-config", "mountPath": "/opt/thunderid/deployment.yaml", "subPath": "deployment.yaml"},
                       {"name": "gate-config", "mountPath": "/opt/thunderid/apps/gate/config.js", "subPath": "config.js"},
-                      {"name": "console-config", "mountPath": "/opt/thunderid/apps/console/config.js", "subPath": "config.js"},
+                      {"name": "console-config", "mountPath": "/opt/thunderid/apps/admin/config.js", "subPath": "config.js"},
                       {"name": "declarative-resources", "mountPath": "/opt/thunderid/config/resources.yaml", "subPath": "resources.yaml"}
                     ] + (["crypto.key", "signing.cert", "signing.key", "ecdsa-signing.cert", "ecdsa-signing.key"]
                       + (parameters.runtime.tls.enabled ? ["server.cert", "server.key"] : [])

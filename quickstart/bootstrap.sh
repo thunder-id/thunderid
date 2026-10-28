@@ -67,7 +67,7 @@ user_password_secret_name() {
 # the environment is kept, which is how build.sh's dev run points the consoles at their dev servers.
 export_console_urls() {
     export CP_CONSOLE_URL="${CP_CONSOLE_URL:-https://localhost:$CP_PORT/console}"
-    export ADMIN_CONSOLE_URL="${ADMIN_CONSOLE_URL:-https://localhost:$DP_PORT/console}"
+    export ADMIN_CONSOLE_URL="${ADMIN_CONSOLE_URL:-https://localhost:$DP_PORT/admin}"
 }
 
 # export_dp_ca_certificate exports DP_CA_CERTIFICATE, the managed Data Plane's certificate, which

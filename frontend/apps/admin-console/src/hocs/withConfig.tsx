@@ -84,7 +84,7 @@ export default function withConfig<P extends object>(WrappedComponent: Component
         clientId={getTrustedIssuerClientId() ?? (import.meta.env.VITE_THUNDER_CLIENT_ID as string)}
         afterSignInUrl={getClientUrl() ?? (import.meta.env.VITE_THUNDER_AFTER_SIGN_IN_URL as string)}
         // Sign-out lands back on the app root, same as sign-in. Without this the SDK falls back
-        // to the page origin, which drops the client base path (e.g. `/console`) and fails the
+        // to the page origin, which drops the client base path (e.g. `/admin`) and fails the
         // server's exact match against the application's registered post-logout redirect URIs.
         afterSignOutUrl={getClientUrl() ?? (import.meta.env.VITE_THUNDER_AFTER_SIGN_IN_URL as string)}
         scopes={getTrustedIssuerScopes().length > 0 ? getTrustedIssuerScopes() : undefined}

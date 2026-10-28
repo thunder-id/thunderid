@@ -557,7 +557,7 @@ if [ "$SILENT_MODE" = "true" ]; then
     echo "✅ Setup completed successfully!"
     echo "========================================="
     echo ""
-    echo "Console URL: ${PUBLIC_URL}/console"
+    echo "Admin Console URL: ${PUBLIC_URL}/admin"
     echo ""
     print_admin_credentials_notice
     print_direct_auth_secret_notice

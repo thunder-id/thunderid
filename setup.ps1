@@ -669,7 +669,7 @@ if ($SILENT_MODE) {
     Write-Host "Setup completed successfully!"
     Write-Host "========================================="
     Write-Host ""
-    Write-Host "Console URL: ${PUBLIC_URL}/console"
+    Write-Host "Admin Console URL: ${PUBLIC_URL}/admin"
     Write-Host ""
     Show-AdminCredentialsNotice
     Show-DirectAuthSecretNotice

@@ -107,6 +107,7 @@ SECURITY_DIR=config/certs
 FRONTEND_BASE_DIR=frontend
 GATE_APP_DIST_DIR=apps/gate
 CONSOLE_APP_DIST_DIR=apps/console
+ADMIN_CONSOLE_APP_DIST_DIR=apps/admin
 FRONTEND_GATE_APP_SOURCE_DIR=$FRONTEND_BASE_DIR/apps/gate
 FRONTEND_CONSOLE_APP_SOURCE_DIR=$FRONTEND_BASE_DIR/apps/console
 # The console the Control Plane serves, packaged into the same apps/console slot (see
@@ -114,8 +115,7 @@ FRONTEND_CONSOLE_APP_SOURCE_DIR=$FRONTEND_BASE_DIR/apps/console
 # since a Control Plane executes no flows.
 FRONTEND_CONSOLE_CP_APP_SOURCE_DIR=$FRONTEND_BASE_DIR/apps/console-cp
 # The Data Plane's own admin app (Users, Agents, Groups, Roles). Every Data Plane distribution ships
-# it, in place of the full console, in the same apps/console slot (see
-# prepare_admin_console_for_packaging). Applications, connections and flows are authored on a
+# it in the apps/admin slot, served at /admin (see prepare_admin_console_for_packaging). Applications, connections and flows are authored on a
 # Control Plane.
 FRONTEND_ADMIN_CONSOLE_APP_SOURCE_DIR=$FRONTEND_BASE_DIR/apps/admin-console
 SAMPLE_BASE_DIR=samples
@@ -637,7 +637,6 @@ function prepare_frontend_for_packaging() {
     echo "Copying frontend artifacts..."
 
     mkdir -p "$DIST_DIR/$PRODUCT_FOLDER/$GATE_APP_DIST_DIR"
-    mkdir -p "$DIST_DIR/$PRODUCT_FOLDER/$CONSOLE_APP_DIST_DIR"
 
     # Copy gate app build output
     if [ -d "$FRONTEND_GATE_APP_SOURCE_DIR/dist" ]; then
@@ -648,22 +647,11 @@ function prepare_frontend_for_packaging() {
     else
         echo "Warning: Gate app build output not found at $FRONTEND_GATE_APP_SOURCE_DIR/dist"
     fi
-    
-    # Copy console app build output
-    if [ -d "$FRONTEND_CONSOLE_APP_SOURCE_DIR/dist" ]; then
-        echo "Copying Console app build output..."
-        shopt -s dotglob
-        cp -r "$FRONTEND_CONSOLE_APP_SOURCE_DIR/dist/"* "$DIST_DIR/$PRODUCT_FOLDER/$CONSOLE_APP_DIST_DIR"
-        shopt -u dotglob
-    else
-        echo "Warning: Console app build output not found at $FRONTEND_CONSOLE_APP_SOURCE_DIR/dist"
-    fi
-
     echo "================================================================"
 }
 
-# prepare_admin_console_for_packaging replaces the full console in the Data Plane folder named by
-# $1 with the admin console (Users, Agents, Groups, Roles). Applications, connections, flows and
+# prepare_admin_console_for_packaging copies the admin console (Users, Agents, Groups, Roles) into
+# the Data Plane folder named by $1, where the Data Plane serves it at /admin. Applications, connections, flows and
 # roles are authored on a Control Plane, so a Data Plane only needs what manages its own local
 # identity data.
 function prepare_admin_console_for_packaging() {
@@ -672,11 +660,11 @@ function prepare_admin_console_for_packaging() {
         echo "Warning: Admin Console build output not found at $FRONTEND_ADMIN_CONSOLE_APP_SOURCE_DIR/dist"
         return
     fi
-    echo "Replacing the Console with the Admin Console in $pack_dir..."
-    rm -rf "${pack_dir:?}/$CONSOLE_APP_DIST_DIR"
-    mkdir -p "$pack_dir/$CONSOLE_APP_DIST_DIR"
+    echo "Copying the Admin Console into $pack_dir..."
+    rm -rf "${pack_dir:?}/$ADMIN_CONSOLE_APP_DIST_DIR"
+    mkdir -p "$pack_dir/$ADMIN_CONSOLE_APP_DIST_DIR"
     shopt -s dotglob
-    cp -r "$FRONTEND_ADMIN_CONSOLE_APP_SOURCE_DIR/dist/"* "$pack_dir/$CONSOLE_APP_DIST_DIR"
+    cp -r "$FRONTEND_ADMIN_CONSOLE_APP_SOURCE_DIR/dist/"* "$pack_dir/$ADMIN_CONSOLE_APP_DIST_DIR"
     shopt -u dotglob
 }
 
@@ -937,7 +925,6 @@ function stage_quickstart_pack() {
     sed -i.bak "s#^identifier: https://localhost:8090/mcp\$#identifier: https://localhost:$QUICKSTART_CP_PORT#" \
         "$auth_dp_dir/bootstrap/01-default-resources.yaml"
     rm -f "$auth_dp_dir/bootstrap/01-default-resources.yaml.bak"
-    rm -rf "${auth_dp_dir:?}/$CONSOLE_APP_DIST_DIR"
 
     # Layer the Data Plane's own admin console application onto the managed dp and the cp. It is
     # the same resource, with the same fixed ID, on both: the cp is where it is administered and
@@ -947,8 +934,8 @@ function stage_quickstart_pack() {
 
     # The managed dp's admin console signs in with its own ADMIN_CONSOLE client rather than the
     # CONSOLE one every other copy of this app (auth-dp, a standalone Data Plane) uses.
-    sed -i.bak "s/client_id: 'CONSOLE'/client_id: 'ADMIN_CONSOLE'/" "$dp_dir/$CONSOLE_APP_DIST_DIR/config.js"
-    rm -f "$dp_dir/$CONSOLE_APP_DIST_DIR/config.js.bak"
+    sed -i.bak "s/client_id: 'CONSOLE'/client_id: 'ADMIN_CONSOLE'/" "$dp_dir/$ADMIN_CONSOLE_APP_DIST_DIR/config.js"
+    rm -f "$dp_dir/$ADMIN_CONSOLE_APP_DIST_DIR/config.js.bak"
 
     # auth-dp runs on its own port, distinct from the managed dp it shares a generated
     # certificate and signing keys with (see quickstart/setup.sh). Patched into this copy of
@@ -1025,7 +1012,7 @@ function stage_quickstart_pack() {
     assert_patched "$auth_dp_dir/deployment.yaml" "port: $QUICKSTART_AUTH_DP_PORT"
     assert_patched "$dp_dir/bootstrap/01-default-resources.yaml" "Service Desk Administrators"
     assert_patched "$cp_dir/bootstrap/01-default-resources.yaml" "Service Desk Administrators"
-    assert_patched "$dp_dir/$CONSOLE_APP_DIST_DIR/config.js" "client_id: 'ADMIN_CONSOLE'"
+    assert_patched "$dp_dir/$ADMIN_CONSOLE_APP_DIST_DIR/config.js" "client_id: 'ADMIN_CONSOLE'"
     assert_patched "$dp_dir/deployment.yaml" "  security:"
     assert_patched "$cp_dir/deployment.yaml" "issuer: \"https://localhost:$QUICKSTART_AUTH_DP_PORT\""
     assert_patched "$cp_dir/$CONSOLE_APP_DIST_DIR/config.js" "trusted_issuer"
@@ -1659,7 +1646,7 @@ function run_quickstart() {
     export SERVICE_DESK_PASSWORD="${SERVICE_DESK_PASSWORD:-admin}"
     # The consoles sign in from their dev servers, so those are the origins their OAuth2 clients
     # register (the pack registers the origins the planes serve them from).
-    export ADMIN_CONSOLE_URL="https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT/console"
+    export ADMIN_CONSOLE_URL="https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT/admin"
     export CP_CONSOLE_URL="https://localhost:$CONSOLE_CP_APP_DEFAULT_PORT/console"
 
     echo "⚙️  Setting up the quickstart..."
@@ -1715,7 +1702,7 @@ function run_quickstart() {
     if [ "$run_dp" = "true" ]; then
         echo "  📱 Data Plane (managed): $dp_url"
         echo "      🚪 Gate (Login/Register): https://localhost:$GATE_APP_DEFAULT_PORT/gate"
-        echo "      🛠️  Admin Console (Users, Agents, Groups, Roles): https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT/console"
+        echo "      🛠️  Admin Console (Users, Agents, Groups, Roles): https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT/admin"
         echo "      Sign in as $SERVICE_DESK_USERNAME (Service Desk Admin)"
     fi
     if [ "$run_cp" = "true" ]; then

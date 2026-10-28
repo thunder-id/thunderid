@@ -58,7 +58,7 @@ The JWKS cache time-to-live applies to signing keys fetched from this endpoint a
 
 The `server.security.trusted_issuer` block controls how <ProductName /> validates incoming API tokens. It does not affect how users sign in to the <ProductName /> Console. By default, the Console still authenticates users against the local <ProductName /> instance.
 
-To delegate Console sign-in to the central authorization server, add a `trusted_issuer` entry to the Console's runtime configuration at `apps/console/config.js`:
+To delegate Console sign-in to the central authorization server, add a `trusted_issuer` entry to the Console's runtime configuration at `apps/admin/config.js`:
 
 ```js
 window.__THUNDERID_RUNTIME_CONFIG__ = {
@@ -169,7 +169,7 @@ Create the Secret before installing the chart:
 kubectl create secret generic thunderid-user-lookup --from-literal=client-secret=<lookup-client-secret>
 ```
 
-To configure the Console without editing `apps/console/config.js` directly, set `configuration.consoleClient.trustedIssuer` in the chart values. The fields mirror those in [Configure the Console](#configure-the-console) but use camelCase:
+To configure the Console without editing `apps/admin/config.js` directly, set `configuration.consoleClient.trustedIssuer` in the chart values. The fields mirror those in [Configure the Console](#configure-the-console) but use camelCase:
 
 ```yaml
 configuration:

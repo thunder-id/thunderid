@@ -42,13 +42,13 @@ Expose only the routes required by the enabled deployment features:
 |-------------|----------------------|
 | `/.well-known/**`, `/oauth2/**`, `/gate/**`, `/flow/execute/**`, and `/flow/meta` | Public when required by browser sign-in or OAuth and OIDC clients |
 | OpenID4VP, OpenID4VCI, and MCP protocol routes | Public only when the corresponding feature is enabled. Keep their management APIs restricted |
-| `/console/**` and management APIs | Restrict to administrative networks, a VPN, or an identity-aware proxy where possible |
+| `/admin/**` and management APIs | Restrict to administrative networks, a VPN, or an identity-aware proxy where possible |
 | `/auth/**`, `/register/passkey/**`, and `/access/**` | Place behind an API gateway or trusted service network |
 | `/health/liveness` and `/health/readiness` | Keep private to the orchestrator, load balancer, or monitoring network |
 
 The default Helm Ingress and HTTPRoute forward the `/` prefix to <ProductName />. Configure route restrictions in the ingress controller, Gateway API implementation, or upstream front door.
 
-Test sign-in and Console operations after applying path restrictions. The Console loads `/console/**` and calls management APIs, so both route groups must remain available through the administrative entry point.
+Test sign-in and Console operations after applying path restrictions. The Console loads `/admin/**` and calls management APIs, so both route groups must remain available through the administrative entry point.
 
 ## Configure a Production Database
 
@@ -481,7 +481,7 @@ name: csp
 value:
   reportOnly: false
   paths:
-    - location: "/console/"
+    - location: "/admin/"
       directives:
         img-src:
           - "'self'"

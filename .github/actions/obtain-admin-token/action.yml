@@ -40,6 +40,9 @@ runs:
         # Obtain one via OAuth2 authorization code + PKCE through the console app,
         # authenticating the bootstrapped admin user.
         CONSOLE_REDIRECT_URI="$SERVER_URL/console"
+        if [ "$CONSOLE_CLIENT_ID" = "ADMIN_CONSOLE" ]; then
+          CONSOLE_REDIRECT_URI="$SERVER_URL/admin"
+        fi
         # Tokens are bound to a single resource server (RFC 8707), so the CONSOLE app targets the
         # bootstrapped System resource server, mirroring the console runtime config.
         CONSOLE_RESOURCE="$SERVER_URL/mcp"
