@@ -514,6 +514,34 @@ func (ts *GatewayVersionsTestSuite) rawBody(method, path string) string {
 	return string(body)
 }
 
+// A gateway marked not ready is refused an apply before anything is sent, and the same apply succeeds
+// and is recorded once the gateway is marked ready.
+func (ts *GatewayVersionsTestSuite) TestAGatewayIsAppliedToOnceItIsReady() {
+	ts.Require().Equal(http.StatusOK,
+		ts.call(http.MethodPut, "/gateways/"+ts.gatewayID, map[string]any{"ready": false}, nil))
+	captured := ts.capture("before the gateway is ready")
+
+	req, err := json.Marshal(map[string]any{"version": captured.Version})
+	ts.Require().NoError(err)
+	resp, err := testutils.GetHTTPClient().Post(testServerURL+"/gateways/"+ts.gatewayID+"/apply",
+		"application/json", bytes.NewReader(req))
+	ts.Require().NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+	var refusal struct {
+		Code string `json:"code"`
+	}
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&refusal))
+	ts.Equal(http.StatusConflict, resp.StatusCode)
+	ts.Equal("GTW-1031", refusal.Code)
+	ts.Equal("", ts.applied().AppliedVersion, "a gateway that is not ready was applied to")
+
+	ts.Require().Equal(http.StatusOK,
+		ts.call(http.MethodPut, "/gateways/"+ts.gatewayID, map[string]any{"ready": true}, nil))
+	result := ts.apply(captured.Version, false)
+	ts.True(result.Recorded, "the apply to the ready gateway was not recorded: %s", result.Import)
+	ts.Equal(captured.Version, ts.applied().AppliedVersion)
+}
+
 func (ts *GatewayVersionsTestSuite) capture(note string) version {
 	ts.T().Helper()
 	var captured version

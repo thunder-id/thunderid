@@ -25,6 +25,15 @@ describe('StageCard redeploy', () => {
     expect(screen.getByTestId('stage-redeploy')).toBeEnabled();
   });
 
+  // A redeploy is a deploy, and a gateway still being provisioned takes none until it is ready.
+  it('holds the redeploy while the gateway is provisioning, and says why', async () => {
+    renderStage({changed: {secrets: ['APPLICATION_MY_APP_CLIENT_SECRET']}, provisioning: true});
+
+    expect(screen.getByTestId('stage-redeploy')).toBeDisabled();
+    await userEvent.hover(screen.getByTestId('stage-redeploy').parentElement!);
+    expect(await screen.findByText(/still being provisioned/)).toBeInTheDocument();
+  });
+
   it('disables the redeploy when no value changed', () => {
     renderStage({changed: {}});
 

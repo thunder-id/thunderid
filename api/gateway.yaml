@@ -373,7 +373,9 @@ paths:
             remove more resources than `gateway.removal_confirmation_threshold` and was not confirmed
             (`GTW-1030`); another apply or revert to the gateway was still running after this one had
             waited as long as an import may take (`GTW-1029`); a capture removed the version before
-            the apply could record it (`GTW-1018`); or another apply finished first (`GTW-1019`).
+            the apply could record it (`GTW-1018`); another apply finished first (`GTW-1019`); or the
+            gateway is not ready yet, as one still being provisioned is not (`GTW-1031`). A dry run
+            is refused for a gateway that is not ready too.
           content:
             application/json:
               schema:
@@ -428,8 +430,9 @@ paths:
           description: |
             The gateway does not hold every value the version refers to (`GTW-1017`); the revert
             would remove more resources than `gateway.removal_confirmation_threshold` and was not
-            confirmed (`GTW-1030`); or another apply or revert to the gateway was still running
-            after this one had waited as long as an import may take (`GTW-1029`).
+            confirmed (`GTW-1030`); another apply or revert to the gateway was still running after
+            this one had waited as long as an import may take (`GTW-1029`); or the gateway is not
+            ready yet, as one still being provisioned is not (`GTW-1031`).
           content:
             application/json:
               schema:
@@ -460,6 +463,8 @@ paths:
           description: The gateway's answer.
         "404":
           $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/NotReady'
         "502":
           description: The gateway could not be reached.
     post:
@@ -477,6 +482,8 @@ paths:
           description: The gateway's answer.
         "404":
           $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/NotReady'
         "502":
           description: The gateway could not be reached.
   /gateways/{id}/variables/{name}:
@@ -489,6 +496,8 @@ paths:
       responses:
         "200":
           description: The gateway's answer.
+        "409":
+          $ref: '#/components/responses/NotReady'
         "502":
           description: The gateway could not be reached.
     put:
@@ -505,6 +514,8 @@ paths:
           description: The gateway's answer.
         "201":
           description: The variable did not exist on the gateway, and was created.
+        "409":
+          $ref: '#/components/responses/NotReady'
         "502":
           description: The gateway could not be reached.
     delete:
@@ -513,6 +524,8 @@ paths:
       responses:
         "204":
           description: Deleted on the gateway.
+        "409":
+          $ref: '#/components/responses/NotReady'
         "502":
           description: The gateway could not be reached.
   /gateways/{id}/secrets:
@@ -529,6 +542,8 @@ paths:
           description: The gateway's answer.
         "404":
           $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/NotReady'
         "502":
           description: The gateway could not be reached.
     post:
@@ -548,6 +563,8 @@ paths:
           description: The gateway's answer.
         "404":
           $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/NotReady'
         "502":
           description: The gateway could not be reached.
   /gateways/{id}/secrets/{name}:
@@ -560,6 +577,8 @@ paths:
       responses:
         "200":
           description: The gateway's answer, without the value.
+        "409":
+          $ref: '#/components/responses/NotReady'
         "502":
           description: The gateway could not be reached.
     put:
@@ -576,6 +595,8 @@ paths:
           description: The gateway's answer.
         "201":
           description: The secret did not exist on the gateway, and was created.
+        "409":
+          $ref: '#/components/responses/NotReady'
         "502":
           description: The gateway could not be reached.
     delete:
@@ -584,6 +605,8 @@ paths:
       responses:
         "204":
           description: Deleted on the gateway.
+        "409":
+          $ref: '#/components/responses/NotReady'
         "502":
           description: The gateway could not be reached.
 components:
@@ -682,6 +705,19 @@ components:
                 message:
                   key: "error.gatewayservice.limit_reached"
                   defaultValue: "This deployment already administers as many gateways as it is configured to allow"
+    NotReady:
+      description: |
+        The gateway is not ready yet, as one still being provisioned is not (`GTW-1031`). Nothing is
+        sent to it until it is marked ready.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "GTW-1031"
+            message:
+              key: "error.gatewayservice.gateway_not_ready"
+              defaultValue: "The gateway is not ready yet"
     MissingValues:
       description: |
         The gateway does not hold every variable and secret the version refers to, a capture removed
@@ -764,6 +800,15 @@ components:
 
             At most one gateway is the default. If another already is, it gives that up to this
             one. The first gateway registered is the default whether or not this is set.
+        ready:
+          type: boolean
+          default: true
+          description: |
+            Whether the gateway already serves. Set it to `false` to register a gateway whose
+            deployment is still being provisioned: nothing is applied to it, and values meant for its
+            store wait, until an edit marks it ready. Waiting values are held in memory for up to an
+            hour: one that waits longer, or that a restart of the control plane drops, is reported as
+            missing by the next apply that needs it.
     UpdateRequest:
       type: object
       minProperties: 1
@@ -789,6 +834,12 @@ components:
             Omit it to keep the one already held. Sending a new value is how a credential is
             rotated, and the same value has to reach the gateway, which holds it as its
             management API key.
+        ready:
+          type: boolean
+          description: |
+            Marks the gateway ready, or not. A gateway registered while it was being provisioned is
+            marked ready this way once it serves; values written for it meanwhile, within the last
+            hour and since the control plane last started, are then written to its store.
     Registration:
       type: object
       description: |
@@ -823,6 +874,11 @@ components:
           description: |
             Whether this is the default gateway. At most one gateway is, and the first one registered
             becomes it. Omitted when false.
+        ready:
+          type: boolean
+          description: |
+            Whether the gateway serves. A gateway still being provisioned is not ready: applies,
+            reverts and calls to its store are refused with `409` (`GTW-1031`) until it is.
         createdAt:
           type: string
           format: date-time

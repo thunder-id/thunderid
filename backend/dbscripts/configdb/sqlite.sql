@@ -478,6 +478,9 @@ CREATE TABLE "GATEWAY" (
     -- The default gateway, whose URL the console shows for an application's runtime endpoints. At
     -- most one per deployment, which the index below enforces.
     IS_DEFAULT INTEGER NOT NULL DEFAULT 0,
+    -- Whether the gateway serves. One registered while it is still being provisioned is not ready, and
+    -- nothing is applied to it until it is marked ready.
+    READY INTEGER NOT NULL DEFAULT 1,
     CREATED_AT TEXT DEFAULT (datetime('now')),
     UPDATED_AT TEXT DEFAULT (datetime('now')),
     UNIQUE (NAME, DEPLOYMENT_ID),

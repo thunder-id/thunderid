@@ -61,6 +61,16 @@ describe('GatewaysListPage', () => {
     expect(mockHttpRequest).toHaveBeenCalledTimes(1);
   });
 
+  it('marks a gateway still being provisioned', async () => {
+    mockHttpRequest.mockImplementation(
+      createHttpRouter({'GET /gateways': [gateways[0], {...gateways[1], ready: false}]}),
+    );
+    renderWithProviders(<GatewaysListPage />);
+
+    expect(await screen.findByText('staging')).toBeInTheDocument();
+    expect(screen.getAllByText('Provisioning')).toHaveLength(1);
+  });
+
   it('opens a gateway from its row', async () => {
     const user = userEvent.setup();
     mockHttpRequest.mockImplementation(createHttpRouter(routes));

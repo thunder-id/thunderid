@@ -188,7 +188,7 @@ func (s *store) insert(ctx context.Context, gw *Gateway, limit int) (*Gateway, e
 	// The statement returns the row it wrote, so a caller never reads back what it just inserted and
 	// cannot fail once the write is committed. No row means the capacity check refused it.
 	rows, err := dbClient.QueryContext(ctx, queryInsertGateway,
-		gw.ID, gw.Name, gw.BaseURL, gw.Key, gw.CACertificate, gw.IsDefault,
+		gw.ID, gw.Name, gw.BaseURL, gw.Key, gw.CACertificate, gw.IsDefault, gw.Ready,
 		deployment.Resolve(ctx), deployment.Resolve(ctx), limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to register the gateway: %w", err)
@@ -205,7 +205,7 @@ func (s *store) Update(ctx context.Context, gw *Gateway) error {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 	_, err = dbClient.ExecuteContext(ctx, queryUpdateGateway,
-		gw.ID, gw.Name, gw.BaseURL, gw.Key, gw.CACertificate, deployment.Resolve(ctx))
+		gw.ID, gw.Name, gw.BaseURL, gw.Key, gw.CACertificate, gw.Ready, deployment.Resolve(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to update the gateway: %w", err)
 	}
@@ -234,6 +234,7 @@ func gatewayFromRow(row map[string]interface{}) (*Gateway, error) {
 		CACertificate: asString(row["ca_certificate"]),
 
 		IsDefault: asBool(row["is_default"]),
+		Ready:     asBool(row["ready"]),
 	}
 	if gw.ID == "" {
 		return nil, fmt.Errorf("a gateway row carries no id")

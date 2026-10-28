@@ -152,6 +152,14 @@ function GatewayDetail({gatewayId}: {gatewayId: string}): JSX.Element {
             {gateway.isDefault && (
               <Chip size="small" color="primary" variant="outlined" label={t('gateways:default', 'Default')} />
             )}
+            {gateway.ready === false && (
+              <Chip
+                size="small"
+                color="warning"
+                variant="outlined"
+                label={t('gateways:provisioning', 'Provisioning')}
+              />
+            )}
           </Stack>
         </PageTitle.Header>
         <PageTitle.SubHeader>

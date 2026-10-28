@@ -25,6 +25,16 @@ const (
 	pushAttempts      = 10
 )
 
+// readyCheckDelay is how often a value waiting for its gateway to be ready checks again, and
+// readyWaitMax how long it waits before giving up. A gateway being provisioned takes minutes, so a
+// value written meanwhile waits for it rather than spending its attempts on a gateway not yet
+// serving. The readiness is read from the store each time, so a gateway marked ready through any
+// control plane instance is seen by all of them.
+const (
+	readyCheckDelay = 15 * time.Second
+	readyWaitMax    = time.Hour
+)
+
 // placeholderValuer computes the values an export of one resource refers to by name.
 type placeholderValuer interface {
 	PlaceholderValues(ctx context.Context, resourceType string, resource interface{}) (
@@ -56,6 +66,12 @@ type ValueCapture struct {
 	// pushAttempts unless a test shortens them.
 	retryDelay time.Duration
 	attempts   int
+	// readyDelay and readyWait are how a value waits for a gateway that is not ready,
+	// readyCheckDelay and readyWaitMax unless a test shortens them.
+	readyDelay time.Duration
+	readyWait  time.Duration
+	// now tells how long a value has waited, time.Now unless a test moves time itself.
+	now func() time.Time
 
 	mu      sync.Mutex
 	pending map[string]*pendingValue
@@ -71,6 +87,8 @@ type pendingValue struct {
 	running                     bool
 	// again records a newer value given while a write ran, to be written once it returns.
 	again bool
+	// waitingSince is when the value first found its gateway not ready, zero while it has not.
+	waitingSince time.Time
 }
 
 // NewValueCapture returns a capture that does nothing until Initialize binds it.
@@ -79,6 +97,9 @@ func NewValueCapture() *ValueCapture {
 		logger:     log.GetLogger().With(log.String(log.LoggerKeyComponentName, "GatewayValueCapture")),
 		retryDelay: pushRetryDelay,
 		attempts:   pushAttempts,
+		readyDelay: readyCheckDelay,
+		readyWait:  readyWaitMax,
+		now:        time.Now,
 		pending:    map[string]*pendingValue{},
 	}
 }
@@ -90,7 +111,8 @@ func (c *ValueCapture) bind(values placeholderValuer, gateways storeInterface, s
 }
 
 // CaptureValues writes the values the resource's export would refer to into the default gateway's
-// store, variables and secrets each to its own collection.
+// store, variables and secrets each to its own collection. A gateway still being provisioned is
+// waited for, so a value written meanwhile reaches it once it is ready.
 //
 // It never fails the caller. The values are worked out, and the default gateway found, as the
 // resource is written, since the write is what holds them; the writes to the gateway then follow in
@@ -153,7 +175,10 @@ func (c *ValueCapture) enqueue(ctx context.Context, gatewayID, collection string
 			c.pending[key] = p
 		}
 		p.value = values[name]
+		// A newer value is a new write: it gets its own attempts, and its own wait for the gateway, so
+		// a secret generated late in an old value's wait is not dropped at that old value's deadline.
 		p.failures = 0
+		p.waitingSince = time.Time{}
 		if p.running {
 			p.again = true
 			continue
@@ -193,6 +218,20 @@ func (c *ValueCapture) push(ctx context.Context, key string) {
 		// A newer value arrived while this one was written; it goes now, whatever became of this one.
 		p.again, p.failures = false, 0
 		p.timer = time.AfterFunc(0, func() { c.push(ctx, key) })
+	case svcErr != nil && svcErr.Code == ErrorGatewayNotReady.Code:
+		// The gateway is still being provisioned. The value waits for it without spending an attempt,
+		// and is written once it is ready.
+		if p.waitingSince.IsZero() {
+			p.waitingSince = c.now()
+		}
+		if c.now().Sub(p.waitingSince) < c.readyWait {
+			p.timer = time.AfterFunc(c.readyDelay, func() { c.push(ctx, key) })
+			return
+		}
+		c.logger.Error(ctx, "Gave up capturing a value: the default gateway did not become ready",
+			log.String("gatewayId", p.gatewayID), log.String("collection", p.collection),
+			log.String("name", p.name))
+		delete(c.pending, key)
 	case svcErr != nil && p.failures+1 < c.attempts:
 		p.failures++
 		c.logger.Warn(ctx, "Failed to capture a value in the default gateway's store; it will be tried again",

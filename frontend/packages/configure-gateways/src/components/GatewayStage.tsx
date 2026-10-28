@@ -51,6 +51,7 @@ export default function GatewayStage({
       changed={changedCheck.changed}
       changedCheckFailed={changedCheck.failed}
       onRetryChangedCheck={changedCheck.retry}
+      provisioning={gateway.ready === false}
       testId={`deploy-stage-${gateway.id}`}
     />
   );

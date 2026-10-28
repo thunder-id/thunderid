@@ -465,6 +465,7 @@ type versionFixture struct {
 	exporter *fakeExporter
 	client   *fakeGatewayClient
 	names    *fakeActorNames
+	gateways *fakeStore
 }
 
 // newVersionFixture builds a service administering one registered gateway, gw-1, whose key is sealed.
@@ -484,8 +485,10 @@ func newVersionFixture(t *testing.T) *versionFixture {
 		client:   &fakeGatewayClient{},
 		names:    &fakeActorNames{names: map[string]string{"u-1": "alice", "u-2": "bob"}},
 	}
-	gateways := &fakeStore{gateways: []Gateway{{ID: "gw-1", Name: "dev", BaseURL: "https://dp.test", Key: sealedKey}}}
-	f.svc = newVersionService(gateways, f.versions, f.exporter, f.client, testSecretFields, f.names)
+	f.gateways = &fakeStore{gateways: []Gateway{
+		{ID: "gw-1", Name: "dev", BaseURL: "https://dp.test", Key: sealedKey, Ready: true},
+	}}
+	f.svc = newVersionService(f.gateways, f.versions, f.exporter, f.client, testSecretFields, f.names)
 	return f
 }
 
@@ -1069,6 +1072,30 @@ func TestAnUnreachableGatewayIsReportedAndNotRecorded(t *testing.T) {
 	assert.Zero(t, held.AppliedVersion)
 }
 
+// A gateway still being provisioned is refused before anything is claimed or sent, dry runs included,
+// and is applied to as usual once it is marked ready.
+func TestAGatewayThatIsNotReadyIsNotAppliedTo(t *testing.T) {
+	f := newVersionFixture(t)
+	f.capture(t, "ou-a")
+	f.gateways.setReady("gw-1", false)
+
+	for _, req := range []ApplyRequest{{}, {DryRun: true}} {
+		_, svcErr := f.svc.Apply(context.Background(), "gw-1", req)
+		require.NotNil(t, svcErr)
+		assert.Equal(t, ErrorGatewayNotReady.Code, svcErr.Code)
+	}
+	_, svcErr := f.svc.Revert(context.Background(), "gw-1", RevertRequest{})
+	require.NotNil(t, svcErr)
+	assert.Equal(t, ErrorGatewayNotReady.Code, svcErr.Code)
+	assert.Empty(t, f.client.sent, "a gateway that is not ready was sent an import")
+	assert.Empty(t, f.versions.leases, "an apply to a gateway that is not ready claimed its lease")
+
+	f.gateways.setReady("gw-1", true)
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+	assert.Nil(t, svcErr)
+	assert.Len(t, f.client.sent, 1)
+}
+
 func TestApplyNamesWhatIsMissing(t *testing.T) {
 	f := newVersionFixture(t)
 	_, svcErr := f.svc.Apply(context.Background(), "", ApplyRequest{})
@@ -1100,7 +1127,7 @@ func TestApplySendsTheVersionsValues(t *testing.T) {
 // A gateway declared in a file holds its key as the file wrote it, so it is presented as it is.
 func TestADeclaredGatewaysKeyIsPresentedAsWritten(t *testing.T) {
 	f := newVersionFixture(t)
-	declared := &fakeStore{gateways: []Gateway{{ID: "gw-d", BaseURL: "https://dp.test", Key: "plain-key"}}}
+	declared := &fakeStore{gateways: []Gateway{{ID: "gw-d", BaseURL: "https://dp.test", Key: "plain-key", Ready: true}}}
 	svc := newVersionService(declared, f.versions, f.exporter, f.client, testSecretFields, &fakeActorNames{})
 	f.capture(t, "ou-a")
 

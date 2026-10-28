@@ -380,7 +380,7 @@ func (s *versionService) Diff(ctx context.Context, gatewayID, ref string) (*Diff
 
 func (s *versionService) Apply(ctx context.Context, gatewayID string,
 	req ApplyRequest) (*ApplyResult, *tidcommon.ServiceError) {
-	gw, svcErr := s.gateway(ctx, gatewayID)
+	gw, svcErr := readyGateway(ctx, s.gateways, s.logger, gatewayID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -421,7 +421,7 @@ func (s *versionService) refuseUnconfirmedRemovalsOf(ctx context.Context, gw *Ga
 
 func (s *versionService) Revert(ctx context.Context, gatewayID string,
 	req RevertRequest) (*ApplyResult, *tidcommon.ServiceError) {
-	gw, svcErr := s.gateway(ctx, gatewayID)
+	gw, svcErr := readyGateway(ctx, s.gateways, s.logger, gatewayID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -900,6 +900,20 @@ func findGateway(ctx context.Context, gateways storeInterface, logger *log.Logge
 	}
 	if gw == nil {
 		return nil, &ErrorGatewayNotFound
+	}
+	return gw, nil
+}
+
+// readyGateway reads a gateway that can be called: one not ready yet is refused before anything is
+// claimed or written, rather than failing later as unreachable.
+func readyGateway(ctx context.Context, gateways storeInterface, logger *log.Logger,
+	id string) (*Gateway, *tidcommon.ServiceError) {
+	gw, svcErr := findGateway(ctx, gateways, logger, id)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if !gw.Ready {
+		return nil, &ErrorGatewayNotReady
 	}
 	return gw, nil
 }

@@ -906,6 +906,8 @@ var defaultMessages = map[string]string{
 	"error.gatewayservice.apply_took_too_long.description": "Reading the gateway's values or the version took too long. Apply again.",
 	"error.gatewayservice.connection_required": "A base URL is required to reach the gateway",
 	"error.gatewayservice.gateway_not_found": "Gateway not found",
+	"error.gatewayservice.gateway_not_ready": "The gateway is not ready yet",
+	"error.gatewayservice.gateway_not_ready.description": "The gateway is still being provisioned. Try again once it is marked ready.",
 	"error.gatewayservice.gateway_private_address": "The gateway's address resolves to a private address this deployment does not reach",
 	"error.gatewayservice.gateway_private_address.description": "The gateway's host resolves to a loopback, link-local or private address. Set gateway.allow_private_addresses to reach gateways on such addresses, or register the gateway on a public one.",
 	"error.gatewayservice.gateway_unreachable": "The gateway could not be reached, or refused the request",
