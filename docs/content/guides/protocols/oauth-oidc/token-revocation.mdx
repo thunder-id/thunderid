@@ -97,6 +97,10 @@ For these, <ProductName /> revokes by **subject**: every token issued to that us
 
 Deleting a user through the `DELETE /users/{id}` API revokes the same way. The server runs a system flow, built into the server, that revokes the user's tokens by subject and terminates their sessions before the record goes. If the revocation fails, the user is not deleted.
 
+### Role Deletion
+
+Deleting a role revokes the tokens its holders carry with the role's permissions, for every user, group member, and application the role is assigned to, and then removes the role. This happens whichever way the role is deleted: from the Console, or through the `DELETE /roles/{id}` API. If the revocation fails, the role is not deleted.
+
 ### Account Suspension
 
 The suspend flow revokes tokens for the target subject and ends its sessions before placing the suspension. For an application or an agent with an OAuth client, it also revokes tokens issued through that client ID, including user tokens.

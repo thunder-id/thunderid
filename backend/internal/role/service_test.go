@@ -60,6 +60,7 @@ type RoleServiceTestSuite struct {
 	mockEntityTypeService *entitytypemock.EntityTypeServiceInterfaceMock
 	transactioner         *fakeTransactioner
 	service               RoleServiceInterface
+	runs                  *systemFlowRuns
 }
 
 func TestRoleServiceTestSuite(t *testing.T) {
@@ -95,6 +96,8 @@ func (suite *RoleServiceTestSuite) SetupTest() {
 		suite.transactioner,
 		newAllowAllRoleAuthz(suite.T()),
 	)
+	suite.runs = &systemFlowRuns{}
+	suite.service.SetSystemFlowExecutor(suite.runs.execute)
 }
 
 // TearDownTest cleans up after each test
