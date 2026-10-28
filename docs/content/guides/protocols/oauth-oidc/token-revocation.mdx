@@ -101,6 +101,10 @@ Deleting a user through the `DELETE /users/{id}` API revokes the same way. The s
 
 Deleting a role revokes the tokens its holders carry with the role's permissions, for every user, group member, and application the role is assigned to, and then removes the role. This happens whichever way the role is deleted: from the Console, or through the `DELETE /roles/{id}` API. If the revocation fails, the role is not deleted.
 
+### Role Permission Removal
+
+Updating a role so that it no longer grants a permission revokes the tokens its holders carry with that permission. This happens whichever way the role is updated: from the Console, through the `PUT /roles/{id}` API, or through the import API. An update that drops no permission, such as one carrying the permissions the role already has, revokes nothing. If the revocation fails, the role is not updated.
+
 ### Role Assignment Removal
 
 Removing a role from a user, group, or application revokes the tokens that assignee carries with the role's permissions; for a group, the tokens of its members. This happens whichever way the assignment is removed: from the Console, or through the `POST /roles/{id}/assignments/remove` API. Removing an assignment the role does not have revokes nothing. If the revocation fails, no assignment is removed.

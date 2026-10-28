@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -148,4 +149,61 @@ func (suite *RoleAssignmentServiceTestSuite) TestRemoveAssignments_WithoutAnExec
 
 	suite.Equal(&tidcommon.InternalServerError, err)
 	suite.mockStore.AssertNotCalled(suite.T(), "RemoveAssignments", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// permissionUpdate readies role1 to be updated to keep only perm1, while it currently holds the given
+// permissions on rs1, and returns the update.
+func (suite *RoleServiceTestSuite) permissionUpdate(current []string) RoleUpdateDetail {
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs1", []string{"perm1"}).
+		Return([]string{}, nil)
+	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
+	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, "ou1").
+		Return(oupkg.OrganizationUnit{ID: "ou1"}, nil)
+	suite.mockStore.On("CheckRoleNameExistsExcludingID", mock.Anything, "ou1", "Role", "role1").Return(false, nil)
+	suite.mockStore.On("GetRole", mock.Anything, "role1").Return(RoleWithPermissions{
+		ID: "role1", Permissions: []ResourcePermissions{{ResourceServerID: "rs1", Permissions: current}},
+	}, nil)
+	return RoleUpdateDetail{Name: "Role", OUID: "ou1",
+		Permissions: []ResourcePermissions{{ResourceServerID: "rs1", Permissions: []string{"perm1"}}}}
+}
+
+// An update that drops a permission runs the system flow with the role's new set before the write.
+func (suite *RoleServiceTestSuite) TestUpdateRole_DroppingAPermissionRunsTheSystemFlowFirst() {
+	request := suite.permissionUpdate([]string{"perm1", "perm2"})
+	var order []string
+	suite.runs.onRun = func() { order = append(order, "flow") }
+	suite.mockStore.On("UpdateRole", mock.Anything, "role1", request).
+		Run(func(mock.Arguments) { order = append(order, "write") }).Return(nil)
+
+	_, err := suite.service.UpdateRoleWithPermissions(context.Background(), "role1", request)
+
+	suite.Nil(err)
+	suite.Equal([]string{systemFlowRolePermissionRemoval}, suite.runs.handles)
+	suite.Equal([]map[string]string{{
+		systemFlowInputRole:        "role1",
+		systemFlowInputPermissions: `[{"resourceServerId":"rs1","permissions":["perm1"]}]`,
+	}}, suite.runs.inputs)
+	suite.Equal([]string{"flow", "write"}, order, "the role was updated before the revocation")
+}
+
+// An update that drops nothing, as one carrying the role's current permissions does, revokes nothing.
+func (suite *RoleServiceTestSuite) TestUpdateRole_DroppingNothingRunsNoFlow() {
+	request := suite.permissionUpdate([]string{"perm1"})
+	suite.mockStore.On("UpdateRole", mock.Anything, "role1", request).Return(nil)
+
+	_, err := suite.service.UpdateRoleWithPermissions(context.Background(), "role1", request)
+
+	suite.Nil(err)
+	suite.Empty(suite.runs.handles)
+}
+
+// A refused system flow leaves the role as it was.
+func (suite *RoleServiceTestSuite) TestUpdateRole_RefusedFlowWritesNothing() {
+	request := suite.permissionUpdate([]string{"perm1", "perm2"})
+	suite.runs.err = &tidcommon.InternalServerError
+
+	_, err := suite.service.UpdateRoleWithPermissions(context.Background(), "role1", request)
+
+	suite.Equal(&tidcommon.InternalServerError, err)
+	suite.mockStore.AssertNotCalled(suite.T(), "UpdateRole", mock.Anything, mock.Anything, mock.Anything)
 }

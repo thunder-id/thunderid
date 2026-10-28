@@ -6,6 +6,7 @@ package role
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -89,6 +90,13 @@ type roleService struct {
 const (
 	systemFlowRoleDelete = "system-role-delete"
 	systemFlowInputRole  = "targetRoleId"
+)
+
+// The system flow a change that drops a role's permissions runs, and the input carrying the role's new
+// permission set.
+const (
+	systemFlowRolePermissionRemoval = "system-role-permission-removal"
+	systemFlowInputPermissions      = "targetPermissions"
 )
 
 // newRoleService creates a new instance of RoleService with injected dependencies.
@@ -411,6 +419,10 @@ func (rs *roleService) UpdateRoleWithPermissions(
 		return nil, &ErrorRoleNameConflict
 	}
 
+	if svcErr := rs.revokeDroppedPermissions(ctx, id, role.Permissions, logger); svcErr != nil {
+		return nil, svcErr
+	}
+
 	err = rs.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		return rs.roleStore.UpdateRole(txCtx, id, role)
 	})
@@ -489,11 +501,44 @@ func (rs *roleService) SetSystemFlowExecutor(execute func(ctx context.Context, h
 // the change is refused, so a server that forgot the wiring fails closed.
 func (rs *roleService) runSystemFlow(ctx context.Context, handle, roleID string,
 	logger *log.Logger) *tidcommon.ServiceError {
+	return rs.runSystemFlowWith(ctx, handle, map[string]string{systemFlowInputRole: roleID}, logger)
+}
+
+// runSystemFlowWith is runSystemFlow with the flow's inputs given in full.
+func (rs *roleService) runSystemFlowWith(ctx context.Context, handle string, inputs map[string]string,
+	logger *log.Logger) *tidcommon.ServiceError {
 	if rs.executeSystemFlow == nil {
 		logger.Error(ctx, "System flow executor not set; refusing the change", log.String("handle", handle))
 		return &tidcommon.InternalServerError
 	}
-	return rs.executeSystemFlow(ctx, handle, map[string]string{systemFlowInputRole: roleID})
+	return rs.executeSystemFlow(ctx, handle, inputs)
+}
+
+// revokeDroppedPermissions revokes what the permissions an update drops granted before the update is
+// written, whichever entry point asked: the tokens the role's holders carry with them. An update that
+// drops nothing, as one carrying the role's current permissions does, revokes nothing. A refusal leaves
+// the role as it was.
+func (rs *roleService) revokeDroppedPermissions(ctx context.Context, id string,
+	permissions []ResourcePermissions, logger *log.Logger) *tidcommon.ServiceError {
+	current, err := rs.roleStore.GetRole(ctx, id)
+	if err != nil {
+		logger.Error(ctx, "Failed to retrieve role", log.String("id", id), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if len(droppedPermissions(current.Permissions, permissions)) == 0 {
+		return nil
+	}
+	if permissions == nil {
+		permissions = []ResourcePermissions{}
+	}
+	encoded, err := json.Marshal(permissions)
+	if err != nil {
+		logger.Error(ctx, "Failed to encode role permissions", log.String("id", id), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	return rs.runSystemFlowWith(ctx, systemFlowRolePermissionRemoval, map[string]string{
+		systemFlowInputRole: id, systemFlowInputPermissions: string(encoded),
+	}, logger)
 }
 
 // ValidateDeleteRole reports whether the role may be deleted and returns what the deletion revokes.

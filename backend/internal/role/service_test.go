@@ -885,6 +885,7 @@ func (suite *RoleServiceTestSuite) TestUpdateRole_UpdateStoreError() {
 	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, "ou1").Return(ou, nil)
 	suite.mockStore.On("CheckRoleNameExistsExcludingID", mock.Anything,
 		"ou1", "New Name", "role1").Return(false, nil)
+	suite.mockStore.On("GetRole", mock.Anything, "role1").Return(RoleWithPermissions{ID: "role1"}, nil)
 	suite.mockStore.On("UpdateRole", mock.Anything,
 		mock.AnythingOfType("string"),
 		mock.AnythingOfType("RoleUpdateDetail")).Return(errors.New("update error"))
@@ -913,6 +914,7 @@ func (suite *RoleServiceTestSuite) TestUpdateRole_Success() {
 	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, "ou1").Return(ou, nil)
 	suite.mockStore.On("CheckRoleNameExistsExcludingID", mock.Anything,
 		"ou1", "New Name", "role1").Return(false, nil)
+	suite.mockStore.On("GetRole", mock.Anything, "role1").Return(RoleWithPermissions{ID: "role1"}, nil)
 	suite.mockStore.On("UpdateRole", mock.Anything,
 		mock.AnythingOfType("string"),
 		mock.AnythingOfType("RoleUpdateDetail")).Return(nil)
@@ -1071,6 +1073,8 @@ func (suite *RoleServiceTestSuite) TestUpdateRole_PermissionValidationErrors() {
 				suite.mockStore.On("CheckRoleNameExistsExcludingID", mock.Anything,
 					"ou1",
 					"Updated Role", "role1").Return(false, nil).Once()
+				suite.mockStore.On("GetRole", mock.Anything, "role1").
+					Return(RoleWithPermissions{ID: "role1"}, nil).Once()
 				suite.mockStore.On("UpdateRole", mock.Anything,
 					mock.AnythingOfType("string"),
 					mock.AnythingOfType("RoleUpdateDetail")).Return(nil).Once()
@@ -1093,6 +1097,8 @@ func (suite *RoleServiceTestSuite) TestUpdateRole_PermissionValidationErrors() {
 				suite.mockStore.On("CheckRoleNameExistsExcludingID", mock.Anything,
 					"ou1",
 					"Updated Role", "role1").Return(false, nil).Once()
+				suite.mockStore.On("GetRole", mock.Anything, "role1").
+					Return(RoleWithPermissions{ID: "role1"}, nil).Once()
 				suite.mockStore.On("UpdateRole", mock.Anything,
 					mock.AnythingOfType("string"),
 					mock.AnythingOfType("RoleUpdateDetail")).Return(nil).Once()

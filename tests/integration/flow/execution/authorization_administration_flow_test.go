@@ -73,6 +73,8 @@ const (
 	scopeUnassignedThroughAPI    = "unassigned-through-api"
 	scopeStillAssigned           = "still-assigned"
 	scopeLeftThroughAPI          = "left-through-api"
+	scopeKeptThroughAPI          = "kept-through-api"
+	scopeDroppedThroughAPI       = "dropped-through-api"
 	scopeUntouchedByPermEdit     = "untouched-by-perm-edit"
 	scopeUntouchedByGroupDelete  = "untouched-by-group-delete"
 	scopeSharedByMembers         = "shared-by-members"
@@ -134,7 +136,7 @@ var authzFlowResourceScopes = []string{
 	scopeHeldThroughNesting, scopeHeldTwice, scopeNestedGroupDeletion, scopeNestedMemberRemoval,
 	scopeReachedSeveralWays, scopeNothingDropped, scopeHeldBeyondDescentLimit, scopeRoleDeletedThroughAPI,
 	scopeGroupDeletedThroughAPI, scopeUnassignedThroughAPI, scopeStillAssigned,
-	scopeLeftThroughAPI,
+	scopeLeftThroughAPI, scopeKeptThroughAPI, scopeDroppedThroughAPI,
 }
 
 var authzFlowActionScopes = []string{scopeRetired, scopeRetiredNeighbor}
@@ -431,6 +433,34 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestRolePermissionRemovalFlo
 		"The role still grants the kept permission, so a token carrying only it must stay accepted")
 	ts.Equal([]string{scopePermissionKept}, ts.rolePermissions(roleID),
 		"The role must grant exactly the permissions the flow was given")
+}
+
+// Updating a role through the management API revokes what the permissions it drops granted, as the
+// permission removal flow does, and an update that drops nothing revokes nothing.
+func (ts *AuthorizationAdministrationFlowTestSuite) TestUpdateRoleThroughTheAPI_RevokesOnlyTheDroppedPermission() {
+	const name = "Authz API Narrowed Administrator"
+	roleID := ts.createRole(name, []string{scopeKeptThroughAPI, scopeDroppedThroughAPI},
+		testutils.Assignment{ID: ts.appID, Type: "app"})
+	dropped := grantedToken(&ts.Suite, authzFlowClient, scopeDroppedThroughAPI)
+	kept := grantedToken(&ts.Suite, authzFlowClient, scopeKeptThroughAPI)
+	update := func(permissions ...string) {
+		ts.T().Helper()
+		ts.Require().NoError(testutils.UpdateRole(roleID, testutils.Role{
+			Name: name, OUID: ts.ouID,
+			Permissions: []testutils.ResourcePermissions{
+				{ResourceServerID: ts.resourceServerID, Permissions: permissions},
+			},
+		}), "Failed to update the role")
+	}
+
+	update(scopeKeptThroughAPI, scopeDroppedThroughAPI)
+	ts.True(tokenIsActive(&ts.Suite, authzFlowClient, dropped), "An update that drops nothing must revoke nothing")
+
+	update(scopeKeptThroughAPI)
+	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, dropped),
+		"The token carrying the dropped permission must be rejected")
+	ts.True(tokenIsActive(&ts.Suite, authzFlowClient, kept),
+		"The role still grants the kept permission, so a token carrying only it must stay accepted")
 }
 
 func (ts *AuthorizationAdministrationFlowTestSuite) TestRolePermissionRemovalFlow_NothingDroppedRevokesNothing() {
