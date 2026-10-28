@@ -262,4 +262,27 @@ var (
 			DefaultValue: "Deploy a version to the source gateway before promoting it.",
 		},
 	}
+	// ErrorResourceNotDeployed names a resource no master of the gateway records.
+	ErrorResourceNotDeployed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1031",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.resource_not_deployed",
+			DefaultValue: "No apply to this gateway has recorded the resource",
+		},
+	}
+	// ErrorOriginTooLong is returned when an apply names where its version came from with a label
+	// longer than a master records.
+	ErrorOriginTooLong = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1035",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.origin_too_long",
+			DefaultValue: "The origin is too long",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.origin_too_long.description",
+			DefaultValue: "Name where the version came from in at most 255 characters.",
+		},
+	}
 )

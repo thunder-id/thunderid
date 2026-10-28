@@ -338,7 +338,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApplyResult'
         "400":
-          description: The request was malformed, or the selection names a resource the diff does not report
+          description: The request was malformed, the selection names a resource the diff does not report, or the origin is too long
           content:
             application/json:
               schema:
@@ -361,6 +361,16 @@ paths:
                     description:
                       key: "error.gatewayservice.invalid_selection.description"
                       defaultValue: "Select changes by the keys a diff of this version reports for this gateway. A resource whose key is longer than 512 characters, or whose id or name is longer than 255, cannot be left out."
+                originTooLong:
+                  summary: The origin is longer than a master records
+                  value:
+                    code: "GTW-1035"
+                    message:
+                      key: "error.gatewayservice.origin_too_long"
+                      defaultValue: "The origin is too long"
+                    description:
+                      key: "error.gatewayservice.origin_too_long.description"
+                      defaultValue: "Name where the version came from in at most 255 characters."
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -440,6 +450,98 @@ paths:
           description: |
             The apply took longer to prepare than its lease allows for an import, and sent nothing to
             the gateway (`GTW-5003`). Apply again.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /gateways/{id}/master:
+    parameters:
+      - $ref: '#/components/parameters/GatewayID'
+    get:
+      tags: [Gateways]
+      summary: Get what a gateway holds, resource by resource
+      description: |
+        Returns the gateway's latest master: every resource deployed to it, as the gateway last
+        accepted it, with how each one got there. A gateway nothing was applied to holds the empty
+        master, `number` 0, with no `entries` or `resources`.
+
+        A gateway that applied a version before masters were recorded is given its first master, from
+        that version, the first time any of the master routes reads it. That read writes the master
+        once; every read after it only reads.
+      responses:
+        "200":
+          description: The gateway's master
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Master'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+  /gateways/{id}/master/history:
+    parameters:
+      - $ref: '#/components/parameters/GatewayID'
+    get:
+      tags: [Gateways]
+      summary: List a gateway's masters
+      description: |
+        Lists the masters kept for the gateway, newest first, each with its `summary` but without
+        `entries` or `resources`. As many are kept per gateway as versions are kept per deployment
+        (`gateway.max_versions`). Like `GET /gateways/{id}/master`, the first read of a gateway that
+        applied a version before masters were recorded writes its first master.
+      responses:
+        "200":
+          description: The gateway's masters
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Master'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+  /gateways/{id}/master/resources/{type}/{resource}:
+    parameters:
+      - $ref: '#/components/parameters/GatewayID'
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The resource type, the part of `MasterEntry.key` before the slash.
+      - name: resource
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The resource's id, the part of `MasterEntry.key` after the slash.
+    get:
+      tags: [Gateways]
+      summary: Get one resource's history on a gateway
+      description: |
+        Returns the resource's entry in each kept master that records it, newest first. Like
+        `GET /gateways/{id}/master`, the first read of a gateway that applied a version before masters
+        were recorded writes its first master.
+      responses:
+        "200":
+          description: The resource's history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceHistory'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          description: No gateway of that id is registered (`GTW-1002`), or no kept master records the resource (`GTW-1031`).
           content:
             application/json:
               schema:
@@ -947,6 +1049,14 @@ components:
         dryRun:
           type: boolean
           description: Send the import as a dry run and record nothing.
+        origin:
+          type: string
+          maxLength: 255
+          description: |
+            A label for where the version came from, such as the environment it was promoted from,
+            recorded as given on each resource the apply writes (`MasterEntry.origin`). A promotion
+            through the MCP `promote_gateway` tool gives the source gateway's id. Longer than 255
+            characters is refused with `400` (`GTW-1035`).
         confirmRemovals:
           type: boolean
           description: |
@@ -1079,6 +1189,11 @@ components:
             later apply sends the version whole. A removal it refused, or did not confirm, does: the
             version is left unrecorded, so the next apply works from the version held before and sends
             the removal again.
+        master:
+          type: string
+          description: |
+            The hash of the master the gateway holds after the apply, which records each resource as
+            the gateway accepted or refused it (see `GET /gateways/{id}/master`). A dry run writes none.
         missing:
           type: object
           description: |
@@ -1129,6 +1244,118 @@ components:
         queuedVersion:
           type: string
           description: With `queued`, the version that will be applied.
+    Master:
+      type: object
+      description: |
+        What one gateway holds, resource by resource: every resource deployed to it, as the gateway
+        last accepted it, with how each one got there. Each apply writes a new master and keeps the
+        one before.
+      properties:
+        gatewayId:
+          type: string
+        number:
+          type: integer
+          description: Orders the gateway's masters, from 1; 0 is the empty master of a gateway nothing was applied to.
+        master:
+          type: string
+          description: The hash naming the master by what it holds. Omitted for the empty master.
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          description: The user whose apply wrote the master. Left out when the user's name cannot be read.
+          allOf:
+            - $ref: '#/components/schemas/Actor'
+        resources:
+          type: string
+          description: |
+            Every resource the gateway holds, one YAML document each, in the same form a version holds
+            them. Left out by a listing, and when the gateway holds none.
+        summary:
+          $ref: '#/components/schemas/MasterSummary'
+        entries:
+          type: array
+          description: The manifest, one entry per resource key, sorted by key. Left out by a listing, and when there are none.
+          items:
+            $ref: '#/components/schemas/MasterEntry'
+    MasterSummary:
+      type: object
+      properties:
+        deployed:
+          type: integer
+        failed:
+          type: integer
+        removed:
+          type: integer
+    MasterEntry:
+      type: object
+      properties:
+        key:
+          type: string
+          description: The resource's key, `<resourceType>/<id>`, as a diff reports it.
+        resourceType:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        contentHash:
+          type: string
+          description: The SHA-256 of the document as the master holds it; none for a removed resource or one the gateway never accepted.
+        sourceVersion:
+          type: string
+          description: The hash of the version the last apply of this resource sent it from.
+        origin:
+          type: string
+          description: The `origin` that apply gave, as given.
+        state:
+          type: string
+          enum: [deployed, failed, removed]
+          description: |
+            `deployed` for a resource the gateway accepted; `failed` for one it refused on its last
+            apply, with `failure`; `removed` for one removed from the gateway, listed until something is
+            deployed under its key again.
+        failure:
+          $ref: '#/components/schemas/EntryFailure'
+        at:
+          type: string
+          format: date-time
+          description: When the entry was last written.
+        by:
+          description: The user whose apply last wrote the entry. Left out when the user's name cannot be read.
+          allOf:
+            - $ref: '#/components/schemas/Actor'
+    EntryFailure:
+      type: object
+      description: What the gateway answered when it refused the resource.
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        description:
+          type: string
+          description: What in the resource was refused, when the gateway said more than the message.
+    ResourceHistory:
+      type: object
+      properties:
+        gatewayId:
+          type: string
+        key:
+          type: string
+        history:
+          type: array
+          description: The resource's entry in each kept master that records it, newest first.
+          items:
+            type: object
+            properties:
+              master:
+                type: string
+                description: The hash of the master the entry is from.
+              number:
+                type: integer
+              entry:
+                $ref: '#/components/schemas/MasterEntry'
     ValueReference:
       type: object
       description: |
