@@ -25,7 +25,8 @@ var (
 	}
 
 	// QueryGetTransitiveGroupsForMember retrieves all groups a member belongs to, including groups
-	// inherited through nested group membership, using a recursive CTE.
+	// inherited through nested group membership, using a recursive CTE. Both joins use CROSS JOIN so
+	// SQLite keeps transitive_groups as the outer loop and seeks the member index and the group key.
 	QueryGetTransitiveGroupsForMember = dbmodel.DBQuery{
 		ID: "GRQ-GROUP_MGT-20",
 		Query: `WITH RECURSIVE transitive_groups AS (
@@ -34,13 +35,14 @@ var (
 			WHERE GMR.MEMBER_ID = $1 AND GMR.DEPLOYMENT_ID = $2 AND GMR.MEMBER_TYPE <> 'group'
 			UNION
 			SELECT GMR.GROUP_ID
-			FROM "GROUP_MEMBER_REFERENCE" GMR
-			INNER JOIN transitive_groups tg ON GMR.MEMBER_ID = tg.GROUP_ID
-			WHERE GMR.MEMBER_TYPE = 'group' AND GMR.DEPLOYMENT_ID = $2
+			FROM transitive_groups tg
+			CROSS JOIN "GROUP_MEMBER_REFERENCE" GMR
+			WHERE GMR.MEMBER_ID = tg.GROUP_ID AND GMR.MEMBER_TYPE = 'group' AND GMR.DEPLOYMENT_ID = $2
 		)
 		SELECT G.ID, G.OU_ID, G.NAME
 		FROM transitive_groups tg
-		INNER JOIN "GROUP" G ON tg.GROUP_ID = G.ID AND G.DEPLOYMENT_ID = $2
+		CROSS JOIN "GROUP" G
+		WHERE G.ID = tg.GROUP_ID AND G.DEPLOYMENT_ID = $2
 		ORDER BY G.NAME`,
 	}
 )

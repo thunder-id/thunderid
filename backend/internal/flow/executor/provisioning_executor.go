@@ -448,6 +448,7 @@ func (p *provisioningExecutor) createEntity(ctx *providers.NodeContext, category
 	return entityID, nil
 }
 
+<<<<<<< HEAD
 // completeProvisioning runs the steps that follow a create: group and role assignment,
 // authentication as the provisioned entity, and the runtime flags the rest of the flow reads.
 func (p *provisioningExecutor) completeProvisioning(ctx *providers.NodeContext,
@@ -463,6 +464,12 @@ func (p *provisioningExecutor) completeProvisioning(ctx *providers.NodeContext,
 	}
 
 	p.authenticateProvisionedEntity(ctx, category, entityID, execResp)
+=======
+	// Assign user to groups and roles
+	if err := p.assignAndAuthenticateUser(ctx, createdEntity.ID, execResp); err != nil {
+		return nil, err
+	}
+>>>>>>> 2aa41d091 (Address follow-up review comments on federated sync)
 	if execResp.Status == providers.ExecFailure {
 		return execResp
 	}
@@ -1165,6 +1172,7 @@ func (p *provisioningExecutor) getEntityType(ctx *providers.NodeContext) string 
 	return ""
 }
 
+<<<<<<< HEAD
 // assignGroupsAndRoles assigns the newly created entity to configured groups and roles.
 // If no group or role is configured, the assignments are skipped.
 func (p *provisioningExecutor) assignGroupsAndRoles(
@@ -1172,6 +1180,35 @@ func (p *provisioningExecutor) assignGroupsAndRoles(
 	category entitytype.TypeCategory,
 	entityID string,
 ) error {
+=======
+// assignAndAuthenticateUser assigns the groups and roles to the provisioned user, then authenticates it.
+// A client failure is recorded on execResp. A server failure is returned as an error.
+func (p *provisioningExecutor) assignAndAuthenticateUser(ctx *providers.NodeContext, userID string,
+	execResp *providers.ExecutorResponse) error {
+	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
+	if svcErr := p.assignGroupsAndRoles(ctx, userID); svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return fmt.Errorf("failed to assign groups and roles: %s", svcErr.Error.DefaultValue)
+		}
+		logger.Warn(ctx.Context, "Failed to assign groups and roles to provisioned user",
+			log.MaskedString(log.LoggerKeyUserID, userID),
+			log.String("error", svcErr.Error.DefaultValue))
+		execResp.Status = providers.ExecFailure
+		execResp.Error = &ErrProvisioningAssignmentFailed
+		return nil
+	}
+
+	p.authenticateProvisionedUser(ctx, userID, execResp)
+	return nil
+}
+
+// assignGroupsAndRoles assigns the newly created user to configured groups and roles.
+// If no group or role is configured, the assignments are skipped.
+func (p *provisioningExecutor) assignGroupsAndRoles(
+	ctx *providers.NodeContext,
+	userID string,
+) *tidcommon.ServiceError {
+>>>>>>> 2aa41d091 (Address follow-up review comments on federated sync)
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	groupIDs := p.getGroupsToAssign(ctx)
@@ -1200,19 +1237,50 @@ func (p *provisioningExecutor) assignGroupsAndRoles(
 		log.String("roleIDs", strings.Join(roleIDs, ",")))
 
 	if len(groupIDs) > 0 {
+<<<<<<< HEAD
 		if svcErr := p.groupService.AddMembersToGroups(ctx.Context,
 			[]group.Member{{ID: entityID, Type: traitsFor(category).groupMemberType}}, groupIDs); svcErr != nil {
 			return fmt.Errorf("group assignment failed: %s", svcErr.Error.DefaultValue)
+=======
+		if svcErr := p.groupService.AddMembersToGroups(
+			ctx.Context, []group.Member{{ID: userID, Type: group.MemberTypeUser}}, groupIDs); svcErr != nil {
+			return svcErr
+>>>>>>> 2aa41d091 (Address follow-up review comments on federated sync)
 		}
 	}
 
 	if len(roleIDs) > 0 {
+<<<<<<< HEAD
 		if svcErr := p.roleAssignmentService.AddAssigneesToRoles(ctx.Context,
 			[]role.RoleAssignment{{ID: entityID, Type: traitsFor(category).roleAssigneeType}}, roleIDs); svcErr != nil {
 			return fmt.Errorf("role assignment failed: %s", svcErr.Error.DefaultValue)
 		}
 	}
 
+=======
+		if svcErr := p.roleAssignmentService.AddAssigneesToRoles(
+			ctx.Context, []role.RoleAssignment{{ID: userID, Type: role.AssigneeTypeUser}}, roleIDs); svcErr != nil {
+			return svcErr
+		}
+	}
+
+	// Mapped targets skip groups and roles that no longer exist, so a stale mapping doesn't fail sign-in.
+	// Nothing is written when the store is declarative-only.
+	if len(mappedGroupIDs) > 0 {
+		if svcErr := p.groupService.AddEntityToGroups(
+			ctx.Context, userID, providers.EntityCategoryUser, mappedGroupIDs); svcErr != nil {
+			return svcErr
+		}
+	}
+
+	if len(mappedRoleIDs) > 0 {
+		if svcErr := p.roleAssignmentService.AddEntityToRoles(
+			ctx.Context, userID, providers.EntityCategoryUser, mappedRoleIDs); svcErr != nil {
+			return svcErr
+		}
+	}
+
+>>>>>>> 2aa41d091 (Address follow-up review comments on federated sync)
 	logger.Debug(ctx.Context, "Successfully assigned groups and roles",
 		log.MaskedString(log.LoggerKeyEntityID, entityID))
 	return nil
