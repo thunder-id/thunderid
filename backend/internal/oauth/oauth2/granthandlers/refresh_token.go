@@ -17,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authzdetailcommon "github.com/thunder-id/thunderid/internal/authzdetail/common"
+	"github.com/thunder-id/thunderid/internal/idp"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
@@ -27,6 +28,7 @@ import (
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // refreshTokenGrantHandler handles the refresh token grant type.
@@ -223,6 +225,17 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	}
 	audiences := []string{audience}
 
+	// Get user attributes from attribute cache.
+	// cacheEntry is kept so its current TTLSeconds can be compared later.
+	attrs, cacheEntry, errResp := h.getCachedAttributes(ctx, refreshTokenClaims.AttributeCacheID, logger)
+	if errResp != nil {
+		return nil, errResp
+	}
+	var sessionGrants *attributecache.SessionGrants
+	if cacheEntry != nil {
+		sessionGrants = cacheEntry.SessionGrants
+	}
+
 	oidcScopes, nonOidcScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(
 		strings.Join(newTokenScopes, " "), oauthApp.ScopeClaims)
 	if audience == tokenRequest.ClientID {
@@ -250,20 +263,13 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 			return nil, scopeErr
 		}
 		authorizedNonOidc, authzErr := h.reauthorizeScopes(
-			ctx, subjectEntity, targetRS.ID, downscopedNonOidc, grantedDetails, logger)
+			ctx, subjectEntity, targetRS.ID, downscopedNonOidc, grantedDetails, sessionGrants, logger)
 		if authzErr != nil {
 			return nil, authzErr
 		}
 		newTokenScopes = make([]string, 0, len(oidcScopes)+len(authorizedNonOidc))
 		newTokenScopes = append(newTokenScopes, oidcScopes...)
 		newTokenScopes = append(newTokenScopes, authorizedNonOidc...)
-	}
-
-	// Get user attributes from attribute cache.
-	// cacheEntry is kept so its current TTLSeconds can be compared later.
-	attrs, cacheEntry, errResp := h.getCachedAttributes(ctx, refreshTokenClaims.AttributeCacheID, logger)
-	if errResp != nil {
-		return nil, errResp
 	}
 
 	authorizationDetails, detailsErr := modifyGrantedAuthorizationDetails(ctx, h.authzDetails,
@@ -654,9 +660,11 @@ func credentialChangedSince(ctx context.Context, entity *providers.Entity, iat i
 }
 
 // reauthorizeScopes re-evaluates the subject's permission scopes against their current role and group
-// assignments, dropping the ones they no longer hold.
+// assignments, and the authorization the sign-in granted for the session only, dropping the ones they no
+// longer hold.
 func (h *refreshTokenGrantHandler) reauthorizeScopes(ctx context.Context, subjectEntity *providers.Entity,
 	resourceServerID string, scopes []string, authorizationDetails []providers.AuthorizationDetail,
+	sessionGrants *attributecache.SessionGrants,
 	logger *log.Logger) ([]string, *model.ErrorResponse) {
 	// An unresolved subject (a mapped sub) would authorize nothing and strip every scope.
 	if len(scopes) == 0 || h.authzService == nil || subjectEntity == nil || subjectEntity.ID == "" {
@@ -682,6 +690,14 @@ func (h *refreshTokenGrantHandler) reauthorizeScopes(ctx context.Context, subjec
 		}
 	}
 
+	var roleIDs []string
+	var mappedPermissions []providers.AuthorizationTarget
+	if sessionGrants != nil {
+		groupIDs = utils.MergeUniqueStrings(groupIDs, sessionGrants.GroupIDs)
+		roleIDs = sessionGrants.RoleIDs
+		mappedPermissions = sessionGrants.Permissions
+	}
+
 	// The policy engine decides only the scopes; the granted authorization details are context.
 	var evaluationContext map[string]interface{}
 	if len(authorizationDetails) > 0 {
@@ -697,7 +713,7 @@ func (h *refreshTokenGrantHandler) reauthorizeScopes(ctx context.Context, subjec
 	}
 	authzResp, svcErr := h.authzService.EvaluateAccessBatch(ctx,
 		tokenservice.BuildAccessEvaluationsRequest(
-			subject, subjectEntity.Category.String(), groupIDs, nil, scopes, resourceServerID, evaluationContext))
+			subject, subjectEntity.Category.String(), groupIDs, roleIDs, scopes, resourceServerID, evaluationContext))
 	if svcErr != nil {
 		logger.Error(ctx, "Failed to evaluate authorized permissions for refresh token subject",
 			log.MaskedString(log.LoggerKeyUserID, subject),
@@ -709,6 +725,8 @@ func (h *refreshTokenGrantHandler) reauthorizeScopes(ctx context.Context, subjec
 	}
 
 	authorizedScopes := tokenservice.FilterAuthorizedScopes(scopes, authzResp.Evaluations)
+	authorizedScopes = idp.UnionMappedPermissionTargets(authorizedScopes, scopes, mappedPermissions,
+		resourceServerID)
 	if len(authorizedScopes) != len(scopes) {
 		logger.Debug(ctx, "Dropped permission scopes the subject is no longer authorized for",
 			log.MaskedString(log.LoggerKeyUserID, subject),

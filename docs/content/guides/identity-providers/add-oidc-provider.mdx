@@ -125,7 +125,8 @@ Behavior:
 - A mapped group also grants that group's ancestor groups, transitively, the same as a direct group assignment does.
 - Everything a mapping grants adds to whatever is already assigned directly, unless **Groups and roles sync** is set to **Override all**. See [Sync](#sync).
 - The mapping applies wherever the identity's attributes are read: at sign-in, when a token from this provider is exchanged, and when an identity assertion (ID-JAG) it issued is presented. If resolving the mapping fails, sign-in still proceeds without it; token exchange and ID-JAG consumption fail the request instead, since there is no already-issued session to fall back to.
-- When a sign-in creates the account, the mapping's roles and groups are also assigned to it, unless **Groups and roles sync** is set to **Session only**. Mapped groups aren't assigned when groups use the `declarative` [store mode](../../../deployment/configuration#store-modes), and mapped roles aren't when roles do. See [Sync](#sync).
+- At sign-in, mapped permissions are granted on every sign-in. Mapped roles and groups grant access through the account's stored memberships, as **Groups and roles sync** decides. Only **Session only** grants them for the session without storing them.
+- When a sign-in creates the account, the mapping's roles and groups are also assigned to it, unless **Groups and roles sync** is set to **Session only**. Mapped groups aren't assigned when groups use the `declarative` [store mode](../../../deployment/configuration#store-modes), and mapped roles aren't when roles do. They apply to the session and tokens instead, as under **Session only**. See [Sync](#sync).
 
 ### Account Linking
 
@@ -161,7 +162,7 @@ Choose how each sign-in through this connection keeps the account in line with t
 |-------|-------------|
 | **Override received** (the default) | The attributes named under **Attribute mappings** for the account's user type overwrite the account's values when the provider sends them. Other attributes are kept. |
 | **No sync** | The provider's attributes are stored when a sign-in creates the account, and are not updated after. |
-| **Session only** | The account stores only the attributes its user type requires and the values the user enters in the flow. The provider's attributes apply to the session and the issued tokens. |
+| **Session only** | The account stores only the attributes its user type or the flow's Provisioning step requires, and the values the user enters in the flow. The provider's attributes apply to the session and the issued tokens. |
 
 | Groups and roles sync | Behavior |
 |-------|-------------|
@@ -172,8 +173,12 @@ Choose how each sign-in through this connection keeps the account in line with t
 Behavior:
 
 - The recorded link to this connection identifies the account, so **Session only** never needs to store the provider's subject identifier.
+- Under **Session only** attributes, the provider's value wins over the account's stored value in the session and the issued tokens.
+- When groups or roles use the `declarative` store mode, their memberships can't be written, so mapped groups or roles apply to the session and tokens only, in every mode.
 - Groups and roles come only from the [Authorization Mapping](#authorization-mapping). Without one, no mode changes the account's groups or roles.
-- Groups and roles set on the flow's [Provisioning](../../flows/advanced-configurations#user-provisioning-and-attributes) step are assigned when the account is created. Under **Override all** they're removed on a later sign-in unless the authorization mapping also resolves them.
+- Groups and roles set on the flow's [Provisioning](../../flows/advanced-configurations#user-provisioning-and-attributes) step are assigned when the account is created. They need a writable store, so with the `declarative` store mode the Provisioning step fails while it sets them. Under **Override all** they're removed on a later sign-in unless the authorization mapping also resolves them.
+
+Session only groups and roles stay in the `groups` and `roles` claims of tokens issued from a refresh token, and the permission scopes they grant are re-checked on each refresh, as described in [Refresh Token](../../protocols/oauth-oidc/refresh-token). Access the provider removes after sign-in keeps working until the refresh token expires, but a scope is dropped earlier when its role or group is deleted or no longer grants that permission.
 
 Click **Save changes** to apply your attribute configuration.
 

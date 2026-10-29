@@ -15,7 +15,7 @@ func TestNewGithubOAuthExecutor_Success(t *testing.T) {
 	mockFlowFactory, mockIDPService, mockAuthnProvider := setupSocialAuthExecutorMock(t, ExecutorNameGitHubAuth)
 	mockGithubSvc := githubmock.NewGithubOAuthAuthnServiceInterfaceMock(t)
 
-	executor := newGithubOAuthExecutor(mockFlowFactory, mockIDPService, mockGithubSvc, mockAuthnProvider)
+	executor := newGithubOAuthExecutor(mockFlowFactory, mockIDPService, mockGithubSvc, mockAuthnProvider, nil)
 
 	assert.NotNil(t, executor)
 	result, ok := executor.(*githubOAuthExecutor)
