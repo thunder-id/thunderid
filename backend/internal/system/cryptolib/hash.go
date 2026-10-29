@@ -86,233 +86,130 @@ func Initialize(cfg HashConfig) (HashServiceInterface, error) {
 	return newHashService(cfg)
 }
 
-type sha256HashProvider struct {
-	SaltSize int
+// hashService generates credentials with the configured algorithm and verifies each credential
+// with the algorithm and parameters it was stored with.
+type hashService struct {
+	algorithm  CredAlgorithm
+	saltSize   int
+	parameters CredParameters
 }
 
-type pbkdf2HashProvider struct {
-	SaltSize   int
-	Iterations int
-	KeySize    int
-}
-
-type argon2idHashProvider struct {
-	SaltSize    int
-	Memory      int
-	Iterations  int
-	Parallelism int
-	KeySize     int
-}
-
+// newHashService validates cfg and returns a hash service that generates credentials with it.
 func newHashService(cfg HashConfig) (HashServiceInterface, error) {
+	var parameters CredParameters
 	switch cfg.Algorithm {
 	case SHA256:
-		if err := validatePositiveInt(cfg.SaltSize, "salt size"); err != nil {
-			return nil, err
-		}
-		return newSHA256Provider(cfg.SaltSize), nil
 	case PBKDF2:
-		if err := validatePositiveInt(cfg.SaltSize, "salt size"); err != nil {
-			return nil, err
-		}
-		if err := validatePositiveInt(cfg.Iterations, "iterations"); err != nil {
-			return nil, err
-		}
-		if err := validatePositiveInt(cfg.KeySize, "key size"); err != nil {
-			return nil, err
-		}
-		return newPBKDF2Provider(cfg.SaltSize, cfg.Iterations, cfg.KeySize), nil
+		parameters = CredParameters{Iterations: cfg.Iterations, KeySize: cfg.KeySize}
 	case ARGON2ID:
-		if err := validatePositiveInt(cfg.SaltSize, "salt size"); err != nil {
-			return nil, err
+		parameters = CredParameters{
+			Memory:      cfg.Memory,
+			Iterations:  cfg.Iterations,
+			Parallelism: cfg.Parallelism,
+			KeySize:     cfg.KeySize,
 		}
-		if err := validatePositiveIntWithMax(cfg.Memory, maxUint32, "memory"); err != nil {
-			return nil, err
-		}
-		if err := validatePositiveIntWithMax(cfg.Iterations, maxUint32, "iterations"); err != nil {
-			return nil, err
-		}
-		if err := validatePositiveIntWithMax(cfg.Parallelism, maxUint8, "parallelism"); err != nil {
-			return nil, err
-		}
-		if err := validatePositiveIntWithMax(cfg.KeySize, maxUint32, "key size"); err != nil {
-			return nil, err
-		}
-		return newArgon2idProvider(cfg.SaltSize, cfg.Memory, cfg.Iterations, cfg.Parallelism, cfg.KeySize), nil
 	default:
 		return nil, fmt.Errorf("unsupported hash algorithm: %s", cfg.Algorithm)
 	}
+	if err := validatePositiveInt(cfg.SaltSize, "salt size"); err != nil {
+		return nil, err
+	}
+	if err := validateParameters(cfg.Algorithm, parameters); err != nil {
+		return nil, err
+	}
+	return &hashService{algorithm: cfg.Algorithm, saltSize: cfg.SaltSize, parameters: parameters}, nil
 }
 
-func newSHA256Provider(saltSize int) *sha256HashProvider {
-	return &sha256HashProvider{SaltSize: saltSize}
-}
-
-func (a *sha256HashProvider) Generate(credentialValue []byte) (Credential, error) {
-	credSalt, err := generateSalt(a.SaltSize)
+// Generate hashes the credential with a fresh salt using the configured algorithm.
+func (s *hashService) Generate(credentialValue []byte) (Credential, error) {
+	salt, err := generateSalt(s.saltSize)
 	if err != nil {
 		return Credential{}, err
 	}
-	credentialWithSalt := append([]byte(nil), credentialValue...)
-	credentialWithSalt = append(credentialWithSalt, credSalt...)
-	h := sha256.Sum256(credentialWithSalt)
+	h, err := deriveKey(credentialValue, s.algorithm, s.parameters, salt)
+	if err != nil {
+		return Credential{}, err
+	}
+	parameters := s.parameters
+	parameters.Salt = hex.EncodeToString(salt)
 	return Credential{
-		Algorithm: SHA256,
-		Hash:      hex.EncodeToString(h[:]),
-		Parameters: CredParameters{
-			Salt: hex.EncodeToString(credSalt),
-		},
+		Algorithm:  s.algorithm,
+		Hash:       hex.EncodeToString(h),
+		Parameters: parameters,
 	}, nil
 }
 
-func (a *sha256HashProvider) Verify(credentialValueToVerify []byte, referenceCredential Credential) (bool, error) {
-	if err := validateCredentialAlgorithm(referenceCredential, SHA256); err != nil {
+// Verify checks the credential against the reference using the reference credential's own algorithm
+// and parameters, independent of the configured algorithm.
+func (s *hashService) Verify(credentialValueToVerify []byte, referenceCredential Credential) (bool, error) {
+	if err := validateParameters(referenceCredential.Algorithm, referenceCredential.Parameters); err != nil {
 		return false, err
 	}
-	saltBytes, err := decodeSalt(referenceCredential.Parameters.Salt)
+	salt, err := decodeSalt(referenceCredential.Parameters.Salt)
 	if err != nil {
 		return false, err
 	}
-	credentialWithSalt := append([]byte(nil), credentialValueToVerify...)
-	credentialWithSalt = append(credentialWithSalt, saltBytes...)
-	hashedData := sha256.Sum256(credentialWithSalt)
 	referenceHash, err := hex.DecodeString(referenceCredential.Hash)
 	if err != nil {
 		return false, err
 	}
-	return subtle.ConstantTimeCompare(hashedData[:], referenceHash) == 1, nil
-}
-
-func newPBKDF2Provider(saltSize, iterations, keySize int) *pbkdf2HashProvider {
-	return &pbkdf2HashProvider{
-		SaltSize:   saltSize,
-		Iterations: iterations,
-		KeySize:    keySize,
-	}
-}
-
-func (a *pbkdf2HashProvider) Generate(credentialValue []byte) (Credential, error) {
-	credSalt, err := generateSalt(a.SaltSize)
-	if err != nil {
-		return Credential{}, err
-	}
-	h, err := pbkdf2.Key(sha256.New, string(credentialValue), credSalt, a.Iterations, a.KeySize)
-	if err != nil {
-		return Credential{}, err
-	}
-	return Credential{
-		Algorithm: PBKDF2,
-		Hash:      hex.EncodeToString(h),
-		Parameters: CredParameters{
-			Iterations: a.Iterations,
-			KeySize:    a.KeySize,
-			Salt:       hex.EncodeToString(credSalt),
-		},
-	}, nil
-}
-
-func (a *pbkdf2HashProvider) Verify(credentialValueToVerify []byte, referenceCredential Credential) (bool, error) {
-	if err := validateCredentialAlgorithm(referenceCredential, PBKDF2); err != nil {
-		return false, err
-	}
-	iterations, err := requirePositiveInt(referenceCredential.Parameters.Iterations, "iterations")
-	if err != nil {
-		return false, err
-	}
-	keySize, err := requirePositiveInt(referenceCredential.Parameters.KeySize, "key size")
-	if err != nil {
-		return false, err
-	}
-	saltBytes, err := decodeSalt(referenceCredential.Parameters.Salt)
-	if err != nil {
-		return false, err
-	}
-	h, err := pbkdf2.Key(sha256.New, string(credentialValueToVerify), saltBytes, iterations, keySize)
-	if err != nil {
-		return false, err
-	}
-	referenceHash, err := hex.DecodeString(referenceCredential.Hash)
+	h, err := deriveKey(credentialValueToVerify, referenceCredential.Algorithm, referenceCredential.Parameters, salt)
 	if err != nil {
 		return false, err
 	}
 	return subtle.ConstantTimeCompare(h, referenceHash) == 1, nil
 }
 
-func newArgon2idProvider(saltSize, memory, iterations, parallelism, keySize int) *argon2idHashProvider {
-	return &argon2idHashProvider{
-		SaltSize:    saltSize,
-		Memory:      memory,
-		Iterations:  iterations,
-		Parallelism: parallelism,
-		KeySize:     keySize,
+// validateParameters checks that the parameters the algorithm uses are within supported bounds.
+func validateParameters(algorithm CredAlgorithm, parameters CredParameters) error {
+	switch algorithm {
+	case SHA256:
+		return nil
+	case PBKDF2:
+		if err := validatePositiveInt(parameters.Iterations, "iterations"); err != nil {
+			return err
+		}
+		return validatePositiveInt(parameters.KeySize, "key size")
+	case ARGON2ID:
+		if err := validatePositiveIntWithMax(parameters.Memory, maxUint32, "memory"); err != nil {
+			return err
+		}
+		if err := validatePositiveIntWithMax(parameters.Iterations, maxUint32, "iterations"); err != nil {
+			return err
+		}
+		if err := validatePositiveIntWithMax(parameters.Parallelism, maxUint8, "parallelism"); err != nil {
+			return err
+		}
+		return validatePositiveIntWithMax(parameters.KeySize, maxUint32, "key size")
+	default:
+		return fmt.Errorf("unsupported hash algorithm: %s", algorithm)
 	}
 }
 
-func (a *argon2idHashProvider) Generate(credentialValue []byte) (Credential, error) {
-	credSalt, err := generateSalt(a.SaltSize)
-	if err != nil {
-		return Credential{}, err
+// deriveKey hashes the credential value with the salt using the given algorithm and validated parameters.
+func deriveKey(credentialValue []byte, algorithm CredAlgorithm, parameters CredParameters,
+	salt []byte) ([]byte, error) {
+	switch algorithm {
+	case SHA256:
+		credentialWithSalt := append([]byte(nil), credentialValue...)
+		credentialWithSalt = append(credentialWithSalt, salt...)
+		h := sha256.Sum256(credentialWithSalt)
+		return h[:], nil
+	case PBKDF2:
+		return pbkdf2.Key(sha256.New, string(credentialValue), salt, parameters.Iterations, parameters.KeySize)
+	case ARGON2ID:
+		//nolint:gosec // G115 - Conversion is safe
+		return argon2.IDKey(
+			credentialValue,
+			salt,
+			uint32(parameters.Iterations),
+			uint32(parameters.Memory),
+			uint8(parameters.Parallelism),
+			uint32(parameters.KeySize),
+		), nil
+	default:
+		return nil, fmt.Errorf("unsupported hash algorithm: %s", algorithm)
 	}
-	//nolint:gosec // G115 - Conversion is safe
-	h := argon2.IDKey(
-		credentialValue,
-		credSalt,
-		uint32(a.Iterations),
-		uint32(a.Memory),
-		uint8(a.Parallelism),
-		uint32(a.KeySize),
-	)
-	return Credential{
-		Algorithm: ARGON2ID,
-		Hash:      hex.EncodeToString(h),
-		Parameters: CredParameters{
-			Memory:      a.Memory,
-			Iterations:  a.Iterations,
-			Parallelism: a.Parallelism,
-			KeySize:     a.KeySize,
-			Salt:        hex.EncodeToString(credSalt),
-		},
-	}, nil
-}
-
-func (a *argon2idHashProvider) Verify(credentialValueToVerify []byte, referenceCredential Credential) (bool, error) {
-	if err := validateCredentialAlgorithm(referenceCredential, ARGON2ID); err != nil {
-		return false, err
-	}
-	memory, err := requirePositiveIntWithMax(referenceCredential.Parameters.Memory, maxUint32, "memory")
-	if err != nil {
-		return false, err
-	}
-	iterations, err := requirePositiveIntWithMax(referenceCredential.Parameters.Iterations, maxUint32, "iterations")
-	if err != nil {
-		return false, err
-	}
-	parallelism, err := requirePositiveIntWithMax(referenceCredential.Parameters.Parallelism, maxUint8, "parallelism")
-	if err != nil {
-		return false, err
-	}
-	keySize, err := requirePositiveIntWithMax(referenceCredential.Parameters.KeySize, maxUint32, "key size")
-	if err != nil {
-		return false, err
-	}
-	saltBytes, err := decodeSalt(referenceCredential.Parameters.Salt)
-	if err != nil {
-		return false, err
-	}
-	//nolint:gosec // G115 - Conversion is safe
-	h := argon2.IDKey(
-		credentialValueToVerify,
-		saltBytes,
-		uint32(iterations),
-		uint32(memory),
-		uint8(parallelism),
-		uint32(keySize),
-	)
-	referenceHash, err := hex.DecodeString(referenceCredential.Hash)
-	if err != nil {
-		return false, err
-	}
-	return subtle.ConstantTimeCompare(h, referenceHash) == 1, nil
 }
 
 // GenerateThumbprint generates a SHA-256 thumbprint for the given data.
@@ -372,37 +269,21 @@ func decodeSalt(salt string) ([]byte, error) {
 	return hex.DecodeString(salt)
 }
 
-func validateCredentialAlgorithm(referenceCredential Credential, expected CredAlgorithm) error {
-	if referenceCredential.Algorithm != expected {
-		return fmt.Errorf("credential algorithm mismatch: expected %s", expected)
+// validatePositiveInt checks that the value is greater than zero.
+func validatePositiveInt(value int, name string) error {
+	if value <= 0 {
+		return fmt.Errorf("%s must be positive", name)
 	}
 	return nil
 }
 
-func validatePositiveInt(value int, name string) error {
-	_, err := requirePositiveInt(value, name)
-	return err
-}
-
+// validatePositiveIntWithMax checks that the value is greater than zero and at most maxValue.
 func validatePositiveIntWithMax(value, maxValue int, name string) error {
-	_, err := requirePositiveIntWithMax(value, maxValue, name)
-	return err
-}
-
-func requirePositiveInt(value int, name string) (int, error) {
-	if value <= 0 {
-		return 0, fmt.Errorf("%s must be positive", name)
+	if err := validatePositiveInt(value, name); err != nil {
+		return err
 	}
-	return value, nil
-}
-
-func requirePositiveIntWithMax(value, maxValue int, name string) (int, error) {
-	normalized, err := requirePositiveInt(value, name)
-	if err != nil {
-		return 0, err
+	if value > maxValue {
+		return fmt.Errorf("%s exceeds maximum supported value", name)
 	}
-	if normalized > maxValue {
-		return 0, fmt.Errorf("%s exceeds maximum supported value", name)
-	}
-	return normalized, nil
+	return nil
 }
