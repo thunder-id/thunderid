@@ -5,6 +5,7 @@ package security
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -273,6 +274,51 @@ func TestInitSystemPermissions_EmptyHandle(t *testing.T) {
 	assert.Equal(t, "system:usertype:view", p.UserTypeView)
 	assert.Equal(t, "system:agenttype", p.AgentType)
 	assert.Equal(t, "system:agenttype:view", p.AgentTypeView)
+	assert.Equal(t, "system:gateway", p.Gateway)
+	assert.Equal(t, "system:gateway:view", p.GatewayView)
+	assert.Equal(t, "system:deploy", p.Deploy)
+	assert.Equal(t, "system:deploy:view", p.DeployView)
+}
+
+// The gateway registry, and what is delivered to a gateway, each have a permission of their own, so
+// an administrator can author and deploy without being able to register gateways, or read what a
+// gateway runs without being able to change it. An apply under a gateway's path needs the deploy
+// permission, not the registry's.
+func TestGatewayAndDeployRoutesHaveTheirOwnPermissions(t *testing.T) {
+	InitSystemPermissions("")
+	p := GetSystemPermissions()
+	service, err := newSecurityService(nil, nil, nil, apiPermissionEntries)
+	require.NoError(t, err)
+
+	for route, want := range map[string]string{
+		"GET /gateways":                                  p.GatewayView,
+		"GET /gateways/gw-1":                             p.GatewayView,
+		"POST /gateways":                                 p.Gateway,
+		"PUT /gateways/gw-1":                             p.Gateway,
+		"DELETE /gateways/gw-1":                          p.Gateway,
+		"POST /gateways/gw-1/apply":                      p.Deploy,
+		"POST /gateways/gw-1/revert":                     p.Deploy,
+		"GET /gateways/gw-1/diff":                        p.DeployView,
+		"GET /gateways/gw-1/applied-version":             p.DeployView,
+		"GET /gateways/gw-1/applied-configuration":       p.DeployView,
+		"GET /gateways/gw-1/applied-configuration/users": p.DeployView,
+		"GET /gateways/gw-1/variables":                   p.DeployView,
+		"GET /gateways/gw-1/secrets/S":                   p.DeployView,
+		"POST /gateways/gw-1/variables":                  p.Deploy,
+		"PUT /gateways/gw-1/secrets/S":                   p.Deploy,
+		"DELETE /gateways/gw-1/variables/V":              p.Deploy,
+		"GET /configuration-versions":                    p.DeployView,
+		"GET /configuration-versions/abc":                p.DeployView,
+		"POST /configuration-versions":                   p.Deploy,
+		"DELETE /configuration-versions/abc":             p.Deploy,
+	} {
+		method, path, _ := strings.Cut(route, " ")
+		assert.Equal(t, want, service.getRequiredPermissionForAPI(method, path), route)
+	}
+	assert.True(t, HasSufficientPermission([]string{p.Root}, p.Deploy), "root no longer covers deploying")
+	assert.True(t, HasSufficientPermission([]string{p.Deploy}, p.DeployView))
+	assert.False(t, HasSufficientPermission([]string{p.DeployView}, p.Deploy))
+	assert.False(t, HasSufficientPermission([]string{p.Gateway}, p.Deploy), "the registry permission covered deploying")
 }
 
 func TestInitSystemPermissions_NonEmptyHandle(t *testing.T) {
