@@ -105,24 +105,21 @@ type AppliedVersion struct {
 // ApplyRequest is the body of an apply. Version is a version's hash, a prefix of at least seven of its
 // characters, or "latest", and defaults to "latest".
 //
-// Selection names, by key, the changes to apply. Every other change the diff reports is left alone,
-// and the gateway goes on leaving it alone in later applies until one selects it again. Without a
-// selection, the gateway's standing choices apply; an empty one leaves every change alone.
-//
-// Skip names, by key, changes to leave alone in this apply only: they are neither written nor
-// removed, and the gateway's standing choice for them is kept as it is. A skipped change stays owed to
-// the gateway, so the next diff offers it again, until an apply writes or removes it or a selection
-// leaves it alone for good. A caller that applies what another gateway runs skips what that gateway
-// left out, which is not this gateway's choice to keep. A selection decides the other changes.
+// Selection names, by key, the changes to send in this apply; the rest are neither written nor
+// removed, and stay on offer for the next apply. Without a selection every change the diff reports
+// is sent; an empty one sends nothing. Nothing about a selection is kept.
 type ApplyRequest struct {
 	Version   string    `json:"version,omitempty"`
 	DryRun    bool      `json:"dryRun,omitempty"`
 	Selection *[]string `json:"selection,omitempty"`
-	Skip      []string  `json:"skip,omitempty"`
 	// ConfirmRemovals lets the apply go ahead when it would remove more resources than the
 	// deployment's threshold; without it such an apply is refused, so a rollback that would empty
 	// a gateway is seen before it is sent.
 	ConfirmRemovals bool `json:"confirmRemovals,omitempty"`
+	// Origin is a label for where the version came from, recorded as given on each resource the
+	// apply writes to the gateway's master. A caller promoting another environment's configuration
+	// names that environment here.
+	Origin string `json:"origin,omitempty"`
 }
 
 // RevertRequest is the body of a revert.
@@ -145,17 +142,20 @@ const (
 	ChangeUnchanged ChangeKind = "unchanged"
 )
 
-// Change is one resource's difference. Key names the resource for a selection. Excluded marks a
-// change the gateway is set to leave alone, which an apply neither writes nor removes. Skipped marks a
-// change an earlier apply skipped, offered again until an apply takes it.
+// Change is one resource's difference between what the gateway's master records and the version.
+// Key names the resource for a selection. Failed marks a resource the gateway refused on its last
+// apply, which is offered again. Selected marks, on an apply's answer, a change the apply sent.
 type Change struct {
 	Key          string     `json:"key"`
 	ResourceType string     `json:"resourceType"`
 	ID           string     `json:"id,omitempty"`
 	Name         string     `json:"name,omitempty"`
 	Change       ChangeKind `json:"change"`
-	Excluded     bool       `json:"excluded,omitempty"`
-	Skipped      bool       `json:"skipped,omitempty"`
+	Failed       bool       `json:"failed,omitempty"`
+	Selected     bool       `json:"selected,omitempty"`
+	// ValueChanged marks a resource offered as updated because a value it refers to was set on the
+	// gateway again since the last apply, although its document did not change.
+	ValueChanged bool `json:"valueChanged,omitempty"`
 	// Lines is the resource's document diffed line by line, from what the gateway holds to what is
 	// applied. An unchanged resource has none.
 	Lines []LineOp `json:"lines,omitempty"`
@@ -168,7 +168,7 @@ type LineOp struct {
 	Text string `json:"text"`
 }
 
-// DiffSummary counts the changes by kind, leaving out those the gateway is set to leave alone.
+// DiffSummary counts the changes by kind.
 type DiffSummary struct {
 	Added     int `json:"added"`
 	Updated   int `json:"updated"`
@@ -176,13 +176,13 @@ type DiffSummary struct {
 	Unchanged int `json:"unchanged"`
 }
 
-// Diff is how a version differs from what a gateway holds.
+// Diff is how a version differs from what a gateway holds, as its master records it.
 type Diff struct {
-	// FromVersion and ToVersion are the hashes of what the gateway holds and of what is applied.
-	FromVersion string      `json:"fromVersion,omitempty"`
-	ToVersion   string      `json:"toVersion"`
-	Summary     DiffSummary `json:"summary"`
-	Changes     []Change    `json:"changes"`
+	// FromMaster is the hash of the gateway's master, and ToVersion the hash of the version.
+	FromMaster string      `json:"fromMaster,omitempty"`
+	ToVersion  string      `json:"toVersion"`
+	Summary    DiffSummary `json:"summary"`
+	Changes    []Change    `json:"changes"`
 	// MisplacedSecrets are the places the version refers to a secret from a field that holds no
 	// credential. A gateway refuses such a resource on import, so they are reported here first.
 	MisplacedSecrets []ValueReference `json:"misplacedSecrets,omitempty"`
@@ -198,6 +198,9 @@ type ApplyResult struct {
 	// Recorded reports whether the gateway's applied version moved, which every completed apply does
 	// and a dry run never does. Import says which resources, if any, the gateway refused.
 	Recorded bool `json:"recorded"`
+	// Master is the hash of the master the gateway holds after the apply, which records each resource
+	// as the gateway accepted or refused it. A dry run writes none.
+	Master string `json:"master,omitempty"`
 	// Missing lists the values the version refers to that the gateway does not hold. Only a dry run
 	// reports them: an apply that would leave one unset is refused instead.
 	Missing *MissingValues `json:"missing,omitempty"`

@@ -7,8 +7,10 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // autoApplyFixture is a version fixture whose only gateway is the default one, with auto apply set.
@@ -33,11 +35,22 @@ func TestAutoApplyAppliesTheLatestVersionToTheDefaultGateway(t *testing.T) {
 func TestAutoApplyAppliesAgainWhenTheConfigurationIsTheSame(t *testing.T) {
 	f := autoApplyFixture(t, true, true)
 	svc := f.svc.(*versionService)
+	f.captureReferring(t)
+	f.client.held = map[string]bool{"APP_CLIENT_ID": true, "APP_SECRET": true}
+	set := time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC)
+	f.client.heldSince = map[string]time.Time{"APP_CLIENT_ID": set, "APP_SECRET": set}
 
 	svc.applyToDefaultGateway(context.Background())
 	svc.applyToDefaultGateway(context.Background())
+	require.Len(t, f.client.sent, 1, "a version the gateway holds as it is was sent again")
 
-	assert.Len(t, f.client.sent, 2, "a changed secret leaves the version as it was, so it is sent again")
+	// A captured secret leaves the version as it was and sets the value on the gateway again, so the
+	// resource that refers to it is sent again to read it.
+	f.client.heldSince["APP_SECRET"] = set.Add(time.Minute)
+	svc.applyToDefaultGateway(context.Background())
+
+	require.Len(t, f.client.sent, 2, "a changed secret did not send the resource again")
+	assert.Contains(t, f.client.last().Content, "app-1")
 }
 
 func TestAutoApplyDoesNothingWhenItIsOff(t *testing.T) {

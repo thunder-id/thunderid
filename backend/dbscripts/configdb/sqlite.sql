@@ -558,6 +558,24 @@ CREATE TABLE "GATEWAY_EXCLUDED_RESOURCE" (
     PRIMARY KEY (DEPLOYMENT_ID, GATEWAY_ID, RESOURCE_KEY)
 );
 
+-- What each gateway holds, resource by resource: every resource deployed to it as the gateway last
+-- accepted it, in RESOURCES, and in MANIFEST one entry per resource saying how it got there and
+-- whether the gateway accepted it. Each apply writes a new row, numbered per gateway, and keeps the
+-- earlier ones as the gateway's history, within the same bound as the versions. HASH names the row
+-- by what it holds. A gateway declared in a file has no GATEWAY row, so there is no foreign key.
+CREATE TABLE "GATEWAY_MASTER" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    ID VARCHAR(36) PRIMARY KEY,
+    GATEWAY_ID VARCHAR(36) NOT NULL,
+    SEQ INTEGER NOT NULL,
+    HASH VARCHAR(64) NOT NULL,
+    RESOURCES TEXT NOT NULL,
+    MANIFEST TEXT NOT NULL,
+    CREATED_AT TEXT DEFAULT (datetime('now')),
+    CREATED_BY VARCHAR(255),
+    UNIQUE (DEPLOYMENT_ID, GATEWAY_ID, SEQ)
+);
+
 -- Table capturing the resource-sharing graph. Generic across resource types: a policy is one
 -- organization unit's standing decision about one resource, and there is exactly one per
 -- (resource, initiating OU) so that an edit has a single well-defined subject.
