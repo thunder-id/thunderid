@@ -158,6 +158,11 @@ removes something it did not apply.
 - **An apply that took too long to prepare sends nothing.** An apply that has not sent its import
   within the time its lease allows for one sends nothing and is answered with `503` (`GTW-5003`), so
   its import can never overlap one from an apply that took the lease over. Apply again.
+- **Each apply records the gateway's master.** `master` in the answer is the hash of the master the
+  gateway holds after the apply, which records every resource as the gateway accepted or refused it,
+  described in [Read What a Gateway Holds, Resource by Resource](#read-what-a-gateway-holds-resource-by-resource).
+  An `origin` given in the request, such as the name of the environment the version came from, is
+  recorded on each resource the apply writes.
 
 ### Missing Values
 
@@ -281,6 +286,83 @@ curl -k https://localhost:8095/gateways/{id}/applied-configuration \
 - A gateway nothing was applied to runs nothing: `resources` is empty and there is no `version`. The version
   shown is the one recorded as applied, whole, even when the gateway refused some of its resources on the
   last apply; the apply's own result names what it refused.
+
+## Read What a Gateway Holds, Resource by Resource
+
+A version is a deployment's whole configuration as designed. What a gateway runs is its **master**: one
+record per gateway of every resource deployed to it, as the gateway last accepted it, with how each one
+got there. Each apply writes a new master from the gateway's own account of the import, one resource at
+a time, and keeps the one before, so a gateway's history is its masters and a resource's history is its
+entry across them. A master is never sent to a gateway as a whole.
+
+`GET /gateways/{id}/master` returns the master the gateway holds now.
+
+```bash
+curl -k https://localhost:8095/gateways/{id}/master \
+  -H "Authorization: Bearer <token>"
+```
+
+```json
+{
+  "gatewayId": "...",
+  "number": 3,
+  "master": "4c5a...",
+  "createdAt": "2026-10-28T09:00:00Z",
+  "createdBy": {"id": "...", "name": "alice"},
+  "resources": "resource_type: application\nid: ...\n---\n...",
+  "summary": {"deployed": 12, "failed": 1, "removed": 1},
+  "entries": [
+    {
+      "key": "application/550e8400-e29b-41d4-a716-446655440000",
+      "resourceType": "application",
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "Orders",
+      "contentHash": "9f3c...",
+      "sourceVersion": "a37b...",
+      "origin": "dev",
+      "state": "deployed",
+      "at": "2026-10-28T09:00:00Z",
+      "by": {"id": "...", "name": "alice"}
+    },
+    {
+      "key": "flow/...",
+      "resourceType": "flow",
+      "id": "...",
+      "state": "failed",
+      "sourceVersion": "a37b...",
+      "failure": {"code": "FLW-1001", "message": "..."},
+      "at": "2026-10-28T09:00:00Z"
+    }
+  ]
+}
+```
+
+- `resources` holds every resource the gateway accepted, one document each, in the same form a version
+  holds them, so a master can be read as a version can. `entries` is the manifest, one entry per
+  resource key, sorted by key.
+- `state` is `deployed` for a resource the gateway accepted; `failed` for one the gateway refused on its
+  last apply, with `failure` as the gateway answered, while `contentHash` names the document the gateway
+  last accepted, if it ever did; `removed` for one removed from the gateway, which has no document and
+  stays listed until something is deployed under its key again.
+- `sourceVersion` is the version the resource was last applied from, and `origin` the label that apply
+  gave. A resource sent again as the gateway already holds it keeps both, so an apply of a whole version
+  does not rewrite where every resource came from.
+- A resource the gateway's answer does not name is taken as written when the gateway refused nothing it
+  did not name, and recorded `failed` otherwise, since it is not known.
+- `master` names the master by what it holds: each resource's content, state, source and origin. Two
+  gateways running the same resources from the same places hold the same master.
+- A gateway nothing was applied to holds the empty master: `number` is 0 and `entries` is empty. A
+  gateway that applied a version before masters were recorded is given its first master from that
+  version, less the resources it was set to leave alone, when its master is first read.
+
+`GET /gateways/{id}/master/history` lists the gateway's masters, newest first, each with its `summary`
+but without `entries` or `resources`. As many masters are kept per gateway as versions are kept per
+deployment (`gateway.max_versions`).
+
+`GET /gateways/{id}/master/resources/{type}/{id}` returns one resource's entry across the gateway's
+masters, newest first, under `history`, each with the `master` it is from and its `number`. The
+resource is named by its key as the diff names it, such as `application/550e8400-...`; a resource no
+master records is answered with `404` (`GTW-1031`).
 
 ## Manage a Gateway's Values
 

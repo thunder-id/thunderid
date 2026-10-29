@@ -56,6 +56,7 @@ type diffResult struct {
 type applyResult struct {
 	DryRun   bool            `json:"dryRun"`
 	Recorded bool            `json:"recorded"`
+	Master   string          `json:"master"`
 	Diff     diffResult      `json:"diff"`
 	Import   json.RawMessage `json:"import"`
 }

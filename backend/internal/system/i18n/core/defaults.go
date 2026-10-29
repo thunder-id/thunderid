@@ -953,6 +953,7 @@ var defaultMessages = map[string]string{
 	"error.gatewayservice.private_base_url_description": "This deployment reaches gateways on public addresses only; set gateway.allow_private_addresses to register one on a loopback, link-local or private address",
 	"error.gatewayservice.removals_need_confirmation": "This apply would remove many resources from the gateway",
 	"error.gatewayservice.removals_need_confirmation.description": "Review the removals with a dry run, then apply again with confirmRemovals set to go ahead.",
+	"error.gatewayservice.resource_not_deployed": "No apply to this gateway has recorded the resource",
 	"error.gatewayservice.resource_not_readable": "The version's document cannot be read as a resource",
 	"error.gatewayservice.resource_not_readable.description": "A document captured with template placeholders, as a deployment that is not a control plane captures it, is not YAML until its values are filled in.",
 	"error.gatewayservice.resource_not_viewable": "This resource type cannot be shown from a version",
