@@ -318,7 +318,8 @@ func authenticateEntityByID(ctx *providers.NodeContext, authnProvider providers.
 
 // resolveAndSetMappedAuthorizationTargets resolves the IDP's AuthorizationRuleMapping (explicit value
 // rules) and AuthorizationDirectMapping (direct name-based lookup) against federatedAttributes,
-// unions their targets, and stores the result as runtime data for later executors. Logs and continues
+// unions their targets, and stores the result, with the connection's sync modes, as runtime data for
+// later executors. Logs and continues
 // without the direct targets when they can't be resolved, rather than failing the federated login over
 // what is best-effort enrichment of its runtime state.
 func resolveAndSetMappedAuthorizationTargets(
@@ -335,6 +336,8 @@ func resolveAndSetMappedAuthorizationTargets(
 		targets = append(targets, directTargets...)
 	}
 	setMappedAuthorizationTargets(execResp, targets)
+	execResp.RuntimeData[common.RuntimeKeyAttributesSyncMode] = string(idp.GetAttributesSyncMode(idpDTO))
+	execResp.RuntimeData[common.RuntimeKeyGroupsAndRolesSyncMode] = string(idp.GetGroupsAndRolesSyncMode(idpDTO))
 }
 
 // setMappedAuthorizationTargets splits resolved authorization mapping targets (rule-based or direct)

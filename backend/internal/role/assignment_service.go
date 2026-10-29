@@ -46,6 +46,8 @@ type RoleAssignmentServiceInterface interface {
 	// named in ouID, or in the role's owner when it is empty, and what that revokes.
 	ValidateRemoveAssignment(ctx context.Context, id, ouID, assigneeID string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
+	AddAssigneeToExistingRoles(ctx context.Context, assignment RoleAssignment,
+		roleIDs []string) *tidcommon.ServiceError
 	// AddAssigneesToRoles assigns each assignee to the roles in the organization unit it names, or in
 	// the one owning it when it names none. All are added or none is.
 	AddAssigneesToRoles(ctx context.Context, assignments []RoleAssignment,
@@ -515,6 +517,50 @@ func (as *roleAssignmentService) addInEachOU(
 		return &tidcommon.InternalServerError
 	}
 	return nil
+}
+
+// AddAssigneeToExistingRoles assigns assignment the roles in roleIDs that still exist and can be assigned in
+// its organization unit, skipping the rest. A connection's mapping targets fixed roles, which needn't reach
+// every unit it signs users into. Nothing is written when roles are declarative-only, since the declarative
+// store holds no writable assignments.
+func (as *roleAssignmentService) AddAssigneeToExistingRoles(
+	ctx context.Context, assignment RoleAssignment, roleIDs []string,
+) *tidcommon.ServiceError {
+	if len(roleIDs) == 0 || isDeclarativeModeEnabled() {
+		return nil
+	}
+	ouIDs, _, svcErr := as.assignmentsByOU(ctx, []RoleAssignment{assignment})
+	if svcErr != nil {
+		return svcErr
+	}
+	ouID := ouIDs[0]
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, assignmentLoggerComponentName))
+	assignable := make([]string, 0, len(roleIDs))
+	for _, roleID := range roleIDs {
+		role, err := as.roleStore.GetRole(ctx, roleID)
+		if errors.Is(err, ErrRoleNotFound) {
+			continue
+		}
+		if err != nil {
+			logger.Error(ctx, "Failed to retrieve role", log.String("id", roleID), log.Error(err))
+			return &tidcommon.InternalServerError
+		}
+		if role.OUID != ouID {
+			if svcErr := as.requireAssignableInOU(ctx, roleID, ouID, true); svcErr != nil {
+				if svcErr.Code != ErrorRoleNotSharedToOU.Code && svcErr.Code != ErrorSharedRoleFieldNotEditable.Code {
+					return svcErr
+				}
+				logger.Debug(ctx, "Skipping role not assignable in the assignee's organization unit",
+					log.String("roleID", roleID), log.String("ouID", ouID))
+				continue
+			}
+		}
+		assignable = append(assignable, roleID)
+	}
+	if len(assignable) == 0 {
+		return nil
+	}
+	return as.AddAssigneesToRoles(ctx, []RoleAssignment{assignment}, assignable)
 }
 
 // prepareAssignments validates and normalizes assignments before a mutation, placing each in ouID,
