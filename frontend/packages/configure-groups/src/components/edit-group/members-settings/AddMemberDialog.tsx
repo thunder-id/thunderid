@@ -45,6 +45,8 @@ interface AddMemberDialogProps {
   isSubmitting?: boolean;
   /** Group ID used to hide members that are already assigned. */
   groupId?: string;
+  /** The group's organization unit. When set, only the users, apps, agents and groups available in it are listed. */
+  ouId?: string;
 }
 
 /**
@@ -59,6 +61,7 @@ export default function AddMemberDialog({
   onErrorDismiss = undefined,
   isSubmitting = false,
   groupId = undefined,
+  ouId = undefined,
 }: AddMemberDialogProps): JSX.Element {
   const {t} = useTranslation();
   const {data: userTypesData} = useGetUserTypes();
@@ -92,12 +95,19 @@ export default function AddMemberDialog({
     page: 0,
   });
 
+  const ouFilter = ouId ? `ouId eq "${ouId}"` : undefined;
+
   const {
     data: users = [],
     isLoading: usersLoading,
     error: usersError,
     refetch: refetchUsers,
-  } = useGetAllCandidates<User>({path: '/users', itemsKey: 'users', enabled: activeTab === 0});
+  } = useGetAllCandidates<User>({
+    path: '/users',
+    itemsKey: 'users',
+    enabled: activeTab === 0,
+    filter: ouFilter,
+  });
   const {
     data: applications = [],
     isLoading: appsLoading,
@@ -107,19 +117,30 @@ export default function AddMemberDialog({
     path: '/applications',
     itemsKey: 'applications',
     enabled: activeTab === 1,
+    filter: ouFilter,
   });
   const {
     data: agents = [],
     isLoading: agentsLoading,
     error: agentsError,
     refetch: refetchAgents,
-  } = useGetAllCandidates<BasicAgent>({path: '/agents', itemsKey: 'agents', enabled: activeTab === 2});
+  } = useGetAllCandidates<BasicAgent>({
+    path: '/agents',
+    itemsKey: 'agents',
+    enabled: activeTab === 2,
+    filter: ouFilter,
+  });
   const {
     data: allGroups = [],
     isLoading: groupsLoading,
     error: groupsError,
     refetch: refetchGroups,
-  } = useGetAllCandidates<GroupBasic>({path: '/groups', itemsKey: 'groups', enabled: activeTab === 3});
+  } = useGetAllCandidates<GroupBasic>({
+    path: '/groups',
+    itemsKey: 'groups',
+    enabled: activeTab === 3,
+    filter: ouFilter,
+  });
   const {
     data: membersData,
     isLoading: membersLoading,

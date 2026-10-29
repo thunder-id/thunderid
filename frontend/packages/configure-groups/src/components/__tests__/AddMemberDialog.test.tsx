@@ -412,14 +412,38 @@ describe('AddMemberDialog', () => {
   it('should load all candidate collections with only the active tab enabled', () => {
     renderWithProviders(<AddMemberDialog {...defaultProps} />);
 
-    expect(mockUseGetAllCandidates).toHaveBeenCalledWith({path: '/users', itemsKey: 'users', enabled: true});
+    expect(mockUseGetAllCandidates).toHaveBeenCalledWith({
+      path: '/users',
+      itemsKey: 'users',
+      enabled: true,
+      filter: undefined,
+    });
     expect(mockUseGetAllCandidates).toHaveBeenCalledWith({
       path: '/applications',
       itemsKey: 'applications',
       enabled: false,
+      filter: undefined,
     });
-    expect(mockUseGetAllCandidates).toHaveBeenCalledWith({path: '/agents', itemsKey: 'agents', enabled: false});
-    expect(mockUseGetAllCandidates).toHaveBeenCalledWith({path: '/groups', itemsKey: 'groups', enabled: false});
+    expect(mockUseGetAllCandidates).toHaveBeenCalledWith({
+      path: '/agents',
+      itemsKey: 'agents',
+      enabled: false,
+      filter: undefined,
+    });
+    expect(mockUseGetAllCandidates).toHaveBeenCalledWith({
+      path: '/groups',
+      itemsKey: 'groups',
+      enabled: false,
+      filter: undefined,
+    });
+  });
+
+  it("should list only the candidates available in the group's organization unit when ouId is given", () => {
+    renderWithProviders(<AddMemberDialog {...defaultProps} ouId="ou-1" />);
+
+    ['/users', '/applications', '/agents', '/groups'].forEach((path) => {
+      expect(mockUseGetAllCandidates).toHaveBeenCalledWith(expect.objectContaining({path, filter: 'ouId eq "ou-1"'}));
+    });
   });
 
   it('should show error alert when users fetch fails', () => {

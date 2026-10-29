@@ -69,4 +69,24 @@ describe('useGetAllCandidates', () => {
       }),
     );
   });
+
+  it('sends the filter on every page and keys the query by it', async () => {
+    mockHttpRequest.mockResolvedValue({
+      data: {totalResults: 1, startIndex: 1, count: 1, users: [{id: 'ou-user'}]},
+    });
+
+    const {result} = renderHook(() =>
+      useGetAllCandidates<{id: string}>({path: '/users', itemsKey: 'users', enabled: true, filter: 'ouId eq "ou-1"'}),
+    );
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual([{id: 'ou-user'}]);
+    });
+
+    expect(mockHttpRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'https://localhost:8090/users?limit=100&offset=0&include=display&filter=ouId+eq+%22ou-1%22',
+      }),
+    );
+  });
 });

@@ -2058,6 +2058,8 @@ const translations = {
     'errors.GRP-1007': 'One or more selected members no longer exist. Refresh and try again.',
     'errors.GRP-1015': 'This group is managed declaratively and cannot be edited or deleted.',
     'errors.GRP-1016': 'New groups cannot be created while the server is running in declarative-only mode.',
+    'errors.GRP-1019':
+      "One or more selected members are not owned by or shared with this group's organization unit. Refresh and try again.",
   },
 
   // ============================================================================
