@@ -573,6 +573,46 @@ func (_c *RoleAssignmentServiceInterfaceMock_RemoveAssignments_Call) RunAndRetur
 	return _c
 }
 
+// SetSystemFlowExecutor provides a mock function for the type RoleAssignmentServiceInterfaceMock
+func (_mock *RoleAssignmentServiceInterfaceMock) SetSystemFlowExecutor(execute func(ctx context.Context, handle string, inputs map[string]string) (func(context.Context) *common.ServiceError, *common.ServiceError)) {
+	_mock.Called(execute)
+	return
+}
+
+// RoleAssignmentServiceInterfaceMock_SetSystemFlowExecutor_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetSystemFlowExecutor'
+type RoleAssignmentServiceInterfaceMock_SetSystemFlowExecutor_Call struct {
+	*mock.Call
+}
+
+// SetSystemFlowExecutor is a helper method to define mock.On call
+//   - execute func(ctx context.Context, handle string, inputs map[string]string) (func(context.Context) *common.ServiceError, *common.ServiceError)
+func (_e *RoleAssignmentServiceInterfaceMock_Expecter) SetSystemFlowExecutor(execute any) *RoleAssignmentServiceInterfaceMock_SetSystemFlowExecutor_Call {
+	return &RoleAssignmentServiceInterfaceMock_SetSystemFlowExecutor_Call{Call: _e.mock.On("SetSystemFlowExecutor", execute)}
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_SetSystemFlowExecutor_Call) Run(run func(execute func(ctx context.Context, handle string, inputs map[string]string) (func(context.Context) *common.ServiceError, *common.ServiceError))) *RoleAssignmentServiceInterfaceMock_SetSystemFlowExecutor_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 func(ctx context.Context, handle string, inputs map[string]string) (func(context.Context) *common.ServiceError, *common.ServiceError)
+		if args[0] != nil {
+			arg0 = args[0].(func(ctx context.Context, handle string, inputs map[string]string) (func(context.Context) *common.ServiceError, *common.ServiceError))
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_SetSystemFlowExecutor_Call) Return() *RoleAssignmentServiceInterfaceMock_SetSystemFlowExecutor_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_SetSystemFlowExecutor_Call) RunAndReturn(run func(execute func(ctx context.Context, handle string, inputs map[string]string) (func(context.Context) *common.ServiceError, *common.ServiceError))) *RoleAssignmentServiceInterfaceMock_SetSystemFlowExecutor_Call {
+	_c.Run(run)
+	return _c
+}
+
 // ValidateRemoveAssignment provides a mock function for the type RoleAssignmentServiceInterfaceMock
 func (_mock *RoleAssignmentServiceInterfaceMock) ValidateRemoveAssignment(ctx context.Context, id string, assigneeID string) (*revocation.AccessRevocationTarget, *common.ServiceError) {
 	ret := _mock.Called(ctx, id, assigneeID)

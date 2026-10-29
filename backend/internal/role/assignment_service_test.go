@@ -40,6 +40,7 @@ type RoleAssignmentServiceTestSuite struct {
 	mockEntityTypeService *entitytypemock.EntityTypeServiceInterfaceMock
 	transactioner         *fakeTransactioner
 	service               RoleAssignmentServiceInterface
+	runs                  *systemFlowRuns
 }
 
 func TestRoleAssignmentServiceTestSuite(t *testing.T) {
@@ -61,6 +62,8 @@ func (suite *RoleAssignmentServiceTestSuite) SetupTest() {
 		suite.transactioner,
 		newAllowAllRoleAuthz(suite.T()),
 	)
+	suite.runs = &systemFlowRuns{}
+	suite.service.SetSystemFlowExecutor(suite.runs.execute)
 }
 
 // GetRoleAssignments Tests
@@ -620,6 +623,9 @@ func (suite *RoleAssignmentServiceTestSuite) TestRemoveAssignments_StoreError() 
 	}, nil)
 	suite.mockStore.On("IsRoleExist", mock.Anything,
 		"role1").Return(true, nil)
+	suite.mockStore.On("GetRoleAssignmentsCount", mock.Anything, "role1").Return(1, nil)
+	suite.mockStore.On("GetRoleAssignments", mock.Anything, "role1", serverconst.MaxPageSize, 0).
+		Return(normalized, nil)
 	suite.mockStore.On("RemoveAssignments", mock.Anything,
 		"role1", normalized).Return(errors.New("store error"))
 
@@ -643,6 +649,9 @@ func (suite *RoleAssignmentServiceTestSuite) TestRemoveAssignments_Success() {
 	}, nil)
 	suite.mockStore.On("IsRoleExist", mock.Anything,
 		"role1").Return(true, nil)
+	suite.mockStore.On("GetRoleAssignmentsCount", mock.Anything, "role1").Return(1, nil)
+	suite.mockStore.On("GetRoleAssignments", mock.Anything, "role1", serverconst.MaxPageSize, 0).
+		Return(normalized, nil)
 	suite.mockStore.On("RemoveAssignments", mock.Anything,
 		"role1", normalized).Return(nil)
 

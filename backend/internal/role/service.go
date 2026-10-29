@@ -6,6 +6,7 @@ package role
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -67,6 +68,9 @@ type RoleServiceInterface interface {
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	CascadeDeleteDependencies(ctx context.Context, resourceType, id string) (int, error)
+	// SetSystemFlowExecutor injects what runs the system flows a change needs before it is written.
+	SetSystemFlowExecutor(execute func(ctx context.Context, handle string, inputs map[string]string) (
+		func(context.Context) *tidcommon.ServiceError, *tidcommon.ServiceError))
 }
 
 // roleService is the default implementation of the RoleServiceInterface.
@@ -78,7 +82,24 @@ type roleService struct {
 	resourceService resourcepkg.ResourceServiceInterface
 	transactioner   providers.Transactioner
 	authzService    sysauthz.SystemAuthorizationServiceInterface
+	// executeSystemFlow runs a system flow to completion with the given inputs, and returns what finishes
+	// its revocation once the change is written.
+	executeSystemFlow func(ctx context.Context, handle string, inputs map[string]string) (
+		func(context.Context) *tidcommon.ServiceError, *tidcommon.ServiceError)
 }
+
+// The system flow a role deletion runs, and the input naming the role it acts on.
+const (
+	systemFlowRoleDelete = "system-role-delete"
+	systemFlowInputRole  = "targetRoleId"
+)
+
+// The system flow a change that drops a role's permissions runs, and the input carrying the role's new
+// permission set.
+const (
+	systemFlowRolePermissionRemoval = "system-role-permission-removal"
+	systemFlowInputPermissions      = "targetPermissions"
+)
 
 // newRoleService creates a new instance of RoleService with injected dependencies.
 func newRoleService(
@@ -400,6 +421,11 @@ func (rs *roleService) UpdateRoleWithPermissions(
 		return nil, &ErrorRoleNameConflict
 	}
 
+	finishRevocation, svcErr := rs.revokeDroppedPermissions(ctx, id, role.Permissions, logger)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
 	err = rs.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		return rs.roleStore.UpdateRole(txCtx, id, role)
 	})
@@ -407,6 +433,11 @@ func (rs *roleService) UpdateRoleWithPermissions(
 	if err != nil {
 		logger.Error(ctx, "Failed to update role", log.Error(err))
 		return nil, &tidcommon.InternalServerError
+	}
+	if finishRevocation != nil {
+		if svcErr := finishRevocation(ctx); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 
 	logger.Debug(ctx, "Successfully updated role", log.String("id", id), log.String("name", role.Name))
@@ -443,6 +474,13 @@ func (rs *roleService) DeleteRole(ctx context.Context, id string) *tidcommon.Ser
 		return svcErr
 	}
 
+	// What the role grants is revoked before anything is removed, whichever entry point asked: the
+	// tokens its assignees hold with the role's permissions. A refusal leaves the role as it was.
+	finishRevocation, svcErr := rs.runSystemFlow(ctx, systemFlowRoleDelete, id, logger)
+	if svcErr != nil {
+		return svcErr
+	}
+
 	// Delete all assignments for the role before deleting the role itself (cascade delete).
 	// The ROLE_ASSIGNMENT table does not have a FK constraint on ROLE_ID to allow assignments
 	// for roles that live in the file-based store, so cascade delete is handled here in code.
@@ -456,9 +494,65 @@ func (rs *roleService) DeleteRole(ctx context.Context, id string) *tidcommon.Ser
 		logger.Error(ctx, "Failed to delete role", log.String("id", id), log.Error(err))
 		return &tidcommon.InternalServerError
 	}
+	if svcErr := finishRevocation(ctx); svcErr != nil {
+		return svcErr
+	}
 
 	logger.Debug(ctx, "Successfully deleted role", log.String("id", id))
 	return nil
+}
+
+// SetSystemFlowExecutor injects what runs the system flows a change needs before it is written. Called
+// by servicemanager once the flow engine exists, which is after this service.
+func (rs *roleService) SetSystemFlowExecutor(execute func(ctx context.Context, handle string,
+	inputs map[string]string) (func(context.Context) *tidcommon.ServiceError, *tidcommon.ServiceError)) {
+	rs.executeSystemFlow = execute
+}
+
+// runSystemFlow runs a system flow for the role before a change to it is written, and returns what
+// finishes its revocation once the change is written. Without an executor the change is refused, so a
+// server that forgot the wiring fails closed.
+func (rs *roleService) runSystemFlow(ctx context.Context, handle, roleID string,
+	logger *log.Logger) (func(context.Context) *tidcommon.ServiceError, *tidcommon.ServiceError) {
+	return rs.runSystemFlowWith(ctx, handle, map[string]string{systemFlowInputRole: roleID}, logger)
+}
+
+// runSystemFlowWith is runSystemFlow with the flow's inputs given in full.
+func (rs *roleService) runSystemFlowWith(ctx context.Context, handle string, inputs map[string]string,
+	logger *log.Logger) (func(context.Context) *tidcommon.ServiceError, *tidcommon.ServiceError) {
+	if rs.executeSystemFlow == nil {
+		logger.Error(ctx, "System flow executor not set; refusing the change", log.String("handle", handle))
+		return nil, &tidcommon.InternalServerError
+	}
+	return rs.executeSystemFlow(ctx, handle, inputs)
+}
+
+// revokeDroppedPermissions revokes what the permissions an update drops granted before the update is
+// written, whichever entry point asked: the tokens the role's holders carry with them. An update that
+// drops nothing, as one carrying the role's current permissions does, revokes nothing. A refusal leaves
+// the role as it was. What it returns, if anything, finishes the revocation once the update is written.
+func (rs *roleService) revokeDroppedPermissions(ctx context.Context, id string,
+	permissions []ResourcePermissions, logger *log.Logger) (
+	func(context.Context) *tidcommon.ServiceError, *tidcommon.ServiceError) {
+	current, err := rs.roleStore.GetRole(ctx, id)
+	if err != nil {
+		logger.Error(ctx, "Failed to retrieve role", log.String("id", id), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	if len(droppedPermissions(current.Permissions, permissions)) == 0 {
+		return nil, nil
+	}
+	if permissions == nil {
+		permissions = []ResourcePermissions{}
+	}
+	encoded, err := json.Marshal(permissions)
+	if err != nil {
+		logger.Error(ctx, "Failed to encode role permissions", log.String("id", id), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	return rs.runSystemFlowWith(ctx, systemFlowRolePermissionRemoval, map[string]string{
+		systemFlowInputRole: id, systemFlowInputPermissions: string(encoded),
+	}, logger)
 }
 
 // ValidateDeleteRole reports whether the role may be deleted and returns what the deletion revokes.
