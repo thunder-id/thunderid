@@ -43,7 +43,7 @@ func newPreDeleteExecutor(factory core.FlowFactoryInterface,
 		[]providers.Input{
 			{Identifier: revocationInputSubject, Type: providers.InputTypeText, Required: true},
 		}, nil, &providers.ExecutorMeta{
-			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeAdministration},
+			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeAdministration, providers.FlowTypeSystem},
 			DefaultMode:        string(revocation.ModeAll),
 			SupportedModes:     []string{string(revocation.ModeAll)},
 		})
