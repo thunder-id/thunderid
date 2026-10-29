@@ -130,31 +130,6 @@ func (s *UtilsTestSuite) TestSchemaTypeForInputType() {
 	}
 }
 
-func (s *UtilsTestSuite) TestConvertToSchemaType() {
-	tests := []struct {
-		name          string
-		value         string
-		schemaType    string
-		expectedValue interface{}
-	}{
-		{"Checked box becomes true", "true", entitytypemodel.TypeBoolean, true},
-		{"Unchecked box becomes false", "false", entitytypemodel.TypeBoolean, false},
-		{"Boolean accepts alternate spellings", "TRUE", entitytypemodel.TypeBoolean, true},
-		{"Unparseable boolean is left for schema validation to reject", "yes", entitytypemodel.TypeBoolean, "yes"},
-		{"Number becomes a float", "42", entitytypemodel.TypeNumber, float64(42)},
-		{"Fractional number becomes a float", "1.5", entitytypemodel.TypeNumber, 1.5},
-		{"Unparseable number is left for schema validation to reject", "many", entitytypemodel.TypeNumber, "many"},
-		{"String attribute is untouched", "true", entitytypemodel.TypeString, "true"},
-		{"Unknown schema type is untouched", "true", "", "true"},
-	}
-
-	for _, tt := range tests {
-		s.Run(tt.name, func() {
-			s.Equal(tt.expectedValue, convertToSchemaType(tt.value, tt.schemaType))
-		})
-	}
-}
-
 // defaultCodeOnlyInputs is the standard default input set for OAuth/OIDC executors that only require an
 // authorization code.
 var defaultCodeOnlyInputs = []providers.Input{
@@ -1024,8 +999,8 @@ func (s *UtilsTestSuite) TestStatedDecision_StatesOnlyANamedHold() {
 // The connection's sync modes are recorded with the mapped targets, defaulting when unset.
 func (s *UtilsTestSuite) TestResolveAndSetMappedAuthorizationTargets_RecordsSyncModes() {
 	idpService := idpmock.NewIDPServiceInterfaceMock(s.T())
-	idpService.On("GetDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, (*tidcommon.ServiceError)(nil))
+	idpService.On("ResolveDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, nil, (*tidcommon.ServiceError)(nil))
 
 	execResp := &providers.ExecutorResponse{RuntimeData: map[string]string{}}
 	resolveAndSetMappedAuthorizationTargets(context.Background(), execResp, idpService,

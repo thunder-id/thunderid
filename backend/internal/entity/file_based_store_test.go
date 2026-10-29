@@ -110,6 +110,7 @@ func (s *FileBasedStoreTestSuite) TestUnsupportedMutations() {
 
 	s.Error(s.store.UpdateEntity(s.ctx, &e))
 	s.Error(s.store.UpdateSystemAttributes(s.ctx, "e4", nil))
+	s.Error(s.store.UpdateLinkSyncedAt(s.ctx, "e4", nil))
 	s.Error(s.store.UpdateCredentials(s.ctx, "e4", nil))
 	s.Error(s.store.UpdateSystemCredentials(s.ctx, "e4", nil))
 	s.Error(s.store.DeleteEntity(s.ctx, "e4"))

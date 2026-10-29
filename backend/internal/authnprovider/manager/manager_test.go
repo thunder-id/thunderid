@@ -749,6 +749,67 @@ func (s *ManagerTestSuite) TestGetUserAttributes_CacheMiss() {
 	s.Nil(st.AttributeToken)
 }
 
+// --- RefreshUserAttributes tests ---
+
+func (s *ManagerTestSuite) TestRefreshUserAttributes_ReloadsResolvedAttributes() {
+	authUser := authenticatedAuthUserWithResolved(&providers.EntityReference{EntityID: "user-1"},
+		&providers.AttributesResponse{Attributes: map[string]*providers.AttributeResponse{
+			"firstName": {Value: "Old"},
+		}})
+	fetchedAttrs := &providers.AttributesResponse{Attributes: map[string]*providers.AttributeResponse{
+		"firstName": {Value: "Synced"},
+	}}
+	s.mockProvider.On("GetAttributes", context.Background(), map[string]interface{}{"userID": "user-1"},
+		(*providers.RequestedAttributes)(nil), (*providers.GetAttributesMetadata)(nil)).
+		Return(fetchedAttrs, (*tidcommon.ServiceError)(nil)).Once()
+
+	retAuthUser, svcErr := s.mgr.RefreshUserAttributes(context.Background(), authUser)
+
+	s.Nil(svcErr)
+	st, _ := retAuthUser.StateFor(defaultProviderName)
+	s.Equal(fetchedAttrs, st.Attributes)
+	s.Equal("user-1", st.EntityReference.EntityID)
+}
+
+func (s *ManagerTestSuite) TestRefreshUserAttributes_SkipsStatesWithoutResolvedAttributes() {
+	tests := []struct {
+		name     string
+		authUser providers.AuthUser
+	}{
+		{"NoState", providers.AuthUser{}},
+		{"PendingAttributeToken", authUserWithDefaultState(providers.AuthState{
+			EntityReference: &providers.EntityReference{EntityID: "user-1"},
+			AttributeToken:  "tok",
+		})},
+		{"NoEntityReference", authenticatedAuthUserWithResolved(nil, &providers.AttributesResponse{})},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			retAuthUser, svcErr := s.mgr.RefreshUserAttributes(context.Background(), tc.authUser)
+
+			s.Nil(svcErr)
+			s.Equal(tc.authUser, retAuthUser)
+		})
+	}
+	s.mockProvider.AssertNotCalled(s.T(), "GetAttributes")
+}
+
+func (s *ManagerTestSuite) TestRefreshUserAttributes_ProviderErrorIsAServerError() {
+	authUser := authenticatedAuthUserWithResolved(&providers.EntityReference{EntityID: "user-1"},
+		&providers.AttributesResponse{})
+	s.mockProvider.On("GetAttributes", context.Background(), map[string]interface{}{"userID": "user-1"},
+		(*providers.RequestedAttributes)(nil), (*providers.GetAttributesMetadata)(nil)).
+		Return((*providers.AttributesResponse)(nil), &tidcommon.ServiceError{
+			Type:             tidcommon.ClientErrorType,
+			ErrorDescription: tidcommon.I18nMessage{DefaultValue: "user not found"},
+		}).Once()
+
+	_, svcErr := s.mgr.RefreshUserAttributes(context.Background(), authUser)
+
+	s.NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
 func (s *ManagerTestSuite) TestGetUserAvailableAttributes_WithData() {
 	expectedAttrs := &providers.AttributesResponse{
 		Attributes: map[string]*providers.AttributeResponse{

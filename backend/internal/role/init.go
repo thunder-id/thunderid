@@ -76,6 +76,7 @@ func Initialize(
 		return nil, nil, nil, nil, fmt.Errorf("failed to reconcile mandated role assignments: %w", err)
 	}
 
+	entityService.SetRoleMembershipProvider(assignmentService)
 	roleHandler := newRoleHandler(roleService, assignmentService)
 	registerRoutes(mux, roleHandler)
 	exporter := newRoleExporter(roleService, assignmentService, sharingService)

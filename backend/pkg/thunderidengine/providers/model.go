@@ -783,6 +783,8 @@ type User struct {
 type LinkedAccount struct {
 	IdpID string
 	Sub   string
+	// Synced stamps the link's last sync time when the entity is created with it.
+	Synced bool
 }
 
 // Agent is the service-level model for agent create operations.
@@ -941,6 +943,27 @@ const (
 	// removals included. Valid for groups and roles only.
 	SyncModeOverrideAll SyncMode = "override_all"
 )
+
+// FederatedEntitySync is what a federated sign-in writes to a returning entity. A nil field leaves
+// that part unchanged.
+type FederatedEntitySync struct {
+	// Link is the connection and subject the sign-in asserted. Nothing is written unless the entity
+	// holds this link.
+	Link LinkedAccount
+	// AttributesByType holds the provider's values for the attributes to override, keyed by user type
+	// and then by local attribute. Only the entry for the entity's own type is written.
+	AttributesByType map[string]map[string]interface{}
+	Groups           *MembershipSync
+	Roles            *MembershipSync
+}
+
+// MembershipSync replaces an entity's direct groups or roles.
+type MembershipSync struct {
+	// IDs are the direct memberships after the sync.
+	IDs []string
+	// RetainIDs are kept when the entity already has them, even when not in IDs.
+	RetainIDs []string
+}
 
 // SyncConfiguration holds a connection's sync modes. An unset mode takes its default:
 // SyncModeOverrideReceived for attributes and SyncModeNoSync for groups and roles.

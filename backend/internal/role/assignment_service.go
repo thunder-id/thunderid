@@ -59,6 +59,8 @@ type RoleAssignmentServiceInterface interface {
 		desired map[string][]string) *tidcommon.ServiceError
 	// RemoveMandatedAssignments removes every assignment a sharing policy mandates.
 	RemoveMandatedAssignments(ctx context.Context, policyID string) *tidcommon.ServiceError
+	ReplaceEntityRoles(ctx context.Context, entityID string, category providers.EntityCategory,
+		roleIDs, keepIDs []string) *tidcommon.ServiceError
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	CascadeDeleteDependencies(ctx context.Context, resourceType, id string) (int, error)
@@ -561,6 +563,100 @@ func (as *roleAssignmentService) AddAssigneeToExistingRoles(
 		return nil
 	}
 	return as.AddAssigneesToRoles(ctx, []RoleAssignment{assignment}, assignable)
+}
+
+// ReplaceEntityRoles sets the entity's direct role assignments, in the organization unit that owns it, to
+// exactly roleIDs in one transaction. Roles that no longer exist, or that can't be assigned in that unit, are
+// skipped, and an assignment in keepIDs is never removed. Nothing is written when roles are declarative-only,
+// since the declarative store holds no writable assignments.
+func (as *roleAssignmentService) ReplaceEntityRoles(
+	ctx context.Context, entityID string, category providers.EntityCategory, roleIDs, keepIDs []string,
+) *tidcommon.ServiceError {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, assignmentLoggerComponentName))
+	if isDeclarativeModeEnabled() {
+		logger.Debug(ctx, "Skipping entity role replace in declarative-only mode")
+		return nil
+	}
+
+	assignee := RoleAssignment{ID: entityID, Type: AssigneeType(category)}
+	if !assignee.Type.IsEntityType() {
+		return &ErrorInvalidAssigneeType
+	}
+	ouIDs, _, svcErr := as.assignmentsByOU(ctx, []RoleAssignment{assignee})
+	if svcErr != nil {
+		return svcErr
+	}
+	ouID := ouIDs[0]
+	stored := normalizeAssignments([]RoleAssignment{assignee})[0]
+	stored.OUID = ouID
+	roleIDs = utils.UniqueStrings(roleIDs)
+
+	var capturedSvcErr *tidcommon.ServiceError
+	err := as.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		current, err := as.roleStore.GetEntityRoleIDs(txCtx, entityID, nil, ouID)
+		if err != nil {
+			return err
+		}
+		var toAdd, toRemove []string
+		for _, rid := range roleIDs {
+			if !slices.Contains(current, rid) {
+				toAdd = append(toAdd, rid)
+			}
+		}
+		for _, rid := range current {
+			if !slices.Contains(roleIDs, rid) && !slices.Contains(keepIDs, rid) {
+				toRemove = append(toRemove, rid)
+			}
+		}
+		if len(toAdd) == 0 && len(toRemove) == 0 {
+			return nil
+		}
+
+		roles, err := as.roleStore.GetRolesByIDs(txCtx, append(slices.Clone(toAdd), toRemove...))
+		if err != nil {
+			return err
+		}
+		exists := make(map[string]bool, len(roles))
+		for _, r := range roles {
+			exists[r.ID] = true
+		}
+		isMissing := func(id string) bool { return !exists[id] }
+		toAdd = slices.DeleteFunc(toAdd, isMissing)
+		toRemove = slices.DeleteFunc(toRemove, isMissing)
+
+		// Adding goes through AddAssignments so the role is checked as assignable in the unit.
+		for _, rid := range toAdd {
+			if svcErr := as.AddAssignments(txCtx, rid, ouID, []RoleAssignment{assignee}); svcErr != nil {
+				// A connection's mapping targets fixed roles, which needn't reach every unit it signs users into.
+				if svcErr.Code == ErrorRoleNotSharedToOU.Code || svcErr.Code == ErrorSharedRoleFieldNotEditable.Code {
+					logger.Debug(ctx, "Skipping role not assignable in the entity's organization unit",
+						log.String("roleID", rid), log.String("ouID", ouID))
+					continue
+				}
+				capturedSvcErr = svcErr
+				return fmt.Errorf("failed to assign role %s: %s", rid, svcErr.Error.DefaultValue)
+			}
+		}
+		// Removing only narrows what the entity holds, and leaves assignments a sharing policy mandates.
+		for _, rid := range toRemove {
+			if svcErr := as.authzService.CanGrantMembership(txCtx, sysauthz.PrincipalTypeRole, rid); svcErr != nil {
+				capturedSvcErr = svcErr
+				return errors.New("rollback for disallowed grant")
+			}
+			if err := as.roleStore.RemoveAssignments(txCtx, rid, []RoleAssignment{stored}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if capturedSvcErr != nil {
+		return capturedSvcErr
+	}
+	if err != nil {
+		logger.Error(ctx, "Failed to replace entity roles", log.MaskedString("entityID", entityID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	return nil
 }
 
 // prepareAssignments validates and normalizes assignments before a mutation, placing each in ouID,

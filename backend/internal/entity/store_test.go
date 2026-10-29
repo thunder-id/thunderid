@@ -293,6 +293,38 @@ func (s *DBStoreTestSuite) TestUpdateSystemAttributes_Success() {
 	s.NoError(err)
 }
 
+func (s *DBStoreTestSuite) TestUpdateLinkSyncedAt() {
+	attrs := json.RawMessage(`{"linkedIds":{"idp-a":{"sub-1":{"lastSyncedAt":"2026-01-02T03:04:05Z"}}}}`)
+
+	s.Run("writes only the system attributes", func() {
+		s.SetupTest()
+		s.expectClient()
+		s.client.On("ExecuteContext", mock.Anything, QueryUpdateLinkSyncedAt, "e1", string(attrs),
+			deployment.Resolve(s.ctx)).Return(int64(1), nil).Once()
+		s.NoError(s.store.UpdateLinkSyncedAt(s.ctx, "e1", attrs))
+	})
+
+	s.Run("entity not found", func() {
+		s.SetupTest()
+		s.expectClient()
+		s.onExecAny(0, nil).Once()
+		s.ErrorIs(s.store.UpdateLinkSyncedAt(s.ctx, "e1", attrs), ErrEntityNotFound)
+	})
+
+	s.Run("execute error", func() {
+		s.SetupTest()
+		s.expectClient()
+		s.onExecAny(0, s.testErr).Once()
+		s.ErrorIs(s.store.UpdateLinkSyncedAt(s.ctx, "e1", attrs), s.testErr)
+	})
+
+	s.Run("provider error", func() {
+		s.SetupTest()
+		s.expectClientError()
+		s.ErrorIs(s.store.UpdateLinkSyncedAt(s.ctx, "e1", attrs), s.testErr)
+	})
+}
+
 // identifierWrites returns the query IDs of all ExecuteContext calls and the string args of the last one.
 func (s *DBStoreTestSuite) identifierWrites() ([]string, []string) {
 	queryIDs := make([]string, 0, len(s.client.Calls))

@@ -1,9 +1,10 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package group
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -45,9 +47,9 @@ func Initialize(
 		}
 	}
 
-	// Register the group store as the membership provider on the entity service so that
+	// Register the group layer as the membership provider on the entity service so that
 	// GetTransitiveEntityGroups is owned entirely by the group layer (DB + declarative).
-	entityService.SetGroupMembershipProvider(store)
+	entityService.SetGroupMembershipProvider(membershipProvider{store: store, service: groupService})
 
 	// Create resolver for OU package to query group data without cross-DB access.
 	ouGroupResolver := newOUGroupResolver(store)
@@ -203,4 +205,27 @@ func registerRoutes(mux *http.ServeMux, groupHandler *groupHandler) {
 				http.NotFound(w, r)
 			}
 		}, opts4))
+}
+
+// membershipProvider is the entity package's group membership provider. Reads go to the store, which
+// covers both DB-backed and declarative memberships, and replace goes through the service checks.
+type membershipProvider struct {
+	store   groupStoreInterface
+	service GroupServiceInterface
+}
+
+func (p membershipProvider) GetTransitiveGroupsForEntity(
+	ctx context.Context, entityID string,
+) ([]providers.EntityGroup, error) {
+	return p.store.GetTransitiveGroupsForEntity(ctx, entityID)
+}
+
+func (p membershipProvider) GetTransitiveAncestorGroups(ctx context.Context, groupID string) ([]string, error) {
+	return p.store.GetTransitiveAncestorGroups(ctx, groupID)
+}
+
+func (p membershipProvider) ReplaceEntityGroups(
+	ctx context.Context, entityID string, category providers.EntityCategory, groupIDs, keepIDs []string,
+) *tidcommon.ServiceError {
+	return p.service.ReplaceEntityGroups(ctx, entityID, category, groupIDs, keepIDs)
 }

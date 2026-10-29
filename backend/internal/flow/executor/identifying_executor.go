@@ -410,6 +410,13 @@ func (i *identifyingExecutor) bindLinkHolder(ctx *providers.NodeContext, execRes
 		execResp.Error = cmp.Or(statedHold(svcErr), errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped))
 		return execResp, nil
 	}
+	if ok, err := syncPendingFederatedUser(ctx, execResp, i.entityProvider, i.authnProvider,
+		entityID, logger); !ok {
+		if err != nil {
+			return nil, err
+		}
+		return execResp, nil
+	}
 
 	execResp.RuntimeData[userAttributeUserID] = entityID
 	execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateExists

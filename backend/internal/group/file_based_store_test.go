@@ -267,6 +267,14 @@ func (suite *GroupFileBasedStoreTestSuite) TestImmutability() {
 		{ID: "user1", Type: MemberTypeUser},
 	})
 	suite.Error(err)
+
+	member := Member{ID: "user1", Type: memberTypeEntity}
+	suite.Error(suite.store.AddMemberToGroups(context.Background(), member, []string{"immutable-grp"}))
+	suite.Error(suite.store.RemoveMemberFromGroups(context.Background(), member, []string{"immutable-grp"}))
+
+	groupIDs, err := suite.store.GetMemberGroupIDs(context.Background(), string(memberTypeEntity), "user1")
+	suite.NoError(err)
+	suite.Empty(groupIDs)
 }
 
 func (suite *GroupFileBasedStoreTestSuite) TestCreate_ImplementsStorer() {
@@ -494,8 +502,8 @@ func (suite *GroupFileBasedStoreTestSuite) TestGetTransitiveGroupsForEntity_NoCy
 	suite.Len(groups, 2, "each group must appear exactly once despite the cycle")
 }
 
-// Ensure the return type satisfies entity.GroupMembershipProvider.
-var _ entitypkg.GroupMembershipProvider = (*fileBasedGroupStore)(nil)
+// Ensure the membership provider satisfies entity.GroupMembershipProvider.
+var _ entitypkg.GroupMembershipProvider = membershipProvider{}
 
 // A malformed declarative entry must fail the ancestor lookup rather than being skipped. A skipped
 // entry could be a parent, and a short ancestor list understates what membership in a group confers.

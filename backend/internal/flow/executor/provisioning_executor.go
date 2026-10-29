@@ -17,6 +17,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/group"
@@ -282,6 +283,10 @@ func (p *provisioningExecutor) applyExistingLinkHolderRules(ctx *providers.NodeC
 			execResp.Status = providers.ExecFailure
 			execResp.Error = cmp.Or(statedHold(svcErr), errForEntityCategory(ErrEntityAuthFailed, category))
 			return nil
+		}
+		if ok, err := syncPendingFederatedUser(ctx, execResp, p.entityProvider, p.authnProvider,
+			holderIDs[0], logger); !ok {
+			return err
 		}
 	}
 	execResp.Status = providers.ExecComplete
@@ -924,12 +929,12 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 		} else {
 			// External claims are only a fallback and must never take priority over runtime data.
 			if value, exists := ctx.UserInputs[a.Attribute]; exists && value != "" {
-				identifyingAttrs[a.Attribute] = convertToSchemaType(value, a.Type)
+				identifyingAttrs[a.Attribute] = entitytypemodel.ConvertToSchemaType(value, a.Type)
 			} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists && runtimeValue != "" {
-				identifyingAttrs[a.Attribute] = convertToSchemaType(runtimeValue, a.Type)
+				identifyingAttrs[a.Attribute] = entitytypemodel.ConvertToSchemaType(runtimeValue, a.Type)
 			} else if claimValue, exists := extIdentity.Claim(a.Attribute); exists &&
 				claimValue != "" && storesClaim(ctx, a) {
-				identifyingAttrs[a.Attribute] = convertToSchemaType(claimValue, a.Type)
+				identifyingAttrs[a.Attribute] = entitytypemodel.ConvertToSchemaType(claimValue, a.Type)
 			}
 		}
 	}
@@ -968,7 +973,8 @@ func (p *provisioningExecutor) createUserInStore(nodeCtx *providers.NodeContext,
 	}
 	// The user service records a federated sign-in's link in the same write that creates the user.
 	if federated := federatedIdentityFrom(nodeCtx); federated != nil {
-		user.LinkedAccount = &providers.LinkedAccount{IdpID: federated.IdpID, Sub: federated.Sub}
+		user.LinkedAccount = &providers.LinkedAccount{IdpID: federated.IdpID, Sub: federated.Sub,
+			Synced: !attributesSessionOnly(nodeCtx)}
 	}
 	createdUser, svcErr := p.userMgtProvider.CreateUser(nodeCtx.Context, user)
 	if svcErr != nil {

@@ -23,6 +23,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 )
 
@@ -709,12 +710,17 @@ func (suite *InitTestSuite) TestInitialize_Success() {
 		getDBProvider = originalGetDBProvider
 	}()
 
+	mockEntityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	mockEntityService.On("SetRoleMembershipProvider", mock.Anything).Once()
+
 	mux := http.NewServeMux()
-	svc, _, _, exporter, err := Initialize(mux, nil, nil, nil, nil, nil, nil, suite.sharingForInit())
+	svc, assignmentSvc, _, exporter, err := Initialize(
+		mux, mockEntityService, nil, nil, nil, nil, nil, suite.sharingForInit())
 
 	suite.NoError(err)
 	suite.NotNil(svc)
 	suite.NotNil(exporter)
+	mockEntityService.AssertCalled(suite.T(), "SetRoleMembershipProvider", assignmentSvc)
 	mockProvider.AssertExpectations(suite.T())
 	mockClient.AssertExpectations(suite.T())
 }
@@ -826,7 +832,10 @@ func (suite *InitTestSuite) TestInitialize_DeclaredRoleSharing() {
 			return cfg.ResourceType == RoleSharingType && cfg.DirectoryName == "roles"
 		})).Return(nil).Once()
 
-	svc, _, _, _, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, sharingService)
+	entityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	entityService.On("SetRoleMembershipProvider", mock.Anything).Once()
+
+	svc, _, _, _, err := Initialize(http.NewServeMux(), entityService, nil, nil, nil, nil, nil, sharingService)
 
 	suite.NoError(err)
 	suite.NotNil(svc)

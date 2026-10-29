@@ -87,6 +87,12 @@ func (c *entityCompositeStore) UpdateSystemAttributes(ctx context.Context, entit
 	return c.dbStore.UpdateSystemAttributes(ctx, entityID, attrs)
 }
 
+// UpdateLinkSyncedAt updates a link's last sync time in the database store only.
+func (c *entityCompositeStore) UpdateLinkSyncedAt(ctx context.Context, entityID string,
+	attrs json.RawMessage) error {
+	return c.dbStore.UpdateLinkSyncedAt(ctx, entityID, attrs)
+}
+
 // UpdateCredentials updates credentials in the database store only.
 func (c *entityCompositeStore) UpdateCredentials(ctx context.Context, entityID string,
 	creds json.RawMessage) error {
