@@ -13,6 +13,7 @@ import AgentDeleteDialog from './AgentDeleteDialog';
 import useGetAgents from '../api/useGetAgents';
 import AgentConstants from '../constants/agent-constants';
 import useAgentRoutes from '../hooks/useAgentRoutes';
+import useLifespanEndText from '../hooks/useLifespanEndText';
 import type {BasicAgent} from '../models/agent';
 
 export default function AgentsList(): JSX.Element {
@@ -21,6 +22,7 @@ export default function AgentsList(): JSX.Element {
   const {t} = useTranslation();
   const logger = useLogger('AgentsList');
   const dataGridLocaleText = useDataGridLocaleText();
+  const lifespanEndText = useLifespanEndText();
   const {data, isLoading, error, refetch} = useGetAgents();
 
   // Resolves an error through the `agents` catalog. `t` defaults to the `common` namespace, so
@@ -54,6 +56,18 @@ export default function AgentsList(): JSX.Element {
     setDeleteDialogOpen(false);
     setSelectedAgentId(null);
   };
+
+  // When the lifespan ends, or that it has no end, says more than the status's own text, for an agent
+  // that can still authenticate and for one that expired. A suspension or a lock keeps its own text.
+  const lifespanHint = useCallback(
+    (agent: BasicAgent): string | undefined => {
+      if (agent.status && agent.status.value !== 'ACTIVE' && agent.status.value !== 'EXPIRED') return undefined;
+      if (agent.lifespan?.phase === 'UNBOUNDED') return t('agents:lifespan.noExpiry', 'No expiry date');
+
+      return lifespanEndText(agent.validUntil ?? agent.status?.details?.since);
+    },
+    [lifespanEndText, t],
+  );
 
   const columns: DataGrid.GridColDef<BasicAgent>[] = useMemo(
     () => [
@@ -89,7 +103,12 @@ export default function AgentsList(): JSX.Element {
         minWidth: 110,
         sortable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<BasicAgent>) => (
-          <AccessStatusIndicator status={params.row.status} category="agent" tabIndex={params.tabIndex} />
+          <AccessStatusIndicator
+            status={params.row.status}
+            category="agent"
+            hint={lifespanHint(params.row)}
+            tabIndex={params.tabIndex}
+          />
         ),
       },
       {
@@ -158,7 +177,7 @@ export default function AgentsList(): JSX.Element {
         ),
       },
     ],
-    [handleDeleteClick, handleEditClick, t],
+    [handleDeleteClick, handleEditClick, lifespanHint, t],
   );
 
   if (error) {
