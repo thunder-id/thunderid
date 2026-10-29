@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/resource"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 // AuthZENServiceInterface defines AuthZEN access evaluation operations.
@@ -385,10 +386,12 @@ func (s *authzenService) getAllActions(
 	resourceServerID string,
 	resourceID *string,
 ) ([]providers.Action, *tidcommon.ServiceError) {
+	// A search serves every caller, whatever organization unit owns the resource server.
+	runtimeCtx := security.WithRuntimeContext(ctx)
 	actions := make([]providers.Action, 0)
 	for offset := 0; ; {
 		actionList, svcErr := s.resourceService.GetActionList(
-			ctx, resourceServerID, resourceID, "", serverconst.MaxPageSize, offset)
+			runtimeCtx, resourceServerID, resourceID, "", serverconst.MaxPageSize, offset)
 		if svcErr != nil {
 			return nil, svcErr
 		}
@@ -410,10 +413,12 @@ func (s *authzenService) getAllResources(
 	ctx context.Context,
 	resourceServerID string,
 ) ([]providers.Resource, *tidcommon.ServiceError) {
+	// A search serves every caller, whatever organization unit owns the resource server.
+	runtimeCtx := security.WithRuntimeContext(ctx)
 	resources := make([]providers.Resource, 0)
 	for offset := 0; ; {
 		resourceList, svcErr := s.resourceService.GetResourceList(
-			ctx, resourceServerID, nil, serverconst.MaxPageSize, offset)
+			runtimeCtx, resourceServerID, nil, serverconst.MaxPageSize, offset)
 		if svcErr != nil {
 			return nil, svcErr
 		}

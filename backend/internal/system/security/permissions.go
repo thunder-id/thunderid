@@ -71,6 +71,14 @@ const (
 	ResourceTypeAgentType ResourceType = "agenttype"
 	// ResourceTypeNotificationTemplate identifies a notification template resource.
 	ResourceTypeNotificationTemplate ResourceType = "notificationtemplate"
+	// ResourceTypeRole identifies a role resource.
+	ResourceTypeRole ResourceType = "role"
+	// ResourceTypeApplication identifies an application resource.
+	ResourceTypeApplication ResourceType = "application"
+	// ResourceTypeResourceServer identifies a resource server resource.
+	ResourceTypeResourceServer ResourceType = "resourceserver"
+	// ResourceTypeConnection identifies a connection resource.
+	ResourceTypeConnection ResourceType = "connection"
 )
 
 // ---- Actions ----
@@ -157,6 +165,50 @@ const (
 	ActionDeleteNotificationTemplate Action = "notificationtemplate:delete"
 	// ActionListNotificationTemplates lists notification templates.
 	ActionListNotificationTemplates Action = "notificationtemplate:list"
+
+	// ActionCreateRole creates a new role.
+	ActionCreateRole Action = "role:create"
+	// ActionReadRole reads a role.
+	ActionReadRole Action = "role:read"
+	// ActionUpdateRole updates a role, including its assignments.
+	ActionUpdateRole Action = "role:update"
+	// ActionDeleteRole deletes a role.
+	ActionDeleteRole Action = "role:delete"
+	// ActionListRoles lists roles.
+	ActionListRoles Action = "role:list"
+
+	// ActionCreateApplication creates a new application.
+	ActionCreateApplication Action = "application:create"
+	// ActionReadApplication reads an application.
+	ActionReadApplication Action = "application:read"
+	// ActionUpdateApplication updates an application, including its sharing policies.
+	ActionUpdateApplication Action = "application:update"
+	// ActionDeleteApplication deletes an application.
+	ActionDeleteApplication Action = "application:delete"
+	// ActionListApplications lists applications.
+	ActionListApplications Action = "application:list"
+
+	// ActionCreateResourceServer creates a new resource server.
+	ActionCreateResourceServer Action = "resourceserver:create"
+	// ActionReadResourceServer reads a resource server, including its resources and actions.
+	ActionReadResourceServer Action = "resourceserver:read"
+	// ActionUpdateResourceServer updates a resource server, including its resources and actions.
+	ActionUpdateResourceServer Action = "resourceserver:update"
+	// ActionDeleteResourceServer deletes a resource server.
+	ActionDeleteResourceServer Action = "resourceserver:delete"
+	// ActionListResourceServers lists resource servers.
+	ActionListResourceServers Action = "resourceserver:list"
+
+	// ActionCreateConnection creates a new connection.
+	ActionCreateConnection Action = "connection:create"
+	// ActionReadConnection reads a connection.
+	ActionReadConnection Action = "connection:read"
+	// ActionUpdateConnection updates a connection.
+	ActionUpdateConnection Action = "connection:update"
+	// ActionDeleteConnection deletes a connection.
+	ActionDeleteConnection Action = "connection:delete"
+	// ActionListConnections lists connections.
+	ActionListConnections Action = "connection:list"
 )
 
 // ---- Permissions ----
@@ -269,6 +321,33 @@ func InitSystemPermissions(handle string) {
 		ActionUpdateNotificationTemplate: p.NotificationTemplate,
 		ActionDeleteNotificationTemplate: p.NotificationTemplate,
 		ActionListNotificationTemplates:  p.NotificationTemplateView,
+
+		// Role, application, resource server and connection actions. Their APIs require the root
+		// permission, so the actions do too. This matches the default for an unlisted action, and says
+		// so rather than relying on it.
+		ActionCreateRole: p.Root,
+		ActionReadRole:   p.Root,
+		ActionUpdateRole: p.Root,
+		ActionDeleteRole: p.Root,
+		ActionListRoles:  p.Root,
+
+		ActionCreateApplication: p.Root,
+		ActionReadApplication:   p.Root,
+		ActionUpdateApplication: p.Root,
+		ActionDeleteApplication: p.Root,
+		ActionListApplications:  p.Root,
+
+		ActionCreateResourceServer: p.Root,
+		ActionReadResourceServer:   p.Root,
+		ActionUpdateResourceServer: p.Root,
+		ActionDeleteResourceServer: p.Root,
+		ActionListResourceServers:  p.Root,
+
+		ActionCreateConnection: p.Root,
+		ActionReadConnection:   p.Root,
+		ActionUpdateConnection: p.Root,
+		ActionDeleteConnection: p.Root,
+		ActionListConnections:  p.Root,
 	}
 
 	apiPermissionEntries = []apiPermissionEntry{

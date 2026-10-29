@@ -29,14 +29,14 @@ import (
 //
 // The suite creates an OU hierarchy (OU1 → OU12, OU2 as sibling), a test
 // user scoped to OU12, and a role carrying system:usertype permission.
-// It then obtains a scoped access token and verifies:
+// It then obtains a scoped access token and verifies that authorization is
+// deployment-bounded: the token's scope applies to every OU in the deployment,
+// regardless of the OU the token names.
 //
-//   - READ operations on OU1's schema are allowed (OU inheritance: OU12 is a
-//     child of OU1, so read access to parent schemas is permitted)
-//   - READ operations on OU2's schema are denied (OU2 is a sibling, not in
-//     the hierarchy)
-//   - WRITE operations on OU1's schema are denied (OU membership policy:
-//     writes require exact OU match, not ancestor)
+//   - READ operations are allowed on user types in any OU (ancestor OU1 and
+//     sibling OU2 alike), and listing returns user types from every OU
+//   - WRITE operations are allowed in any OU (create in sibling OU2, update
+//     and delete in ancestor OU1)
 //   - WRITE operations on OU12 (own OU) are allowed (create, update, delete)
 //
 // Fixture topology:
@@ -293,14 +293,32 @@ func (ts *UserTypeAuthzTestSuite) do(method, path string, body []byte) *http.Res
 
 func closeBodyAuthz(resp *http.Response) { _ = resp.Body.Close() }
 
+// createAdminUserType creates a user type in the given OU with the admin client
+// and returns its ID.
+func (ts *UserTypeAuthzTestSuite) createAdminUserType(handle, ouID string) string {
+	ts.T().Helper()
+
+	id, err := testutils.CreateUserType(testutils.UserType{
+		Handle:      handle,
+		DisplayName: handle,
+		OUID:        ouID,
+		Schema: map[string]interface{}{
+			"username": map[string]interface{}{"type": "string", "unique": true},
+		},
+	})
+	ts.Require().NoError(err, "create user type %s", handle)
+	return id
+}
+
 // ---------------------------------------------------------------------------
-// Tests — READ operations (OU inheritance allows reading ancestor schemas)
+// Tests — READ operations (the scope applies to every OU)
 // ---------------------------------------------------------------------------
 
 // TestListUserTypes verifies that the scoped user can list user types and
-// that the result includes OU1's schema (ancestor, inherited via hierarchy).
+// that the result includes user types from every OU, not only its own
+// hierarchy.
 func (ts *UserTypeAuthzTestSuite) TestListUserTypes() {
-	resp := ts.do(http.MethodGet, "/user-types", nil)
+	resp := ts.do(http.MethodGet, "/user-types?limit=100", nil)
 	defer closeBodyAuthz(resp)
 
 	ts.Require().Equal(http.StatusOK, resp.StatusCode, "list user types should succeed")
@@ -314,67 +332,82 @@ func (ts *UserTypeAuthzTestSuite) TestListUserTypes() {
 	}
 
 	ts.Containsf(ids, ts.ou1SchemaID,
-		"list must include OU1 schema (inherited from parent), got IDs: %v", ids)
+		"list must include OU1 schema (ancestor OU), got IDs: %v", ids)
+	ts.Containsf(ids, ts.ou2SchemaID,
+		"list must include OU2 schema (sibling OU), got IDs: %v", ids)
 }
 
 // TestGetAncestorOUSchema verifies the scoped user can read the parent OU's
-// schema by ID (OU inheritance policy).
+// schema by ID.
 func (ts *UserTypeAuthzTestSuite) TestGetAncestorOUSchema() {
 	resp := ts.do(http.MethodGet, "/user-types/"+ts.ou1SchemaID, nil)
 	defer closeBodyAuthz(resp)
 
 	ts.Equal(http.StatusOK, resp.StatusCode,
-		"scoped user should be able to read ancestor OU1's schema (inheritance)")
+		"scoped user should be able to read ancestor OU1's schema")
 }
 
-// TestGetSiblingOUSchema verifies the scoped user is denied access to OU2's
-// schema (OU2 is not in the user's OU hierarchy).
+// TestGetSiblingOUSchema verifies the scoped user can read OU2's schema even
+// though OU2 is outside the user's OU hierarchy.
 func (ts *UserTypeAuthzTestSuite) TestGetSiblingOUSchema() {
 	resp := ts.do(http.MethodGet, "/user-types/"+ts.ou2SchemaID, nil)
 	defer closeBodyAuthz(resp)
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"scoped user should be denied access to sibling OU2's schema")
+	ts.Equal(http.StatusOK, resp.StatusCode,
+		"scoped user should be able to read sibling OU2's schema")
 }
 
 // ---------------------------------------------------------------------------
-// Tests — WRITE operations denied on ancestor OU (OU membership policy)
+// Tests — WRITE operations allowed outside own OU (the scope applies to every OU)
 // ---------------------------------------------------------------------------
 
-// TestUpdateAncestorOUSchema verifies that the scoped user cannot update
-// OU1's schema even though they can read it.
+// TestUpdateAncestorOUSchema verifies that the scoped user can update a schema
+// in OU1. A dedicated user type is used so the shared fixtures stay intact.
 func (ts *UserTypeAuthzTestSuite) TestUpdateAncestorOUSchema() {
+	schemaID := ts.createAdminUserType("schema-authz-ou1-update", ts.ou1ID)
+	defer func() {
+		if err := testutils.DeleteUserType(schemaID); err != nil {
+			ts.T().Logf("cleanup: delete OU1 update schema: %v", err)
+		}
+	}()
+
 	payload, err := json.Marshal(UpdateUserTypeRequest{
-		Handle:      "schema-authz-ou1-schema",
-		DisplayName: "Schema Authz Ou1 Schema",
+		Handle:      "schema-authz-ou1-update",
+		DisplayName: "Schema Authz Ou1 Update Updated",
 		OUID:        ts.ou1ID,
 		Schema:      json.RawMessage(`{"username": {"type": "string", "unique": true}}`),
 	})
 	ts.Require().NoError(err)
 
-	resp := ts.do(http.MethodPut, "/user-types/"+ts.ou1SchemaID, payload)
+	resp := ts.do(http.MethodPut, "/user-types/"+schemaID, payload)
 	defer closeBodyAuthz(resp)
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"scoped user must not update ancestor OU1's schema (OU membership required)")
+	ts.Equal(http.StatusOK, resp.StatusCode,
+		"scoped user should be able to update ancestor OU1's schema")
 }
 
-// TestDeleteAncestorOUSchema verifies that the scoped user cannot delete
-// OU1's schema.
+// TestDeleteAncestorOUSchema verifies that the scoped user can delete a schema
+// in OU1. A dedicated user type is used so the shared fixtures stay intact.
 func (ts *UserTypeAuthzTestSuite) TestDeleteAncestorOUSchema() {
-	resp := ts.do(http.MethodDelete, "/user-types/"+ts.ou1SchemaID, nil)
+	schemaID := ts.createAdminUserType("schema-authz-ou1-delete", ts.ou1ID)
+
+	resp := ts.do(http.MethodDelete, "/user-types/"+schemaID, nil)
 	defer closeBodyAuthz(resp)
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"scoped user must not delete ancestor OU1's schema (OU membership required)")
+	if !ts.Equal(http.StatusNoContent, resp.StatusCode,
+		"scoped user should be able to delete ancestor OU1's schema") {
+		if err := testutils.DeleteUserType(schemaID); err != nil {
+			ts.T().Logf("cleanup: delete OU1 delete schema: %v", err)
+		}
+	}
 }
 
-// TestCreateSchemaInSiblingOU verifies that the scoped user cannot create a
-// schema in OU2 (outside their hierarchy).
+// TestCreateSchemaInSiblingOU verifies that the scoped user can create a
+// schema in OU2 even though OU2 is outside the user's OU hierarchy.
 func (ts *UserTypeAuthzTestSuite) TestCreateSchemaInSiblingOU() {
 	payload, err := json.Marshal(CreateUserTypeRequest{
-		Handle:      "schema-authz-ou2-blocked",
-		DisplayName: "Schema Authz Ou2 Blocked",
+		Handle:      "schema-authz-ou2-created",
+		DisplayName: "Schema Authz Ou2 Created",
 		OUID:        ts.ou2ID,
 		Schema:      json.RawMessage(`{"username": {"type": "string", "unique": true}}`),
 	})
@@ -383,8 +416,16 @@ func (ts *UserTypeAuthzTestSuite) TestCreateSchemaInSiblingOU() {
 	resp := ts.do(http.MethodPost, "/user-types", payload)
 	defer closeBodyAuthz(resp)
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"scoped user must not create a schema in sibling OU2")
+	ts.Require().Equal(http.StatusCreated, resp.StatusCode,
+		"scoped user should be able to create a schema in sibling OU2")
+
+	var created UserType
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&created))
+	ts.Require().NotEmpty(created.ID, "created schema must have an ID")
+
+	if err := testutils.DeleteUserType(created.ID); err != nil {
+		ts.T().Errorf("cleanup: delete OU2 created schema: %v", err)
+	}
 }
 
 // ---------------------------------------------------------------------------

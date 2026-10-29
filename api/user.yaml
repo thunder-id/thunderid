@@ -1258,6 +1258,23 @@ paths:
                     description:
                       key: "error.userservice.invalid_filter_parameter_description"
                       defaultValue: "The filter format is invalid"
+        "403":
+          description: |
+            The caller may not read the organization unit the path names. Listing users by path
+            first resolves that organization unit, which needs the `system:ou:view` permission in
+            addition to the permission to read users.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Organization unit not found
           content:

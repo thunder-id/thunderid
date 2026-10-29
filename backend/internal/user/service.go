@@ -1257,6 +1257,12 @@ func mapOUServiceError(ctx context.Context,
 		return mappedErr
 	}
 
+	// A refusal to resolve the organization unit is the caller's authorization failing, not the
+	// server's.
+	if svcErr.Code == tidcommon.ErrorUnauthorized.Code {
+		return &tidcommon.ErrorUnauthorized
+	}
+
 	if svcErr.Type == tidcommon.ClientErrorType {
 		logFields := append([]log.Field{}, fields...)
 		logFields = append(logFields, log.Any("error", svcErr))

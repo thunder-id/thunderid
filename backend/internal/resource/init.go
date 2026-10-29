@@ -12,6 +12,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -34,6 +35,7 @@ func Initialize(
 	ouService oupkg.OrganizationUnitServiceInterface,
 	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 	options ...Option,
 ) (ResourceServiceInterface, declarativeresource.ResourceExporter, error) {
 	// Initialize store and transactioner based on store mode
@@ -43,7 +45,7 @@ func Initialize(
 	}
 
 	resourceService, err := newResourceService(ouService, resourceStore, transactioner, authZENPDPService,
-		valueCapturer, options...)
+		valueCapturer, authzService, options...)
 	if err != nil {
 		return nil, nil, err
 	}

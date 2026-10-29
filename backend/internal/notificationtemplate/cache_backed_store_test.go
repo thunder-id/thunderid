@@ -309,3 +309,20 @@ func (s *CacheBackedStoreTestSuite) TestTemplateDAO_JSONRoundTrip() {
 	s.Require().NoError(json.Unmarshal(data, &round))
 	s.Equal(original, round)
 }
+
+func (s *CacheBackedStoreTestSuite) TestListTemplatesByOUIDs_Delegates() {
+	s.mockStore.On("ListTemplatesByOUIDs", mock.Anything, ChannelTypeEmail, []string{"ou-1"}, 10, 0).
+		Return([]templateDAO{emailDAO("t1", "A")}, nil).Once()
+
+	out, err := s.store.ListTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{"ou-1"}, 10, 0)
+	s.NoError(err)
+	s.Len(out, 1)
+}
+
+func (s *CacheBackedStoreTestSuite) TestCountTemplatesByOUIDs_Delegates() {
+	s.mockStore.On("CountTemplatesByOUIDs", mock.Anything, ChannelTypeEmail, []string{"ou-1"}).Return(2, nil).Once()
+
+	n, err := s.store.CountTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{"ou-1"})
+	s.NoError(err)
+	s.Equal(2, n)
+}

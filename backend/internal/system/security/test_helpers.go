@@ -24,6 +24,19 @@ func NewSecurityContextForTest(userID, ouID, token string,
 	}
 }
 
+// NewManagementAPIKeySecurityContextForTest creates the SecurityContext the management API key
+// authenticates as. Used for testing purposes.
+func NewManagementAPIKeySecurityContextForTest(permissions []string) *SecurityContext {
+	if !testing.Testing() {
+		panic("only for tests!")
+	}
+	return &SecurityContext{
+		subject:                  managementAPIKeySubject,
+		permissions:              permissions,
+		isManagementAPIKeyCaller: true,
+	}
+}
+
 // WithSecurityContextTest adds security context to the request context.
 // Used for testing purposes.
 func WithSecurityContextTest(ctx context.Context, authCtx *SecurityContext) context.Context {

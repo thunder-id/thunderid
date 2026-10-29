@@ -660,3 +660,6 @@ CREATE TABLE "NOTIFICATION_TEMPLATE" (
     PRIMARY KEY (DEPLOYMENT_ID, ID),
     UNIQUE (DEPLOYMENT_ID, CHANNEL, HANDLE)
 );
+
+-- Composite index for listing a channel's templates by organization unit
+CREATE INDEX idx_notification_template_ou ON "NOTIFICATION_TEMPLATE" (DEPLOYMENT_ID, CHANNEL, OU_ID);

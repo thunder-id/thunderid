@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/resource"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
@@ -67,7 +68,8 @@ func (suite *DefaultAwareProviderTestSuite) TestEmptyIdentifier_DefaultConfigure
 	rs := providers.ResourceServer{ID: "rs-1", Identifier: "https://api.example.com"}
 	suite.config.On("GetMergedConfig", mock.Anything, defaultResourceServerConfigName).
 		Return(resource.DefaultResourceServerConfig{ResourceServerID: "rs-1"}, nil)
-	suite.base.On("GetResourceServer", mock.Anything, "rs-1").Return(&rs, nil)
+	// The default serves the whole deployment, so it is read as the runtime.
+	suite.base.On("GetResourceServer", mock.MatchedBy(security.IsRuntimeContext), "rs-1").Return(&rs, nil)
 
 	resolved, err := suite.subject.GetResourceServerByIdentifier(context.Background(), "")
 

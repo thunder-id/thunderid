@@ -50,8 +50,8 @@ type authorizationPolicy interface {
 }
 
 // ouMembershipPolicy enforces that the caller's organization unit matches the OU of the
-// resource being acted upon. This prevents non-system callers from operating on
-// resources that belong to a different OU.
+// resource being acted upon. It prevents callers, including those holding the root system
+// permission, from operating on resources in a different OU.
 type ouMembershipPolicy struct{}
 
 // isActionAllowed returns:
@@ -149,8 +149,10 @@ func (p *ouInheritancePolicy) getAccessibleResources(ctx context.Context, action
 // Each action implicitly encodes its resource type (e.g. ActionReadUserType → EntityType),
 // so a separate resource-type map is not needed.
 var inheritanceReadActions = map[security.Action]bool{
-	security.ActionReadUserType:  true,
-	security.ActionListUserTypes: true,
+	security.ActionReadUserType:   true,
+	security.ActionListUserTypes:  true,
+	security.ActionReadAgentType:  true,
+	security.ActionListAgentTypes: true,
 }
 
 // isInheritanceEligible returns true when the action is registered for

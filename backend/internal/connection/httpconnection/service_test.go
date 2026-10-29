@@ -22,9 +22,11 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcedependencymock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 type HTTPConnectionServiceTestSuite struct {
@@ -51,7 +53,7 @@ func (s *HTTPConnectionServiceTestSuite) SetupTest() {
 
 // ouResolver resolves owners against the suite's organization unit service mock.
 func (s *HTTPConnectionServiceTestSuite) ouResolver() connectionou.ResolverInterface {
-	return connectionou.Initialize(s.mockOU, connectionou.Errors{
+	return connectionou.Initialize(s.mockOU, newAllowAllConnectionAuthz(s.T()), connectionou.Errors{
 		Required: connectionou.ErrorOURequired,
 		NotFound: connectionou.ErrorInvalidOU,
 		Changed:  connectionou.ErrorOUUpdateNotAllowed,
@@ -397,15 +399,41 @@ func (s *HTTPConnectionServiceTestSuite) TestDeleteOfAMissingConnectionSucceeds(
 	for _, id := range []string{"missing", " "} {
 		s.Run(id, func() {
 			s.SetupTest()
-			s.mockStore.On("DeleteHTTPConnection", mock.Anything, id).Return(errConnectionNotFound).Once()
-			s.service.SetDependencyRegistry(s.registryReporting(id))
+			s.mockStore.On("GetHTTPConnection", mock.Anything, id).Return((*HTTPConnection)(nil), nil).Once()
 
 			s.Nil(s.service.DeleteHTTPConnection(s.ctx, id))
+			s.mockStore.AssertNotCalled(s.T(), "DeleteHTTPConnection", mock.Anything, mock.Anything)
 		})
 	}
 }
 
+// A connection removed between the read and the delete is already gone, so the delete succeeds.
+func (s *HTTPConnectionServiceTestSuite) TestDeleteOfAConnectionRemovedConcurrentlySucceeds() {
+	s.storedConnection()
+	s.mockStore.On("DeleteHTTPConnection", mock.Anything, "id").Return(errConnectionNotFound).Once()
+	s.service.SetDependencyRegistry(s.registryReporting("id"))
+
+	s.Nil(s.service.DeleteHTTPConnection(s.ctx, "id"))
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestDeleteReadFailureIsAServerError() {
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "id").
+		Return((*HTTPConnection)(nil), errors.New("database unavailable")).Once()
+
+	svcErr := s.service.DeleteHTTPConnection(s.ctx, "id")
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError, *svcErr)
+}
+
+// storedConnection makes the store hold connection "id", owned by ou-1.
+func (s *HTTPConnectionServiceTestSuite) storedConnection() {
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "id").
+		Return(&HTTPConnection{ID: "id", OUID: "ou-1"}, nil).Maybe()
+}
+
 func (s *HTTPConnectionServiceTestSuite) TestDeleteStoreFailureIsAServerError() {
+	s.storedConnection()
 	s.mockStore.On("DeleteHTTPConnection", mock.Anything, "id").Return(errors.New("database unavailable")).Once()
 	s.service.SetDependencyRegistry(s.registryReporting("id"))
 
@@ -463,6 +491,7 @@ func (s *HTTPConnectionServiceTestSuite) TestUsagesAreUnknownWithoutARegistry() 
 }
 
 func (s *HTTPConnectionServiceTestSuite) TestDeleteIsRefusedWhileAFlowUsesTheConnection() {
+	s.storedConnection()
 	s.service.SetDependencyRegistry(s.registryReporting("id", flowUsage("flow-1", "Default sign-in")))
 
 	svcErr := s.service.DeleteHTTPConnection(s.ctx, "id")
@@ -474,6 +503,7 @@ func (s *HTTPConnectionServiceTestSuite) TestDeleteIsRefusedWhileAFlowUsesTheCon
 }
 
 func (s *HTTPConnectionServiceTestSuite) TestDeleteSucceedsWithoutUsages() {
+	s.storedConnection()
 	s.mockStore.On("DeleteHTTPConnection", mock.Anything, "id").Return(nil).Once()
 	s.service.SetDependencyRegistry(s.registryReporting("id"))
 
@@ -481,6 +511,7 @@ func (s *HTTPConnectionServiceTestSuite) TestDeleteSucceedsWithoutUsages() {
 }
 
 func (s *HTTPConnectionServiceTestSuite) TestDeleteFailsClosedWhenUsagesCannotBeDetermined() {
+	s.storedConnection()
 	s.Run("no registry", func() {
 		s.service.SetDependencyRegistry(nil)
 		s.Equal(tidcommon.InternalServerError.Code, s.service.DeleteHTTPConnection(s.ctx, "id").Code)
@@ -970,4 +1001,60 @@ func (s *HTTPConnectionServiceTestSuite) TestAPIKeyHeaderNamesAreStoredCanonical
 	authConfig, err := outboundauth.FromProperties(stored.AuthProperties)
 	s.Require().NoError(err)
 	s.Equal(map[string]string{"X-Tenant-Key": testPassword}, authConfig.Properties)
+}
+
+// newAllowAllConnectionAuthz returns an authz mock that permits every connection action in every
+// organization unit, so that tests unrelated to the boundary need not configure it.
+func newAllowAllConnectionAuthz(t *testing.T) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authz.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
+	return authz
+}
+
+// refusingService is the service with an authorization that refuses every connection action, as for a
+// connection in an organization unit the caller does not reach.
+func (s *HTTPConnectionServiceTestSuite) refusingService() HTTPConnectionServiceInterface {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(false, nil).Once()
+	return newHTTPConnectionService(s.mockStore, connectionou.Initialize(s.mockOU, authz, connectionou.Errors{
+		Required: connectionou.ErrorOURequired,
+		NotFound: connectionou.ErrorInvalidOU,
+		Changed:  connectionou.ErrorOUUpdateNotAllowed,
+	}))
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestWritesAreBoundedToTheOU() {
+	cases := []struct {
+		name string
+		call func(HTTPConnectionServiceInterface) *tidcommon.ServiceError
+	}{
+		{"Create", func(service HTTPConnectionServiceInterface) *tidcommon.ServiceError {
+			_, svcErr := service.CreateHTTPConnection(s.ctx, s.connection("https://risk.example.com/check", nil))
+			return svcErr
+		}},
+		{"Update", func(service HTTPConnectionServiceInterface) *tidcommon.ServiceError {
+			s.storedConnection()
+			_, svcErr := service.UpdateHTTPConnection(s.ctx, "id", s.connection("https://risk.example.com/check", nil))
+			return svcErr
+		}},
+		{"Delete", func(service HTTPConnectionServiceInterface) *tidcommon.ServiceError {
+			s.storedConnection()
+			return service.DeleteHTTPConnection(s.ctx, "id")
+		}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+
+			svcErr := tc.call(s.refusingService())
+
+			s.Require().NotNil(svcErr)
+			s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+			s.mockStore.AssertNotCalled(s.T(), "CreateHTTPConnection", mock.Anything, mock.Anything)
+			s.mockStore.AssertNotCalled(s.T(), "UpdateHTTPConnection", mock.Anything, mock.Anything)
+			s.mockStore.AssertNotCalled(s.T(), "DeleteHTTPConnection", mock.Anything, mock.Anything)
+		})
+	}
 }

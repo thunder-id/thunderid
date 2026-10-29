@@ -18,16 +18,20 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 // newTestOUResolver is the resolver of the connection organization unit over the given organization unit service.
-func newTestOUResolver(ouService *oumock.OrganizationUnitServiceInterfaceMock) connectionou.ResolverInterface {
-	return connectionou.Initialize(ouService, connectionou.Errors{
+func newTestOUResolver(
+	t *testing.T, ouService *oumock.OrganizationUnitServiceInterfaceMock,
+) connectionou.ResolverInterface {
+	return connectionou.Initialize(ouService, newAllowAllConnectionAuthz(t), connectionou.Errors{
 		Required: connectionou.ErrorOURequired,
 		NotFound: connectionou.ErrorInvalidOU,
 		Changed:  connectionou.ErrorOUUpdateNotAllowed,
@@ -39,7 +43,7 @@ func newTestOUService(t *testing.T) connectionou.ResolverInterface {
 	t.Helper()
 	ouService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouService.On("IsOrganizationUnitExists", mock.Anything, "ou-1").Return(true, nil).Maybe()
-	return newTestOUResolver(ouService)
+	return newTestOUResolver(t, ouService)
 }
 
 // newTestAuthZENPDPService creates the service over the given store and defaults, with an organization unit service in
@@ -59,6 +63,7 @@ type serviceStoreStub struct {
 	deleteCalls int
 	err         error
 	updateErr   error
+	deleteErr   error
 	missing     bool
 }
 
@@ -120,6 +125,9 @@ func (s *serviceStoreStub) UpdateAuthZENPDP(
 func (s *serviceStoreStub) DeleteAuthZENPDP(_ context.Context, id string) error {
 	s.deleteCalls++
 	s.id = id
+	if s.deleteErr != nil {
+		return s.deleteErr
+	}
 	return s.err
 }
 
@@ -171,7 +179,9 @@ func TestServiceListAndGetTranslateStoreErrors(t *testing.T) {
 }
 
 func TestServiceDeleteConnectionMapsImmutableStore(t *testing.T) {
-	store := &serviceStoreStub{err: ErrAuthZENPDPIsImmutable}
+	store := &serviceStoreStub{
+		connection: AuthZENPDPConnection{ID: "pdp-1", OUID: "ou-1"}, deleteErr: ErrAuthZENPDPIsImmutable,
+	}
 	service := newTestAuthZENPDPService(t, store, config.AuthZENPDPConfig{})
 
 	svcErr := service.DeleteAuthZENPDPConnection(context.Background(), "pdp-1")
@@ -651,7 +661,7 @@ func TestServiceCreateResolvesConnectionOU(t *testing.T) {
 	ouService.On("IsOrganizationUnitExists", mock.Anything, "missing").Return(false, nil).Once()
 	store := &serviceStoreStub{}
 	service := newAuthZENPDPService(store, config.AuthZENPDPConfig{}, transaction.NewNoOpTransactioner(), nil,
-		newTestOUResolver(ouService))
+		newTestOUResolver(t, ouService))
 	base := ConnectionRequest{Name: "AuthZEN PDP", Endpoint: "https://pdp.example.com/evaluation"}
 
 	byHandle := base
@@ -703,4 +713,68 @@ func TestServiceUpdateKeepsConnectionOU(t *testing.T) {
 			require.Equal(t, "ou-1", updated.OUID)
 		})
 	}
+}
+
+// newAllowAllConnectionAuthz returns an authz mock that permits every connection action in every
+// organization unit, so that tests unrelated to the boundary need not configure it.
+func newAllowAllConnectionAuthz(t *testing.T) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authz.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
+	return authz
+}
+
+func TestServiceWritesAreBoundedToTheOU(t *testing.T) {
+	cases := []struct {
+		name string
+		call func(*AuthZENPDPService) *tidcommon.ServiceError
+	}{
+		{"Create", func(service *AuthZENPDPService) *tidcommon.ServiceError {
+			_, svcErr := service.CreateAuthZENPDPConnection(context.Background(), ConnectionRequest{
+				OUID: "ou-1", Name: "AuthZEN PDP", Endpoint: "https://pdp.example.com/evaluation",
+			})
+			return svcErr
+		}},
+		{"Update", func(service *AuthZENPDPService) *tidcommon.ServiceError {
+			_, svcErr := service.UpdateAuthZENPDPConnection(context.Background(), "pdp-1", ConnectionRequest{
+				Name: "AuthZEN PDP", Endpoint: "https://pdp.example.com/evaluation",
+			})
+			return svcErr
+		}},
+		{"Delete", func(service *AuthZENPDPService) *tidcommon.ServiceError {
+			return service.DeleteAuthZENPDPConnection(context.Background(), "pdp-1")
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &serviceStoreStub{connection: AuthZENPDPConnection{ID: "pdp-1", OUID: "ou-1"}}
+			ouService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+			ouService.On("IsOrganizationUnitExists", mock.Anything, "ou-1").Return(true, nil).Maybe()
+			authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+			authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(false, nil).Once()
+			service := newAuthZENPDPService(store, config.AuthZENPDPConfig{}, transaction.NewNoOpTransactioner(), nil,
+				connectionou.Initialize(ouService, authz, connectionou.Errors{
+					Required: connectionou.ErrorOURequired,
+					NotFound: connectionou.ErrorInvalidOU,
+					Changed:  connectionou.ErrorOUUpdateNotAllowed,
+				}))
+
+			svcErr := tc.call(service)
+
+			require.NotNil(t, svcErr)
+			require.Equal(t, tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+			require.Zero(t, store.createCalls)
+			require.Zero(t, store.updateCalls)
+			require.Zero(t, store.deleteCalls)
+		})
+	}
+}
+
+func TestServiceDeleteOfAMissingConnectionSucceeds(t *testing.T) {
+	store := &serviceStoreStub{missing: true}
+	service := newTestAuthZENPDPService(t, store, config.AuthZENPDPConfig{})
+
+	require.Nil(t, service.DeleteAuthZENPDPConnection(context.Background(), "pdp-1"))
+	require.Zero(t, store.deleteCalls)
 }

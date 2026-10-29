@@ -9,6 +9,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -18,13 +19,33 @@ type ResolverInterface interface {
 	ResolveForUpdate(
 		ctx context.Context, requestedID, requestedHandle, currentID string,
 	) (string, *tidcommon.ServiceError)
+	Authorize(ctx context.Context, action security.Action, ouID, connectionID string) *tidcommon.ServiceError
 }
 
 // resolver is the default implementation of ResolverInterface.
 type resolver struct {
-	ouService ou.OrganizationUnitServiceInterface
-	errs      Errors
-	logger    *log.Logger
+	ouService    ou.OrganizationUnitServiceInterface
+	authzService sysauthz.SystemAuthorizationServiceInterface
+	errs         Errors
+	logger       *log.Logger
+}
+
+// Authorize checks that the caller may perform the action on a connection owned by the organization unit.
+func (r *resolver) Authorize(
+	ctx context.Context, action security.Action, ouID, connectionID string,
+) *tidcommon.ServiceError {
+	allowed, svcErr := r.authzService.IsActionAllowed(ctx, action, &sysauthz.ActionContext{
+		ResourceType: security.ResourceTypeConnection, OUID: ouID, ResourceID: connectionID,
+	})
+	if svcErr != nil {
+		r.logger.Error(ctx, "Failed to check authorization for a connection action",
+			log.String("action", string(action)), log.String("errorCode", svcErr.Code))
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
+	return nil
 }
 
 // Resolve returns the id of the organization unit a connection is owned by. An id is used as given, and a handle is

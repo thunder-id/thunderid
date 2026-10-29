@@ -3,7 +3,12 @@
 
 package notificationtemplate
 
-import dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
+import (
+	"fmt"
+	"strings"
+
+	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
+)
 
 // A template and its design are stored in a single NOTIFICATION_TEMPLATE row: the content is a JSON
 // column (CONTENT) and the design is a JSON column (DESIGN), an empty JSON object ({}) when a channel
@@ -75,3 +80,58 @@ var (
 			`WHERE HANDLE = $1 AND CHANNEL = $2 AND DEPLOYMENT_ID = $3`,
 	}
 )
+
+// ouIDPlaceholders returns the PostgreSQL and SQLite placeholders for a list of organization unit IDs
+// that follow the channel argument, and the channel and IDs as query arguments.
+func ouIDPlaceholders(channel ChannelType, ouIDs []string) (string, string, []interface{}) {
+	postgresPlaceholders := make([]string, len(ouIDs))
+	sqlitePlaceholders := make([]string, len(ouIDs))
+	args := make([]interface{}, 0, len(ouIDs)+4)
+	args = append(args, string(channel))
+	for i, id := range ouIDs {
+		postgresPlaceholders[i] = fmt.Sprintf("$%d", i+2)
+		sqlitePlaceholders[i] = "?"
+		args = append(args, id)
+	}
+	return strings.Join(postgresPlaceholders, ","), strings.Join(sqlitePlaceholders, ","), args
+}
+
+// buildCountTemplatesByOUIDsQuery returns the query and args to count the templates of a channel the
+// given organization units own.
+func buildCountTemplatesByOUIDsQuery(
+	channel ChannelType, ouIDs []string, deploymentID string,
+) (dbmodel.DBQuery, []interface{}) {
+	postgresIn, sqliteIn, args := ouIDPlaceholders(channel, ouIDs)
+	const count = `SELECT COUNT(*) as total FROM "NOTIFICATION_TEMPLATE" `
+	postgresQuery := fmt.Sprintf(count+`WHERE CHANNEL = $1 AND OU_ID IN (%s) AND DEPLOYMENT_ID = $%d`,
+		postgresIn, len(ouIDs)+2)
+	sqliteQuery := fmt.Sprintf(count+`WHERE CHANNEL = ? AND OU_ID IN (%s) AND DEPLOYMENT_ID = ?`, sqliteIn)
+
+	return dbmodel.DBQuery{
+		ID:            "NTQ-NOTIF_TMPL-09",
+		Query:         postgresQuery,
+		PostgresQuery: postgresQuery,
+		SQLiteQuery:   sqliteQuery,
+	}, append(args, deploymentID)
+}
+
+// buildListTemplatesByOUIDsQuery returns the query and args to retrieve a page of the templates of a
+// channel the given organization units own. Like queryListTemplates, it selects the summary columns.
+func buildListTemplatesByOUIDsQuery(
+	channel ChannelType, ouIDs []string, limit, offset int, deploymentID string,
+) (dbmodel.DBQuery, []interface{}) {
+	postgresIn, sqliteIn, args := ouIDPlaceholders(channel, ouIDs)
+	const columns = `SELECT ID, CHANNEL, HANDLE, OU_ID, DISPLAY_NAME, DESCRIPTION FROM "NOTIFICATION_TEMPLATE" `
+	postgresQuery := fmt.Sprintf(columns+`WHERE CHANNEL = $1 AND OU_ID IN (%s) AND DEPLOYMENT_ID = $%d `+
+		`ORDER BY CREATED_AT DESC, ID DESC LIMIT $%d OFFSET $%d`,
+		postgresIn, len(ouIDs)+2, len(ouIDs)+3, len(ouIDs)+4)
+	sqliteQuery := fmt.Sprintf(columns+`WHERE CHANNEL = ? AND OU_ID IN (%s) AND DEPLOYMENT_ID = ? `+
+		`ORDER BY CREATED_AT DESC, ID DESC LIMIT ? OFFSET ?`, sqliteIn)
+
+	return dbmodel.DBQuery{
+		ID:            "NTQ-NOTIF_TMPL-10",
+		Query:         postgresQuery,
+		PostgresQuery: postgresQuery,
+		SQLiteQuery:   sqliteQuery,
+	}, append(args, deploymentID, limit, offset)
+}

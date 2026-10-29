@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 )
 
 // CompositeRoleStoreTestSuite contains tests for the composite role store.
@@ -357,4 +359,48 @@ func (suite *CompositeRoleStoreTestSuite) TestCascadeHooks_UseDatabaseStoreOnly(
 	suite.mockFileStore.AssertNotCalled(suite.T(), "GetReferencedPermissions", mock.Anything)
 	suite.mockFileStore.AssertNotCalled(suite.T(), "DeleteRolePermission",
 		mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetRoleListByOUIDs_MergesBothStores() {
+	ouIDs := []string{"ou-1", "ou-2"}
+	dbRoles := []Role{{ID: "role1"}, {ID: "role2"}}
+	fileRoles := []Role{{ID: "role2"}, {ID: "role3"}}
+	suite.mockDBStore.On("GetRoleListCountByOUIDs", mock.Anything, ouIDs).Return(2, nil)
+	suite.mockFileStore.On("GetRoleListCountByOUIDs", mock.Anything, ouIDs).Return(2, nil)
+	suite.mockDBStore.On("GetRoleListByOUIDs", mock.Anything, ouIDs, 2, 0).Return(dbRoles, nil)
+	suite.mockFileStore.On("GetRoleListByOUIDs", mock.Anything, ouIDs, 2, 0).Return(fileRoles, nil)
+
+	count, err := suite.store.GetRoleListCountByOUIDs(context.Background(), ouIDs)
+	suite.NoError(err)
+	suite.Equal(3, count)
+
+	roles, err := suite.store.GetRoleListByOUIDs(context.Background(), ouIDs, 2, 1)
+	suite.NoError(err)
+	suite.Len(roles, 2)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetRoleListByOUIDs_Errors() {
+	ouIDs := []string{"ou-1"}
+	suite.Run("StoreError", func() {
+		suite.SetupTest()
+		suite.mockDBStore.On("GetRoleListCountByOUIDs", mock.Anything, ouIDs).Return(0, errors.New("db error"))
+
+		_, countErr := suite.store.GetRoleListCountByOUIDs(context.Background(), ouIDs)
+		_, listErr := suite.store.GetRoleListByOUIDs(context.Background(), ouIDs, 10, 0)
+
+		suite.Error(countErr)
+		suite.Error(listErr)
+	})
+	suite.Run("OverTheCompositeLimit", func() {
+		suite.SetupTest()
+		suite.mockDBStore.On("GetRoleListCountByOUIDs", mock.Anything, ouIDs).
+			Return(serverconst.MaxCompositeStoreRecords, nil)
+		suite.mockFileStore.On("GetRoleListCountByOUIDs", mock.Anything, ouIDs).Return(1, nil)
+
+		_, countErr := suite.store.GetRoleListCountByOUIDs(context.Background(), ouIDs)
+		_, listErr := suite.store.GetRoleListByOUIDs(context.Background(), ouIDs, 10, 0)
+
+		suite.ErrorIs(countErr, errResultLimitExceededInCompositeMode)
+		suite.ErrorIs(listErr, errResultLimitExceededInCompositeMode)
+	})
 }

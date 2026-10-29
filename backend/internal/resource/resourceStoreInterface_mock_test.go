@@ -1771,6 +1771,86 @@ func (_c *resourceStoreInterfaceMock_GetResourceServerList_Call) RunAndReturn(ru
 	return _c
 }
 
+// GetResourceServerListByOUIDs provides a mock function for the type resourceStoreInterfaceMock
+func (_mock *resourceStoreInterfaceMock) GetResourceServerListByOUIDs(ctx context.Context, ouIDs []string, limit int, offset int) ([]providers.ResourceServer, error) {
+	ret := _mock.Called(ctx, ouIDs, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetResourceServerListByOUIDs")
+	}
+
+	var r0 []providers.ResourceServer
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string, int, int) ([]providers.ResourceServer, error)); ok {
+		return returnFunc(ctx, ouIDs, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string, int, int) []providers.ResourceServer); ok {
+		r0 = returnFunc(ctx, ouIDs, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]providers.ResourceServer)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []string, int, int) error); ok {
+		r1 = returnFunc(ctx, ouIDs, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// resourceStoreInterfaceMock_GetResourceServerListByOUIDs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetResourceServerListByOUIDs'
+type resourceStoreInterfaceMock_GetResourceServerListByOUIDs_Call struct {
+	*mock.Call
+}
+
+// GetResourceServerListByOUIDs is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ouIDs []string
+//   - limit int
+//   - offset int
+func (_e *resourceStoreInterfaceMock_Expecter) GetResourceServerListByOUIDs(ctx any, ouIDs any, limit any, offset any) *resourceStoreInterfaceMock_GetResourceServerListByOUIDs_Call {
+	return &resourceStoreInterfaceMock_GetResourceServerListByOUIDs_Call{Call: _e.mock.On("GetResourceServerListByOUIDs", ctx, ouIDs, limit, offset)}
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListByOUIDs_Call) Run(run func(ctx context.Context, ouIDs []string, limit int, offset int)) *resourceStoreInterfaceMock_GetResourceServerListByOUIDs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []string
+		if args[1] != nil {
+			arg1 = args[1].([]string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListByOUIDs_Call) Return(resourceServers []providers.ResourceServer, err error) *resourceStoreInterfaceMock_GetResourceServerListByOUIDs_Call {
+	_c.Call.Return(resourceServers, err)
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListByOUIDs_Call) RunAndReturn(run func(ctx context.Context, ouIDs []string, limit int, offset int) ([]providers.ResourceServer, error)) *resourceStoreInterfaceMock_GetResourceServerListByOUIDs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetResourceServerListCount provides a mock function for the type resourceStoreInterfaceMock
 func (_mock *resourceStoreInterfaceMock) GetResourceServerListCount(ctx context.Context) (int, error) {
 	ret := _mock.Called(ctx)
@@ -1827,6 +1907,72 @@ func (_c *resourceStoreInterfaceMock_GetResourceServerListCount_Call) Return(n i
 }
 
 func (_c *resourceStoreInterfaceMock_GetResourceServerListCount_Call) RunAndReturn(run func(ctx context.Context) (int, error)) *resourceStoreInterfaceMock_GetResourceServerListCount_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetResourceServerListCountByOUIDs provides a mock function for the type resourceStoreInterfaceMock
+func (_mock *resourceStoreInterfaceMock) GetResourceServerListCountByOUIDs(ctx context.Context, ouIDs []string) (int, error) {
+	ret := _mock.Called(ctx, ouIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetResourceServerListCountByOUIDs")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) (int, error)); ok {
+		return returnFunc(ctx, ouIDs)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) int); ok {
+		r0 = returnFunc(ctx, ouIDs)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []string) error); ok {
+		r1 = returnFunc(ctx, ouIDs)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// resourceStoreInterfaceMock_GetResourceServerListCountByOUIDs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetResourceServerListCountByOUIDs'
+type resourceStoreInterfaceMock_GetResourceServerListCountByOUIDs_Call struct {
+	*mock.Call
+}
+
+// GetResourceServerListCountByOUIDs is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ouIDs []string
+func (_e *resourceStoreInterfaceMock_Expecter) GetResourceServerListCountByOUIDs(ctx any, ouIDs any) *resourceStoreInterfaceMock_GetResourceServerListCountByOUIDs_Call {
+	return &resourceStoreInterfaceMock_GetResourceServerListCountByOUIDs_Call{Call: _e.mock.On("GetResourceServerListCountByOUIDs", ctx, ouIDs)}
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListCountByOUIDs_Call) Run(run func(ctx context.Context, ouIDs []string)) *resourceStoreInterfaceMock_GetResourceServerListCountByOUIDs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []string
+		if args[1] != nil {
+			arg1 = args[1].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListCountByOUIDs_Call) Return(n int, err error) *resourceStoreInterfaceMock_GetResourceServerListCountByOUIDs_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListCountByOUIDs_Call) RunAndReturn(run func(ctx context.Context, ouIDs []string) (int, error)) *resourceStoreInterfaceMock_GetResourceServerListCountByOUIDs_Call {
 	_c.Call.Return(run)
 	return _c
 }

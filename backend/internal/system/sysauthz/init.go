@@ -3,8 +3,17 @@
 
 package sysauthz
 
-// Initialize creates and returns a SystemAuthorizationServiceInterface instance.
+// InitializeDeploymentBoundedAuthorization returns a SystemAuthorizationServiceInterface under which a
+// caller acts on any organization unit in the deployment and may create root organization units.
 // This package exposes no HTTP routes and requires no store — it is a pure service.
-func Initialize() (SystemAuthorizationServiceInterface, error) {
-	return newSystemAuthorizationService(), nil
+func InitializeDeploymentBoundedAuthorization() (SystemAuthorizationServiceInterface, error) {
+	return newDeploymentBoundedAuthzService(), nil
+}
+
+// InitializeOUBoundedAuthorization returns a SystemAuthorizationServiceInterface under which a caller
+// acts only on the organization unit its token names, and root organization units come only through
+// import.
+// This package exposes no HTTP routes and requires no store — it is a pure service.
+func InitializeOUBoundedAuthorization() (SystemAuthorizationServiceInterface, error) {
+	return newOUBoundedAuthzService(), nil
 }

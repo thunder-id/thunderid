@@ -92,6 +92,60 @@ func (c *compositeStore) CountTemplates(ctx context.Context, channel ChannelType
 	return len(merged), nil
 }
 
+// ListTemplatesByOUIDs returns a page over the merged set of the templates the given organization units
+// own, rejecting a source that exceeds the composite cap.
+func (c *compositeStore) ListTemplatesByOUIDs(ctx context.Context, channel ChannelType, ouIDs []string,
+	limit, offset int) ([]templateDAO, error) {
+	merged, limitExceeded, err := c.mergeTemplatesInOUs(ctx, channel, ouIDs, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	if limitExceeded {
+		return nil, errResultLimitExceededInCompositeMode
+	}
+	return merged, nil
+}
+
+// CountTemplatesByOUIDs returns the merged count of the templates the given organization units own,
+// rejecting a source that exceeds the composite cap.
+func (c *compositeStore) CountTemplatesByOUIDs(ctx context.Context, channel ChannelType,
+	ouIDs []string) (int, error) {
+	merged, limitExceeded, err := c.mergeTemplatesInOUs(
+		ctx, channel, ouIDs, serverconst.MaxCompositeStoreRecords+1, 0)
+	if err != nil {
+		return 0, err
+	}
+	if limitExceeded {
+		return 0, errResultLimitExceededInCompositeMode
+	}
+	return len(merged), nil
+}
+
+// mergeTemplatesInOUs merges a page of the templates the given organization units own from both stores.
+func (c *compositeStore) mergeTemplatesInOUs(ctx context.Context, channel ChannelType, ouIDs []string,
+	limit, offset int) ([]templateDAO, bool, error) {
+	fileCount := func(ctx context.Context, channel ChannelType) (int, error) {
+		return c.fileStore.CountTemplatesByOUIDs(ctx, channel, ouIDs)
+	}
+	dbCount := func(ctx context.Context, channel ChannelType) (int, error) {
+		return c.dbStore.CountTemplatesByOUIDs(ctx, channel, ouIDs)
+	}
+	return declarativeresource.CompositeMergeListHelperWithLimit(
+		cappedCount(ctx, channel, fileCount),
+		cappedCount(ctx, channel, dbCount),
+		func(count int) ([]templateDAO, error) {
+			return c.fileStore.ListTemplatesByOUIDs(ctx, channel, ouIDs, count, 0)
+		},
+		func(count int) ([]templateDAO, error) {
+			return c.dbStore.ListTemplatesByOUIDs(ctx, channel, ouIDs, count, 0)
+		},
+		mergeTemplatesByHandle,
+		limit,
+		offset,
+		serverconst.MaxCompositeStoreRecords,
+	)
+}
+
 // UpdateTemplate refuses a declared template and otherwise writes to the DB.
 func (c *compositeStore) UpdateTemplate(ctx context.Context, t templateDAO) error {
 	declared, err := c.fileStore.IsHandleExists(ctx, t.Channel, t.Handle)

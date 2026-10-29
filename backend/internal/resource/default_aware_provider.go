@@ -7,6 +7,7 @@ import (
 	"context"
 
 	"github.com/thunder-id/thunderid/internal/serverconfig"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -60,5 +61,7 @@ func (p *defaultAwareResourceServerProvider) GetResourceServerByIdentifier(
 	if cfg.ResourceServerID == "" {
 		return nil, &ErrorResourceServerNotFound
 	}
-	return p.ResourceServerProvider.GetResourceServer(ctx, cfg.ResourceServerID)
+	// The default resource server serves the whole deployment, so the lookup is not bounded to a caller's
+	// organization unit.
+	return p.ResourceServerProvider.GetResourceServer(security.WithRuntimeContext(ctx), cfg.ResourceServerID)
 }

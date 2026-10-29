@@ -13,6 +13,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -23,7 +24,7 @@ import (
 // by authn, flow executors, and the connection/importer packages. It also returns the handler of
 // the "notification" server-config section.
 func Initialize(jwtService jwt.JWTServiceInterface, cfg notificationconfig.Config,
-	ouService ou.OrganizationUnitServiceInterface) (
+	ouService ou.OrganizationUnitServiceInterface, authzService sysauthz.SystemAuthorizationServiceInterface) (
 	NotificationSenderMgtSvcInterface, OTPServiceInterface, NotificationSenderServiceInterface,
 	serverconfig.ServerConfigHandlerInterface, error) {
 	var notificationStore notificationStoreInterface
@@ -42,7 +43,7 @@ func Initialize(jwtService jwt.JWTServiceInterface, cfg notificationconfig.Confi
 		}
 	}
 
-	ouResolver := connectionou.Initialize(ouService, connectionou.Errors{
+	ouResolver := connectionou.Initialize(ouService, authzService, connectionou.Errors{
 		Required: ErrorSenderOURequired,
 		NotFound: ErrorInvalidSenderOU,
 		Changed:  ErrorSenderOUUpdateNotAllowed,

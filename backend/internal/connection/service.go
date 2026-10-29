@@ -5,6 +5,7 @@ package connection
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"strings"
 
@@ -20,6 +21,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -35,6 +38,7 @@ type service struct {
 	authZENPDPService   authzenpdp.AuthZENPDPServiceInterface
 	httpService         httpconnection.HTTPConnectionServiceInterface
 	valueCapturer       declarativeresource.ValueCapturer
+	authzService        sysauthz.SystemAuthorizationServiceInterface
 }
 
 // newService creates a connection service over the given identity-provider and
@@ -43,26 +47,62 @@ func newService(idpService idp.IDPServiceInterface,
 	notificationService notification.NotificationSenderMgtSvcInterface,
 	resourceService resource.ResourceServiceInterface,
 	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
-	httpService httpconnection.HTTPConnectionServiceInterface) *service {
+	httpService httpconnection.HTTPConnectionServiceInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface) *service {
 	return &service{
 		idpService:          idpService,
 		notificationService: notificationService,
 		resourceService:     resourceService,
 		authZENPDPService:   authZENPDPService,
 		httpService:         httpService,
+		authzService:        authzService,
 	}
+}
+
+// authorizeRead checks that the caller may read a connection owned by the organization unit. Writes
+// are authorized by each kind's own service, which every writer of the kind goes through.
+func (s *service) authorizeRead(ctx context.Context, ouID, id string) *tidcommon.ServiceError {
+	allowed, svcErr := s.authzService.IsActionAllowed(ctx, security.ActionReadConnection, &sysauthz.ActionContext{
+		ResourceType: security.ResourceTypeConnection, OUID: ouID, ResourceID: id,
+	})
+	if svcErr != nil {
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
+	return nil
+}
+
+// listableOUs returns the organization units the caller may list connections from.
+func (s *service) listableOUs(ctx context.Context) (*sysauthz.AccessibleResources, *tidcommon.ServiceError) {
+	accessible, svcErr := s.authzService.GetAccessibleResources(
+		ctx, security.ActionListConnections, security.ResourceTypeOU)
+	if svcErr != nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	return accessible, nil
+}
+
+// inListableOU reports whether a connection owned by the organization unit is listed.
+func inListableOU(accessible *sysauthz.AccessibleResources, ouID string) bool {
+	return accessible.AllAllowed || slices.Contains(accessible.IDs, ouID)
 }
 
 // listByType returns the configured instances of the given identity-provider type.
 func (s *service) listByType(ctx context.Context, idpType providers.IDPType) ([]idp.BasicIDPDTO,
 	*tidcommon.ServiceError) {
+	accessible, svcErr := s.listableOUs(ctx)
+	if svcErr != nil {
+		return nil, svcErr
+	}
 	all, svcErr := s.idpService.GetIdentityProviderList(ctx)
 	if svcErr != nil {
 		return nil, svcErr
 	}
 	instances := make([]idp.BasicIDPDTO, 0)
 	for _, instance := range all {
-		if instance.Type == idpType {
+		if instance.Type == idpType && inListableOU(accessible, instance.OUID) {
 			instances = append(instances, instance)
 		}
 	}
@@ -80,8 +120,8 @@ func validatePaginationParams(limit, offset int) *tidcommon.ServiceError {
 	return nil
 }
 
-// listInstances returns a page of the configured connection instances across the IdP- and
-// sender-backed services, optionally filtered to a single category (empty means no filter).
+// listInstances returns a page of the configured connection instances the caller may list across the
+// IdP- and sender-backed services, optionally filtered to a single category (empty means no filter).
 // The merged list is sorted by type, then name (case-insensitive), then ID, so the listing —
 // and therefore pagination — is deterministic regardless of the underlying stores' iteration
 // order. Both backing services return full lists, so the page is sliced in memory.
@@ -90,7 +130,56 @@ func (s *service) listInstances(ctx context.Context, category connectionCategory
 	if svcErr := validatePaginationParams(limit, offset); svcErr != nil {
 		return nil, svcErr
 	}
+	accessible, svcErr := s.listableOUs(ctx)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	instances, svcErr := s.collectInstances(ctx, category)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	instances = slices.DeleteFunc(instances, func(instance connectionInstance) bool {
+		return !inListableOU(accessible, instance.OUID)
+	})
 
+	sort.SliceStable(instances, func(i, j int) bool {
+		if instances[i].Type != instances[j].Type {
+			return instances[i].Type < instances[j].Type
+		}
+		nameI, nameJ := strings.ToLower(instances[i].Name), strings.ToLower(instances[j].Name)
+		if nameI != nameJ {
+			return nameI < nameJ
+		}
+		return instances[i].ID < instances[j].ID
+	})
+
+	total := len(instances)
+	page := make([]connectionInstance, 0)
+	if offset < total {
+		end := offset + limit
+		if end > total {
+			end = total
+		}
+		page = instances[offset:end]
+	}
+
+	extraQuery := ""
+	if category != "" {
+		extraQuery = "&category=" + string(category)
+	}
+	return &connectionListResponse{
+		TotalResults: total,
+		StartIndex:   offset + 1,
+		Count:        len(page),
+		Connections:  page,
+		Links:        sysutils.BuildPaginationLinks("/connections", limit, offset, total, extraQuery),
+	}, nil
+}
+
+// collectInstances returns the configured connection instances across the IdP- and sender-backed
+// services, optionally filtered to a single category (empty means no filter).
+func (s *service) collectInstances(ctx context.Context, category connectionCategory) (
+	[]connectionInstance, *tidcommon.ServiceError) {
 	instances := make([]connectionInstance, 0)
 
 	// Skip the identity-provider fetch entirely when only sms-provider instances were
@@ -141,7 +230,7 @@ func (s *service) listInstances(ctx context.Context, category connectionCategory
 	}
 
 	if category == "" || category == categoryAuthorizationPDP {
-		connections, svcErr := s.listAuthZENPDP(ctx)
+		connections, svcErr := s.allAuthZENPDP(ctx)
 		if svcErr != nil {
 			return nil, svcErr
 		}
@@ -179,7 +268,7 @@ func (s *service) listInstances(ctx context.Context, category connectionCategory
 	}
 
 	if category == "" || category == categoryHTTP {
-		connections, svcErr := s.listHTTP(ctx)
+		connections, svcErr := s.allHTTP(ctx)
 		if svcErr != nil {
 			return nil, svcErr
 		}
@@ -195,38 +284,7 @@ func (s *service) listInstances(ctx context.Context, category connectionCategory
 		}
 	}
 
-	sort.SliceStable(instances, func(i, j int) bool {
-		if instances[i].Type != instances[j].Type {
-			return instances[i].Type < instances[j].Type
-		}
-		nameI, nameJ := strings.ToLower(instances[i].Name), strings.ToLower(instances[j].Name)
-		if nameI != nameJ {
-			return nameI < nameJ
-		}
-		return instances[i].ID < instances[j].ID
-	})
-
-	total := len(instances)
-	page := make([]connectionInstance, 0)
-	if offset < total {
-		end := offset + limit
-		if end > total {
-			end = total
-		}
-		page = instances[offset:end]
-	}
-
-	extraQuery := ""
-	if category != "" {
-		extraQuery = "&category=" + string(category)
-	}
-	return &connectionListResponse{
-		TotalResults: total,
-		StartIndex:   offset + 1,
-		Count:        len(page),
-		Connections:  page,
-		Links:        sysutils.BuildPaginationLinks("/connections", limit, offset, total, extraQuery),
-	}, nil
+	return instances, nil
 }
 
 // getByType fetches a single instance and verifies it is of the expected type, returning
@@ -239,6 +297,9 @@ func (s *service) getByType(ctx context.Context, idpType providers.IDPType, id s
 	}
 	if dto.Type != idpType {
 		return nil, &idp.ErrorIDPNotFound
+	}
+	if svcErr := s.authorizeRead(ctx, dto.OUID, id); svcErr != nil {
+		return nil, svcErr
 	}
 	return dto, nil
 }
@@ -279,13 +340,17 @@ func (s *service) deleteByType(ctx context.Context, idpType providers.IDPType, i
 // listSendersByProvider returns the configured senders of the given type and provider.
 func (s *service) listSendersByProvider(ctx context.Context, senderType ncommon.NotificationSenderType,
 	provider ncommon.NotificationProviderType) ([]ncommon.NotificationSenderDTO, *tidcommon.ServiceError) {
+	accessible, svcErr := s.listableOUs(ctx)
+	if svcErr != nil {
+		return nil, svcErr
+	}
 	all, svcErr := s.notificationService.ListSendersByType(ctx, senderType)
 	if svcErr != nil {
 		return nil, svcErr
 	}
 	instances := make([]ncommon.NotificationSenderDTO, 0)
 	for _, instance := range all {
-		if instance.Provider == provider {
+		if instance.Provider == provider && inListableOU(accessible, instance.OUID) {
 			instances = append(instances, instance)
 		}
 	}
@@ -304,6 +369,9 @@ func (s *service) getSenderByProvider(ctx context.Context, senderType ncommon.No
 	}
 	if dto.Type != senderType || dto.Provider != provider {
 		return nil, &notification.ErrorSenderNotFound
+	}
+	if svcErr := s.authorizeRead(ctx, dto.OUID, id); svcErr != nil {
+		return nil, svcErr
 	}
 	return dto, nil
 }
@@ -409,8 +477,23 @@ func (s *service) createAuthZENPDP(
 	return s.authZENPDPService.CreateAuthZENPDPConnection(ctx, request)
 }
 
-// listAuthZENPDP returns all AuthZEN PDP connections.
+// listAuthZENPDP returns the AuthZEN PDP connections the caller may list.
 func (s *service) listAuthZENPDP(ctx context.Context) ([]authzenpdp.AuthZENPDPConnection, *tidcommon.ServiceError) {
+	accessible, svcErr := s.listableOUs(ctx)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	connections, svcErr := s.allAuthZENPDP(ctx)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return slices.DeleteFunc(connections, func(connection authzenpdp.AuthZENPDPConnection) bool {
+		return !inListableOU(accessible, connection.OUID)
+	}), nil
+}
+
+// allAuthZENPDP returns all AuthZEN PDP connections.
+func (s *service) allAuthZENPDP(ctx context.Context) ([]authzenpdp.AuthZENPDPConnection, *tidcommon.ServiceError) {
 	if s.authZENPDPService == nil {
 		return nil, &tidcommon.InternalServerError
 	}
@@ -433,6 +516,9 @@ func (s *service) getAuthZENPDP(ctx context.Context, id string) (*authzenpdp.Aut
 	}
 	if connection == nil {
 		return nil, &authzenpdp.ErrorNotFound
+	}
+	if svcErr := s.authorizeRead(ctx, connection.OUID, id); svcErr != nil {
+		return nil, svcErr
 	}
 	return connection, nil
 }
@@ -477,8 +563,23 @@ func (s *service) createHTTP(ctx context.Context, connection httpconnection.HTTP
 	return created, svcErr
 }
 
-// listHTTP returns all HTTP connections.
+// listHTTP returns the HTTP connections the caller may list.
 func (s *service) listHTTP(ctx context.Context) ([]httpconnection.HTTPConnection, *tidcommon.ServiceError) {
+	accessible, svcErr := s.listableOUs(ctx)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	connections, svcErr := s.allHTTP(ctx)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return slices.DeleteFunc(connections, func(connection httpconnection.HTTPConnection) bool {
+		return !inListableOU(accessible, connection.OUID)
+	}), nil
+}
+
+// allHTTP returns all HTTP connections.
+func (s *service) allHTTP(ctx context.Context) ([]httpconnection.HTTPConnection, *tidcommon.ServiceError) {
 	if s.httpService == nil {
 		return nil, &tidcommon.InternalServerError
 	}
@@ -491,7 +592,14 @@ func (s *service) getHTTP(ctx context.Context, id string) (*httpconnection.HTTPC
 	if s.httpService == nil {
 		return nil, &tidcommon.InternalServerError
 	}
-	return s.httpService.GetHTTPConnection(ctx, id)
+	connection, svcErr := s.httpService.GetHTTPConnection(ctx, id)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := s.authorizeRead(ctx, connection.OUID, id); svcErr != nil {
+		return nil, svcErr
+	}
+	return connection, nil
 }
 
 // updateHTTP resolves the request's authentication against the stored connection under the shared
@@ -556,8 +664,8 @@ func (s *service) deleteHTTP(ctx context.Context, id string) *tidcommon.ServiceE
 // usagesHTTP returns the resources that use an HTTP connection.
 func (s *service) usagesHTTP(ctx context.Context, id string) (
 	*resourcedependency.DependenciesResponse, *tidcommon.ServiceError) {
-	if s.httpService == nil {
-		return nil, &tidcommon.InternalServerError
+	if _, svcErr := s.getHTTP(ctx, id); svcErr != nil {
+		return nil, svcErr
 	}
 	return s.httpService.GetHTTPConnectionUsages(ctx, id)
 }
@@ -653,10 +761,12 @@ func (s *service) usagesAuthZENPDP(ctx context.Context, id string) (
 		return nil, &tidcommon.InternalServerError
 	}
 
+	// Every resource server that uses the connection counts, whatever organization unit owns it.
+	runtimeCtx := security.WithRuntimeContext(ctx)
 	usages := make([]resourcedependency.ResourceDependency, 0)
 	offset := 0
 	for {
-		list, svcErr := s.resourceService.GetResourceServerList(ctx, serverconst.MaxPageSize, offset)
+		list, svcErr := s.resourceService.GetResourceServerList(runtimeCtx, serverconst.MaxPageSize, offset)
 		if svcErr != nil {
 			return nil, svcErr
 		}

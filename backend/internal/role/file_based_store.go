@@ -91,16 +91,28 @@ func (f *fileBasedStore) GetRoleList(ctx context.Context, limit, offset int) ([]
 // GetRoleListCountByOUID returns the count of roles belonging to the given organization unit
 // in the file-based store.
 func (f *fileBasedStore) GetRoleListCountByOUID(ctx context.Context, ouID string) (int, error) {
-	roles, err := f.rolesByOUID(ctx, ouID)
+	return f.GetRoleListCountByOUIDs(ctx, []string{ouID})
+}
+
+// GetRoleListByOUID returns the list of roles belonging to the given organization unit from the
+// file-based store, with pagination.
+func (f *fileBasedStore) GetRoleListByOUID(ctx context.Context, ouID string, limit, offset int) ([]Role, error) {
+	return f.GetRoleListByOUIDs(ctx, []string{ouID}, limit, offset)
+}
+
+// GetRoleListCountByOUIDs returns the count of roles the given organization units own in the
+// file-based store.
+func (f *fileBasedStore) GetRoleListCountByOUIDs(ctx context.Context, ouIDs []string) (int, error) {
+	roles, err := f.rolesByOUIDs(ctx, ouIDs)
 	if err != nil {
 		return 0, err
 	}
 	return len(roles), nil
 }
 
-// GetRoleListByOUID returns the list of roles belonging to the given organization unit from the
-// file-based store, with pagination.
-func (f *fileBasedStore) GetRoleListByOUID(ctx context.Context, ouID string, limit, offset int) ([]Role, error) {
+// GetRoleListByOUIDs returns a page of the roles the given organization units own from the
+// file-based store.
+func (f *fileBasedStore) GetRoleListByOUIDs(ctx context.Context, ouIDs []string, limit, offset int) ([]Role, error) {
 	if limit <= 0 {
 		return []Role{}, nil
 	}
@@ -108,7 +120,7 @@ func (f *fileBasedStore) GetRoleListByOUID(ctx context.Context, ouID string, lim
 		offset = 0
 	}
 
-	roles, err := f.rolesByOUID(ctx, ouID)
+	roles, err := f.rolesByOUIDs(ctx, ouIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -125,8 +137,21 @@ func (f *fileBasedStore) GetRoleListByOUID(ctx context.Context, ouID string, lim
 	return roles[start:end], nil
 }
 
-// rolesByOUID returns all roles belonging to the given organization unit from the file-based store.
-func (f *fileBasedStore) rolesByOUID(ctx context.Context, ouID string) ([]Role, error) {
+// rolesByOUIDs returns all roles the given organization units own from the file-based store.
+func (f *fileBasedStore) rolesByOUIDs(ctx context.Context, ouIDs []string) ([]Role, error) {
+	if len(ouIDs) == 0 {
+		return []Role{}, nil
+	}
+	ouSet := make(map[string]bool, len(ouIDs))
+	for _, id := range ouIDs {
+		ouSet[id] = true
+	}
+	return f.rolesWhere(ctx, "rolesByOUIDs", func(role Role) bool { return ouSet[role.OUID] })
+}
+
+// rolesWhere returns the roles in the file-based store that match, skipping a malformed entry with a
+// warning that names the caller.
+func (f *fileBasedStore) rolesWhere(ctx context.Context, caller string, matches func(Role) bool) ([]Role, error) {
 	list, err := f.GenericFileBasedStore.List()
 	if err != nil {
 		return nil, err
@@ -137,20 +162,20 @@ func (f *fileBasedStore) rolesByOUID(ctx context.Context, ouID string) ([]Role, 
 		roleData, err := roleFromDeclarativeData(item.ID.ID, item.Data)
 		if err != nil {
 			// Log warning for malformed declarative entry
-			log.GetLogger().Warn(ctx, "Skipping malformed role in rolesByOUID",
+			log.GetLogger().Warn(ctx, "Skipping malformed role in "+caller,
 				log.String("roleID", item.ID.ID),
 				log.Error(err))
 			continue
 		}
-		if roleData.OUID != ouID {
-			continue
-		}
-		roles = append(roles, Role{
+		role := Role{
 			ID:          roleData.ID,
 			Name:        roleData.Name,
 			Description: roleData.Description,
 			OUID:        roleData.OUID,
-		})
+		}
+		if matches(role) {
+			roles = append(roles, role)
+		}
 	}
 
 	return roles, nil
@@ -198,33 +223,7 @@ func (f *fileBasedStore) GetRolesByNames(ctx context.Context, names []string) ([
 	for _, name := range names {
 		wanted[name] = true
 	}
-
-	list, err := f.GenericFileBasedStore.List()
-	if err != nil {
-		return nil, err
-	}
-
-	roles := make([]Role, 0, len(names))
-	for _, item := range list {
-		roleData, err := roleFromDeclarativeData(item.ID.ID, item.Data)
-		if err != nil {
-			log.GetLogger().Warn(ctx, "Skipping malformed role in GetRolesByNames",
-				log.String("roleID", item.ID.ID),
-				log.Error(err))
-			continue
-		}
-		if !wanted[roleData.Name] {
-			continue
-		}
-		roles = append(roles, Role{
-			ID:          roleData.ID,
-			Name:        roleData.Name,
-			Description: roleData.Description,
-			OUID:        roleData.OUID,
-		})
-	}
-
-	return roles, nil
+	return f.rolesWhere(ctx, "GetRolesByNames", func(role Role) bool { return wanted[role.Name] })
 }
 
 // IsRoleExist checks if a role exists in the file-based store.

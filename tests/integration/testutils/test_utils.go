@@ -1084,6 +1084,17 @@ func PatchDeploymentConfig(patch map[string]interface{}) error {
 	return nil
 }
 
+// DataPlaneSuiteSkipReason is why the suites asserting the data plane's OU-bounded management
+// authorization are skipped: the server under test authorizes as the control plane does, where a
+// token reaches every organization unit in the deployment.
+//
+// Apart from the OU suite, which imports its fixtures with the management API key, these suites
+// create their fixtures with the administrator's token, the same token some of them expect to be
+// refused. A data plane confines that token to its own organization unit, so moving them to the
+// data plane run also moves fixture setup to import with the management API key.
+const DataPlaneSuiteSkipReason = "TODO: move to the data plane server integration run once the control " +
+	"plane and data plane are separate servers"
+
 // ensureDirectAuthSecretInDeploymentConfig guarantees server.security.direct_auth_secret is set to the
 // fixture value in the extracted product's deployment.yaml. The server is secure by default (an empty
 // secret blocks the Direct API endpoints), and suites that rewrite deployment.yaml via UpdateDeploymentConfig

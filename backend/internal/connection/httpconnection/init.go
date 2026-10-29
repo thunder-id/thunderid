@@ -10,16 +10,17 @@ import (
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
 // Initialize creates the HTTP connection service over the store its configured mode selects.
-func Initialize(cfg config.HTTPConnectionConfig,
-	ouService ou.OrganizationUnitServiceInterface) (HTTPConnectionServiceInterface, error) {
+func Initialize(cfg config.HTTPConnectionConfig, ouService ou.OrganizationUnitServiceInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface) (HTTPConnectionServiceInterface, error) {
 	mode, err := resolvedStoreMode(cfg)
 	if err != nil {
 		return nil, err
 	}
-	ouResolver := connectionou.Initialize(ouService, connectionou.Errors{
+	ouResolver := connectionou.Initialize(ouService, authzService, connectionou.Errors{
 		Required: connectionou.ErrorOURequired,
 		NotFound: connectionou.ErrorInvalidOU,
 		Changed:  connectionou.ErrorOUUpdateNotAllowed,

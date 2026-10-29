@@ -26,12 +26,14 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/groupmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourceserverprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 type mockTransactioner struct{}
@@ -119,7 +121,7 @@ func (s *IDPServiceTestSuite) SetupTest() {
 	// exists.
 	s.mockOU.On("IsOrganizationUnitExists", mock.Anything, "ou-1").Return(true, nil).Maybe()
 	s.idpService = &idpService{
-		ouResolver: connectionou.Initialize(s.mockOU, connectionou.Errors{
+		ouResolver: connectionou.Initialize(s.mockOU, newAllowAllConnectionAuthz(s.T()), connectionou.Errors{
 			Required: ErrorIDPOURequired,
 			NotFound: ErrorInvalidIDPOU,
 			Changed:  ErrorIDPOUUpdateNotAllowed,
@@ -1093,7 +1095,7 @@ func (s *IDPServiceTestSuite) TestUpdateIdentityProvider_FailsForDeclarativeIDP(
 		Return((*providers.IDPDTO)(nil), ErrIDPNotFound)
 
 	service := newIDPService(compositeStore, nil, nil, nil, nil, &mockTransactioner{},
-		connectionou.Initialize(nil, connectionou.Errors{}))
+		connectionou.Initialize(nil, newAllowAllConnectionAuthz(s.T()), connectionou.Errors{}))
 
 	updatedIDP := &providers.IDPDTO{
 		Name:        "Updated Name",
@@ -1146,7 +1148,7 @@ func (s *IDPServiceTestSuite) TestUpdateIdentityProvider_SucceedsForMutableIDP()
 	})).Return(nil)
 
 	service := newIDPService(compositeStore, nil, nil, nil, nil, &mockTransactioner{},
-		connectionou.Initialize(nil, connectionou.Errors{}))
+		connectionou.Initialize(nil, newAllowAllConnectionAuthz(s.T()), connectionou.Errors{}))
 
 	updatedIDP := &providers.IDPDTO{
 		Name:        "Updated Name",
@@ -1189,7 +1191,7 @@ func (s *IDPServiceTestSuite) TestDeleteIdentityProvider_FailsForDeclarativeIDP(
 	fileStore.On("GetIdentityProvider", context.Background(), idpID).Return(existingIDP, nil)
 
 	service := newIDPService(compositeStore, nil, nil, nil, nil, &mockTransactioner{},
-		connectionou.Initialize(nil, connectionou.Errors{}))
+		connectionou.Initialize(nil, newAllowAllConnectionAuthz(s.T()), connectionou.Errors{}))
 	service.SetDependencyRegistry(newNoBlockingDepsRegistry())
 
 	err := service.DeleteIdentityProvider(context.Background(), idpID)
@@ -1228,7 +1230,7 @@ func (s *IDPServiceTestSuite) TestDeleteIdentityProvider_SucceedsForMutableIDP()
 	dbStore.On("DeleteIdentityProvider", context.Background(), idpID).Return(nil)
 
 	service := newIDPService(compositeStore, nil, nil, nil, nil, &mockTransactioner{},
-		connectionou.Initialize(nil, connectionou.Errors{}))
+		connectionou.Initialize(nil, newAllowAllConnectionAuthz(s.T()), connectionou.Errors{}))
 	service.SetDependencyRegistry(newNoBlockingDepsRegistry())
 
 	err := service.DeleteIdentityProvider(context.Background(), idpID)
@@ -1941,7 +1943,7 @@ func (s *IDPServiceTestSuite) TestUpdateIdentityProvider_DoesNotReSeedRemovedDef
 		transactioner:      &mockTransactioner{},
 		dependencyRegistry: newNoBlockingDepsRegistry(),
 		entityTypeService:  mockET,
-		ouResolver:         connectionou.Initialize(nil, connectionou.Errors{}),
+		ouResolver:         connectionou.Initialize(nil, newAllowAllConnectionAuthz(s.T()), connectionou.Errors{}),
 		logger:             log.GetLogger().With(log.String(log.LoggerKeyComponentName, "IdPService")),
 		uuidGenerator:      utils.GenerateUUIDv7,
 	}
@@ -2004,7 +2006,8 @@ func (s *IDPServiceTestSuite) TestCreateIdentityProvider_AuthorizationRuleMappin
 // TestCreateIdentityProvider_AuthorizationRuleMapping_RoleServiceServerErrorPropagates ensures a genuine
 // server error from the role service is surfaced as-is, not folded into a client "not found" error.
 func (s *IDPServiceTestSuite) TestCreateIdentityProvider_AuthorizationRuleMapping_RoleServiceServerErrorPropagates() {
-	s.mockRole.On("GetRoleWithPermissions", mock.Anything, "role-id").
+	// A mapping may name a role of any organization unit, so the lookup runs as the runtime.
+	s.mockRole.On("GetRoleWithPermissions", mock.MatchedBy(security.IsRuntimeContext), "role-id").
 		Return((*role.RoleWithPermissions)(nil), &tidcommon.InternalServerError)
 
 	idp := authorizationRuleMappingIDP(providers.AuthorizationTarget{
@@ -2510,7 +2513,8 @@ func (s *IDPServiceTestSuite) TestCreateIdentityProvider_AuthorizationDirectMapp
 // TestCreateIdentityProvider_AuthorizationDirectMapping_ResourceServerErrorPropagates ensures a
 // genuine server error from the resource service is surfaced as-is.
 func (s *IDPServiceTestSuite) TestCreateIdentityProvider_AuthorizationDirectMapping_ResourceServerErrorPropagates() {
-	s.mockResource.On("GetResourceServer", mock.Anything, "rs-1").
+	// A mapping may name a resource server of any organization unit, so the lookup runs as the runtime.
+	s.mockResource.On("GetResourceServer", mock.MatchedBy(security.IsRuntimeContext), "rs-1").
 		Return((*providers.ResourceServer)(nil), &tidcommon.InternalServerError)
 
 	idp := directMappingIDP(providers.AuthorizationDirectMapping{
@@ -2901,4 +2905,68 @@ func (s *IDPServiceTestSuite) TestResolveIdentityProviderOU() {
 	none := s.idpService.ResolveIdentityProviderOU(context.Background(), s.newIDPForOU("", ""))
 	s.Require().NotNil(none)
 	s.Equal(ErrorIDPOURequired.Code, none.Code)
+}
+
+// newAllowAllConnectionAuthz returns an authz mock that permits every connection action in every
+// organization unit, so that tests unrelated to the boundary need not configure it.
+func newAllowAllConnectionAuthz(t *testing.T) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authz.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
+	return authz
+}
+
+// refuseConnectionActions makes the service refuse every connection action, as for an identity provider
+// in an organization unit the caller does not reach.
+func (s *IDPServiceTestSuite) refuseConnectionActions() {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(false, nil).Once()
+	s.idpService.ouResolver = connectionou.Initialize(s.mockOU, authz, connectionou.Errors{
+		Required: ErrorIDPOURequired,
+		NotFound: ErrorInvalidIDPOU,
+		Changed:  ErrorIDPOUUpdateNotAllowed,
+	})
+}
+
+func (s *IDPServiceTestSuite) TestIdentityProviderWritesAreBoundedToTheOU() {
+	existing := &providers.IDPDTO{
+		ID: "idp-1", OUID: "ou-1", Name: "Test IDP", Type: providers.IDPTypeOIDC, Properties: createOIDCProperties(),
+	}
+	cases := []struct {
+		name string
+		call func() *tidcommon.ServiceError
+	}{
+		{"Create", func() *tidcommon.ServiceError {
+			_, svcErr := s.idpService.CreateIdentityProvider(context.Background(), &providers.IDPDTO{
+				OUID: "ou-1", Name: "Test IDP", Type: providers.IDPTypeOIDC, Properties: createOIDCProperties(),
+			})
+			return svcErr
+		}},
+		{"Update", func() *tidcommon.ServiceError {
+			s.mockStore.On("GetIdentityProvider", mock.Anything, "idp-1").Return(existing, nil).Once()
+			_, svcErr := s.idpService.UpdateIdentityProvider(context.Background(), "idp-1", &providers.IDPDTO{
+				Name: "Test IDP", Type: providers.IDPTypeOIDC, Properties: createOIDCProperties(),
+			})
+			return svcErr
+		}},
+		{"Delete", func() *tidcommon.ServiceError {
+			s.mockStore.On("GetIdentityProvider", mock.Anything, "idp-1").Return(existing, nil).Once()
+			return s.idpService.DeleteIdentityProvider(context.Background(), "idp-1")
+		}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			s.refuseConnectionActions()
+
+			svcErr := tc.call()
+
+			s.Require().NotNil(svcErr)
+			s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+			s.mockStore.AssertNotCalled(s.T(), "CreateIdentityProvider", mock.Anything, mock.Anything)
+			s.mockStore.AssertNotCalled(s.T(), "UpdateIdentityProvider", mock.Anything, mock.Anything)
+			s.mockStore.AssertNotCalled(s.T(), "DeleteIdentityProvider", mock.Anything, mock.Anything)
+		})
+	}
 }

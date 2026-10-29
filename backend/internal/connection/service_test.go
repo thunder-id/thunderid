@@ -23,12 +23,15 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/connection/authzenpdpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/connection/httpconnectionmock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 type ServiceTestSuite struct {
@@ -43,14 +46,17 @@ type testResourceServerLister struct {
 	lists  map[int]*resource.ResourceServerList
 	err    *tidcommon.ServiceError
 	called []int
+	// asRuntime records, for each call, whether it ran as the runtime.
+	asRuntime []bool
 }
 
 func (l *testResourceServerLister) GetResourceServerList(
-	_ context.Context,
+	ctx context.Context,
 	_ int,
 	offset int,
 ) (*resource.ResourceServerList, *tidcommon.ServiceError) {
 	l.called = append(l.called, offset)
+	l.asRuntime = append(l.asRuntime, security.IsRuntimeContext(ctx))
 	if l.err != nil {
 		return nil, l.err
 	}
@@ -69,7 +75,7 @@ func (s *ServiceTestSuite) SetupTest() {
 	s.mockIDP = idpmock.NewIDPServiceInterfaceMock(s.T())
 	s.mockNotif = notificationmock.NewNotificationSenderMgtSvcInterfaceMock(s.T())
 	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{},
-		newAuthZENPDPServiceMock(s.T()), newHTTPConnectionServiceMock(s.T()))
+		newAuthZENPDPServiceMock(s.T()), newHTTPConnectionServiceMock(s.T()), newAllowAllConnectionAuthz(s.T()))
 }
 
 func (s *ServiceTestSuite) TearDownTest() {
@@ -111,7 +117,7 @@ func (s *ServiceTestSuite) TestCreateAuthZENPDPStoresConfiguredEndpoints() {
 			BatchEndpoint: "https://pdp.example.com/access/v1/evaluations",
 		}, (*tidcommon.ServiceError)(nil))
 	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{},
-		pdpService, newHTTPConnectionServiceMock(s.T()))
+		pdpService, newHTTPConnectionServiceMock(s.T()), newAllowAllConnectionAuthz(s.T()))
 
 	created, svcErr := s.svc.createAuthZENPDP(context.Background(), authzenpdp.ConnectionRequest{
 		Name:          "PDP",
@@ -132,7 +138,7 @@ func (s *ServiceTestSuite) TestCreateAuthZENPDPRejectsDuplicateName() {
 	pdpService.On("CreateAuthZENPDPConnection", mock.Anything, mock.Anything).
 		Return((*authzenpdp.AuthZENPDPConnection)(nil), &authzenpdp.ErrorAlreadyExists)
 	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{},
-		pdpService, newHTTPConnectionServiceMock(s.T()))
+		pdpService, newHTTPConnectionServiceMock(s.T()), newAllowAllConnectionAuthz(s.T()))
 
 	created, svcErr := s.svc.createAuthZENPDP(context.Background(), authzenpdp.ConnectionRequest{
 		Name:          "PDP",
@@ -154,7 +160,7 @@ func (s *ServiceTestSuite) TestUpdateAuthZENPDPStoresConfiguredEndpoints() {
 			BatchEndpoint: "https://new-pdp.example.com/access/v1/evaluations",
 		}, (*tidcommon.ServiceError)(nil))
 	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{},
-		pdpService, newHTTPConnectionServiceMock(s.T()))
+		pdpService, newHTTPConnectionServiceMock(s.T()), newAllowAllConnectionAuthz(s.T()))
 
 	updated, svcErr := s.svc.updateAuthZENPDP(context.Background(), "pdp-1", authzenpdp.ConnectionRequest{
 		Name:          "New PDP",
@@ -173,7 +179,7 @@ func (s *ServiceTestSuite) TestUpdateAuthZENPDPPropagatesDomainError() {
 	pdpService.On("UpdateAuthZENPDPConnection", mock.Anything, "pdp-1", mock.Anything).
 		Return((*authzenpdp.AuthZENPDPConnection)(nil), &authzenpdp.ErrorAlreadyExists)
 	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{},
-		pdpService, newHTTPConnectionServiceMock(s.T()))
+		pdpService, newHTTPConnectionServiceMock(s.T()), newAllowAllConnectionAuthz(s.T()))
 
 	updated, svcErr := s.svc.updateAuthZENPDP(context.Background(), "pdp-1", authzenpdp.ConnectionRequest{})
 
@@ -680,7 +686,7 @@ func (s *ServiceTestSuite) TestUsagesAuthZENPDPReturnsReferencingResourceServers
 		},
 	}
 	s.svc = newService(s.mockIDP, s.mockNotif, resourceLister,
-		pdpService, newHTTPConnectionServiceMock(s.T()))
+		pdpService, newHTTPConnectionServiceMock(s.T()), newAllowAllConnectionAuthz(s.T()))
 
 	result, svcErr := s.svc.usagesAuthZENPDP(context.Background(), "pdp-1")
 
@@ -693,6 +699,8 @@ func (s *ServiceTestSuite) TestUsagesAuthZENPDPReturnsReferencingResourceServers
 	s.Equal("rs-1", result.Usages[0].ID)
 	s.Equal("Travel API", result.Usages[0].DisplayName)
 	s.Equal(resourcedependency.BehaviorRestrict, result.Usages[0].BehaviorOnDelete)
+	// Every resource server counts, whatever organization unit owns it.
+	s.Equal([]bool{true}, resourceLister.asRuntime)
 }
 
 func (s *ServiceTestSuite) TestDeleteAuthZENPDPBlocksWhenResourceServerReferencesIt() {
@@ -722,7 +730,7 @@ func (s *ServiceTestSuite) TestDeleteAuthZENPDPBlocksWhenResourceServerReference
 				},
 			},
 		},
-	}, pdpService, newHTTPConnectionServiceMock(s.T()))
+	}, pdpService, newHTTPConnectionServiceMock(s.T()), newAllowAllConnectionAuthz(s.T()))
 
 	svcErr := s.svc.deleteAuthZENPDP(context.Background(), "pdp-1")
 
@@ -737,7 +745,7 @@ func (s *ServiceTestSuite) TestDeleteAuthZENPDPRejectsImmutableConnection() {
 	pdpService.On("DeleteAuthZENPDPConnection", mock.Anything, "pdp-1").
 		Return(&declarativeresource.ErrorDeclarativeResourceDeleteOperation)
 	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, pdpService,
-		newHTTPConnectionServiceMock(s.T()))
+		newHTTPConnectionServiceMock(s.T()), newAllowAllConnectionAuthz(s.T()))
 
 	svcErr := s.svc.deleteAuthZENPDP(context.Background(), "pdp-1")
 
@@ -780,7 +788,8 @@ func (s *ServiceTestSuite) updateHTTPWithStored(storedAuth []cmodels.Property, r
 	outboundauth.Config, *tidcommon.ServiceError) {
 	s.T().Helper()
 	mockHTTP := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
-	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, newAuthZENPDPServiceMock(s.T()), mockHTTP)
+	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, newAuthZENPDPServiceMock(s.T()), mockHTTP,
+		newAllowAllConnectionAuthz(s.T()))
 	mockHTTP.On("GetHTTPConnection", mock.Anything, "http-1").Return(&httpconnection.HTTPConnection{
 		ID: "http-1", Name: "Risk", URL: storedHTTPURL, AuthProperties: storedAuth,
 	}, (*tidcommon.ServiceError)(nil))
@@ -935,7 +944,8 @@ func (s *ServiceTestSuite) TestListInstancesCarriesOwnerOfSenderPDPAndHTTP() {
 	pdpService.On("ListAuthZENPDPs", mock.Anything).
 		Return([]authzenpdp.AuthZENPDPConnection{{ID: "p1", Name: "PDP", OUID: "ou-pdp"}},
 			(*tidcommon.ServiceError)(nil)).Once()
-	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, pdpService, mockHTTP)
+	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, pdpService, mockHTTP,
+		newAllowAllConnectionAuthz(s.T()))
 	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
 		Return([]ncommon.NotificationSenderDTO{{ID: "s1", Name: "SMS", OUID: "ou-sms",
 			Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.NotificationProviderTypeTwilio}},
@@ -964,7 +974,8 @@ func (s *ServiceTestSuite) TestListInstancesCarriesOwnerOfSenderPDPAndHTTP() {
 func (s *ServiceTestSuite) withHTTPWriter(storedAuth []cmodels.Property) (*httpConnectionWriter,
 	*httpconnectionmock.HTTPConnectionServiceInterfaceMock, *httpconnection.HTTPConnection) {
 	mockHTTP := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
-	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, newAuthZENPDPServiceMock(s.T()), mockHTTP)
+	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, newAuthZENPDPServiceMock(s.T()), mockHTTP,
+		newAllowAllConnectionAuthz(s.T()))
 	stored := &httpconnection.HTTPConnection{ID: "http-1", Name: "Risk", URL: storedHTTPURL,
 		AuthProperties: storedAuth}
 	return &httpConnectionWriter{svc: s.svc}, mockHTTP, stored
@@ -1065,4 +1076,170 @@ func (s *ServiceTestSuite) TestTheWritersUpdateValidationAppliesTheRetentionRule
 		s.Require().NotNil(svcErr)
 		s.Equal(httpconnection.ErrorInvalidAuthentication.Code, svcErr.Code)
 	})
+}
+
+// newAllowAllConnectionAuthz returns an authz mock that permits every connection action in every
+// organization unit, so that tests unrelated to the boundary need not configure it.
+func newAllowAllConnectionAuthz(t *testing.T) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authz.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
+	return authz
+}
+
+// boundAuthz returns an authz mock that allows connection actions only in ouID, as an
+// organization-unit-bound token naming ouID would.
+func boundAuthz(t *testing.T, ouID string) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
+		Return(func(_ context.Context, _ security.Action, actionCtx *sysauthz.ActionContext) bool {
+			return actionCtx.OUID == ouID
+		}, nil).Maybe()
+	authz.On("GetAccessibleResources", mock.Anything, security.ActionListConnections, security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{IDs: []string{ouID}}, nil).Maybe()
+	return authz
+}
+
+func (s *ServiceTestSuite) TestReadsAreBoundedToTheOU() {
+	mockHTTP := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	mockHTTP.On("GetHTTPConnection", mock.Anything, "h1").
+		Return(&httpconnection.HTTPConnection{ID: "h1", OUID: "ou-2"}, (*tidcommon.ServiceError)(nil)).Maybe()
+	pdpService := authzenpdpmock.NewAuthZENPDPServiceInterfaceMock(s.T())
+	pdpService.On("GetAuthZENPDP", mock.Anything, "p1").
+		Return(&authzenpdp.AuthZENPDPConnection{ID: "p1", OUID: "ou-2"}, (*tidcommon.ServiceError)(nil)).Maybe()
+	s.mockIDP.On("GetIdentityProvider", mock.Anything, "i1").
+		Return(&providers.IDPDTO{ID: "i1", OUID: "ou-2", Type: providers.IDPTypeOIDC}, (*tidcommon.ServiceError)(nil)).
+		Maybe()
+	s.mockNotif.On("GetSender", mock.Anything, "s1").
+		Return(&ncommon.NotificationSenderDTO{ID: "s1", OUID: "ou-2", Type: ncommon.NotificationSenderTypeMessage,
+			Provider: ncommon.NotificationProviderTypeTwilio}, (*tidcommon.ServiceError)(nil)).Maybe()
+	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, pdpService, mockHTTP,
+		boundAuthz(s.T(), "ou-1"))
+
+	reads := map[string]func() *tidcommon.ServiceError{
+		"identity provider": func() *tidcommon.ServiceError {
+			_, svcErr := s.svc.getByType(context.Background(), providers.IDPTypeOIDC, "i1")
+			return svcErr
+		},
+		"sender": func() *tidcommon.ServiceError {
+			_, svcErr := s.svc.getSenderByProvider(context.Background(), ncommon.NotificationSenderTypeMessage,
+				ncommon.NotificationProviderTypeTwilio, "s1")
+			return svcErr
+		},
+		"AuthZEN PDP": func() *tidcommon.ServiceError {
+			_, svcErr := s.svc.getAuthZENPDP(context.Background(), "p1")
+			return svcErr
+		},
+		"HTTP": func() *tidcommon.ServiceError {
+			_, svcErr := s.svc.getHTTP(context.Background(), "h1")
+			return svcErr
+		},
+		"HTTP usages": func() *tidcommon.ServiceError {
+			_, svcErr := s.svc.usagesHTTP(context.Background(), "h1")
+			return svcErr
+		},
+	}
+	for name, read := range reads {
+		s.Run(name, func() {
+			svcErr := read()
+
+			s.Require().NotNil(svcErr)
+			s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+		})
+	}
+	mockHTTP.AssertNotCalled(s.T(), "GetHTTPConnectionUsages", mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestListsAreBoundedToTheOU() {
+	mockHTTP := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	mockHTTP.On("ListHTTPConnections", mock.Anything).
+		Return([]httpconnection.HTTPConnection{{ID: "h1", OUID: "ou-1"}, {ID: "h2", OUID: "ou-2"}},
+			(*tidcommon.ServiceError)(nil)).Maybe()
+	pdpService := authzenpdpmock.NewAuthZENPDPServiceInterfaceMock(s.T())
+	pdpService.On("ListAuthZENPDPs", mock.Anything).
+		Return([]authzenpdp.AuthZENPDPConnection{{ID: "p1", OUID: "ou-1"}, {ID: "p2", OUID: "ou-2"}},
+			(*tidcommon.ServiceError)(nil)).Maybe()
+	s.mockIDP.On("GetIdentityProviderList", mock.Anything).
+		Return([]idp.BasicIDPDTO{
+			{ID: "i1", OUID: "ou-1", Type: providers.IDPTypeOIDC},
+			{ID: "i2", OUID: "ou-2", Type: providers.IDPTypeOIDC},
+			{ID: "i3", Type: providers.IDPTypeOIDC},
+		}, (*tidcommon.ServiceError)(nil)).Maybe()
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
+		Return([]ncommon.NotificationSenderDTO{
+			{ID: "s1", OUID: "ou-1", Provider: ncommon.NotificationProviderTypeTwilio},
+			{ID: "s2", OUID: "ou-2", Provider: ncommon.NotificationProviderTypeTwilio},
+		}, (*tidcommon.ServiceError)(nil)).Maybe()
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeEmail).
+		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil)).Maybe()
+	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, pdpService, mockHTTP,
+		boundAuthz(s.T(), "ou-1"))
+
+	s.Run("every category", func() {
+		got, svcErr := s.svc.listInstances(context.Background(), "", serverconst.DefaultPageSize, 0)
+
+		s.Require().Nil(svcErr)
+		ids := make([]string, 0, len(got.Connections))
+		for _, connection := range got.Connections {
+			ids = append(ids, connection.ID)
+		}
+		s.ElementsMatch([]string{"i1", "s1", "p1", "h1"}, ids)
+		s.Equal(4, got.TotalResults)
+	})
+
+	s.Run("by kind", func() {
+		idps, svcErr := s.svc.listByType(context.Background(), providers.IDPTypeOIDC)
+		s.Require().Nil(svcErr)
+		s.Require().Len(idps, 1)
+		s.Equal("i1", idps[0].ID)
+
+		senders, svcErr := s.svc.listSendersByProvider(context.Background(), ncommon.NotificationSenderTypeMessage,
+			ncommon.NotificationProviderTypeTwilio)
+		s.Require().Nil(svcErr)
+		s.Require().Len(senders, 1)
+		s.Equal("s1", senders[0].ID)
+
+		pdps, svcErr := s.svc.listAuthZENPDP(context.Background())
+		s.Require().Nil(svcErr)
+		s.Require().Len(pdps, 1)
+		s.Equal("p1", pdps[0].ID)
+
+		https, svcErr := s.svc.listHTTP(context.Background())
+		s.Require().Nil(svcErr)
+		s.Require().Len(https, 1)
+		s.Equal("h1", https[0].ID)
+	})
+}
+
+func (s *ServiceTestSuite) TestListsFailWhenTheListableOUsCannotBeResolved() {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	authz.On("GetAccessibleResources", mock.Anything, security.ActionListConnections, security.ResourceTypeOU).
+		Return((*sysauthz.AccessibleResources)(nil), &tidcommon.InternalServerError)
+	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, newAuthZENPDPServiceMock(s.T()),
+		newHTTPConnectionServiceMock(s.T()), authz)
+
+	_, svcErr := s.svc.listInstances(context.Background(), "", serverconst.DefaultPageSize, 0)
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+
+	_, svcErr = s.svc.listByType(context.Background(), providers.IDPTypeOIDC)
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestReadAuthorizationFailureIsAServerError() {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	authz.On("IsActionAllowed", mock.Anything, security.ActionReadConnection, mock.Anything).
+		Return(false, &tidcommon.InternalServerError).Once()
+	s.mockIDP.On("GetIdentityProvider", mock.Anything, "i1").
+		Return(&providers.IDPDTO{ID: "i1", OUID: "ou-1", Type: providers.IDPTypeOIDC}, (*tidcommon.ServiceError)(nil)).
+		Once()
+	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, newAuthZENPDPServiceMock(s.T()),
+		newHTTPConnectionServiceMock(s.T()), authz)
+
+	_, svcErr := s.svc.getByType(context.Background(), providers.IDPTypeOIDC, "i1")
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }

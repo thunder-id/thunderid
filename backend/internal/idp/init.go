@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -29,6 +30,7 @@ func Initialize(
 	groupService group.GroupServiceInterface,
 	resourceService providers.ResourceServerProvider,
 	ouService ou.OrganizationUnitServiceInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 ) (IDPServiceInterface, error) {
 	// Create store and transactioner based on store mode
 	idpStore, transactioner, err := initializeStore(cacheManager)
@@ -36,7 +38,7 @@ func Initialize(
 		return nil, err
 	}
 
-	ouResolver := connectionou.Initialize(ouService, connectionou.Errors{
+	ouResolver := connectionou.Initialize(ouService, authzService, connectionou.Errors{
 		Required: ErrorIDPOURequired,
 		NotFound: ErrorInvalidIDPOU,
 		Changed:  ErrorIDPOUUpdateNotAllowed,

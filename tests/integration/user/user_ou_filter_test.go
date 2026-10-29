@@ -452,14 +452,12 @@ func (ts *UserOUFilterTestSuite) TestAScopedCallerListsAUnitItMayList() {
 		fmt.Sprintf("/users?limit=%d&%s", ouFilterPageSize, ouFilter(ts.childOUID))), true)
 }
 
-// A caller not allowed to list users in a unit sees none there, rather than an error. A role in the
-// child reaches the child only, so the grandchild below it is out of reach too.
-func (ts *UserOUFilterTestSuite) TestAScopedCallerListsNoUsersInAUnitItMayNotList() {
+// A role in the child grants a user permission that reaches every unit in the deployment, so the
+// caller lists the parent, the grandchild and another root the same as the child.
+func (ts *UserOUFilterTestSuite) TestAScopedCallerListsEveryUnit() {
 	for _, ouID := range []string{ts.parentOUID, ts.grandchildOUID, ts.otherRootOUID} {
-		list := ts.list(ts.childAdmin, "/users?"+ouFilter(ouID))
-
-		ts.Zero(list.TotalResults)
-		ts.Empty(list.Users)
+		ts.assertListed(ouID, ts.everyPage(ts.childAdmin,
+			fmt.Sprintf("/users?limit=%d&%s", ouFilterPageSize, ouFilter(ouID))), true)
 	}
 }
 

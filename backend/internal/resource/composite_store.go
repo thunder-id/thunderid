@@ -143,6 +143,61 @@ func (c *compositeResourceStore) GetResourceServerListCount(ctx context.Context)
 	return len(merged), nil
 }
 
+// GetResourceServerListByOUIDs returns a paginated, deduplicated list of the resource servers the given
+// organization units own, from both stores.
+func (c *compositeResourceStore) GetResourceServerListByOUIDs(
+	ctx context.Context, ouIDs []string, limit, offset int) ([]providers.ResourceServer, error) {
+	resourceServers, err := c.resourceServersByOUIDs(ctx, ouIDs)
+	if err != nil {
+		return nil, err
+	}
+	start := min(offset, len(resourceServers))
+	end := min(start+limit, len(resourceServers))
+	return resourceServers[start:end], nil
+}
+
+// GetResourceServerListCountByOUIDs returns the deduplicated count of the resource servers the given
+// organization units own, across both stores.
+func (c *compositeResourceStore) GetResourceServerListCountByOUIDs(ctx context.Context, ouIDs []string) (int, error) {
+	resourceServers, err := c.resourceServersByOUIDs(ctx, ouIDs)
+	if err != nil {
+		return 0, err
+	}
+	return len(resourceServers), nil
+}
+
+// resourceServersByOUIDs returns every resource server the given organization units own, from both
+// stores, deduplicated before the composite cap applies.
+func (c *compositeResourceStore) resourceServersByOUIDs(
+	ctx context.Context, ouIDs []string) ([]providers.ResourceServer, error) {
+	dbCount, err := c.dbStore.GetResourceServerListCountByOUIDs(ctx, ouIDs)
+	if err != nil {
+		return nil, err
+	}
+	fileCount, err := c.fileStore.GetResourceServerListCountByOUIDs(ctx, ouIDs)
+	if err != nil {
+		return nil, err
+	}
+	if dbCount == 0 && fileCount == 0 {
+		return []providers.ResourceServer{}, nil
+	}
+
+	dbServers, err := c.dbStore.GetResourceServerListByOUIDs(ctx, ouIDs, dbCount, 0)
+	if err != nil {
+		return nil, err
+	}
+	fileServers, err := c.fileStore.GetResourceServerListByOUIDs(ctx, ouIDs, fileCount, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	resourceServers := mergeAndDeduplicateResourceServers(dbServers, fileServers)
+	if len(resourceServers) > serverconst.MaxCompositeStoreRecords {
+		return nil, errResultLimitExceededInCompositeMode
+	}
+	return resourceServers, nil
+}
+
 // UpdateResourceServer updates a resource server in the database store.
 func (c *compositeResourceStore) UpdateResourceServer(
 	ctx context.Context,

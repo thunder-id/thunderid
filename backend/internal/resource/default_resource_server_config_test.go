@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -57,7 +58,9 @@ func (suite *DefaultResourceServerConfigHandlerTestSuite) TestValidateUnsetAccep
 
 func (suite *DefaultResourceServerConfigHandlerTestSuite) TestValidateKnownIDAccepted() {
 	mockSvc := NewResourceServiceInterfaceMock(suite.T())
-	mockSvc.EXPECT().GetResourceServer(mock.Anything, "rs-1").Return(&providers.ResourceServer{ID: "rs-1"}, nil)
+	// The default serves the whole deployment, so it is read as the runtime.
+	mockSvc.EXPECT().GetResourceServer(mock.MatchedBy(security.IsRuntimeContext), "rs-1").
+		Return(&providers.ResourceServer{ID: "rs-1"}, nil)
 	h := NewDefaultResourceServerConfigHandler(mockSvc)
 	assert.NoError(suite.T(), h.Validate(DefaultResourceServerConfig{ResourceServerID: "rs-1"}, nil, nil))
 }

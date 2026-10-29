@@ -15,6 +15,7 @@ import (
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 const serviceLogger = "DesignResolveService"
@@ -76,7 +77,8 @@ func (drs *designResolveService) ResolveDesign(
 		return nil, &tidcommon.InternalServerError
 	}
 
-	app, svcErr := drs.applicationService.GetApplication(ctx, id)
+	// The design is public, so the application is read without the caller's authorization.
+	app, svcErr := drs.applicationService.GetApplication(security.WithRuntimeContext(ctx), id)
 	if svcErr != nil {
 		// Convert application service errors to design resolve errors
 		if svcErr.Code == application.ErrorInvalidApplicationID.Code {

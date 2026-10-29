@@ -17,6 +17,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -35,9 +36,10 @@ func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, idpService idp.IDPSer
 	resourceService resource.ResourceServiceInterface,
 	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
 	httpService httpconnection.HTTPConnectionServiceInterface,
-	valueCapturer declarativeresource.ValueCapturer) (
+	valueCapturer declarativeresource.ValueCapturer,
+	authzService sysauthz.SystemAuthorizationServiceInterface) (
 	declarativeresource.ResourceExporter, resourcedependency.Provider, HTTPConnectionWriterInterface, error) {
-	svc := newService(idpService, notificationService, resourceService, authZENPDPService, httpService)
+	svc := newService(idpService, notificationService, resourceService, authZENPDPService, httpService, authzService)
 	svc.valueCapturer = valueCapturer
 	h := newHandler(svc)
 	registerRoutes(mux, h)

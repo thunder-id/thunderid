@@ -362,6 +362,7 @@ func TestRoleServiceGetAllPermissions(t *testing.T) {
 // newRefusingRoleAuthz returns an authz mock that refuses every grant check.
 func newRefusingRoleAuthz(t *testing.T) sysauthz.SystemAuthorizationServiceInterface {
 	mockAuthz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	allowRoleActions(mockAuthz)
 	mockAuthz.On("CanGrantPermissions", mock.Anything, mock.Anything).
 		Return(&sysauthz.ErrorGrantNotPermitted).Maybe()
 	mockAuthz.On("CanGrantMembership", mock.Anything, mock.Anything, mock.Anything).
@@ -517,8 +518,9 @@ func TestModifyAssignments_RechecksInsideTransaction(t *testing.T) {
 			}
 			return &sysauthz.ErrorGrantNotPermitted
 		})
+	allowRoleActions(authz)
 
-	store.EXPECT().IsRoleExist(ctx, "role1").Return(true, nil).Once()
+	store.EXPECT().GetRole(ctx, "role1").Return(RoleWithPermissions{}, nil).Once()
 	store.EXPECT().AddAssignments(mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	groupSvc := groupmock.NewGroupServiceInterfaceMock(t)

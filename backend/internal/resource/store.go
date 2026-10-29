@@ -20,6 +20,9 @@ type resourceStoreInterface interface {
 	GetResourceServer(ctx context.Context, id string) (providers.ResourceServer, error)
 	GetResourceServerList(ctx context.Context, limit, offset int) ([]providers.ResourceServer, error)
 	GetResourceServerListCount(ctx context.Context) (int, error)
+	GetResourceServerListByOUIDs(
+		ctx context.Context, ouIDs []string, limit, offset int) ([]providers.ResourceServer, error)
+	GetResourceServerListCountByOUIDs(ctx context.Context, ouIDs []string) (int, error)
 	UpdateResourceServer(ctx context.Context, id string, rs providers.ResourceServer) error
 	DeleteResourceServer(ctx context.Context, id string) error
 	CheckResourceServerNameExists(ctx context.Context, name string) (bool, error)
@@ -177,6 +180,58 @@ func (s *resourceStore) GetResourceServerListCount(ctx context.Context) (int, er
 		results, err := dbClient.QueryContext(ctx, queryGetResourceServerListCount, s.scope(ctx))
 		if err != nil {
 			return fmt.Errorf("failed to get resource server count: %w", err)
+		}
+
+		count, err = parseCountResult(results)
+		return err
+	})
+	return count, err
+}
+
+// GetResourceServerListByOUIDs retrieves a page of the resource servers the given organization units
+// own.
+func (s *resourceStore) GetResourceServerListByOUIDs(
+	ctx context.Context, ouIDs []string, limit, offset int,
+) ([]providers.ResourceServer, error) {
+	if len(ouIDs) == 0 {
+		return []providers.ResourceServer{}, nil
+	}
+	var resourceServers []providers.ResourceServer
+	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
+		query, args := buildGetResourceServerListByOUIDsQuery(ouIDs, limit, offset, s.scope(ctx))
+		results, err := dbClient.QueryContext(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("failed to get resource server list by organization units: %w", err)
+		}
+
+		resourceServers = make([]providers.ResourceServer, 0, len(results))
+		for _, row := range results {
+			rs, err := buildResourceServerFromResultRow(row)
+			if err != nil {
+				return fmt.Errorf("failed to build resource server: %w", err)
+			}
+			resourceServers = append(resourceServers, rs)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resourceServers, nil
+}
+
+// GetResourceServerListCountByOUIDs retrieves the count of the resource servers the given
+// organization units own.
+func (s *resourceStore) GetResourceServerListCountByOUIDs(ctx context.Context, ouIDs []string) (int, error) {
+	if len(ouIDs) == 0 {
+		return 0, nil
+	}
+	var count int
+	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
+		query, args := buildGetResourceServerListCountByOUIDsQuery(ouIDs, s.scope(ctx))
+		results, err := dbClient.QueryContext(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("failed to get resource server count by organization units: %w", err)
 		}
 
 		count, err = parseCountResult(results)

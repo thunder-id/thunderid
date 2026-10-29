@@ -23,6 +23,7 @@ import (
 	entitypkg "github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/resource"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	enginemock "github.com/thunder-id/thunderid/tests/mocks/authz/engine"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
@@ -350,7 +351,8 @@ func TestAuthorizationServiceEnrichRequestContinuesForUnknownEntity(t *testing.T
 
 func TestAuthorizationServiceResolveEngineUsesResourceServerConnection(t *testing.T) {
 	resourceService := resourcemock.NewResourceServiceInterfaceMock(t)
-	resourceService.EXPECT().GetResourceServer(mock.Anything, "rs-1").
+	// Engine resolution serves every caller, so the resource server is read as the runtime.
+	resourceService.EXPECT().GetResourceServer(mock.MatchedBy(security.IsRuntimeContext), "rs-1").
 		Return(&providers.ResourceServer{
 			ID:         "rs-1",
 			Identifier: "https://api.example.com",

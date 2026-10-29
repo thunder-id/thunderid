@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -96,6 +97,9 @@ func (s *AuthZENPDPService) CreateAuthZENPDPConnection(
 	if svcErr := s.ResolveConnectionOU(ctx, &connection); svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := s.ouResolver.Authorize(ctx, security.ActionCreateConnection, connection.OUID, ""); svcErr != nil {
+		return nil, svcErr
+	}
 	if connection.ID == "" {
 		connection.ID = sysutils.GenerateUUID()
 	}
@@ -137,6 +141,10 @@ func (s *AuthZENPDPService) UpdateAuthZENPDPConnection(
 	}
 	if current == nil {
 		return nil, &ErrorNotFound
+	}
+	// An owner cannot change, so the connection's own organization unit is the one to authorize.
+	if svcErr := s.ouResolver.Authorize(ctx, security.ActionUpdateConnection, current.OUID, id); svcErr != nil {
+		return nil, svcErr
 	}
 	properties, err := outboundauth.UpdateProperties(request.Authentication, current.AuthenticationProperties,
 		[]string{current.Endpoint, current.BatchEndpoint},
@@ -213,6 +221,17 @@ func (s *AuthZENPDPService) ResolveConnectionOU(
 // DeleteAuthZENPDPConnection deletes an AuthZEN PDP connection.
 func (s *AuthZENPDPService) DeleteAuthZENPDPConnection(ctx context.Context, id string) *tidcommon.ServiceError {
 	if svcErr := declarativeresource.CheckDeclarativeDelete(); svcErr != nil {
+		return svcErr
+	}
+	existing, svcErr := s.GetAuthZENPDP(ctx, id)
+	if svcErr != nil {
+		return svcErr
+	}
+	// A connection that does not exist is already deleted.
+	if existing == nil {
+		return nil
+	}
+	if svcErr := s.ouResolver.Authorize(ctx, security.ActionDeleteConnection, existing.OUID, id); svcErr != nil {
 		return svcErr
 	}
 	if err := s.store.DeleteAuthZENPDP(ctx, id); err != nil {

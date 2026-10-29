@@ -35,14 +35,14 @@ func (s *HTTPConnectionInitTestSuite) TestStoreFollowsTheMode() {
 }
 
 func (s *HTTPConnectionInitTestSuite) TestAnUnknownStoreModeFailsStartup() {
-	service, err := Initialize(config.HTTPConnectionConfig{Store: "file"}, nil)
+	service, err := Initialize(config.HTTPConnectionConfig{Store: "file"}, nil, nil)
 
 	s.Require().ErrorContains(err, `invalid http_connection store mode "file"`)
 	s.Nil(service)
 }
 
 func (s *HTTPConnectionInitTestSuite) TestInitializeUsesTheResolvedStore() {
-	service, err := Initialize(config.HTTPConnectionConfig{Store: "Declarative"}, nil)
+	service, err := Initialize(config.HTTPConnectionConfig{Store: "Declarative"}, nil, nil)
 
 	s.Require().NoError(err)
 	s.IsType(&fileBasedStore{}, service.(*httpConnectionService).store)

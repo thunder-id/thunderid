@@ -13,6 +13,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
 // Initialize wires up the notification template service, renderer, and exporter and registers routes.
@@ -20,7 +21,9 @@ import (
 // in memory.
 func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 	ouService ou.OrganizationUnitServiceInterface,
-	translation translationResolver) (NotificationTemplateServiceInterface, TemplateRendererInterface,
+	translation translationResolver,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
+) (NotificationTemplateServiceInterface, TemplateRendererInterface,
 	declarativeresource.ResourceExporter, error) {
 	transactioner, err := provider.GetDBProvider().GetConfigDBTransactioner()
 	if err != nil {
@@ -33,7 +36,7 @@ func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 		return nil, nil, nil, err
 	}
 
-	service := newNotificationTemplateService(store, transactioner, ouService)
+	service := newNotificationTemplateService(store, transactioner, ouService, authzService)
 	handler := newNotificationTemplateHandler(service)
 	registerRoutes(mux, handler)
 

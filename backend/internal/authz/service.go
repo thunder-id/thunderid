@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 const loggerComponentName = "AuthorizationService"
@@ -234,7 +235,9 @@ func (s *authorizationService) getResourceServer(
 	ctx context.Context,
 	resourceServer engine.ResourceServer,
 ) (*providers.ResourceServer, *tidcommon.ServiceError) {
-	return s.resourceService.GetResourceServer(ctx, strings.TrimSpace(resourceServer.ID))
+	// Engine resolution serves every caller, whatever organization unit owns the resource server.
+	return s.resourceService.GetResourceServer(
+		security.WithRuntimeContext(ctx), strings.TrimSpace(resourceServer.ID))
 }
 
 // enrichRequest adds persisted entity attributes to supported subject evaluations.

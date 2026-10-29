@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/resource"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/identitygovernancemock"
@@ -785,15 +786,18 @@ func (s *ServiceTestSuite) TestSearchActionsReturnsAuthorizedActions() {
 	s.mockResourceServerIdentifier("booking")
 	bookingResourceID := testBookingResourceID
 	invoiceResourceID := "invoice1"
-	s.resourceMock.On("GetActionList", mock.Anything, testResourceServerID, (*string)(nil),
-		providers.ActionKind(""), mock.Anything, 0).
+	// A search serves every caller, so the resource server's actions and resources are read as the
+	// runtime.
+	s.resourceMock.On("GetActionList", mock.MatchedBy(security.IsRuntimeContext), testResourceServerID,
+		(*string)(nil), providers.ActionKind(""), mock.Anything, 0).
 		Return(&resource.ActionList{
 			Actions: []providers.Action{
 				{Handle: "read", Permission: "booking:booking:read"},
 				{Handle: "read-duplicate", Permission: "booking:booking:read"},
 			},
 		}, nil)
-	s.resourceMock.On("GetResourceList", mock.Anything, testResourceServerID, (*string)(nil), mock.Anything, 0).
+	s.resourceMock.On("GetResourceList", mock.MatchedBy(security.IsRuntimeContext), testResourceServerID,
+		(*string)(nil), mock.Anything, 0).
 		Return(&resource.ResourceList{
 			Resources: []providers.Resource{
 				{ID: bookingResourceID},

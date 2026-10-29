@@ -21,6 +21,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/internal/system/valuecompare"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -119,6 +120,9 @@ func (is *idpService) CreateIdentityProvider(
 		return nil, svcErr
 	}
 	if svcErr := is.ResolveIdentityProviderOU(ctx, idp); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := is.ouResolver.Authorize(ctx, security.ActionCreateConnection, idp.OUID, ""); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -308,6 +312,10 @@ func (is *idpService) UpdateIdentityProvider(
 			return errors.New("organization unit of an identity provider cannot be resolved")
 		}
 		idp.OUID = ouID
+		if authzErr := is.ouResolver.Authorize(txCtx, security.ActionUpdateConnection, ouID, idpID); authzErr != nil {
+			svcErr = authzErr
+			return errors.New("identity provider update not authorized")
+		}
 
 		// If the name is being updated, check whether another IdP with the same name exists
 		if existingIDP.Name != idp.Name {
@@ -365,12 +373,17 @@ func (is *idpService) DeleteIdentityProvider(ctx context.Context, idpID string) 
 	var svcErr *tidcommon.ServiceError
 	err := is.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		// Check if the identity provider exists
-		_, err := is.idpStore.GetIdentityProvider(txCtx, idpID)
+		existingIDP, err := is.idpStore.GetIdentityProvider(txCtx, idpID)
 		if err != nil {
 			if errors.Is(err, ErrIDPNotFound) {
 				return nil
 			}
 			return err
+		}
+		if authzErr := is.ouResolver.Authorize(
+			txCtx, security.ActionDeleteConnection, existingIDP.OUID, idpID); authzErr != nil {
+			svcErr = authzErr
+			return errors.New("identity provider deletion not authorized")
 		}
 
 		err = is.idpStore.DeleteIdentityProvider(txCtx, idpID)
@@ -889,8 +902,11 @@ func (is *idpService) validateAuthorizationRuleMappingTargetsExist(
 		}
 	}
 
+	// A mapping may name a role of any organization unit, so it is looked up without the caller's
+	// authorization.
+	runtimeCtx := security.WithRuntimeContext(ctx)
 	for roleID := range roleIDs {
-		if _, svcErr := is.roleService.GetRoleWithPermissions(ctx, roleID); svcErr != nil {
+		if _, svcErr := is.roleService.GetRoleWithPermissions(runtimeCtx, roleID); svcErr != nil {
 			if svcErr.Type == tidcommon.ServerErrorType {
 				return svcErr
 			}
@@ -1104,7 +1120,10 @@ func (is *idpService) validateAuthorizationDirectMappings(
 					Params: map[string]string{"claim": mapping.Claim},
 				})
 			}
-			if _, svcErr := is.resourceService.GetResourceServer(ctx, mapping.ResourceServerID); svcErr != nil {
+			// A mapping may name a resource server of any organization unit, so it is looked up without
+			// the caller's authorization.
+			if _, svcErr := is.resourceService.GetResourceServer(
+				security.WithRuntimeContext(ctx), mapping.ResourceServerID); svcErr != nil {
 				if svcErr.Type == tidcommon.ServerErrorType {
 					return svcErr
 				}

@@ -109,16 +109,28 @@ func (rs *roleService) GetRoleList(ctx context.Context, limit, offset int) (*Rol
 		return nil, err
 	}
 
-	totalCount, err := rs.roleStore.GetRoleListCount(ctx)
-	if err != nil {
-		if errors.Is(err, errResultLimitExceededInCompositeMode) {
-			return nil, &ResultLimitExceededInCompositeMode
-		}
-		logger.Error(ctx, "Failed to get role count", log.Error(err))
+	accessible, svcErr := rs.authzService.GetAccessibleResources(
+		ctx, security.ActionListRoles, security.ResourceTypeOU)
+	if svcErr != nil {
+		logger.Error(ctx, "Failed to resolve accessible resources for listing roles",
+			log.Any("error", svcErr))
 		return nil, &tidcommon.InternalServerError
 	}
 
-	roles, err := rs.roleStore.GetRoleList(ctx, limit, offset)
+	var totalCount int
+	var roles []Role
+	var err error
+	if accessible.AllAllowed {
+		totalCount, err = rs.roleStore.GetRoleListCount(ctx)
+		if err == nil {
+			roles, err = rs.roleStore.GetRoleList(ctx, limit, offset)
+		}
+	} else {
+		totalCount, err = rs.roleStore.GetRoleListCountByOUIDs(ctx, accessible.IDs)
+		if err == nil {
+			roles, err = rs.roleStore.GetRoleListByOUIDs(ctx, accessible.IDs, limit, offset)
+		}
+	}
 	if err != nil {
 		if errors.Is(err, errResultLimitExceededInCompositeMode) {
 			return nil, &ResultLimitExceededInCompositeMode
@@ -174,6 +186,10 @@ func (rs *roleService) CreateRole(
 
 	if err := rs.validateCreateRoleRequest(role); err != nil {
 		return nil, err
+	}
+
+	if svcErr := checkRoleAccess(ctx, rs.authzService, security.ActionCreateRole, role.OUID, ""); svcErr != nil {
+		return nil, svcErr
 	}
 
 	responseAssignments := role.Assignments
@@ -289,6 +305,10 @@ func (rs *roleService) GetRoleWithPermissions(ctx context.Context, id string) (
 		return nil, &tidcommon.InternalServerError
 	}
 
+	if svcErr := checkRoleAccess(ctx, rs.authzService, security.ActionReadRole, role.OUID, id); svcErr != nil {
+		return nil, svcErr
+	}
+
 	ou, svcErr := rs.ouService.GetOrganizationUnit(ctx, role.OUID)
 	if svcErr != nil {
 		logger.Warn(ctx, "Failed to resolve OU handle for role, skipping",
@@ -362,14 +382,26 @@ func (rs *roleService) UpdateRoleWithPermissions(
 		return nil, svcErr
 	}
 
-	exists, err := rs.roleStore.IsRoleExist(ctx, id)
+	existing, err := rs.roleStore.GetRole(ctx, id)
 	if err != nil {
-		logger.Error(ctx, "Failed to check role existence", log.String("id", id), log.Error(err))
+		if errors.Is(err, ErrRoleNotFound) {
+			logger.Debug(ctx, "Role not found", log.String("id", id))
+			return nil, &ErrorRoleNotFound
+		}
+		logger.Error(ctx, "Failed to retrieve role", log.String("id", id), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
-	if !exists {
-		logger.Debug(ctx, "Role not found", log.String("id", id))
-		return nil, &ErrorRoleNotFound
+
+	if svcErr := checkRoleAccess(
+		ctx, rs.authzService, security.ActionUpdateRole, existing.OUID, id); svcErr != nil {
+		return nil, svcErr
+	}
+	// A role moving to another organization unit needs the destination authorized as well.
+	if role.OUID != existing.OUID {
+		if svcErr := checkRoleAccess(
+			ctx, rs.authzService, security.ActionUpdateRole, role.OUID, id); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 
 	if svcErr := rs.validateRoleMutable(ctx, id); svcErr != nil {
@@ -429,14 +461,19 @@ func (rs *roleService) DeleteRole(ctx context.Context, id string) *tidcommon.Ser
 		return &ErrorMissingRoleID
 	}
 
-	exists, err := rs.roleStore.IsRoleExist(ctx, id)
+	existing, err := rs.roleStore.GetRole(ctx, id)
 	if err != nil {
-		logger.Error(ctx, "Failed to check role existence", log.String("id", id), log.Error(err))
+		if errors.Is(err, ErrRoleNotFound) {
+			logger.Debug(ctx, "Role not found", log.String("id", id))
+			return nil
+		}
+		logger.Error(ctx, "Failed to retrieve role", log.String("id", id), log.Error(err))
 		return &tidcommon.InternalServerError
 	}
-	if !exists {
-		logger.Debug(ctx, "Role not found", log.String("id", id))
-		return nil
+
+	if svcErr := checkRoleAccess(
+		ctx, rs.authzService, security.ActionDeleteRole, existing.OUID, id); svcErr != nil {
+		return svcErr
 	}
 
 	if svcErr := rs.validateRoleMutable(ctx, id); svcErr != nil {

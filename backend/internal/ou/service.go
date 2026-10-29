@@ -999,7 +999,16 @@ func (ous *organizationUnitService) GetOrganizationUnitRoles(
 	if ous.roleResolver == nil {
 		return nil, &tidcommon.InternalServerError
 	}
+	if svcErr := ous.checkOUAccess(ctx, security.ActionReadOU, id); svcErr != nil {
+		return nil, svcErr
+	}
+	return ous.listRoles(ctx, id, fmt.Sprintf("/organization-units/%s/roles", id), limit, offset)
+}
 
+// listRoles lists the roles an organization unit owns, with pagination links under base.
+func (ous *organizationUnitService) listRoles(
+	ctx context.Context, id, base string, limit, offset int,
+) (*RoleListResponse, *tidcommon.ServiceError) {
 	items, totalCount, svcErr := ous.getResourceListWithExistenceCheck(
 		ctx, id, limit, offset, "roles",
 		listThenCount(
@@ -1013,7 +1022,6 @@ func (ous *organizationUnitService) GetOrganizationUnitRoles(
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	base := fmt.Sprintf("/organization-units/%s/roles", id)
 	return buildRoleListResponse(base, items, totalCount, limit, offset)
 }
 
@@ -1142,16 +1150,8 @@ func (ous *organizationUnitService) GetOrganizationUnitGroupsByPath(
 		return nil, &tidcommon.InternalServerError
 	}
 
-	ou, err := ous.ouStore.GetOrganizationUnitByPath(ctx, handles)
-	if err != nil {
-		if errors.Is(err, ErrOrganizationUnitNotFound) {
-			return nil, &ErrorOrganizationUnitNotFound
-		}
-		logger.Error(ctx, "Failed to get organization unit by path", log.Error(err))
-		return nil, &tidcommon.InternalServerError
-	}
-
-	if svcErr := ous.checkOUAccess(ctx, security.ActionReadGroup, ou.ID); svcErr != nil {
+	ou, svcErr := ous.getAuthorizedOUByPath(ctx, handles, security.ActionReadGroup, logger)
+	if svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -1189,30 +1189,30 @@ func (ous *organizationUnitService) GetOrganizationUnitRolesByPath(
 		return nil, &tidcommon.InternalServerError
 	}
 
-	ou, err := ous.ouStore.GetOrganizationUnitByPath(ctx, handles)
-	if err != nil {
-		if errors.Is(err, ErrOrganizationUnitNotFound) {
-			return nil, &ErrorOrganizationUnitNotFound
-		}
-		logger.Error(ctx, "Failed to get organization unit by path", log.Error(err))
-		return nil, &tidcommon.InternalServerError
-	}
-
-	items, totalCount, svcErr := ous.getResourceListWithExistenceCheck(
-		ctx, ou.ID, limit, offset, "roles",
-		listThenCount(
-			func(ctx context.Context, id string, limit, offset int) (interface{}, error) {
-				return ous.roleResolver.GetRoleListByOUID(ctx, id, limit, offset)
-			},
-			ous.roleResolver.GetRoleCountByOUID,
-		),
-		false,
-	)
+	ou, svcErr := ous.getAuthorizedOUByPath(ctx, handles, security.ActionReadOU, logger)
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	base := fmt.Sprintf("/organization-units/tree/%s/roles", handlePath)
-	return buildRoleListResponse(base, items, totalCount, limit, offset)
+	return ous.listRoles(ctx, ou.ID, fmt.Sprintf("/organization-units/tree/%s/roles", handlePath), limit, offset)
+}
+
+// getAuthorizedOUByPath returns the organization unit the handles name, once the caller is authorized
+// to perform the action on it.
+func (ous *organizationUnitService) getAuthorizedOUByPath(
+	ctx context.Context, handles []string, action security.Action, logger *log.Logger,
+) (OrganizationUnit, *tidcommon.ServiceError) {
+	ou, err := ous.ouStore.GetOrganizationUnitByPath(ctx, handles)
+	if err != nil {
+		if errors.Is(err, ErrOrganizationUnitNotFound) {
+			return OrganizationUnit{}, &ErrorOrganizationUnitNotFound
+		}
+		logger.Error(ctx, "Failed to get organization unit by path", log.Error(err))
+		return OrganizationUnit{}, &tidcommon.InternalServerError
+	}
+	if svcErr := ous.checkOUAccess(ctx, action, ou.ID); svcErr != nil {
+		return OrganizationUnit{}, svcErr
+	}
+	return ou, nil
 }
 
 // checkCircularDependency checks if setting the parent would create a circular dependency.

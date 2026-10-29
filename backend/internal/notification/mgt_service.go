@@ -18,6 +18,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -75,6 +76,9 @@ func (s *notificationSenderMgtService) CreateSender(
 		return nil, err
 	}
 	if svcErr := s.ResolveSenderOU(ctx, &sender); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := s.ouResolver.Authorize(ctx, security.ActionCreateConnection, sender.OUID, ""); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -275,6 +279,10 @@ func (s *notificationSenderMgtService) UpdateSender(ctx context.Context, id stri
 			return errors.New("organization unit of a notification sender cannot be resolved")
 		}
 		sender.OUID = ouID
+		if authzErr := s.ouResolver.Authorize(txCtx, security.ActionUpdateConnection, ouID, id); authzErr != nil {
+			svcErr = authzErr
+			return errors.New("notification sender update not authorized")
+		}
 
 		// Ensure the type is not changed
 		if sender.Type != senderRetv.Type {
@@ -323,6 +331,19 @@ func (s *notificationSenderMgtService) DeleteSender(ctx context.Context, id stri
 
 	if id == "" {
 		return &ErrorInvalidSenderID
+	}
+
+	existing, err := s.notificationStore.getSenderByID(ctx, id)
+	if err != nil {
+		logger.Error(ctx, "Failed to retrieve notification sender", log.String("id", id), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	// A sender that does not exist is already deleted.
+	if existing == nil {
+		return nil
+	}
+	if svcErr := s.ouResolver.Authorize(ctx, security.ActionDeleteConnection, existing.OUID, id); svcErr != nil {
+		return svcErr
 	}
 
 	// Refuse deletion while other resources block it (e.g. flows that reference the sender).

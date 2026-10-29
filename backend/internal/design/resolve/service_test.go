@@ -19,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/design/common"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/design/layoutmock"
 	"github.com/thunder-id/thunderid/tests/mocks/design/thememock"
@@ -99,6 +100,18 @@ func (suite *ResolveServiceTestSuite) TestResolveDesign_UnknownApplicationIsIndi
 	assert.Equal(suite.T(), common.ErrorApplicationHasNoDesign.Code, err.Code)
 	assert.Equal(suite.T(), common.ErrorApplicationHasNoDesign.Error, err.Error)
 	assert.Equal(suite.T(), common.ErrorApplicationHasNoDesign.ErrorDescription, err.ErrorDescription)
+}
+
+// The resolve endpoint is public, so the application is read outside any caller's organization unit.
+func (suite *ResolveServiceTestSuite) TestResolveDesign_ReadsTheApplicationAsTheRuntime() {
+	suite.mockAppService.On("GetApplication", mock.MatchedBy(security.IsRuntimeContext),
+		"00000000-0000-0000-0000-000000000099").Return(nil, &application.ErrorApplicationNotFound).Once()
+
+	_, err := suite.service.ResolveDesign(context.Background(), providers.DesignResolveTypeAPP,
+		"00000000-0000-0000-0000-000000000099")
+
+	assert.NotNil(suite.T(), err)
+	assert.Equal(suite.T(), common.ErrorApplicationHasNoDesign.Code, err.Code)
 }
 
 // Test ResolveDesign - Invalid application ID (passed through to app service)

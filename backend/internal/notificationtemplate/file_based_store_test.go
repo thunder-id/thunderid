@@ -158,3 +158,41 @@ func (s *FileBasedStoreTestSuite) TestLookupsMissOnUnknownKeys() {
 	s.Require().NoError(err)
 	s.Require().False(exists)
 }
+
+// declaredOtherOUYAML is an email template declared in another organization unit.
+const declaredOtherOUYAML = `resource_type: notification_template
+id: other-email
+channel: email
+handle: other
+ouId: 01900000-0000-7000-8000-000000000002
+displayName: Other
+content:
+  subject: O
+  body: o
+`
+
+// TestListTemplatesByOUIDFiltersTheUnit verifies a unit's listing and count hold only its own
+// templates of the channel, windowed like the channel listing.
+func (s *FileBasedStoreTestSuite) TestListTemplatesByOUIDsFiltersTheUnit() {
+	const ouID = "01900000-0000-7000-8000-000000000001"
+	loadDeclared(s.T(), s.fileStore, declaredZebraYAML)
+	loadDeclared(s.T(), s.fileStore, declaredAlphaYAML)
+	loadDeclared(s.T(), s.fileStore, declaredOtherOUYAML)
+	loadDeclared(s.T(), s.fileStore, declaredSMSYAML)
+
+	all, err := s.fileStore.ListTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{ouID}, 100, 0)
+	s.Require().NoError(err)
+	s.Require().Equal([]string{"alpha", "zebra"}, handlesOf(all))
+
+	page, err := s.fileStore.ListTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{ouID}, 1, 1)
+	s.Require().NoError(err)
+	s.Require().Equal([]string{"zebra"}, handlesOf(page))
+
+	beyond, err := s.fileStore.ListTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{ouID}, 10, 5)
+	s.Require().NoError(err)
+	s.Require().Empty(beyond)
+
+	count, err := s.fileStore.CountTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{ouID})
+	s.Require().NoError(err)
+	s.Require().Equal(2, count)
+}

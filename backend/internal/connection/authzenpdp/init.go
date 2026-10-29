@@ -14,6 +14,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
 // Initialize creates the AuthZEN PDP connection service with its production store.
@@ -21,12 +22,13 @@ func Initialize(
 	defaults config.AuthZENPDPConfig,
 	entityTypes entitytype.EntityTypeServiceInterface,
 	ouService ou.OrganizationUnitServiceInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 ) (AuthZENPDPServiceInterface, error) {
 	transactioner, err := provider.GetDBProvider().GetConfigDBTransactioner()
 	if err != nil {
 		return nil, err
 	}
-	ouResolver := connectionou.Initialize(ouService, connectionou.Errors{
+	ouResolver := connectionou.Initialize(ouService, authzService, connectionou.Errors{
 		Required: connectionou.ErrorOURequired,
 		NotFound: connectionou.ErrorInvalidOU,
 		Changed:  connectionou.ErrorOUUpdateNotAllowed,

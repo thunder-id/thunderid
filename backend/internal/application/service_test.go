@@ -36,6 +36,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
@@ -45,6 +47,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/serverconfigmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 const testServiceAppID = "app123"
@@ -187,8 +190,19 @@ func (suite *ServiceTestSuite) setupTestService() (
 		dependencyRegistry:   noopDepRegistry{},
 		sharingService:       mockSharing,
 		governance:           governance,
+		authzService:         newAllowAllAppAuthz(suite.T()),
 	}
 	return service, mockStore
+}
+
+// newAllowAllAppAuthz returns an authz mock that permits every application action in every
+// organization unit, so that tests unrelated to the boundary need not configure it.
+func newAllowAllAppAuthz(t *testing.T) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authz.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
+	return authz
 }
 
 // activeReads answers a governance read with ACTIVE for every entity.
@@ -5764,4 +5778,336 @@ func (suite *ServiceTestSuite) TestUpdateApplication_SharingLookupFailureOnMove(
 	suite.Nil(result)
 	suite.Require().NotNil(svcErr)
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// ----- Organization unit boundary -----
+
+// boundTo makes the service's authz mock allow application actions only in ouID, as an
+// organization-unit-bound token naming ouID would. A runtime caller is allowed everywhere.
+func (suite *ServiceTestSuite) boundTo(service *applicationService, ouID string) {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
+		Return(func(ctx context.Context, _ security.Action, actionCtx *sysauthz.ActionContext) bool {
+			return security.IsRuntimeContext(ctx) || actionCtx.OUID == ouID
+		}, nil).Maybe()
+	authz.On("GetAccessibleResources", mock.Anything, security.ActionListApplications, security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{IDs: []string{ouID}}, nil).Maybe()
+	service.authzService = authz
+}
+
+func (suite *ServiceTestSuite) TestApplicationInAnotherOUIsRefused() {
+	app := &model.ApplicationDTO{Name: "Test App", OUID: "owner-ou"}
+	cases := []struct {
+		name string
+		call func(*applicationService) *tidcommon.ServiceError
+	}{
+		{"Get", func(service *applicationService) *tidcommon.ServiceError {
+			_, svcErr := service.GetApplication(context.Background(), testServiceAppID)
+			return svcErr
+		}},
+		{"Update", func(service *applicationService) *tidcommon.ServiceError {
+			_, svcErr := service.UpdateApplication(context.Background(), testServiceAppID, app)
+			return svcErr
+		}},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			service, _ := suite.sharingTestService()
+			suite.boundTo(service, "my-ou")
+
+			svcErr := tc.call(service)
+
+			suite.Require().NotNil(svcErr)
+			suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+		})
+	}
+}
+
+func (suite *ServiceTestSuite) TestDeleteApplicationInAnotherOUIsRefused() {
+	service, _ := suite.setupTestService()
+	suite.boundTo(service, "my-ou")
+	resetEntityServiceMethod(service, "GetEntityProfile").
+		On("GetEntityProfile", mock.Anything, testServiceAppID).
+		Return(&providers.Entity{ID: testServiceAppID, Category: providers.EntityCategoryApp, OUID: "owner-ou"}, nil)
+	sharingMock := sharingmock.NewSharingServiceInterfaceMock(suite.T())
+	service.sharingService = sharingMock
+
+	svcErr := service.DeleteApplication(context.Background(), testServiceAppID)
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	sharingMock.AssertNotCalled(suite.T(), "DeletePoliciesForResource", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *ServiceTestSuite) TestUpdateApplicationMovingIntoAnotherOUIsRefused() {
+	service, sharingMock := suite.sharingTestService()
+	suite.boundTo(service, "owner-ou")
+
+	_, svcErr := service.UpdateApplication(context.Background(), testServiceAppID,
+		&model.ApplicationDTO{Name: "Test App", OUID: "other-ou"})
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	sharingMock.AssertNotCalled(suite.T(), "ListPolicies", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *ServiceTestSuite) TestCreateApplicationInAnotherOUIsRefused() {
+	config.ResetServerRuntime()
+	suite.Require().NoError(config.InitializeServerRuntime("/tmp/test", &config.Config{}))
+	suite.T().Cleanup(config.ResetServerRuntime)
+	service, _ := suite.setupTestService()
+	suite.boundTo(service, "my-ou")
+
+	_, svcErr := service.CreateApplication(context.Background(), &model.ApplicationDTO{
+		Name: "Test App", OUID: "other-ou", Type: model.ApplicationTypeM2M,
+	})
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	service.entityService.(*entitymock.EntityServiceInterfaceMock).AssertNotCalled(
+		suite.T(), "CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *ServiceTestSuite) TestGetApplicationListIsBoundedToTheAccessibleOUs() {
+	suite.Run("FilterOnAnotherOUListsNothing", func() {
+		service, _ := suite.setupTestService()
+		suite.boundTo(service, "my-ou")
+
+		result, svcErr := service.GetApplicationList(context.Background(),
+			map[string]interface{}{"ouId": "other-ou"})
+
+		suite.Require().Nil(svcErr)
+		suite.Zero(result.TotalResults)
+		suite.Empty(result.Applications)
+		service.entityService.(*entitymock.EntityServiceInterfaceMock).AssertNotCalled(suite.T(),
+			"GetEntityPageInOU", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+			mock.Anything, mock.Anything)
+	})
+
+	suite.Run("NoFilterListsTheAccessibleOU", func() {
+		service, mockStore := suite.setupTestService()
+		suite.boundTo(service, "my-ou")
+		resetEntityServiceMethod(service, "GetEntityPageInOU").
+			On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryApp, "my-ou", entity.OUEntityScopeAll,
+				serverconst.MaxCompositeStoreRecords, 0, map[string]interface{}(nil)).
+			Return(&entity.OUEntityPage{
+				Owned:        []providers.Entity{{ID: "owned-app", Category: providers.EntityCategoryApp}},
+				TotalResults: 1,
+			}, nil).Once()
+		mockStore.On("GetInboundClientList", mock.Anything).
+			Return([]inboundmodel.InboundClient{{ID: "owned-app"}}, nil).Once()
+
+		result, svcErr := service.GetApplicationList(context.Background(), map[string]interface{}{})
+
+		suite.Require().Nil(svcErr)
+		suite.Equal(1, result.TotalResults)
+		suite.Require().Len(result.Applications, 1)
+		suite.Equal("owned-app", result.Applications[0].ID)
+		service.entityService.(*entitymock.EntityServiceInterfaceMock).AssertNotCalled(suite.T(),
+			"GetEntityList", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	suite.Run("AccessibleResourcesError", func() {
+		service, _ := suite.setupTestService()
+		authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+		authz.On("GetAccessibleResources", mock.Anything, security.ActionListApplications, security.ResourceTypeOU).
+			Return((*sysauthz.AccessibleResources)(nil), &tidcommon.InternalServerError).Once()
+		service.authzService = authz
+
+		result, svcErr := service.GetApplicationList(context.Background(), map[string]interface{}{})
+
+		suite.Nil(result)
+		suite.Require().NotNil(svcErr)
+		suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	})
+}
+
+func (suite *ServiceTestSuite) TestApplicationActionAuthorizationErrorIsAServerError() {
+	service, _ := suite.sharingTestService()
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authz.On("IsActionAllowed", mock.Anything, security.ActionReadApplication, mock.Anything).
+		Return(false, &tidcommon.InternalServerError).Once()
+	service.authzService = authz
+
+	_, svcErr := service.GetApplication(context.Background(), testServiceAppID)
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// The owner's organization unit decides a share, and a unit the application reached decides a
+// reshare, so a caller acts only for the unit its own boundary reaches.
+func (suite *ServiceTestSuite) TestCreateSharingPolicyIsAuthorizedForTheInitiatingOU() {
+	suite.Run("ShareeCannotShareForTheOwner", func() {
+		service, sharingMock := suite.sharingTestService()
+		suite.boundTo(service, "sharee-ou")
+
+		_, svcErr := service.CreateSharingPolicy(context.Background(), testServiceAppID, sharing.PolicyRequest{})
+
+		suite.Require().NotNil(svcErr)
+		suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+		sharingMock.AssertNotCalled(suite.T(), "CreatePolicy",
+			mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	suite.Run("ShareeReshares", func() {
+		service, sharingMock := suite.sharingTestService()
+		suite.boundTo(service, "sharee-ou")
+		sharingMock.EXPECT().CreatePolicy(mock.Anything, ApplicationSharingType, testServiceAppID,
+			"owner-ou", mock.Anything).Return(sharing.Policy{ID: "p1"}, nil).Once()
+
+		policy, svcErr := service.CreateSharingPolicy(context.Background(), testServiceAppID,
+			sharing.PolicyRequest{InitiatingOUID: "sharee-ou"})
+
+		suite.Require().Nil(svcErr)
+		suite.Equal("p1", policy.ID)
+	})
+}
+
+func (suite *ServiceTestSuite) TestSharingPolicyReadsAreBoundedToTheOwnerAndTheInitiator() {
+	sharees := sharing.Policy{
+		ID: "p1", ResourceType: ApplicationSharingType, ResourceID: testServiceAppID, InitiatingOUID: "sharee-ou",
+	}
+	owners := sharing.Policy{
+		ID: "p2", ResourceType: ApplicationSharingType, ResourceID: testServiceAppID, InitiatingOUID: "owner-ou",
+	}
+	cases := []struct {
+		name     string
+		boundTo  string
+		policy   sharing.Policy
+		wantCode string
+	}{
+		{"OwnerReadsTheShareesPolicy", "owner-ou", sharees, ""},
+		{"ShareeReadsItsOwnPolicy", "sharee-ou", sharees, ""},
+		{"ShareeCannotReadTheOwnersPolicy", "sharee-ou", owners, tidcommon.ErrorUnauthorized.Code},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			service, sharingMock := suite.sharingTestService()
+			suite.boundTo(service, tc.boundTo)
+			sharingMock.EXPECT().GetPolicy(mock.Anything, tc.policy.ID).Return(tc.policy, nil).Once()
+
+			_, svcErr := service.GetSharingPolicy(context.Background(), testServiceAppID, tc.policy.ID)
+
+			if tc.wantCode == "" {
+				suite.Nil(svcErr)
+				return
+			}
+			suite.Require().NotNil(svcErr)
+			suite.Equal(tc.wantCode, svcErr.Code)
+		})
+	}
+}
+
+func (suite *ServiceTestSuite) TestListSharingPoliciesIsBoundedToTheOwnerAndTheInitiator() {
+	policies := []sharing.Policy{
+		{ID: "p1", InitiatingOUID: "owner-ou"},
+		{ID: "p2", InitiatingOUID: "sharee-ou"},
+	}
+
+	suite.Run("OwnerListsEveryPolicy", func() {
+		service, sharingMock := suite.sharingTestService()
+		suite.boundTo(service, "owner-ou")
+		sharingMock.EXPECT().GetPolicyList(mock.Anything, ApplicationSharingType, testServiceAppID, 30, 0).
+			Return(sharing.PolicyList{TotalResults: 2, Policies: policies}, nil).Once()
+
+		list, svcErr := service.ListSharingPolicies(context.Background(), testServiceAppID, 30, 0)
+
+		suite.Require().Nil(svcErr)
+		suite.Equal(2, list.TotalResults)
+	})
+
+	suite.Run("ShareeListsItsOwnPolicies", func() {
+		service, sharingMock := suite.sharingTestService()
+		suite.boundTo(service, "sharee-ou")
+		sharingMock.EXPECT().ListPolicies(mock.Anything, ApplicationSharingType, testServiceAppID).
+			Return(policies, nil).Once()
+
+		list, svcErr := service.ListSharingPolicies(context.Background(), testServiceAppID, 30, 0)
+
+		suite.Require().Nil(svcErr)
+		suite.Equal(1, list.TotalResults)
+		suite.Require().Len(list.Policies, 1)
+		suite.Equal("p2", list.Policies[0].ID)
+	})
+
+	suite.Run("StrangerIsRefused", func() {
+		service, sharingMock := suite.sharingTestService()
+		suite.boundTo(service, "stranger-ou")
+		sharingMock.EXPECT().ListPolicies(mock.Anything, ApplicationSharingType, testServiceAppID).
+			Return(policies, nil).Once()
+
+		_, svcErr := service.ListSharingPolicies(context.Background(), testServiceAppID, 30, 0)
+
+		suite.Require().NotNil(svcErr)
+		suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	})
+
+	suite.Run("InvalidPagination", func() {
+		service, _ := suite.sharingServiceOnly()
+
+		_, limitErr := service.ListSharingPolicies(context.Background(), testServiceAppID, 0, 0)
+		_, offsetErr := service.ListSharingPolicies(context.Background(), testServiceAppID, 30, -1)
+
+		suite.Require().NotNil(limitErr)
+		suite.Equal(ErrorInvalidLimit.Code, limitErr.Code)
+		suite.Require().NotNil(offsetErr)
+		suite.Equal(ErrorInvalidOffset.Code, offsetErr.Code)
+	})
+}
+
+// Only the organization unit whose decision a policy is may change it, the owner included.
+func (suite *ServiceTestSuite) TestSharingPolicyWritesAreBoundedToTheInitiator() {
+	sharees := sharing.Policy{
+		ID: "p1", ResourceType: ApplicationSharingType, ResourceID: testServiceAppID, InitiatingOUID: "sharee-ou",
+	}
+
+	suite.Run("Update", func() {
+		service, sharingMock := suite.sharingTestService()
+		suite.boundTo(service, "owner-ou")
+		sharingMock.EXPECT().GetPolicy(mock.Anything, "p1").Return(sharees, nil).Once()
+
+		_, svcErr := service.UpdateSharingPolicy(context.Background(), testServiceAppID, "p1",
+			sharing.PolicyRequest{})
+
+		suite.Require().NotNil(svcErr)
+		suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	})
+
+	suite.Run("Delete", func() {
+		service, sharingMock := suite.sharingTestService()
+		suite.boundTo(service, "owner-ou")
+		sharingMock.EXPECT().GetPolicy(mock.Anything, "p1").Return(sharees, nil).Once()
+
+		svcErr := service.DeleteSharingPolicy(context.Background(), testServiceAppID, "p1")
+
+		suite.Require().NotNil(svcErr)
+		suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+		sharingMock.AssertNotCalled(suite.T(), "DeletePolicy", mock.Anything, mock.Anything)
+	})
+}
+
+func (suite *ServiceTestSuite) TestResolveSharingOverlayIsBoundedToTheOwnerAndTheQueriedOU() {
+	suite.Run("ShareeAsksAboutItself", func() {
+		service, sharingMock := suite.sharingTestService()
+		suite.boundTo(service, "sharee-ou")
+		sharingMock.EXPECT().ResolveOverlayRules(mock.Anything, ApplicationSharingType, testServiceAppID,
+			"sharee-ou").Return(sharing.ResolvedOverlay{Visible: true}, nil).Once()
+
+		_, svcErr := service.ResolveSharingOverlay(context.Background(), testServiceAppID, "sharee-ou")
+
+		suite.Nil(svcErr)
+	})
+
+	suite.Run("ShareeCannotAskAboutAnotherOU", func() {
+		service, sharingMock := suite.sharingTestService()
+		suite.boundTo(service, "sharee-ou")
+
+		_, svcErr := service.ResolveSharingOverlay(context.Background(), testServiceAppID, "other-ou")
+
+		suite.Require().NotNil(svcErr)
+		suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+		sharingMock.AssertNotCalled(suite.T(), "ResolveOverlayRules",
+			mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	})
 }

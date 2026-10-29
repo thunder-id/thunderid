@@ -23,7 +23,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 const (
@@ -160,12 +163,22 @@ func (suite *ResourceServiceTestSuite) SetupTest() {
 	suite.mockOU = new(oumock.OrganizationUnitServiceInterfaceMock)
 	suite.mockTransactioner = &fakeTransactioner{}
 	suite.service, err = newResourceService(
-		suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil,
+		suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil, newAllowAllResourceAuthz(suite.T()),
 	)
 	suite.NoError(err)
 	// The resource service is its own dependency provider: deletion consults the registry, which
 	// resolves resource/action dependents back through the service.
 	suite.service.SetDependencyRegistry(resourcedependency.Initialize(suite.service))
+}
+
+// newAllowAllResourceAuthz returns an authz mock that permits every resource server action in every
+// organization unit, so that tests unrelated to the boundary need not configure it.
+func newAllowAllResourceAuthz(t *testing.T) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authz.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
+	return authz
 }
 
 func (suite *ResourceServiceTestSuite) TearDownTest() {
@@ -202,7 +215,7 @@ func (suite *ResourceServiceTestSuite) TestNewResourceService_InvalidDelimiter()
 	mockOU := new(oumock.OrganizationUnitServiceInterfaceMock)
 
 	mockTransactioner := &fakeTransactioner{}
-	service, err := newResourceService(mockOU, mockStore, mockTransactioner, nil, nil)
+	service, err := newResourceService(mockOU, mockStore, mockTransactioner, nil, nil, nil)
 
 	suite.Error(err)
 	suite.Nil(service)
@@ -399,7 +412,8 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_MCPIdentifierRef
 		suite.Run(tc.name, func() {
 			mockStore := newResourceStoreInterfaceMock(suite.T())
 			mockOU := new(oumock.OrganizationUnitServiceInterfaceMock)
-			service, err := newResourceService(mockOU, mockStore, &fakeTransactioner{}, nil, nil, tc.options...)
+			service, err := newResourceService(mockOU, mockStore, &fakeTransactioner{}, nil, nil,
+				newAllowAllResourceAuthz(suite.T()), tc.options...)
 			suite.Require().NoError(err)
 			if tc.accepted {
 				mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
@@ -435,7 +449,7 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_ControlPlaneMCPI
 	mockStore := newResourceStoreInterfaceMock(suite.T())
 	mockOU := new(oumock.OrganizationUnitServiceInterfaceMock)
 	service, err := newResourceService(mockOU, mockStore, &fakeTransactioner{}, nil, nil,
-		KeepingValueReferences())
+		newAllowAllResourceAuthz(suite.T()), KeepingValueReferences())
 	suite.Require().NoError(err)
 	mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{
 		ID: "rs-123", Name: "my-rs", Identifier: "https://mcp.example.com/mcp",
@@ -5028,7 +5042,7 @@ func (suite *ResourceServiceTestSuite) TestValidatePermissions() {
 			// Create a fresh service instance with the fresh mocks
 			mockTransactioner := &fakeTransactioner{}
 			svc, err := newResourceService(
-				mockOU, mockStore, mockTransactioner, nil, nil,
+				mockOU, mockStore, mockTransactioner, nil, nil, nil,
 			)
 			suite.Require().NoError(err)
 
@@ -5710,4 +5724,198 @@ ouHandle: default
 	if rs.OUID != "" {
 		t.Errorf("OUID = %q, want empty (resolution happens later)", rs.OUID)
 	}
+}
+
+// ----- Organization unit boundary -----
+
+// serviceBoundToMyOU returns a resource service whose authz mock allows resource server actions only in
+// my-ou, as an organization-unit-bound token naming my-ou would. A runtime caller is allowed everywhere.
+func (suite *ResourceServiceTestSuite) serviceBoundToMyOU() ResourceServiceInterface {
+	const ouID = "my-ou"
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
+		Return(func(ctx context.Context, _ security.Action, actionCtx *sysauthz.ActionContext) bool {
+			return security.IsRuntimeContext(ctx) || actionCtx.OUID == ouID
+		}, nil).Maybe()
+	authz.On("GetAccessibleResources", mock.Anything, security.ActionListResourceServers, security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{IDs: []string{ouID}}, nil).Maybe()
+	service, err := newResourceService(suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil, authz)
+	suite.Require().NoError(err)
+	service.SetDependencyRegistry(resourcedependency.Initialize(service))
+	return service
+}
+
+func (suite *ResourceServiceTestSuite) TestResourceServerInAnotherOUIsRefused() {
+	resourceID := "res-boundary"
+	cases := []struct {
+		name string
+		call func(ResourceServiceInterface) *tidcommon.ServiceError
+	}{
+		{"GetResourceServer", func(service ResourceServiceInterface) *tidcommon.ServiceError {
+			_, svcErr := service.GetResourceServer(context.Background(), "rs-123")
+			return svcErr
+		}},
+		{"UpdateResourceServer", func(service ResourceServiceInterface) *tidcommon.ServiceError {
+			_, svcErr := service.UpdateResourceServer(context.Background(), "rs-123",
+				providers.ResourceServer{Name: "rs", OUID: "other-ou"})
+			return svcErr
+		}},
+		{"DeleteResourceServer", func(service ResourceServiceInterface) *tidcommon.ServiceError {
+			suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false).Once()
+			return service.DeleteResourceServer(context.Background(), "rs-123")
+		}},
+		{"GetResourceList", func(service ResourceServiceInterface) *tidcommon.ServiceError {
+			_, svcErr := service.GetResourceList(context.Background(), "rs-123", nil, 10, 0)
+			return svcErr
+		}},
+		{"CreateResource", func(service ResourceServiceInterface) *tidcommon.ServiceError {
+			_, svcErr := service.CreateResource(context.Background(), "rs-123",
+				providers.Resource{Name: "res", Handle: "res"})
+			return svcErr
+		}},
+		{"DeleteResource", func(service ResourceServiceInterface) *tidcommon.ServiceError {
+			suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false).Once()
+			return service.DeleteResource(context.Background(), "rs-123", resourceID)
+		}},
+		{"GetActionList", func(service ResourceServiceInterface) *tidcommon.ServiceError {
+			_, svcErr := service.GetActionList(context.Background(), "rs-123", nil, "", 10, 0)
+			return svcErr
+		}},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
+				Return(providers.ResourceServer{ID: "rs-123", Name: "rs", OUID: "other-ou"}, nil).Once()
+
+			svcErr := tc.call(suite.serviceBoundToMyOU())
+
+			suite.Require().NotNil(svcErr)
+			suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+			suite.mockStore.AssertNotCalled(suite.T(), "DeleteResourceServer", mock.Anything, mock.Anything)
+			suite.mockStore.AssertNotCalled(suite.T(), "DeleteResource", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateResourceServerInAnotherOUIsRefused() {
+	result, svcErr := suite.serviceBoundToMyOU().CreateResourceServer(context.Background(),
+		providers.ResourceServer{Name: "test-rs", Identifier: "test-identifier", OUID: "other-ou"})
+
+	suite.Nil(result)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	suite.mockOU.AssertNotCalled(suite.T(), "GetOrganizationUnit", mock.Anything, mock.Anything)
+}
+
+// An id is unique across the deployment, so one held in another organization unit is a conflict
+// rather than a refusal.
+func (suite *ResourceServiceTestSuite) TestCreateResourceServerWithAnIDHeldInAnotherOUConflicts() {
+	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "my-ou").
+		Return(oupkg.OrganizationUnit{ID: "my-ou"}, nil).Once()
+	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "test-rs").Return(false, nil).Once()
+	suite.mockStore.On("CheckResourceServerIdentifierExists", mock.Anything, "test-identifier").
+		Return(false, nil).Once()
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
+		Return(providers.ResourceServer{ID: "rs-123", OUID: "other-ou"}, nil).Once()
+
+	result, svcErr := suite.serviceBoundToMyOU().CreateResourceServer(context.Background(),
+		providers.ResourceServer{ID: "rs-123", Name: "test-rs", Identifier: "test-identifier", OUID: "my-ou"})
+
+	suite.Nil(result)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorResourceServerIDConflict.Code, svcErr.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServerMovingIntoAnotherOUIsRefused() {
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
+		Return(providers.ResourceServer{ID: "rs-123", Name: "rs", OUID: "my-ou"}, nil).Once()
+
+	result, svcErr := suite.serviceBoundToMyOU().UpdateResourceServer(context.Background(), "rs-123",
+		providers.ResourceServer{Name: "rs", OUID: "other-ou"})
+
+	suite.Nil(result)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	suite.mockStore.AssertNotCalled(suite.T(), "UpdateResourceServer", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListIsBoundedToTheAccessibleOUs() {
+	suite.mockStore.On("GetResourceServerListCountByOUIDs", mock.Anything, []string{"my-ou"}).Return(3, nil).Once()
+	suite.mockStore.On("GetResourceServerListByOUIDs", mock.Anything, []string{"my-ou"}, 2, 1).
+		Return([]providers.ResourceServer{{ID: "rs-3", OUID: "my-ou"}, {ID: "rs-4", OUID: "my-ou"}}, nil).Once()
+
+	result, svcErr := suite.serviceBoundToMyOU().GetResourceServerList(context.Background(), 2, 1)
+
+	suite.Require().Nil(svcErr)
+	suite.Equal(3, result.TotalResults)
+	suite.Equal(2, result.Count)
+	suite.Equal("rs-3", result.ResourceServers[0].ID)
+	suite.Equal("rs-4", result.ResourceServers[1].ID)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetResourceServerListCount", mock.Anything)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetResourceServerList", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListErrors() {
+	suite.Run("NoAccessibleOU", func() {
+		suite.SetupTest()
+		authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+		authz.On("GetAccessibleResources", mock.Anything, security.ActionListResourceServers,
+			security.ResourceTypeOU).Return(&sysauthz.AccessibleResources{IDs: []string{}}, nil).Once()
+		service, err := newResourceService(suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil, authz)
+		suite.Require().NoError(err)
+		suite.mockStore.On("GetResourceServerListCountByOUIDs", mock.Anything, []string{}).Return(0, nil).Once()
+		suite.mockStore.On("GetResourceServerListByOUIDs", mock.Anything, []string{}, 10, 0).
+			Return([]providers.ResourceServer{}, nil).Once()
+
+		result, svcErr := service.GetResourceServerList(context.Background(), 10, 0)
+
+		suite.Require().Nil(svcErr)
+		suite.Zero(result.TotalResults)
+		suite.Empty(result.ResourceServers)
+		suite.mockStore.AssertNotCalled(suite.T(), "GetResourceServerList", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	suite.Run("StoreError", func() {
+		suite.SetupTest()
+		suite.mockStore.On("GetResourceServerListCountByOUIDs", mock.Anything, []string{"my-ou"}).
+			Return(0, errors.New("db down")).Once()
+
+		result, svcErr := suite.serviceBoundToMyOU().GetResourceServerList(context.Background(), 10, 0)
+
+		suite.Nil(result)
+		suite.Require().NotNil(svcErr)
+		suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	})
+
+	suite.Run("AccessibleResourcesError", func() {
+		suite.SetupTest()
+		authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+		authz.On("GetAccessibleResources", mock.Anything, security.ActionListResourceServers,
+			security.ResourceTypeOU).Return((*sysauthz.AccessibleResources)(nil), &tidcommon.InternalServerError).Once()
+		service, err := newResourceService(suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil, authz)
+		suite.Require().NoError(err)
+
+		result, svcErr := service.GetResourceServerList(context.Background(), 10, 0)
+
+		suite.Nil(result)
+		suite.Require().NotNil(svcErr)
+		suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	})
+}
+
+func (suite *ResourceServiceTestSuite) TestResourceServerActionAuthorizationErrorIsAServerError() {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authz.On("IsActionAllowed", mock.Anything, security.ActionReadResourceServer, mock.Anything).
+		Return(false, &tidcommon.InternalServerError).Once()
+	service, err := newResourceService(suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil, authz)
+	suite.Require().NoError(err)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
+		Return(providers.ResourceServer{ID: "rs-123", OUID: "my-ou"}, nil).Once()
+
+	result, svcErr := service.GetResourceServer(context.Background(), "rs-123")
+
+	suite.Nil(result)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }

@@ -104,6 +104,51 @@ func (f *fileBasedResourceStore) GetResourceServerListCount(ctx context.Context)
 	return f.GenericFileBasedStore.Count()
 }
 
+// GetResourceServerListByOUIDs returns a page of the declared resource servers the given organization
+// units own.
+func (f *fileBasedResourceStore) GetResourceServerListByOUIDs(
+	ctx context.Context, ouIDs []string, limit, offset int) ([]providers.ResourceServer, error) {
+	servers, err := f.resourceServersByOUIDs(ouIDs)
+	if err != nil {
+		return nil, err
+	}
+	start := min(max(offset, 0), len(servers))
+	end := min(start+max(limit, 0), len(servers))
+	return servers[start:end], nil
+}
+
+// GetResourceServerListCountByOUIDs returns the count of the declared resource servers the given
+// organization units own.
+func (f *fileBasedResourceStore) GetResourceServerListCountByOUIDs(ctx context.Context, ouIDs []string) (int, error) {
+	servers, err := f.resourceServersByOUIDs(ouIDs)
+	if err != nil {
+		return 0, err
+	}
+	return len(servers), nil
+}
+
+// resourceServersByOUIDs returns the declared resource servers the given organization units own.
+func (f *fileBasedResourceStore) resourceServersByOUIDs(ouIDs []string) ([]providers.ResourceServer, error) {
+	if len(ouIDs) == 0 {
+		return []providers.ResourceServer{}, nil
+	}
+	ouSet := make(map[string]bool, len(ouIDs))
+	for _, id := range ouIDs {
+		ouSet[id] = true
+	}
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, err
+	}
+	servers := make([]providers.ResourceServer, 0, len(list))
+	for _, item := range list {
+		if rs, ok := item.Data.(*providers.ResourceServer); ok && ouSet[rs.OUID] {
+			servers = append(servers, *rs)
+		}
+	}
+	return servers, nil
+}
+
 func (f *fileBasedResourceStore) UpdateResourceServer(
 	ctx context.Context,
 	id string,

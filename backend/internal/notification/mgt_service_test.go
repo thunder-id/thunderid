@@ -13,6 +13,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/ou"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -23,6 +24,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -110,7 +112,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) SetupTest() {
 
 // newOUResolver is the resolver of the owner of a sender over the suite's organization unit service.
 func (suite *NotificationSenderMgtServiceTestSuite) newOUResolver() connectionou.ResolverInterface {
-	return connectionou.Initialize(suite.mockOU, connectionou.Errors{
+	return connectionou.Initialize(suite.mockOU, newAllowAllConnectionAuthz(suite.T()), connectionou.Errors{
 		Required: ErrorSenderOURequired,
 		NotFound: ErrorInvalidSenderOU,
 		Changed:  ErrorSenderOUUpdateNotAllowed,
@@ -663,6 +665,8 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestUpdateSender_WithFailure
 }
 
 func (suite *NotificationSenderMgtServiceTestSuite) TestDeleteSender() {
+	suite.mockStore.EXPECT().getSenderByID(mock.Anything, testSenderID).
+		Return(&common.NotificationSenderDTO{ID: testSenderID, OUID: "ou-1"}, nil).Once()
 	suite.mockStore.EXPECT().deleteSender(mock.Anything, testSenderID).Return(nil).Once()
 	err := suite.service.DeleteSender(context.Background(), testSenderID)
 	suite.Nil(err)
@@ -676,6 +680,8 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestDeleteSender_EmptyID() {
 
 // TestDeleteSender_BlockedByFlow verifies deletion is refused when a flow references the sender.
 func (suite *NotificationSenderMgtServiceTestSuite) TestDeleteSender_BlockedByFlow() {
+	suite.mockStore.EXPECT().getSenderByID(mock.Anything, testSenderID).
+		Return(&common.NotificationSenderDTO{ID: testSenderID, OUID: "ou-1"}, nil).Once()
 	total := 1
 	suite.service.dependencyRegistry = &stubDependencyRegistry{resp: &resourcedependency.DependenciesResponse{
 		TotalResults: &total,
@@ -696,6 +702,8 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestDeleteSender_BlockedByFl
 // TestDeleteSender_RefusedWhenDependenciesUnknown verifies deletion fails closed when a provider
 // fails to report dependency data.
 func (suite *NotificationSenderMgtServiceTestSuite) TestDeleteSender_RefusedWhenDependenciesUnknown() {
+	suite.mockStore.EXPECT().getSenderByID(mock.Anything, testSenderID).
+		Return(&common.NotificationSenderDTO{ID: testSenderID, OUID: "ou-1"}, nil).Once()
 	suite.service.dependencyRegistry = &stubDependencyRegistry{resp: &resourcedependency.DependenciesResponse{
 		TotalResults: nil,
 		Usages:       []resourcedependency.ResourceDependency{},
@@ -711,6 +719,8 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestDeleteSender_RefusedWhen
 // TestDeleteSender_RefusedWhenRegistryUnset verifies deletion fails closed when the dependency
 // registry was never wired in.
 func (suite *NotificationSenderMgtServiceTestSuite) TestDeleteSender_RefusedWhenRegistryUnset() {
+	suite.mockStore.EXPECT().getSenderByID(mock.Anything, testSenderID).
+		Return(&common.NotificationSenderDTO{ID: testSenderID, OUID: "ou-1"}, nil).Once()
 	suite.service.dependencyRegistry = nil
 
 	err := suite.service.DeleteSender(context.Background(), testSenderID)
@@ -799,6 +809,8 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestGetSenderUsages_Registry
 }
 
 func (suite *NotificationSenderMgtServiceTestSuite) TestDeleteSender_StoreError() {
+	suite.mockStore.EXPECT().getSenderByID(mock.Anything, testSenderID).
+		Return(&common.NotificationSenderDTO{ID: testSenderID, OUID: "ou-1"}, nil).Once()
 	suite.mockStore.EXPECT().deleteSender(context.Background(), testSenderID).
 		Return(errors.New("database error")).Once()
 	err := suite.service.DeleteSender(context.Background(), testSenderID)
@@ -1016,4 +1028,82 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestUpdateSender_OUHandling(
 			suite.Equal(tc.wantStoredOU, result.OUID)
 		})
 	}
+}
+
+// newAllowAllConnectionAuthz returns an authz mock that permits every connection action in every
+// organization unit, so that tests unrelated to the boundary need not configure it.
+func newAllowAllConnectionAuthz(t *testing.T) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authz.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
+	return authz
+}
+
+// refuseConnectionActions makes the service refuse every connection action, as for a sender in an
+// organization unit the caller does not reach.
+func (suite *NotificationSenderMgtServiceTestSuite) refuseConnectionActions() {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(false, nil).Once()
+	suite.service.ouResolver = connectionou.Initialize(suite.mockOU, authz, connectionou.Errors{
+		Required: ErrorSenderOURequired,
+		NotFound: ErrorInvalidSenderOU,
+		Changed:  ErrorSenderOUUpdateNotAllowed,
+	})
+}
+
+func (suite *NotificationSenderMgtServiceTestSuite) TestSenderWritesAreBoundedToTheOU() {
+	cases := []struct {
+		name string
+		call func(common.NotificationSenderDTO) *tidcommon.ServiceError
+	}{
+		{"Create", func(sender common.NotificationSenderDTO) *tidcommon.ServiceError {
+			_, svcErr := suite.service.CreateSender(context.Background(), sender)
+			return svcErr
+		}},
+		{"Update", func(sender common.NotificationSenderDTO) *tidcommon.ServiceError {
+			existing := sender
+			existing.ID = testSenderID
+			suite.mockStore.EXPECT().getSenderByID(mock.Anything, testSenderID).Return(&existing, nil).Once()
+			_, svcErr := suite.service.UpdateSender(context.Background(), testSenderID, sender)
+			return svcErr
+		}},
+		{"Delete", func(sender common.NotificationSenderDTO) *tidcommon.ServiceError {
+			existing := sender
+			existing.ID = testSenderID
+			suite.mockStore.EXPECT().getSenderByID(mock.Anything, testSenderID).Return(&existing, nil).Once()
+			return suite.service.DeleteSender(context.Background(), testSenderID)
+		}},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.refuseConnectionActions()
+
+			svcErr := tc.call(suite.getValidTwilioSender())
+
+			suite.Require().NotNil(svcErr)
+			suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+			suite.mockStore.AssertNotCalled(suite.T(), "createSender", mock.Anything, mock.Anything)
+			suite.mockStore.AssertNotCalled(suite.T(), "updateSender", mock.Anything, mock.Anything, mock.Anything)
+			suite.mockStore.AssertNotCalled(suite.T(), "deleteSender", mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (suite *NotificationSenderMgtServiceTestSuite) TestDeleteSender_Missing() {
+	suite.mockStore.EXPECT().getSenderByID(mock.Anything, testSenderID).Return(nil, nil).Once()
+
+	suite.Nil(suite.service.DeleteSender(context.Background(), testSenderID))
+	suite.mockStore.AssertNotCalled(suite.T(), "deleteSender", mock.Anything, mock.Anything)
+}
+
+func (suite *NotificationSenderMgtServiceTestSuite) TestDeleteSender_ReadError() {
+	suite.mockStore.EXPECT().getSenderByID(mock.Anything, testSenderID).
+		Return(nil, errors.New("database error")).Once()
+
+	svcErr := suite.service.DeleteSender(context.Background(), testSenderID)
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }

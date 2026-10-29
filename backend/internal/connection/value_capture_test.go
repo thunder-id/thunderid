@@ -166,7 +166,8 @@ const storedHTTPConnectionID = "http-1"
 // names it; an update that keeps the stored password captures it again under the new name.
 func (s *ServiceTestSuite) TestHTTPWritesCaptureTheConnectionAsTheExportNamesIt() {
 	mockHTTP := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
-	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, newAuthZENPDPServiceMock(s.T()), mockHTTP)
+	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, newAuthZENPDPServiceMock(s.T()), mockHTTP,
+		newAllowAllConnectionAuthz(s.T()))
 	capturer := &recordingCapturer{}
 	s.svc.valueCapturer = capturer
 	values := export.Initialize(http.NewServeMux(),
@@ -215,7 +216,7 @@ func (s *ServiceTestSuite) TestHTTPWritesCaptureTheConnectionAsTheExportNamesIt(
 
 func (s *ServiceTestSuite) TestInitializeHandsTheHTTPConnectionWriter() {
 	_, _, synced, err := Initialize(http.NewServeMux(), nil, s.mockIDP, s.mockNotif, &testResourceServerLister{},
-		newAuthZENPDPServiceMock(s.T()), newHTTPConnectionServiceMock(s.T()), nil)
+		newAuthZENPDPServiceMock(s.T()), newHTTPConnectionServiceMock(s.T()), nil, newAllowAllConnectionAuthz(s.T()))
 	s.Require().NoError(err)
 	s.IsType(&httpConnectionWriter{}, synced)
 }

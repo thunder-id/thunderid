@@ -731,3 +731,38 @@ func (s *FileBasedResourceStoreTestSuite) TestCheckResourceServerIdentifierExist
 	assert.NoError(s.T(), err)
 	assert.False(s.T(), exists)
 }
+
+func (s *FileBasedResourceStoreTestSuite) TestGetResourceServerListByOUIDs() {
+	fileStore, ok := s.store.(*fileBasedResourceStore)
+	s.Require().True(ok)
+	for _, rs := range []*providers.ResourceServer{
+		{ID: "rs-ou1-a", Name: "A", OUID: "ou1", Delimiter: ":"},
+		{ID: "rs-ou2", Name: "B", OUID: "ou2", Delimiter: ":"},
+		{ID: "rs-ou1-b", Name: "C", OUID: "ou1", Delimiter: ":"},
+	} {
+		s.Require().NoError(fileStore.Create(rs.ID, rs))
+	}
+
+	count, err := s.store.GetResourceServerListCountByOUIDs(s.ctx, []string{"ou1"})
+	s.Require().NoError(err)
+	s.Equal(2, count)
+
+	all, err := s.store.GetResourceServerListByOUIDs(s.ctx, []string{"ou1"}, 10, 0)
+	s.Require().NoError(err)
+	s.Len(all, 2)
+	for _, rs := range all {
+		s.Equal("ou1", rs.OUID)
+	}
+
+	page, err := s.store.GetResourceServerListByOUIDs(s.ctx, []string{"ou1"}, 1, 1)
+	s.Require().NoError(err)
+	s.Len(page, 1)
+
+	past, err := s.store.GetResourceServerListByOUIDs(s.ctx, []string{"ou1"}, 10, 5)
+	s.Require().NoError(err)
+	s.Empty(past)
+
+	none, err := s.store.GetResourceServerListCountByOUIDs(s.ctx, []string{"ou-unknown"})
+	s.Require().NoError(err)
+	s.Zero(none)
+}

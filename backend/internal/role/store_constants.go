@@ -592,3 +592,55 @@ func mergeResourcePermissions(sources ...[]ResourcePermissions) []ResourcePermis
 	}
 	return resourcePermissionsFromMap(byResourceServer)
 }
+
+// buildGetRoleListCountByOUIDsQuery returns the query and args to count the roles the given
+// organization units own.
+func buildGetRoleListCountByOUIDsQuery(ouIDs []string, deploymentID string) (dbmodel.DBQuery, []interface{}) {
+	postgresIn, sqliteIn, args := roleOUIDPlaceholders(ouIDs)
+	postgresQuery := fmt.Sprintf(
+		`SELECT COUNT(*) as total FROM "ROLE" WHERE OU_ID IN (%s) AND DEPLOYMENT_ID = $%d`,
+		postgresIn, len(ouIDs)+1)
+	sqliteQuery := fmt.Sprintf(
+		`SELECT COUNT(*) as total FROM "ROLE" WHERE OU_ID IN (%s) AND DEPLOYMENT_ID = ?`, sqliteIn)
+
+	return dbmodel.DBQuery{
+		ID:            "RLQ-ROLE_MGT-30",
+		Query:         postgresQuery,
+		PostgresQuery: postgresQuery,
+		SQLiteQuery:   sqliteQuery,
+	}, append(args, deploymentID)
+}
+
+// buildGetRoleListByOUIDsQuery returns the query and args to retrieve a page of the roles the given
+// organization units own.
+func buildGetRoleListByOUIDsQuery(
+	ouIDs []string, limit, offset int, deploymentID string,
+) (dbmodel.DBQuery, []interface{}) {
+	postgresIn, sqliteIn, args := roleOUIDPlaceholders(ouIDs)
+	postgresQuery := fmt.Sprintf(`SELECT ID, OU_ID, NAME, DESCRIPTION FROM "ROLE" `+
+		`WHERE OU_ID IN (%s) AND DEPLOYMENT_ID = $%d ORDER BY CREATED_AT DESC LIMIT $%d OFFSET $%d`,
+		postgresIn, len(ouIDs)+1, len(ouIDs)+2, len(ouIDs)+3)
+	sqliteQuery := fmt.Sprintf(`SELECT ID, OU_ID, NAME, DESCRIPTION FROM "ROLE" `+
+		`WHERE OU_ID IN (%s) AND DEPLOYMENT_ID = ? ORDER BY CREATED_AT DESC LIMIT ? OFFSET ?`, sqliteIn)
+
+	return dbmodel.DBQuery{
+		ID:            "RLQ-ROLE_MGT-31",
+		Query:         postgresQuery,
+		PostgresQuery: postgresQuery,
+		SQLiteQuery:   sqliteQuery,
+	}, append(args, deploymentID, limit, offset)
+}
+
+// roleOUIDPlaceholders returns the PostgreSQL and SQLite placeholders for a list of organization unit
+// IDs, and the IDs as query arguments.
+func roleOUIDPlaceholders(ouIDs []string) (string, string, []interface{}) {
+	postgresPlaceholders := make([]string, len(ouIDs))
+	sqlitePlaceholders := make([]string, len(ouIDs))
+	args := make([]interface{}, 0, len(ouIDs)+3)
+	for i, id := range ouIDs {
+		postgresPlaceholders[i] = fmt.Sprintf("$%d", i+1)
+		sqlitePlaceholders[i] = "?"
+		args = append(args, id)
+	}
+	return strings.Join(postgresPlaceholders, ","), strings.Join(sqlitePlaceholders, ","), args
+}

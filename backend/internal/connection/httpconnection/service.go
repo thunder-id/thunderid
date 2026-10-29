@@ -21,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -122,6 +123,9 @@ func (s *httpConnectionService) CreateHTTPConnection(ctx context.Context, connec
 	if svcErr := s.checkCreate(ctx, &connection); svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := s.ouResolver.Authorize(ctx, security.ActionCreateConnection, connection.OUID, ""); svcErr != nil {
+		return nil, svcErr
+	}
 	if connection.ID == "" {
 		id, err := sysutils.GenerateUUIDv7()
 		if err != nil {
@@ -189,6 +193,9 @@ func (s *httpConnectionService) UpdateHTTPConnection(ctx context.Context, id str
 	if svcErr := s.checkOwnerUnchanged(ctx, &connection, current.OUID); svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := s.ouResolver.Authorize(ctx, security.ActionUpdateConnection, current.OUID, id); svcErr != nil {
+		return nil, svcErr
+	}
 	connection.ID = id
 
 	if err := s.store.UpdateHTTPConnection(ctx, connection); err != nil {
@@ -210,6 +217,17 @@ func (s *httpConnectionService) UpdateHTTPConnection(ctx context.Context, id str
 // succeeds.
 func (s *httpConnectionService) DeleteHTTPConnection(ctx context.Context, id string) *tidcommon.ServiceError {
 	if svcErr := declarativeresource.CheckDeclarativeDelete(); svcErr != nil {
+		return svcErr
+	}
+	existing, err := s.store.GetHTTPConnection(ctx, id)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to get HTTP connection", log.Error(err), log.String("connectionID", id))
+		return &tidcommon.InternalServerError
+	}
+	if existing == nil {
+		return nil
+	}
+	if svcErr := s.ouResolver.Authorize(ctx, security.ActionDeleteConnection, existing.OUID, id); svcErr != nil {
 		return svcErr
 	}
 	if svcErr := s.ensureNoBlockingDependencies(ctx, id); svcErr != nil {

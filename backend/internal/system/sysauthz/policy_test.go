@@ -486,6 +486,11 @@ func TestIsInheritanceEligible(t *testing.T) {
 		{"EntityType_Create_NotEligible", security.ActionCreateUserType, false},
 		{"EntityType_Update_NotEligible", security.ActionUpdateUserType, false},
 		{"EntityType_Delete_NotEligible", security.ActionDeleteUserType, false},
+		{"AgentType_Read_Eligible", security.ActionReadAgentType, true},
+		{"AgentType_List_Eligible", security.ActionListAgentTypes, true},
+		{"AgentType_Create_NotEligible", security.ActionCreateAgentType, false},
+		{"AgentType_Update_NotEligible", security.ActionUpdateAgentType, false},
+		{"AgentType_Delete_NotEligible", security.ActionDeleteAgentType, false},
 		{"OU_Read_NotEligible", security.ActionReadOU, false},
 		{"User_List_NotEligible", security.ActionListUsers, false},
 	}

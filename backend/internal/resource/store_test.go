@@ -454,6 +454,118 @@ func (suite *ResourceStoreTestSuite) TestGetResourceServerListCount() {
 	}
 }
 
+func (suite *ResourceStoreTestSuite) TestGetResourceServerListByOUIDs() {
+	testCases := []struct {
+		name        string
+		rows        []map[string]interface{}
+		queryErr    error
+		expectedIDs []string
+		shouldErr   bool
+	}{
+		{
+			name: "Success",
+			rows: []map[string]interface{}{
+				{"id": "rs1", "ou_id": "ou1", "name": "Server 1", "identifier": "identifier-1"},
+			},
+			expectedIDs: []string{"rs1"},
+		},
+		{name: "QueryError", queryErr: errors.New("query error"), shouldErr: true},
+		{
+			name:      "InvalidRowData",
+			rows:      []map[string]interface{}{{"id": 123, "ou_id": "ou1", "name": "Server 1"}},
+			shouldErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
+			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
+			suite.store = &resourceStore{dbProvider: suite.mockDBProvider}
+			suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+			query, args := buildGetResourceServerListByOUIDsQuery([]string{"ou1"}, 10, 0, "test-deployment")
+			suite.mockDBClient.On("QueryContext", append([]interface{}{context.Background(), query}, args...)...).
+				Return(tc.rows, tc.queryErr)
+
+			servers, err := suite.store.GetResourceServerListByOUIDs(context.Background(), []string{"ou1"}, 10, 0)
+
+			if tc.shouldErr {
+				suite.Error(err)
+				suite.Nil(servers)
+				return
+			}
+			suite.NoError(err)
+			ids := make([]string, 0, len(servers))
+			for _, server := range servers {
+				ids = append(ids, server.ID)
+			}
+			suite.Equal(tc.expectedIDs, ids)
+		})
+	}
+}
+
+func (suite *ResourceStoreTestSuite) TestGetResourceServerListCountByOUIDs() {
+	testCases := []struct {
+		name          string
+		rows          []map[string]interface{}
+		queryErr      error
+		expectedCount int
+		shouldErr     bool
+	}{
+		{name: "Success", rows: []map[string]interface{}{{"total": int64(2)}}, expectedCount: 2},
+		{name: "QueryError", queryErr: errors.New("query error"), shouldErr: true},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
+			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
+			suite.store = &resourceStore{dbProvider: suite.mockDBProvider}
+			suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+			query, args := buildGetResourceServerListCountByOUIDsQuery([]string{"ou1"}, "test-deployment")
+			suite.mockDBClient.On("QueryContext", append([]interface{}{context.Background(), query}, args...)...).
+				Return(tc.rows, tc.queryErr)
+
+			count, err := suite.store.GetResourceServerListCountByOUIDs(context.Background(), []string{"ou1"})
+
+			if tc.shouldErr {
+				suite.Error(err)
+				return
+			}
+			suite.NoError(err)
+			suite.Equal(tc.expectedCount, count)
+		})
+	}
+}
+
+func (suite *ResourceStoreTestSuite) TestResourceServerListByOUIDs_NoUnits() {
+	servers, err := suite.store.GetResourceServerListByOUIDs(context.Background(), nil, 10, 0)
+	suite.NoError(err)
+	suite.Empty(servers)
+
+	count, err := suite.store.GetResourceServerListCountByOUIDs(context.Background(), nil)
+	suite.NoError(err)
+	suite.Zero(count)
+}
+
+func (suite *ResourceStoreTestSuite) TestBuildResourceServerListByOUIDsQueries() {
+	countQuery, countArgs := buildGetResourceServerListCountByOUIDsQuery([]string{"ou1", "ou2"}, "dep1")
+	suite.Equal(
+		`SELECT COUNT(*) as total FROM "RESOURCE_SERVER" WHERE OU_ID IN ($1,$2) AND DEPLOYMENT_ID = $3`,
+		countQuery.PostgresQuery)
+	suite.Equal(
+		`SELECT COUNT(*) as total FROM "RESOURCE_SERVER" WHERE OU_ID IN (?,?) AND DEPLOYMENT_ID = ?`,
+		countQuery.SQLiteQuery)
+	suite.Equal([]interface{}{"ou1", "ou2", "dep1"}, countArgs)
+
+	listQuery, listArgs := buildGetResourceServerListByOUIDsQuery([]string{"ou1", "ou2"}, 10, 5, "dep1")
+	suite.Contains(listQuery.PostgresQuery,
+		`WHERE OU_ID IN ($1,$2) AND DEPLOYMENT_ID = $3 ORDER BY CREATED_AT DESC LIMIT $4 OFFSET $5`)
+	suite.Contains(listQuery.SQLiteQuery,
+		`WHERE OU_ID IN (?,?) AND DEPLOYMENT_ID = ? ORDER BY CREATED_AT DESC LIMIT ? OFFSET ?`)
+	suite.Equal([]interface{}{"ou1", "ou2", "dep1", 10, 5}, listArgs)
+}
+
 func (suite *ResourceStoreTestSuite) TestUpdateResourceServer() {
 	testCases := []struct {
 		name           string

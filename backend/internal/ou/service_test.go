@@ -19,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
@@ -2520,6 +2521,36 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 	resp, err := service.GetOrganizationUnitGroupsByPath(context.Background(), "root", 5, 0)
 	suite.Require().Nil(resp)
 	suite.Require().Equal(tidcommon.ErrorUnauthorized.Code, err.Code)
+}
+
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitRoles_AccessDenied() {
+	store := newOrganizationUnitStoreInterfaceMock(suite.T())
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, security.ActionReadOU, mock.Anything).
+		Return(false, nil).Once()
+	service := suite.newServiceWithRoleResolver(store, authzMock, NewOURoleResolverMock(suite.T()))
+
+	resp, err := service.GetOrganizationUnitRoles(context.Background(), "ou-1", 5, 0)
+
+	suite.Require().Nil(resp)
+	suite.Require().Equal(tidcommon.ErrorUnauthorized.Code, err.Code)
+	store.AssertNumberOfCalls(suite.T(), "IsOrganizationUnitExists", 0)
+}
+
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitRolesByPath_AccessDenied() {
+	store := newOrganizationUnitStoreInterfaceMock(suite.T())
+	store.On("GetOrganizationUnitByPath", mock.Anything, []string{"root"}).
+		Return(OrganizationUnit{ID: "ou-1", Handle: "root"}, nil).Once()
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, security.ActionReadOU, mock.Anything).
+		Return(false, nil).Once()
+	service := suite.newServiceWithRoleResolver(store, authzMock, NewOURoleResolverMock(suite.T()))
+
+	resp, err := service.GetOrganizationUnitRolesByPath(context.Background(), "root", 5, 0)
+
+	suite.Require().Nil(resp)
+	suite.Require().Equal(tidcommon.ErrorUnauthorized.Code, err.Code)
+	store.AssertNumberOfCalls(suite.T(), "IsOrganizationUnitExists", 0)
 }
 
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitRoles() {

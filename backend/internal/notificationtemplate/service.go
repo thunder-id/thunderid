@@ -22,6 +22,8 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -48,20 +50,24 @@ type notificationTemplateService struct {
 	store              notificationTemplateStoreInterface
 	transactioner      providers.Transactioner
 	ouService          ou.OrganizationUnitServiceInterface
+	authzService       sysauthz.SystemAuthorizationServiceInterface
 	dependencyRegistry resourcedependency.Registry
 	logger             *log.Logger
 }
 
-// newNotificationTemplateService creates a new service with the given store, transactioner, and OU
-// service. The OU service verifies the ouId at creation; a nil ouService skips that check.
+// newNotificationTemplateService creates a new service with the given store, transactioner, OU
+// service, and authorization service. The OU service verifies the ouId at creation; a nil ouService
+// skips that check.
 func newNotificationTemplateService(store notificationTemplateStoreInterface,
 	transactioner providers.Transactioner,
-	ouService ou.OrganizationUnitServiceInterface) NotificationTemplateServiceInterface {
+	ouService ou.OrganizationUnitServiceInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface) NotificationTemplateServiceInterface {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "NotificationTemplateService"))
 	return &notificationTemplateService{
 		store:         store,
 		transactioner: transactioner,
 		ouService:     ouService,
+		authzService:  authzService,
 		logger:        logger,
 	}
 }
@@ -74,6 +80,17 @@ func (ts *notificationTemplateService) ListTemplates(ctx context.Context, channe
 	}
 	if svcErr := validatePagination(limit, offset); svcErr != nil {
 		return nil, svcErr
+	}
+
+	accessible, svcErr := ts.authzService.GetAccessibleResources(
+		ctx, security.ActionListNotificationTemplates, security.ResourceTypeOU)
+	if svcErr != nil {
+		ts.logger.Error(ctx, "Failed to resolve accessible resources for listing notification templates",
+			log.Any("error", svcErr))
+		return nil, &tidcommon.InternalServerError
+	}
+	if !accessible.AllAllowed {
+		return ts.listTemplatesInOUs(ctx, channel, accessible.IDs, limit, offset)
 	}
 
 	total, err := ts.store.CountTemplates(ctx, channel)
@@ -94,6 +111,34 @@ func (ts *notificationTemplateService) ListTemplates(ctx context.Context, channe
 		return nil, &tidcommon.InternalServerError
 	}
 
+	return buildTemplateList(channel, templates, total, limit, offset), nil
+}
+
+// listTemplatesInOUs lists one page of a channel's templates the given organization units own.
+func (ts *notificationTemplateService) listTemplatesInOUs(ctx context.Context, channel ChannelType,
+	ouIDs []string, limit, offset int) (*TemplateListResponse, *tidcommon.ServiceError) {
+	total, err := ts.store.CountTemplatesByOUIDs(ctx, channel, ouIDs)
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, &ErrorResultLimitExceededInCompositeMode
+		}
+		ts.logger.Error(ctx, "Failed to count notification templates", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	templates, err := ts.store.ListTemplatesByOUIDs(ctx, channel, ouIDs, limit, offset)
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, &ErrorResultLimitExceededInCompositeMode
+		}
+		ts.logger.Error(ctx, "Failed to list notification templates", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	return buildTemplateList(channel, templates, total, limit, offset), nil
+}
+
+// buildTemplateList builds the list response for one page of a channel's templates.
+func buildTemplateList(channel ChannelType, templates []templateDAO, total, limit, offset int) *TemplateListResponse {
 	summaries := make([]TemplateSummary, 0, len(templates))
 	for _, t := range templates {
 		summaries = append(summaries, TemplateSummary{
@@ -111,7 +156,7 @@ func (ts *notificationTemplateService) ListTemplates(ctx context.Context, channe
 		Count:        len(summaries),
 		Templates:    summaries,
 		Links:        utils.BuildPaginationLinks(buildCollectionSelf(channel), limit, offset, total, ""),
-	}, nil
+	}
 }
 
 // CreateTemplate creates a new template with a server-assigned id. The handle-uniqueness check and the
@@ -129,6 +174,10 @@ func (ts *notificationTemplateService) CreateTemplate(ctx context.Context, chann
 		return nil, svcErr
 	}
 	if svcErr := ts.resolveOU(ctx, request.OUID); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := ts.checkTemplateAccess(
+		ctx, security.ActionCreateNotificationTemplate, request.OUID, ""); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -174,6 +223,9 @@ func (ts *notificationTemplateService) GetTemplate(ctx context.Context, channel 
 		}
 		ts.logger.Error(ctx, "Failed to retrieve notification template", log.String("id", id), log.Error(err))
 		return nil, &tidcommon.InternalServerError
+	}
+	if svcErr := ts.checkTemplateAccess(ctx, security.ActionReadNotificationTemplate, dao.OUID, id); svcErr != nil {
+		return nil, svcErr
 	}
 
 	return daoToTemplate(dao), nil
@@ -241,6 +293,7 @@ func (ts *notificationTemplateService) UpdateTemplate(ctx context.Context, chann
 	}
 
 	var notFound bool
+	var authzErr *tidcommon.ServiceError
 	txErr := ts.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		existing, err := ts.store.GetTemplate(txCtx, channel, id)
 		if err != nil {
@@ -248,6 +301,10 @@ func (ts *notificationTemplateService) UpdateTemplate(ctx context.Context, chann
 				notFound = true
 			}
 			return err
+		}
+		if authzErr = ts.checkTemplateAccess(
+			txCtx, security.ActionUpdateNotificationTemplate, existing.OUID, id); authzErr != nil {
+			return errors.New("notification template update not authorized")
 		}
 
 		// A file-declared template is read-only: refuse before the store write. Mapped to
@@ -264,6 +321,9 @@ func (ts *notificationTemplateService) UpdateTemplate(ctx context.Context, chann
 	if txErr != nil {
 		if notFound {
 			return nil, &ErrorTemplateNotFound
+		}
+		if authzErr != nil {
+			return nil, authzErr
 		}
 		if errors.Is(txErr, errDeclarativeTemplate) {
 			return nil, &ErrorTemplateReadOnly
@@ -295,6 +355,10 @@ func (ts *notificationTemplateService) DeleteTemplate(
 		}
 		ts.logger.Error(ctx, "Failed to check template existence", log.String("id", id), log.Error(err))
 		return &tidcommon.InternalServerError
+	}
+	if svcErr := ts.checkTemplateAccess(
+		ctx, security.ActionDeleteNotificationTemplate, existing.OUID, id); svcErr != nil {
+		return svcErr
 	}
 
 	// A file-declared template is read-only: refuse before the dependency check so a declared template
@@ -491,6 +555,25 @@ func daoToTemplate(dao templateDAO) *Template {
 		Content:     dao.Content,
 		IsReadOnly:  dao.IsReadOnly,
 	}
+}
+
+// checkTemplateAccess authorizes the caller to perform the action on a template in the organization
+// unit.
+func (ts *notificationTemplateService) checkTemplateAccess(
+	ctx context.Context, action security.Action, ouID, id string,
+) *tidcommon.ServiceError {
+	allowed, svcErr := ts.authzService.IsActionAllowed(ctx, action, &sysauthz.ActionContext{
+		ResourceType: security.ResourceTypeNotificationTemplate, OUID: ouID, ResourceID: id,
+	})
+	if svcErr != nil {
+		ts.logger.Error(ctx, "Failed to check authorization for action",
+			log.String("action", string(action)), log.Any("error", svcErr))
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
+	return nil
 }
 
 // resolveOU verifies that ouID is present and references an existing organization unit. A nil ouService

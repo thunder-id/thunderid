@@ -20,6 +20,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -91,18 +92,9 @@ func (as *roleAssignmentService) GetRoleAssignmentsByType(ctx context.Context, i
 		return nil, err
 	}
 
-	if id == "" {
-		return nil, &ErrorMissingRoleID
-	}
-
-	exists, err := as.roleStore.IsRoleExist(ctx, id)
-	if err != nil {
-		logger.Error(ctx, "Failed to check role existence", log.String("id", id), log.Error(err))
-		return nil, &tidcommon.InternalServerError
-	}
-	if !exists {
-		logger.Debug(ctx, "Role not found", log.String("id", id))
-		return nil, &ErrorRoleNotFound
+	if svcErr := checkRoleAccessByID(
+		ctx, as.roleStore, as.authzService, security.ActionReadRole, id); svcErr != nil {
+		return nil, svcErr
 	}
 
 	// user/app/agent filters require fetching all entity assignments and post-filtering by category.
@@ -115,6 +107,7 @@ func (as *roleAssignmentService) GetRoleAssignmentsByType(ctx context.Context, i
 	// For no filter or 'group' filter, use DB-level pagination directly.
 	var totalCount int
 	var assignments []RoleAssignment
+	var err error
 	if assigneeType != "" {
 		totalCount, err = as.roleStore.GetRoleAssignmentsCountByType(ctx, id, assigneeType)
 	} else {
@@ -396,8 +389,6 @@ func (as *roleAssignmentService) AddAssigneesToRoles(
 func (as *roleAssignmentService) prepareAssignments(
 	ctx context.Context, id string, assignments []RoleAssignment,
 ) ([]RoleAssignment, *tidcommon.ServiceError) {
-	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, assignmentLoggerComponentName))
-
 	if id == "" {
 		return nil, &ErrorMissingRoleID
 	}
@@ -406,14 +397,10 @@ func (as *roleAssignmentService) prepareAssignments(
 		return nil, err
 	}
 
-	exists, err := as.roleStore.IsRoleExist(ctx, id)
-	if err != nil {
-		logger.Error(ctx, "Failed to check role existence", log.String("id", id), log.Error(err))
-		return nil, &tidcommon.InternalServerError
-	}
-	if !exists {
-		logger.Debug(ctx, "Role not found", log.String("id", id))
-		return nil, &ErrorRoleNotFound
+	// Changing a role's assignments changes the role, in the organization unit that owns it.
+	if svcErr := checkRoleAccessByID(
+		ctx, as.roleStore, as.authzService, security.ActionUpdateRole, id); svcErr != nil {
+		return nil, svcErr
 	}
 
 	if err := as.validateAssignmentIDs(ctx, assignments); err != nil {

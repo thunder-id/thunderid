@@ -23,6 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/internal/system/valueref"
 )
@@ -124,6 +125,7 @@ type resourceService struct {
 	transactioner      providers.Transactioner
 	dependencyRegistry resourcedependency.Registry
 	valueCapturer      declarativeresource.ValueCapturer
+	authzService       sysauthz.SystemAuthorizationServiceInterface
 	// keepsReferences is set on a control plane, which keeps a value reference where a value belongs.
 	keepsReferences bool
 }
@@ -229,6 +231,7 @@ func newResourceService(
 	transactionerInstance providers.Transactioner,
 	authZENPDPService authZENPDPConnectionLookup,
 	valueCapturer declarativeresource.ValueCapturer,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 	options ...Option,
 ) (ResourceServiceInterface, error) {
 	// Load default delimiter from config
@@ -245,6 +248,7 @@ func newResourceService(
 		defaultDelimiter:  defaultDelimiter,
 		transactioner:     transactionerInstance,
 		valueCapturer:     valueCapturer,
+		authzService:      authzService,
 	}
 	for _, option := range options {
 		option(service)
@@ -269,6 +273,10 @@ func (rs *resourceService) CreateResourceServer(
 	}
 	if err := rs.validateResourceServerCreate(resourceServer); err != nil {
 		return nil, err
+	}
+	if svcErr := rs.checkResourceServerAccess(
+		ctx, security.ActionCreateResourceServer, resourceServer.OUID, ""); svcErr != nil {
+		return nil, svcErr
 	}
 
 	// Validate organization unit exists
@@ -324,7 +332,9 @@ func (rs *resourceService) CreateResourceServer(
 			return nil, &tidcommon.InternalServerError
 		}
 	} else {
-		_, svcErr := rs.GetResourceServer(ctx, id)
+		// An id is unique across the deployment, so the lookup is not bounded to the caller's organization
+		// unit.
+		_, svcErr := rs.GetResourceServer(security.WithRuntimeContext(ctx), id)
 		if svcErr != nil && svcErr.Code != ErrorResourceServerNotFound.Code {
 			return nil, svcErr
 		}
@@ -379,6 +389,10 @@ func (rs *resourceService) GetResourceServer(
 		rs.logger.Error(ctx, "Failed to get resource server", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	if svcErr := rs.checkResourceServerAccess(
+		ctx, security.ActionReadResourceServer, resourceServer.OUID, id); svcErr != nil {
+		return nil, svcErr
+	}
 
 	return &resourceServer, nil
 }
@@ -413,16 +427,28 @@ func (rs *resourceService) GetResourceServerList(
 		return nil, err
 	}
 
-	totalCount, err := rs.resourceStore.GetResourceServerListCount(ctx)
-	if err != nil {
-		if errors.Is(err, errResultLimitExceededInCompositeMode) {
-			return nil, &ErrResultLimitExceededInCompositeMode
-		}
-		rs.logger.Error(ctx, "Failed to get resource server count", log.Error(err))
+	accessible, svcErr := rs.authzService.GetAccessibleResources(
+		ctx, security.ActionListResourceServers, security.ResourceTypeOU)
+	if svcErr != nil {
+		rs.logger.Error(ctx, "Failed to resolve accessible resources for listing resource servers",
+			log.Any("error", svcErr))
 		return nil, &tidcommon.InternalServerError
 	}
 
-	resourceServers, err := rs.resourceStore.GetResourceServerList(ctx, limit, offset)
+	var totalCount int
+	var resourceServers []providers.ResourceServer
+	var err error
+	if accessible.AllAllowed {
+		totalCount, err = rs.resourceStore.GetResourceServerListCount(ctx)
+		if err == nil {
+			resourceServers, err = rs.resourceStore.GetResourceServerList(ctx, limit, offset)
+		}
+	} else {
+		totalCount, err = rs.resourceStore.GetResourceServerListCountByOUIDs(ctx, accessible.IDs)
+		if err == nil {
+			resourceServers, err = rs.resourceStore.GetResourceServerListByOUIDs(ctx, accessible.IDs, limit, offset)
+		}
+	}
 	if err != nil {
 		if errors.Is(err, errResultLimitExceededInCompositeMode) {
 			return nil, &ErrResultLimitExceededInCompositeMode
@@ -463,6 +489,18 @@ func (rs *resourceService) UpdateResourceServer(
 		}
 		rs.logger.Error(ctx, "Failed to check resource server existence", log.Error(err))
 		return nil, &tidcommon.InternalServerError
+	}
+
+	if svcErr := rs.checkResourceServerAccess(
+		ctx, security.ActionUpdateResourceServer, existingResServer.OUID, id); svcErr != nil {
+		return nil, svcErr
+	}
+	// A resource server moving to another organization unit needs the destination authorized as well.
+	if resourceServer.OUID != existingResServer.OUID {
+		if svcErr := rs.checkResourceServerAccess(
+			ctx, security.ActionUpdateResourceServer, resourceServer.OUID, id); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 
 	// Check if resource server is declarative (immutable)
@@ -565,13 +603,17 @@ func (rs *resourceService) DeleteResourceServer(ctx context.Context, id string) 
 		return ErrorImmutableResourceServer.WithParams(map[string]string{"id": id})
 	}
 
-	_, err := rs.resourceStore.GetResourceServer(ctx, id)
+	existing, err := rs.resourceStore.GetResourceServer(ctx, id)
 	if err != nil {
 		if errors.Is(err, errResourceServerNotFound) {
 			return nil // Idempotent delete
 		}
 		rs.logger.Error(ctx, "Failed to check resource server existence", log.Error(err))
 		return &tidcommon.InternalServerError
+	}
+	if svcErr := rs.checkResourceServerAccess(
+		ctx, security.ActionDeleteResourceServer, existing.OUID, id); svcErr != nil {
+		return svcErr
 	}
 
 	// Refuse deletion when resources or actions still depend on this resource server. Dependencies
@@ -608,7 +650,8 @@ func (rs *resourceService) CreateResource(
 	resourceServerID string, resource providers.Resource,
 ) (*providers.Resource, *tidcommon.ServiceError) {
 	// Validate resource server exists
-	resourceServer, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	resourceServer, svcErr := rs.validateAndGetResourceServer(
+		ctx, resourceServerID, security.ActionUpdateResourceServer)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -702,7 +745,7 @@ func (rs *resourceService) GetResource(
 	}
 
 	// Validate resource server exists
-	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID, security.ActionReadResourceServer)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -731,7 +774,7 @@ func (rs *resourceService) GetResourceList(
 		return nil, &ErrorMissingID
 	}
 	// Validate resource server exists
-	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID, security.ActionReadResourceServer)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -785,7 +828,8 @@ func (rs *resourceService) GetAllResourceList(
 	if resourceServerID == "" {
 		return nil, &ErrorMissingID
 	}
-	if _, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID); svcErr != nil {
+	if _, svcErr := rs.validateAndGetResourceServer(
+		ctx, resourceServerID, security.ActionReadResourceServer); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -828,7 +872,7 @@ func (rs *resourceService) UpdateResource(
 	}
 
 	// Validate resource server exists
-	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID, security.ActionUpdateResourceServer)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -892,13 +936,17 @@ func (rs *resourceService) DeleteResource(
 	}
 
 	// Validate resource server exists
-	_, err := rs.resourceStore.GetResourceServer(ctx, resourceServerID)
+	resourceServer, err := rs.resourceStore.GetResourceServer(ctx, resourceServerID)
 	if err != nil {
 		if errors.Is(err, errResourceServerNotFound) {
 			return nil // Idempotent delete
 		}
 		rs.logger.Error(ctx, "Failed to check resource server", log.Error(err))
 		return &tidcommon.InternalServerError
+	}
+	if svcErr := rs.checkResourceServerAccess(
+		ctx, security.ActionUpdateResourceServer, resourceServer.OUID, resourceServerID); svcErr != nil {
+		return svcErr
 	}
 
 	// Check resource exists
@@ -940,7 +988,8 @@ func (rs *resourceService) CreateAction(
 	resourceServerID string, resourceID *string, action providers.Action,
 ) (*providers.Action, *tidcommon.ServiceError) {
 	// Validate resource server exists
-	resourceServer, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	resourceServer, svcErr := rs.validateAndGetResourceServer(
+		ctx, resourceServerID, security.ActionUpdateResourceServer)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -1042,7 +1091,7 @@ func (rs *resourceService) GetAction(
 	}
 
 	// Validate resource server exists
-	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID, security.ActionReadResourceServer)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -1089,7 +1138,7 @@ func (rs *resourceService) GetActionList(
 	}
 
 	// Validate resource server exists
-	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID, security.ActionReadResourceServer)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -1161,7 +1210,7 @@ func (rs *resourceService) UpdateAction(
 		return nil, ErrorImmutableAction.WithParams(map[string]string{"id": id})
 	}
 	// Validate resource server exists
-	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID, security.ActionUpdateResourceServer)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -1236,7 +1285,7 @@ func (rs *resourceService) DeleteAction(
 	}
 
 	// Validate resource server exists
-	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID, security.ActionUpdateResourceServer)
 	if svcErr != nil {
 		if svcErr.Code == ErrorResourceServerNotFound.Code {
 			return nil // Idempotent delete
@@ -1377,10 +1426,12 @@ func (rs *resourceService) ResolveResourceServerOUHandle(
 
 // Validation helper methods
 
-// validateAndGetResourceServer validates resource server exists and returns it.
+// validateAndGetResourceServer validates resource server exists and returns it, once the caller is
+// authorized to perform the action on it. Its resources and actions belong to its organization unit.
 func (rs *resourceService) validateAndGetResourceServer(
 	ctx context.Context,
 	resourceServerID string,
+	action security.Action,
 ) (providers.ResourceServer, *tidcommon.ServiceError) {
 	resourceServer, err := rs.resourceStore.GetResourceServer(ctx, resourceServerID)
 	if err != nil {
@@ -1390,7 +1441,29 @@ func (rs *resourceService) validateAndGetResourceServer(
 		rs.logger.Error(ctx, "Failed to check resource server", log.Error(err))
 		return providers.ResourceServer{}, &tidcommon.InternalServerError
 	}
+	if svcErr := rs.checkResourceServerAccess(ctx, action, resourceServer.OUID, resourceServerID); svcErr != nil {
+		return providers.ResourceServer{}, svcErr
+	}
 	return resourceServer, nil
+}
+
+// checkResourceServerAccess authorizes the caller to perform the action on a resource server in the
+// organization unit.
+func (rs *resourceService) checkResourceServerAccess(
+	ctx context.Context, action security.Action, ouID, resourceServerID string,
+) *tidcommon.ServiceError {
+	allowed, svcErr := rs.authzService.IsActionAllowed(ctx, action, &sysauthz.ActionContext{
+		ResourceType: security.ResourceTypeResourceServer, OUID: ouID, ResourceID: resourceServerID,
+	})
+	if svcErr != nil {
+		rs.logger.Error(ctx, "Failed to check authorization for action",
+			log.String("action", string(action)), log.Any("error", svcErr))
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
+	return nil
 }
 
 // validateAndGetResourceByID validates resource exists and returns it.

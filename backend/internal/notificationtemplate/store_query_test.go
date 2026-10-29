@@ -248,3 +248,74 @@ func (s *NotificationTemplateStoreTestSuite) TestScopeFollowsContextDeployment()
 	_, errB := s.store.GetTemplate(depCtx("tenant-b"), ChannelTypeEmail, "id-1")
 	s.Require().ErrorIs(errB, errTemplateNotFound)
 }
+
+func (s *NotificationTemplateStoreTestSuite) TestListTemplatesByOUIDs() {
+	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
+	query, args := buildListTemplatesByOUIDsQuery(ChannelTypeEmail, []string{"ou-1"}, 10, 0, "test-deployment")
+	s.mockDBClient.On("QueryContext", append([]interface{}{mock.Anything, query}, args...)...).
+		Return([]map[string]interface{}{
+			{"id": "a", "channel": "email", "handle": "a", "ou_id": "ou-1", "display_name": "A"},
+		}, nil)
+
+	list, err := s.store.ListTemplatesByOUIDs(depCtx("test-deployment"), ChannelTypeEmail, []string{"ou-1"}, 10, 0)
+	s.Require().NoError(err)
+	s.Require().Len(list, 1)
+	s.Require().Equal("ou-1", list[0].OUID)
+}
+
+func (s *NotificationTemplateStoreTestSuite) TestListTemplatesByOUIDs_QueryError() {
+	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
+	query, args := buildListTemplatesByOUIDsQuery(ChannelTypeEmail, []string{"ou-1"}, 10, 0, "test-deployment")
+	s.mockDBClient.On("QueryContext", append([]interface{}{mock.Anything, query}, args...)...).
+		Return(nil, errors.New("db down"))
+
+	_, err := s.store.ListTemplatesByOUIDs(depCtx("test-deployment"), ChannelTypeEmail, []string{"ou-1"}, 10, 0)
+	s.Require().Error(err)
+}
+
+func (s *NotificationTemplateStoreTestSuite) TestCountTemplatesByOUIDs() {
+	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
+	query, args := buildCountTemplatesByOUIDsQuery(ChannelTypeEmail, []string{"ou-1"}, "test-deployment")
+	s.mockDBClient.On("QueryContext", append([]interface{}{mock.Anything, query}, args...)...).
+		Return([]map[string]interface{}{{"total": int64(2)}}, nil)
+
+	n, err := s.store.CountTemplatesByOUIDs(depCtx("test-deployment"), ChannelTypeEmail, []string{"ou-1"})
+	s.Require().NoError(err)
+	s.Require().Equal(2, n)
+}
+
+func (s *NotificationTemplateStoreTestSuite) TestCountTemplatesByOUIDs_QueryError() {
+	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
+	query, args := buildCountTemplatesByOUIDsQuery(ChannelTypeEmail, []string{"ou-1"}, "test-deployment")
+	s.mockDBClient.On("QueryContext", append([]interface{}{mock.Anything, query}, args...)...).
+		Return(nil, errors.New("db down"))
+
+	_, err := s.store.CountTemplatesByOUIDs(depCtx("test-deployment"), ChannelTypeEmail, []string{"ou-1"})
+	s.Require().Error(err)
+}
+
+func (s *NotificationTemplateStoreTestSuite) TestTemplatesByOUIDs_NoUnits() {
+	list, err := s.store.ListTemplatesByOUIDs(depCtx("test-deployment"), ChannelTypeEmail, nil, 10, 0)
+	s.Require().NoError(err)
+	s.Require().Empty(list)
+
+	n, err := s.store.CountTemplatesByOUIDs(depCtx("test-deployment"), ChannelTypeEmail, nil)
+	s.Require().NoError(err)
+	s.Require().Zero(n)
+}
+
+func (s *NotificationTemplateStoreTestSuite) TestBuildTemplatesByOUIDsQueries() {
+	countQuery, countArgs := buildCountTemplatesByOUIDsQuery(ChannelTypeEmail, []string{"ou-1", "ou-2"}, "dep1")
+	s.Require().Equal(`SELECT COUNT(*) as total FROM "NOTIFICATION_TEMPLATE" `+
+		`WHERE CHANNEL = $1 AND OU_ID IN ($2,$3) AND DEPLOYMENT_ID = $4`, countQuery.PostgresQuery)
+	s.Require().Equal(`SELECT COUNT(*) as total FROM "NOTIFICATION_TEMPLATE" `+
+		`WHERE CHANNEL = ? AND OU_ID IN (?,?) AND DEPLOYMENT_ID = ?`, countQuery.SQLiteQuery)
+	s.Require().Equal([]interface{}{"email", "ou-1", "ou-2", "dep1"}, countArgs)
+
+	listQuery, listArgs := buildListTemplatesByOUIDsQuery(ChannelTypeEmail, []string{"ou-1", "ou-2"}, 10, 5, "dep1")
+	s.Require().Contains(listQuery.PostgresQuery, `WHERE CHANNEL = $1 AND OU_ID IN ($2,$3) AND DEPLOYMENT_ID = $4 `+
+		`ORDER BY CREATED_AT DESC, ID DESC LIMIT $5 OFFSET $6`)
+	s.Require().Contains(listQuery.SQLiteQuery, `WHERE CHANNEL = ? AND OU_ID IN (?,?) AND DEPLOYMENT_ID = ? `+
+		`ORDER BY CREATED_AT DESC, ID DESC LIMIT ? OFFSET ?`)
+	s.Require().Equal([]interface{}{"email", "ou-1", "ou-2", "dep1", 10, 5}, listArgs)
+}

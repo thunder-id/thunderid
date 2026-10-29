@@ -42,7 +42,7 @@ func (s *HTTPConnectionToolsTestSuite) SetupTest() {
 	s.mockHTTP = httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
 	svc := newService(idpmock.NewIDPServiceInterfaceMock(s.T()),
 		notificationmock.NewNotificationSenderMgtSvcInterfaceMock(s.T()), &testResourceServerLister{},
-		newAuthZENPDPServiceMock(s.T()), s.mockHTTP)
+		newAuthZENPDPServiceMock(s.T()), s.mockHTTP, newAllowAllConnectionAuthz(s.T()))
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
 	registerMCPTools(server, svc)

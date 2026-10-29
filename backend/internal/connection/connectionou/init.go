@@ -9,14 +9,17 @@ package connectionou
 import (
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
 // Initialize creates the resolver of a kind of connection. The resolver answers with the errors the kind gives, so
 // each kind keeps its own error codes.
-func Initialize(ouService ou.OrganizationUnitServiceInterface, errs Errors) ResolverInterface {
+func Initialize(ouService ou.OrganizationUnitServiceInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface, errs Errors) ResolverInterface {
 	return &resolver{
-		ouService: ouService,
-		errs:      errs,
-		logger:    log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConnectionOUResolver")),
+		ouService:    ouService,
+		authzService: authzService,
+		errs:         errs,
+		logger:       log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConnectionOUResolver")),
 	}
 }

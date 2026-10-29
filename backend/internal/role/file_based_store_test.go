@@ -447,3 +447,28 @@ func (suite *RoleFileBasedStoreTestSuite) TestCascadeHooksAreNoOps() {
 	suite.NoError(err)
 	suite.Equal(int64(0), deleted)
 }
+
+func (suite *RoleFileBasedStoreTestSuite) TestGetRoleListByOUIDs() {
+	suite.seedRole(RoleWithPermissionsAndAssignments{ID: "role1", Name: "Admin", OUID: "ou1"})
+	suite.seedRole(RoleWithPermissionsAndAssignments{ID: "role2", Name: "Viewer", OUID: "ou2"})
+	suite.seedRole(RoleWithPermissionsAndAssignments{ID: "role3", Name: "Other", OUID: "ou3"})
+
+	count, err := suite.store.GetRoleListCountByOUIDs(context.Background(), []string{"ou1", "ou2"})
+	suite.NoError(err)
+	suite.Equal(2, count)
+
+	roles, err := suite.store.GetRoleListByOUIDs(context.Background(), []string{"ou1", "ou2"}, 10, 0)
+	suite.NoError(err)
+	suite.Len(roles, 2)
+	for _, role := range roles {
+		suite.NotEqual("ou3", role.OUID)
+	}
+
+	none, err := suite.store.GetRoleListByOUIDs(context.Background(), nil, 10, 0)
+	suite.NoError(err)
+	suite.Empty(none)
+
+	zeroLimit, err := suite.store.GetRoleListByOUIDs(context.Background(), []string{"ou1"}, 0, 0)
+	suite.NoError(err)
+	suite.Empty(zeroLimit)
+}

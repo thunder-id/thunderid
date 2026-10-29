@@ -763,7 +763,7 @@ func (s *HTTPConnectionHandlerTestSuite) SetupTest() {
 	s.mockHTTP = httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
 	h := newHandler(newService(idpmock.NewIDPServiceInterfaceMock(s.T()),
 		notificationmock.NewNotificationSenderMgtSvcInterfaceMock(s.T()), &testResourceServerLister{},
-		newAuthZENPDPServiceMock(s.T()), s.mockHTTP))
+		newAuthZENPDPServiceMock(s.T()), s.mockHTTP, newAllowAllConnectionAuthz(s.T())))
 	s.mux = http.NewServeMux()
 	registerRoutes(s.mux, h)
 }
@@ -926,6 +926,8 @@ func (s *HTTPConnectionHandlerTestSuite) TestDeleteOfAConnectionInUseIsAConflict
 
 func (s *HTTPConnectionHandlerTestSuite) TestUsagesListTheReferencingFlows() {
 	total := 1
+	s.mockHTTP.On("GetHTTPConnection", mock.Anything, "http-1").
+		Return(s.basicConnection(), (*tidcommon.ServiceError)(nil))
 	s.mockHTTP.On("GetHTTPConnectionUsages", mock.Anything, "http-1").
 		Return(&resourcedependency.DependenciesResponse{
 			TotalResults: &total, Count: 1, Summary: map[string]int{resourcedependency.ResourceTypeFlow: 1},
@@ -943,8 +945,8 @@ func (s *HTTPConnectionHandlerTestSuite) TestUsagesListTheReferencingFlows() {
 }
 
 func (s *HTTPConnectionHandlerTestSuite) TestUsagesOfAMissingConnectionIsNotFound() {
-	s.mockHTTP.On("GetHTTPConnectionUsages", mock.Anything, "missing").
-		Return((*resourcedependency.DependenciesResponse)(nil), &httpconnection.ErrorNotFound)
+	s.mockHTTP.On("GetHTTPConnection", mock.Anything, "missing").
+		Return((*httpconnection.HTTPConnection)(nil), &httpconnection.ErrorNotFound)
 
 	rr := s.serve(http.MethodGet, "/connections/http/missing/usages", "")
 

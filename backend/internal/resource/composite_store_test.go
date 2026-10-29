@@ -6,6 +6,7 @@ package resource
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,6 +14,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 )
 
 const (
@@ -1186,4 +1189,96 @@ func (s *CompositeResourceStoreTestSuite) TestMergeAndDeduplicateResourceServers
 	result = mergeAndDeduplicateResourceServers([]providers.ResourceServer{}, fileServers)
 	assert.Len(s.T(), result, 1)
 	assert.True(s.T(), result[0].IsReadOnly, "File resource server should have IsReadOnly=true")
+}
+
+func (s *CompositeResourceStoreTestSuite) TestGetResourceServerListByOUIDs_MergesAndPagesBothStores() {
+	dbServers := []providers.ResourceServer{{ID: testRS1ID, Name: "DB 1", OUID: "ou1"}, {ID: "rs2", OUID: "ou1"}}
+	fileServers := []providers.ResourceServer{{ID: testRS1ID, Name: "File 1", OUID: "ou1"}, {ID: "rs3", OUID: "ou1"}}
+	s.dbStoreMock.On("GetResourceServerListCountByOUIDs", s.ctx, []string{"ou1"}).Return(len(dbServers), nil)
+	s.fileStoreMock.On("GetResourceServerListCountByOUIDs", s.ctx, []string{"ou1"}).Return(len(fileServers), nil)
+	s.dbStoreMock.On("GetResourceServerListByOUIDs", s.ctx, []string{"ou1"}, len(dbServers), 0).Return(dbServers, nil)
+	s.fileStoreMock.On("GetResourceServerListByOUIDs", s.ctx, []string{"ou1"}, len(fileServers), 0).
+		Return(fileServers, nil)
+
+	count, err := s.compositeStore.GetResourceServerListCountByOUIDs(s.ctx, []string{"ou1"})
+	s.Require().NoError(err)
+	s.Equal(3, count)
+
+	page, err := s.compositeStore.GetResourceServerListByOUIDs(s.ctx, []string{"ou1"}, 2, 1)
+	s.Require().NoError(err)
+	s.Len(page, 2)
+
+	past, err := s.compositeStore.GetResourceServerListByOUIDs(s.ctx, []string{"ou1"}, 2, 10)
+	s.Require().NoError(err)
+	s.Empty(past)
+}
+
+func (s *CompositeResourceStoreTestSuite) TestGetResourceServerListByOUIDs_EmptyStores() {
+	s.dbStoreMock.On("GetResourceServerListCountByOUIDs", s.ctx, []string{"ou1"}).Return(0, nil)
+	s.fileStoreMock.On("GetResourceServerListCountByOUIDs", s.ctx, []string{"ou1"}).Return(0, nil)
+
+	result, err := s.compositeStore.GetResourceServerListByOUIDs(s.ctx, []string{"ou1"}, 10, 0)
+
+	s.Require().NoError(err)
+	s.Empty(result)
+	s.dbStoreMock.AssertNotCalled(s.T(), "GetResourceServerListByOUIDs", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything)
+}
+
+func (s *CompositeResourceStoreTestSuite) TestGetResourceServerListByOUIDs_Errors() {
+	failure := errors.New("store error")
+	cases := []struct {
+		name  string
+		setup func()
+	}{
+		{"DBCount", func() {
+			s.dbStoreMock.On("GetResourceServerListCountByOUIDs", s.ctx, []string{"ou1"}).Return(0, failure)
+		}},
+		{"FileCount", func() {
+			s.dbStoreMock.On("GetResourceServerListCountByOUIDs", s.ctx, []string{"ou1"}).Return(1, nil)
+			s.fileStoreMock.On("GetResourceServerListCountByOUIDs", s.ctx, []string{"ou1"}).Return(0, failure)
+		}},
+		{"DBList", func() {
+			s.dbStoreMock.On("GetResourceServerListCountByOUIDs", s.ctx, []string{"ou1"}).Return(1, nil)
+			s.fileStoreMock.On("GetResourceServerListCountByOUIDs", s.ctx, []string{"ou1"}).Return(1, nil)
+			s.dbStoreMock.On("GetResourceServerListByOUIDs", s.ctx, []string{"ou1"}, 1, 0).
+				Return(([]providers.ResourceServer)(nil), failure)
+		}},
+		{"FileList", func() {
+			s.dbStoreMock.On("GetResourceServerListCountByOUIDs", s.ctx, []string{"ou1"}).Return(1, nil)
+			s.fileStoreMock.On("GetResourceServerListCountByOUIDs", s.ctx, []string{"ou1"}).Return(1, nil)
+			s.dbStoreMock.On("GetResourceServerListByOUIDs", s.ctx, []string{"ou1"}, 1, 0).
+				Return([]providers.ResourceServer{{ID: "rs1"}}, nil)
+			s.fileStoreMock.On("GetResourceServerListByOUIDs", s.ctx, []string{"ou1"}, 1, 0).
+				Return(([]providers.ResourceServer)(nil), failure)
+		}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			tc.setup()
+
+			_, listErr := s.compositeStore.GetResourceServerListByOUIDs(s.ctx, []string{"ou1"}, 10, 0)
+			_, countErr := s.compositeStore.GetResourceServerListCountByOUIDs(s.ctx, []string{"ou1"})
+
+			s.ErrorIs(listErr, failure)
+			s.ErrorIs(countErr, failure)
+		})
+	}
+}
+
+func (s *CompositeResourceStoreTestSuite) TestGetResourceServerListByOUIDs_OverTheCompositeLimit() {
+	servers := make([]providers.ResourceServer, serverconst.MaxCompositeStoreRecords+1)
+	for i := range servers {
+		servers[i] = providers.ResourceServer{ID: fmt.Sprintf("rs-%d", i), OUID: "ou1"}
+	}
+	s.dbStoreMock.On("GetResourceServerListCountByOUIDs", s.ctx, []string{"ou1"}).Return(len(servers), nil)
+	s.fileStoreMock.On("GetResourceServerListCountByOUIDs", s.ctx, []string{"ou1"}).Return(0, nil)
+	s.dbStoreMock.On("GetResourceServerListByOUIDs", s.ctx, []string{"ou1"}, len(servers), 0).Return(servers, nil)
+	s.fileStoreMock.On("GetResourceServerListByOUIDs", s.ctx, []string{"ou1"}, 0, 0).
+		Return([]providers.ResourceServer{}, nil)
+
+	_, err := s.compositeStore.GetResourceServerListByOUIDs(s.ctx, []string{"ou1"}, 10, 0)
+
+	s.ErrorIs(err, errResultLimitExceededInCompositeMode)
 }

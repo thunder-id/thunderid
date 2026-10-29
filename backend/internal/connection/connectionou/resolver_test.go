@@ -11,8 +11,11 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 var errServer = &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "SSE-5000"}
@@ -20,6 +23,7 @@ var errServer = &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "
 type ResolverTestSuite struct {
 	suite.Suite
 	ouService *oumock.OrganizationUnitServiceInterfaceMock
+	authz     *sysauthzmock.SystemAuthorizationServiceInterfaceMock
 	resolver  ResolverInterface
 }
 
@@ -29,7 +33,8 @@ func TestResolverTestSuite(t *testing.T) {
 
 func (s *ResolverTestSuite) SetupTest() {
 	s.ouService = oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
-	s.resolver = Initialize(s.ouService, Errors{
+	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	s.resolver = Initialize(s.ouService, s.authz, Errors{
 		Required: ErrorOURequired,
 		NotFound: ErrorInvalidOU,
 		Changed:  ErrorOUUpdateNotAllowed,
@@ -140,4 +145,36 @@ func (s *ResolverTestSuite) TestResolveForUpdate_RefusesAHandleThatCannotBeResol
 	_, svcErr := s.resolver.ResolveForUpdate(context.Background(), "", "nowhere", "ou-1")
 
 	s.Equal(&ErrorInvalidOU, svcErr)
+}
+
+func (s *ResolverTestSuite) TestAuthorize() {
+	actionCtx := &sysauthz.ActionContext{
+		ResourceType: security.ResourceTypeConnection, OUID: "ou-1", ResourceID: "conn-1",
+	}
+	cases := []struct {
+		name     string
+		allowed  bool
+		authzErr *tidcommon.ServiceError
+		wantCode string
+	}{
+		{"Allowed", true, nil, ""},
+		{"Refused", false, nil, tidcommon.ErrorUnauthorized.Code},
+		{"AuthorizationFailure", false, errServer, tidcommon.InternalServerError.Code},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			s.authz.On("IsActionAllowed", mock.Anything, security.ActionUpdateConnection, actionCtx).
+				Return(tc.allowed, tc.authzErr).Once()
+
+			svcErr := s.resolver.Authorize(context.Background(), security.ActionUpdateConnection, "ou-1", "conn-1")
+
+			if tc.wantCode == "" {
+				s.Nil(svcErr)
+				return
+			}
+			s.Require().NotNil(svcErr)
+			s.Equal(tc.wantCode, svcErr.Code)
+		})
+	}
 }

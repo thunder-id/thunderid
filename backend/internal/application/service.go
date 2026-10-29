@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -31,6 +32,8 @@ import (
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -96,7 +99,8 @@ type applicationService struct {
 	valueCapturer        declarativeresource.ValueCapturer
 	sharingService       sharing.SharingServiceInterface
 	// governance derives the access status.
-	governance identitygovernance.IdentityGovernanceServiceInterface
+	governance   identitygovernance.IdentityGovernanceServiceInterface
+	authzService sysauthz.SystemAuthorizationServiceInterface
 }
 
 // newApplicationService creates a new instance of ApplicationService.
@@ -111,6 +115,7 @@ func newApplicationService(
 	valueCapturer declarativeresource.ValueCapturer,
 	sharingService sharing.SharingServiceInterface,
 	governance identitygovernance.IdentityGovernanceServiceInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 ) ApplicationServiceInterface {
 	return &applicationService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationService")),
@@ -124,6 +129,7 @@ func newApplicationService(
 		valueCapturer:        valueCapturer,
 		sharingService:       sharingService,
 		governance:           governance,
+		authzService:         authzService,
 	}
 }
 
@@ -156,6 +162,9 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 
 	processedDTO, inboundAuthConfig, svcErr := as.ValidateApplication(ctx, app)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionCreateApplication, app.OUID, ""); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -337,8 +346,23 @@ func (as *applicationService) GetApplicationList(
 	if err != nil || len(rest) > 0 {
 		return nil, &ErrorInvalidFilter
 	}
+
+	accessible, svcErr := as.authzService.GetAccessibleResources(
+		ctx, security.ActionListApplications, security.ResourceTypeOU)
+	if svcErr != nil {
+		as.logger.Error(ctx, "Failed to resolve accessible resources for listing applications",
+			log.Any("error", svcErr))
+		return nil, &tidcommon.InternalServerError
+	}
 	if ouID != "" {
+		// An organization unit the caller cannot list applications from has none to show.
+		if !accessible.AllAllowed && !slices.Contains(accessible.IDs, ouID) {
+			return as.buildApplicationList(ctx, nil, 0, 0)
+		}
 		return as.listApplicationsInOU(ctx, ouID)
+	}
+	if !accessible.AllAllowed {
+		return as.listApplicationsInOUs(ctx, accessible.IDs)
 	}
 
 	totalResults, entErr := as.entityService.GetEntityListCount(ctx, providers.EntityCategoryApp, nil)
@@ -369,6 +393,23 @@ func (as *applicationService) listApplicationsInOU(
 	}
 	return as.buildApplicationList(ctx, slices.Concat(page.Owned, page.Shared), len(page.Owned),
 		page.TotalResults)
+}
+
+// listApplicationsInOUs lists the applications each organization unit owns, followed by the ones shared
+// into it, one unit after another.
+func (as *applicationService) listApplicationsInOUs(
+	ctx context.Context, ouIDs []string) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
+	combined := &model.ApplicationListResponse{Applications: []model.BasicApplicationResponse{}}
+	for _, ouID := range ouIDs {
+		list, svcErr := as.listApplicationsInOU(ctx, ouID)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		combined.TotalResults += list.TotalResults
+		combined.Count += list.Count
+		combined.Applications = append(combined.Applications, list.Applications...)
+	}
+	return combined, nil
 }
 
 // buildApplicationList builds the list response for application entities, of which the first
@@ -470,6 +511,10 @@ func (as *applicationService) GetApplication(ctx context.Context, appID string) 
 
 	fullApp, svcErr := as.getApplication(ctx, appID)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := as.checkApplicationAccess(
+		ctx, security.ActionReadApplication, fullApp.OUID, appID); svcErr != nil {
 		return nil, svcErr
 	}
 	return as.enrichApplicationWithCertificate(ctx, buildApplicationResponse(fullApp))
@@ -727,6 +772,10 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 	} else if existing != nil {
 		if existing.Category != providers.EntityCategoryApp {
 			return &ErrorApplicationNotFound
+		}
+		if svcErr := as.checkApplicationAccess(
+			ctx, security.ActionDeleteApplication, existing.OUID, appID); svcErr != nil {
+			return svcErr
 		}
 		// Refused before anything is removed. Only an entity that exists can be declared.
 		if svcErr := as.checkApplicationDeclarative(ctx, appID); svcErr != nil {
@@ -1483,6 +1532,10 @@ func (as *applicationService) validateApplicationForUpdate(
 	if existingAppErr != nil {
 		return nil, nil, existingAppErr
 	}
+	if svcErr := as.checkApplicationAccess(
+		ctx, security.ActionUpdateApplication, existingApp.OUID, appID); svcErr != nil {
+		return nil, nil, svcErr
+	}
 
 	// If the application name is changed, check if an application with the new name already exists.
 	if existingApp.Name != app.Name {
@@ -1505,6 +1558,14 @@ func (as *applicationService) validateApplicationForUpdate(
 		return nil, nil, &ErrorApplicationTypeImmutable
 	}
 	app.Type = existingApp.Type
+
+	// An application moving to another organization unit needs the destination authorized as well.
+	if app.OUID != existingApp.OUID {
+		if svcErr := as.checkApplicationAccess(
+			ctx, security.ActionUpdateApplication, app.OUID, appID); svcErr != nil {
+			return nil, nil, svcErr
+		}
+	}
 
 	// A shared application stays in its organization unit: its policies were issued against that unit.
 	if app.OUID != existingApp.OUID {
@@ -2682,15 +2743,41 @@ func translateSharingError(svcErr *tidcommon.ServiceError) *tidcommon.ServiceErr
 	return sharingErrors.Translate(svcErr)
 }
 
+// checkSharingAccess authorizes a sharing call against one organization unit.
+func (as *applicationService) checkSharingAccess(
+	ctx context.Context, action security.Action, ouID string,
+) *tidcommon.ServiceError {
+	return as.checkApplicationAccess(ctx, action, ouID, "")
+}
+
+// checkSharingReadAccess allows a read when the caller may read applications in any of the given
+// organization units.
+func (as *applicationService) checkSharingReadAccess(
+	ctx context.Context, ouIDs ...string,
+) *tidcommon.ServiceError {
+	for _, ouID := range ouIDs {
+		svcErr := as.checkSharingAccess(ctx, security.ActionReadApplication, ouID)
+		if svcErr == nil {
+			return nil
+		}
+		if svcErr.Code != tidcommon.ErrorUnauthorized.Code {
+			return svcErr
+		}
+	}
+	return &tidcommon.ErrorUnauthorized
+}
+
 // requireSharing resolves the application a sharing call names and returns its owning organization
-// unit, so an unknown application answers as one rather than as a sharing failure.
+// unit, so an unknown application answers as one rather than as a sharing failure. The application
+// is read without the caller's authorization, because a sharing call is authorized against the
+// organization unit whose decision it concerns, which need not be the application's own.
 func (as *applicationService) requireSharing(
 	ctx context.Context, appID string,
 ) (string, *tidcommon.ServiceError) {
 	if appID == "" {
 		return "", &ErrorInvalidApplicationID
 	}
-	app, svcErr := as.GetApplication(ctx, appID)
+	app, svcErr := as.GetApplication(security.WithRuntimeContext(ctx), appID)
 	if svcErr != nil {
 		return "", svcErr
 	}
@@ -2701,26 +2788,36 @@ func (as *applicationService) requireSharing(
 // policy id alone would reach any policy in the deployment through any application's path.
 func (as *applicationService) requireOwnPolicy(
 	ctx context.Context, appID, policyID string,
-) (sharing.Policy, *tidcommon.ServiceError) {
-	if _, svcErr := as.requireSharing(ctx, appID); svcErr != nil {
-		return sharing.Policy{}, svcErr
+) (string, sharing.Policy, *tidcommon.ServiceError) {
+	owningOUID, svcErr := as.requireSharing(ctx, appID)
+	if svcErr != nil {
+		return "", sharing.Policy{}, svcErr
 	}
 	policy, svcErr := as.sharingService.GetPolicy(ctx, policyID)
 	if svcErr != nil {
-		return sharing.Policy{}, translateSharingError(svcErr)
+		return "", sharing.Policy{}, translateSharingError(svcErr)
 	}
 	if policy.ResourceType != ApplicationSharingType || policy.ResourceID != appID {
-		return sharing.Policy{}, &ErrorSharingPolicyNotFound
+		return "", sharing.Policy{}, &ErrorSharingPolicyNotFound
 	}
-	return policy, nil
+	return owningOUID, policy, nil
 }
 
-// CreateSharingPolicy records which organization units may act for an application.
+// CreateSharingPolicy records which organization units may act for an application. A policy is the
+// initiating organization unit's decision, so that unit is the one the caller must be allowed to act
+// for: the owner for a share, or a unit the application already reached for a reshare.
 func (as *applicationService) CreateSharingPolicy(
 	ctx context.Context, appID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
 	owningOUID, svcErr := as.requireSharing(ctx, appID)
 	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	initiatingOUID := req.InitiatingOUID
+	if initiatingOUID == "" {
+		initiatingOUID = owningOUID
+	}
+	if svcErr := as.checkSharingAccess(ctx, security.ActionUpdateApplication, initiatingOUID); svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
 	// Applications that load from resource files only have all their sharing declared there.
@@ -2739,47 +2836,115 @@ func (as *applicationService) CreateSharingPolicy(
 	return policy, translateSharingError(svcErr)
 }
 
-// GetSharingPolicy returns one of the application's sharing policies.
+// GetSharingPolicy returns one of the application's sharing policies. The owner sees every decision
+// about its application; any other organization unit sees its own.
 func (as *applicationService) GetSharingPolicy(
 	ctx context.Context, appID, policyID string,
 ) (sharing.Policy, *tidcommon.ServiceError) {
-	return as.requireOwnPolicy(ctx, appID, policyID)
+	owningOUID, policy, svcErr := as.requireOwnPolicy(ctx, appID, policyID)
+	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	if svcErr := as.checkSharingReadAccess(ctx, owningOUID, policy.InitiatingOUID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	return policy, nil
 }
 
-// ListSharingPolicies returns one page of the application's sharing policies.
+// ListSharingPolicies returns one page of the application's sharing policies. A caller who may read
+// applications in the owning organization unit sees them all; any other caller sees the ones its own
+// organization units made.
 func (as *applicationService) ListSharingPolicies(
 	ctx context.Context, appID string, limit, offset int,
 ) (sharing.PolicyList, *tidcommon.ServiceError) {
-	if _, svcErr := as.requireSharing(ctx, appID); svcErr != nil {
+	if limit < 1 || limit > serverconst.MaxPageSize {
+		return sharing.PolicyList{}, translateSharingError(&sharing.ErrorInvalidLimit)
+	}
+	// An offset this close to MaxInt would overflow the page bounds, the start index and the links.
+	if offset < 0 || offset > math.MaxInt-limit {
+		return sharing.PolicyList{}, translateSharingError(&sharing.ErrorInvalidOffset)
+	}
+
+	owningOUID, svcErr := as.requireSharing(ctx, appID)
+	if svcErr != nil {
 		return sharing.PolicyList{}, svcErr
 	}
-	list, svcErr := as.sharingService.GetPolicyList(ctx, ApplicationSharingType, appID, limit, offset)
-	return list, translateSharingError(svcErr)
+	svcErr = as.checkSharingAccess(ctx, security.ActionReadApplication, owningOUID)
+	if svcErr == nil {
+		list, svcErr := as.sharingService.GetPolicyList(ctx, ApplicationSharingType, appID, limit, offset)
+		return list, translateSharingError(svcErr)
+	}
+	if svcErr.Code != tidcommon.ErrorUnauthorized.Code {
+		return sharing.PolicyList{}, svcErr
+	}
+	return as.listOwnSharingPolicies(ctx, appID, limit, offset)
 }
 
-// UpdateSharingPolicy replaces a sharing policy's contents.
+// listOwnSharingPolicies pages, in memory, the policies the caller's own organization units made. An
+// application holds at most one policy per organization unit, so the full set is small.
+func (as *applicationService) listOwnSharingPolicies(
+	ctx context.Context, appID string, limit, offset int,
+) (sharing.PolicyList, *tidcommon.ServiceError) {
+	policies, svcErr := as.sharingService.ListPolicies(ctx, ApplicationSharingType, appID)
+	if svcErr != nil {
+		return sharing.PolicyList{}, translateSharingError(svcErr)
+	}
+	own := make([]sharing.Policy, 0, len(policies))
+	for _, p := range policies {
+		svcErr := as.checkSharingAccess(ctx, security.ActionReadApplication, p.InitiatingOUID)
+		if svcErr == nil {
+			own = append(own, p)
+			continue
+		}
+		if svcErr.Code != tidcommon.ErrorUnauthorized.Code {
+			return sharing.PolicyList{}, svcErr
+		}
+	}
+	// A caller who made none of them has no standing to read the application's sharing at all.
+	if len(own) == 0 {
+		return sharing.PolicyList{}, &tidcommon.ErrorUnauthorized
+	}
+
+	page := own[min(offset, len(own)):min(offset+limit, len(own))]
+	return sharing.PolicyList{
+		TotalResults: len(own),
+		StartIndex:   offset + 1,
+		Count:        len(page),
+		Policies:     page,
+	}, nil
+}
+
+// UpdateSharingPolicy replaces a sharing policy's contents. Only the organization unit whose decision
+// it is may change it.
 func (as *applicationService) UpdateSharingPolicy(
 	ctx context.Context, appID, policyID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
-	if _, svcErr := as.requireOwnPolicy(ctx, appID, policyID); svcErr != nil {
+	_, policy, svcErr := as.requireOwnPolicy(ctx, appID, policyID)
+	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	if svcErr := as.checkSharingAccess(ctx, security.ActionUpdateApplication, policy.InitiatingOUID); svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
 	if isDeclarativeModeEnabled() {
 		return sharing.Policy{}, &ErrorCannotModifyDeclarativeResource
 	}
-	policy, svcErr := as.sharingService.UpdatePolicy(ctx, policyID, req)
-	return policy, translateSharingError(svcErr)
+	updated, svcErr := as.sharingService.UpdatePolicy(ctx, policyID, req)
+	return updated, translateSharingError(svcErr)
 }
 
 // DeleteSharingPolicy removes a sharing policy and everything that depended on it.
 func (as *applicationService) DeleteSharingPolicy(
 	ctx context.Context, appID, policyID string,
 ) *tidcommon.ServiceError {
-	policy, svcErr := as.requireOwnPolicy(ctx, appID, policyID)
+	_, policy, svcErr := as.requireOwnPolicy(ctx, appID, policyID)
 	if svcErr != nil {
 		if svcErr.Code == ErrorSharingPolicyNotFound.Code {
 			return nil
 		}
+		return svcErr
+	}
+	if svcErr := as.checkSharingAccess(ctx, security.ActionUpdateApplication, policy.InitiatingOUID); svcErr != nil {
 		return svcErr
 	}
 	if isDeclarativeModeEnabled() {
@@ -2792,15 +2957,20 @@ func (as *applicationService) DeleteSharingPolicy(
 }
 
 // ResolveSharingOverlay answers what one organization unit may do with the application. An
-// application declares no overlay fields, so the answer is visibility.
+// application declares no overlay fields, so the answer is visibility. The owner may ask about any
+// organization unit; any other unit may ask about itself.
 func (as *applicationService) ResolveSharingOverlay(
 	ctx context.Context, appID, ouID string,
 ) (sharing.ResolvedOverlay, *tidcommon.ServiceError) {
-	if _, svcErr := as.requireSharing(ctx, appID); svcErr != nil {
+	owningOUID, svcErr := as.requireSharing(ctx, appID)
+	if svcErr != nil {
 		return sharing.ResolvedOverlay{}, svcErr
 	}
 	if ouID == "" {
 		return sharing.ResolvedOverlay{}, &ErrorMissingOUIDParameter
+	}
+	if svcErr := as.checkSharingReadAccess(ctx, owningOUID, ouID); svcErr != nil {
+		return sharing.ResolvedOverlay{}, svcErr
 	}
 	overlay, svcErr := as.sharingService.ResolveOverlayRules(ctx, ApplicationSharingType, appID, ouID)
 	if svcErr != nil {
@@ -2816,4 +2986,22 @@ func (as *applicationService) ResolveSharingOverlay(
 		return sharing.ResolvedOverlay{}, &ErrorApplicationNotSharedToOU
 	}
 	return overlay, nil
+}
+
+// checkApplicationAccess authorizes the caller to perform the action on an application in the
+// organization unit.
+func (as *applicationService) checkApplicationAccess(
+	ctx context.Context, action security.Action, ouID, appID string,
+) *tidcommon.ServiceError {
+	allowed, svcErr := as.authzService.IsActionAllowed(ctx, action,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeApplication, OUID: ouID, ResourceID: appID})
+	if svcErr != nil {
+		as.logger.Error(ctx, "Failed to check authorization for action",
+			log.String("action", string(action)), log.Any("error", svcErr))
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
+	return nil
 }

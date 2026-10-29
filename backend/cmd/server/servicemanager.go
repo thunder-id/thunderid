@@ -179,7 +179,10 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// what seals a secret before it reaches the database.
 	_, references := variablestore.Initialize(mux, configCryptoSvc, cacheManager)
 
-	ouAuthzService, err := sysauthz.Initialize()
+	// TODO: Once the control plane and data plane run as separate servers, the data plane initializes
+	// sysauthz.InitializeOUBoundedAuthorization() here, confining each management token to the
+	// organization unit it names. Until then this server authorizes as the control plane does.
+	ouAuthzService, err := sysauthz.InitializeDeploymentBoundedAuthorization()
 	fatalOnError(ctx, logger, err, "Failed to initialize system authorization service")
 
 	ouService, ouHierarchyResolver, ouEnumerator, ouExporter, err := ou.Initialize(
@@ -219,11 +222,11 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// The notification services are built before governance, which sends the lock email through them.
 	notifSenderMgtSvc, notifOTPService, notifSenderSvc, notificationConfigHandler, err :=
-		notification.Initialize(jwtService, notificationconfig.FromServerRuntime(), ouService)
+		notification.Initialize(jwtService, notificationconfig.FromServerRuntime(), ouService, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize NotificationService")
 
 	notifTemplateSvc, notifTemplateRenderer, notifTemplateExporter, err :=
-		notificationtemplate.Initialize(mux, cacheManager, ouService, i18nService)
+		notificationtemplate.Initialize(mux, cacheManager, ouService, i18nService, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize NotificationTemplateService")
 	exporters = append(exporters, notifTemplateExporter)
 
@@ -232,10 +235,12 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	err = governanceCfg.Validate()
 	fatalOnError(ctx, logger, err, "Invalid account_access configuration")
 
-	authZENPDPService, err := authzenpdp.Initialize(runtime.Config.AuthZENPDP, entityTypeService, ouService)
+	authZENPDPService, err := authzenpdp.Initialize(
+		runtime.Config.AuthZENPDP, entityTypeService, ouService, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize AuthZENPDPService")
 
-	resourceService, resourceExporter, err := resource.Initialize(mux, ouService, authZENPDPService, nil)
+	resourceService, resourceExporter, err := resource.Initialize(
+		mux, ouService, authZENPDPService, nil, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize Resource Service")
 	exporters = append(exporters, resourceExporter)
 
@@ -306,7 +311,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize GroupService")
 	exporters = append(exporters, groupExporter)
 
-	httpConnectionService, err := httpconnection.Initialize(runtime.Config.HTTPConnection, ouService)
+	httpConnectionService, err := httpconnection.Initialize(
+		runtime.Config.HTTPConnection, ouService, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize HTTPConnectionService")
 
 	// Initialize SCIM service.
@@ -343,14 +349,14 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		roleService, resourceService, entityService, authZENPDPService)
 
 	idpService, err := idp.Initialize(
-		cacheManager, entityTypeService, roleService, groupService, resourceService, ouService)
+		cacheManager, entityTypeService, roleService, groupService, resourceService, ouService, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize IDPService")
 
 	// Register the /connections API as a thin layer over the identity-provider and
 	// notification-sender services.
 	connectionExporter, ouDependencyProvider, httpConnectionWriter, err := connection.Initialize(
 		mux, mcpServer, idpService, notifSenderMgtSvc, resourceService, authZENPDPService, httpConnectionService,
-		nil)
+		nil, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize connection declarative resources")
 	exporters = append(exporters, connectionExporter)
 
@@ -513,7 +519,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	applicationService, applicationExporter, err := application.Initialize(
 		mux, mcpServer, entityService, inboundClientService, ouService, i18nService,
-		runtimeCryptoSvc, serverConfigService, artifactLifetime, sharingService, nil, governanceService)
+		runtimeCryptoSvc, serverConfigService, artifactLifetime, sharingService, nil, governanceService,
+		ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize ApplicationService")
 	// Two-phase initialization: inject the application service into the executors that act on it.
 	fatalOnError(ctx, logger, executor.SetApplicationProvider(execRegistry, applicationService),

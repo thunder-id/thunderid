@@ -15,9 +15,12 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcedependencymock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/transactionmock"
 )
 
@@ -62,7 +65,8 @@ func initMutableTestRuntime(t interface {
 func (s *NotificationTemplateServiceTestSuite) SetupTest() {
 	initMutableTestRuntime(s.T())
 	s.mockStore = newNotificationTemplateStoreInterfaceMock(s.T())
-	s.svc = newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), nil)
+	s.svc = newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), nil,
+		newAllowAllTemplateAuthz(s.T()))
 	s.ctx = context.Background()
 }
 
@@ -91,7 +95,8 @@ func (s *NotificationTemplateServiceTestSuite) TestCreateTemplate_Email() {
 // exercised (the shared SetupTest service has a nil OU service that skips the check).
 func (s *NotificationTemplateServiceTestSuite) svcWithOU(
 	ouMock *oumock.OrganizationUnitServiceInterfaceMock) NotificationTemplateServiceInterface {
-	return newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), ouMock)
+	return newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), ouMock,
+		newAllowAllTemplateAuthz(s.T()))
 }
 
 // TestCreateTemplate_StoresOU verifies a valid ouId is checked against the OU service and persisted on
@@ -849,4 +854,138 @@ func (s *NotificationTemplateServiceTestSuite) TestStoreErrorSurfaced() {
 
 	s.Require().Error(err)
 	s.Nil(usages)
+}
+
+// newAllowAllTemplateAuthz returns an authz mock that permits every template action in every
+// organization unit, so that tests unrelated to the boundary need not configure it.
+func newAllowAllTemplateAuthz(t *testing.T) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authz.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
+	return authz
+}
+
+// svcBoundTo builds a service whose authz mock allows template actions only in ouID, as an
+// organization-unit-bound token naming ouID would.
+func (s *NotificationTemplateServiceTestSuite) svcBoundTo(ouID string) NotificationTemplateServiceInterface {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
+		Return(func(_ context.Context, _ security.Action, actionCtx *sysauthz.ActionContext) bool {
+			return actionCtx.OUID == ouID
+		}, nil).Maybe()
+	authz.On("GetAccessibleResources", mock.Anything, security.ActionListNotificationTemplates,
+		security.ResourceTypeOU).Return(&sysauthz.AccessibleResources{IDs: []string{ouID}}, nil).Maybe()
+	return newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), nil, authz)
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestTemplateInAnotherOUIsRefused() {
+	stored := templateDAO{
+		ID: "id-1", Channel: ChannelTypeEmail, Handle: "otp-verification", OUID: "ou-2",
+		Content: TemplateContent{Subject: "s", Body: "b"},
+	}
+	cases := []struct {
+		name string
+		call func(NotificationTemplateServiceInterface) *tidcommon.ServiceError
+	}{
+		{"Create", func(svc NotificationTemplateServiceInterface) *tidcommon.ServiceError {
+			_, err := svc.CreateTemplate(s.ctx, ChannelTypeEmail, CreateTemplateRequest{
+				Handle: "otp-verification", OUID: "ou-2", DisplayName: "OTP Verification",
+				Content: TemplateContent{Subject: "s.key", Body: "b.key"},
+			})
+			return err
+		}},
+		{"Get", func(svc NotificationTemplateServiceInterface) *tidcommon.ServiceError {
+			s.mockStore.On("GetTemplate", mock.Anything, ChannelTypeEmail, "id-1").Return(stored, nil).Once()
+			_, err := svc.GetTemplate(s.ctx, ChannelTypeEmail, "id-1")
+			return err
+		}},
+		{"Update", func(svc NotificationTemplateServiceInterface) *tidcommon.ServiceError {
+			s.mockStore.On("GetTemplate", mock.Anything, ChannelTypeEmail, "id-1").Return(stored, nil).Once()
+			_, err := svc.UpdateTemplate(s.ctx, ChannelTypeEmail, "id-1", UpdateTemplateRequest{
+				DisplayName: "OTP Verification", Content: TemplateContent{Subject: "s.key", Body: "b.key"},
+			})
+			return err
+		}},
+		{"Delete", func(svc NotificationTemplateServiceInterface) *tidcommon.ServiceError {
+			s.mockStore.On("GetTemplate", mock.Anything, ChannelTypeEmail, "id-1").Return(stored, nil).Once()
+			return svc.DeleteTemplate(s.ctx, ChannelTypeEmail, "id-1")
+		}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+
+			err := tc.call(s.svcBoundTo("ou-1"))
+
+			s.Require().NotNil(err)
+			s.Equal(tidcommon.ErrorUnauthorized.Code, err.Code)
+			s.mockStore.AssertNotCalled(s.T(), "CreateTemplate", mock.Anything, mock.Anything)
+			s.mockStore.AssertNotCalled(s.T(), "UpdateTemplate", mock.Anything, mock.Anything)
+			s.mockStore.AssertNotCalled(s.T(), "DeleteTemplate", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestListTemplates_BoundedToTheAccessibleOUs() {
+	s.mockStore.On("CountTemplatesByOUIDs", mock.Anything, ChannelTypeEmail, []string{"ou-1"}).Return(3, nil).Once()
+	s.mockStore.On("ListTemplatesByOUIDs", mock.Anything, ChannelTypeEmail, []string{"ou-1"}, 2, 1).
+		Return([]templateDAO{{ID: "t3", OUID: "ou-1"}, {ID: "t4", OUID: "ou-1"}}, nil).Once()
+
+	list, err := s.svcBoundTo("ou-1").ListTemplates(s.ctx, ChannelTypeEmail, 2, 1)
+
+	s.Require().Nil(err)
+	s.Equal(3, list.TotalResults)
+	s.Require().Len(list.Templates, 2)
+	s.Equal("t3", list.Templates[0].ID)
+	s.Equal("t4", list.Templates[1].ID)
+	s.mockStore.AssertNotCalled(s.T(), "CountTemplates", mock.Anything, mock.Anything)
+	s.mockStore.AssertNotCalled(s.T(), "ListTemplates", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestListTemplates_BoundedListErrors() {
+	cases := []struct {
+		name     string
+		countErr error
+		listErr  error
+		wantCode string
+	}{
+		{"CountError", errors.New("db down"), nil, tidcommon.InternalServerError.Code},
+		{"CountOverTheCompositeLimit", errResultLimitExceededInCompositeMode, nil,
+			ErrorResultLimitExceededInCompositeMode.Code},
+		{"ListError", nil, errors.New("db down"), tidcommon.InternalServerError.Code},
+		{"ListOverTheCompositeLimit", nil, errResultLimitExceededInCompositeMode,
+			ErrorResultLimitExceededInCompositeMode.Code},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			s.mockStore.On("CountTemplatesByOUIDs", mock.Anything, ChannelTypeEmail, []string{"ou-1"}).
+				Return(1, tc.countErr).Once()
+			if tc.countErr == nil {
+				s.mockStore.On("ListTemplatesByOUIDs", mock.Anything, ChannelTypeEmail, []string{"ou-1"}, 10, 0).
+					Return(([]templateDAO)(nil), tc.listErr).Once()
+			}
+
+			list, err := s.svcBoundTo("ou-1").ListTemplates(s.ctx, ChannelTypeEmail, 10, 0)
+
+			s.Nil(list)
+			s.Require().NotNil(err)
+			s.Equal(tc.wantCode, err.Code)
+		})
+	}
+
+	s.Run("AccessibleResourcesError", func() {
+		s.SetupTest()
+		authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+		authz.On("GetAccessibleResources", mock.Anything, security.ActionListNotificationTemplates,
+			security.ResourceTypeOU).Return((*sysauthz.AccessibleResources)(nil), &tidcommon.InternalServerError).Once()
+		svc := newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), nil, authz)
+
+		list, err := svc.ListTemplates(s.ctx, ChannelTypeEmail, 10, 0)
+
+		s.Nil(list)
+		s.Require().NotNil(err)
+		s.Equal(tidcommon.InternalServerError.Code, err.Code)
+	})
 }

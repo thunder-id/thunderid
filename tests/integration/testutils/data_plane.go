@@ -4,8 +4,12 @@
 package testutils
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -157,4 +161,69 @@ func StopDataPlane() {
 		<-done
 	}
 	dataPlaneCmd = nil
+}
+
+// ImportDeletion names one resource an import removes.
+type ImportDeletion struct {
+	ResourceType string `json:"resourceType"`
+	ID           string `json:"id"`
+}
+
+// importOutcome reports what an import did with one resource.
+type importOutcome struct {
+	ResourceType string `json:"resourceType"`
+	ResourceID   string `json:"resourceId"`
+	Status       string `json:"status"`
+	Code         string `json:"code"`
+	Message      string `json:"message"`
+}
+
+// ImportWithManagementAPIKey imports the content into the server under test and removes the given
+// resources, presenting the management API key as a deployment pipeline does. It fails unless every
+// resource is imported or removed.
+func ImportWithManagementAPIKey(content string, deletions ...ImportDeletion) error {
+	body, err := json.Marshal(map[string]interface{}{
+		"content":   content,
+		"deletions": deletions,
+		"options":   map[string]string{"target": "runtime"},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal the import request: %w", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, TestServerURL+"/import", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to create the import request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(ManagementAPIKeyHeader, ManagementAPIKey)
+
+	resp, err := GetNoRedirectHTTPClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send the import request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read the import response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("import returned status %d: %s", resp.StatusCode, respBody)
+	}
+
+	var importResp struct {
+		Results []importOutcome `json:"results"`
+	}
+	if err := json.Unmarshal(respBody, &importResp); err != nil {
+		return fmt.Errorf("failed to parse the import response: %w", err)
+	}
+	if len(importResp.Results) == 0 {
+		return fmt.Errorf("import returned no results")
+	}
+	for _, outcome := range importResp.Results {
+		if outcome.Status != "success" {
+			return fmt.Errorf("import of %s %s failed: %s %s",
+				outcome.ResourceType, outcome.ResourceID, outcome.Code, outcome.Message)
+		}
+	}
+	return nil
 }

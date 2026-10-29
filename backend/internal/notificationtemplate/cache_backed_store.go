@@ -74,6 +74,18 @@ func (s *cacheBackedStore) CountTemplates(ctx context.Context, channel ChannelTy
 	return s.inner.CountTemplates(ctx, channel)
 }
 
+// ListTemplatesByOUIDs always delegates; the list is not cached.
+func (s *cacheBackedStore) ListTemplatesByOUIDs(ctx context.Context, channel ChannelType, ouIDs []string,
+	limit, offset int) ([]templateDAO, error) {
+	return s.inner.ListTemplatesByOUIDs(ctx, channel, ouIDs, limit, offset)
+}
+
+// CountTemplatesByOUIDs always delegates; the count is not cached.
+func (s *cacheBackedStore) CountTemplatesByOUIDs(ctx context.Context, channel ChannelType,
+	ouIDs []string) (int, error) {
+	return s.inner.CountTemplatesByOUIDs(ctx, channel, ouIDs)
+}
+
 // UpdateTemplate delegates then re-caches the new row. The only cache key, (channel, handle), is
 // immutable, so re-caching overwrites the existing entry; there is no secondary key an update could
 // leave stale, so no separate invalidation is needed.
