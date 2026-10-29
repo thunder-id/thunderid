@@ -410,3 +410,14 @@ func (suite *CompositeGroupStoreTestSuite) TestGetGroupListByProject_Errors() {
 	_, err = suite.store.GetGroupListByProject(context.Background(), "project-2", nil, 10, 0)
 	suite.ErrorIs(err, errResultLimitExceededInCompositeMode)
 }
+
+func (suite *CompositeGroupStoreTestSuite) TestGetMemberGroupIDs_DelegatesToDBStore() {
+	ctx := context.Background()
+	suite.mockDBStore.On("GetMemberGroupIDs", ctx, string(memberTypeEntity), "user1").
+		Return([]string{"grp1"}, nil).Once()
+
+	groupIDs, err := suite.store.GetMemberGroupIDs(ctx, string(memberTypeEntity), "user1")
+	suite.NoError(err)
+	suite.Equal([]string{"grp1"}, groupIDs)
+	suite.mockFileStore.AssertNotCalled(suite.T(), "GetMemberGroupIDs", mock.Anything, mock.Anything, mock.Anything)
+}

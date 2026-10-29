@@ -85,6 +85,9 @@ type GroupServiceInterface interface {
 	// ValidateRemoveGroupMembers runs the checks RemoveGroupMembers runs before it changes anything.
 	ValidateRemoveGroupMembers(ctx context.Context, groupID string, members []Member) *tidcommon.ServiceError
 	AddMemberToExistingGroups(ctx context.Context, member Member, groupIDs []string) *tidcommon.ServiceError
+	// GetMemberGroupIDs returns the IDs of the groups the member directly belongs to. It performs no
+	// authorization check of its own.
+	GetMemberGroupIDs(ctx context.Context, member Member) ([]string, *tidcommon.ServiceError)
 	AddMembersToGroups(ctx context.Context, members []Member,
 		groupIDs []string) *tidcommon.ServiceError
 	GetResourceDependencies(
@@ -1941,6 +1944,21 @@ func (gs *groupService) AddMemberToExistingGroups(
 		return nil
 	}
 	return gs.AddMembersToGroups(ctx, []Member{member}, available)
+}
+
+// GetMemberGroupIDs returns the IDs of the groups the member directly belongs to.
+func (gs *groupService) GetMemberGroupIDs(ctx context.Context, member Member) ([]string, *tidcommon.ServiceError) {
+	if svcErr := validateMemberTypes([]Member{member}); svcErr != nil {
+		return nil, svcErr
+	}
+	stored := normalizeMembers([]Member{member})[0]
+	groupIDs, err := gs.groupStore.GetMemberGroupIDs(ctx, string(stored.Type), stored.ID)
+	if err != nil {
+		log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)).Error(ctx,
+			"Failed to get the member's groups", log.MaskedString("memberID", member.ID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	return groupIDs, nil
 }
 
 // convertGroupDAOToGroup constructs a Group from a GroupDAO.

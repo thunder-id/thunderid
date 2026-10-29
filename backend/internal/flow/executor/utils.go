@@ -291,15 +291,16 @@ func isCrossOUProvisioningAllowed(ctx *providers.NodeContext) bool {
 }
 
 // setFederatedEntityState records whether federated authentication resolved a concrete local user
-// (via account linking) into the entityState runtime key. Several users holding the link is recorded
-// as ambiguous, for a later node to let the user pick between them.
+// (via account linking) into the entityState runtime key, and returns that user's ID, or "" when none.
+// Several users holding the link is recorded as ambiguous, for a later node to let the user pick
+// between them.
 func setFederatedEntityState(ctx context.Context, execResp *providers.ExecutorResponse,
-	authnProvider providers.AuthnProviderManager) {
+	authnProvider providers.AuthnProviderManager) string {
 	execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateNotExists
 
 	// An unauthenticated AuthUser names nobody, and GetEntityReference would log it as an error.
 	if !execResp.AuthUser.IsAuthenticated() {
-		return
+		return ""
 	}
 
 	authUser, entityRef, svcErr := authnProvider.GetEntityReference(ctx, execResp.AuthUser)
@@ -307,9 +308,11 @@ func setFederatedEntityState(ctx context.Context, execResp *providers.ExecutorRe
 	switch {
 	case svcErr == nil && entityRef != nil:
 		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateExists
+		return entityRef.EntityID
 	case svcErr != nil && svcErr.Code == authnprovidermgr.ErrorAmbiguousUser.Code:
 		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateAmbiguous
 	}
+	return ""
 }
 
 // authenticateEntityByID signs in an entity whose ID the flow already trusts, such as one it just
@@ -334,33 +337,95 @@ func authenticateEntityByID(ctx *providers.NodeContext, authnProvider providers.
 	return nil
 }
 
+// completeFederatedAuth finishes a federated sign-in at idpID once its identity is checked: it records
+// the subject the provider asserted, resolves the connection's authorization mapping and sync modes
+// into runtime data, and syncs the user holding the sign-in's link where the flow allows it. It fails
+// the sign-in when groups and roles are overridden from a mapping that couldn't be fully resolved,
+// since the account would lose or start without what the missing targets grant, or when the sync is
+// rejected.
+func completeFederatedAuth(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
+	idpDTO *providers.IDPDTO, idpID string, federatedAttributes map[string]interface{},
+	idpService providers.IDPProvider, syncer *federatedSyncer,
+	authnProvider providers.AuthnProviderManager, logger *log.Logger) error {
+	// Keep the connection id with the subject: the idpId runtime entry is overwritten by any later node
+	// with its own connection, so only this pairing tells linking and provisioning which connection
+	// asserted the subject.
+	sub := systemutils.ConvertInterfaceValueToString(federatedAttributes[userAttributeSub])
+	if err := setExternalIdentity(execResp, idpID, sub, federatedAttributes); err != nil {
+		return err
+	}
+
+	resolved := resolveAndSetMappedAuthorizationTargets(
+		ctx.Context, execResp, idpService, idpDTO, federatedAttributes, logger)
+	setSyncModes(execResp, idpDTO)
+	sync := buildFederatedSync(idpDTO, resolved, federatedAttributes, sub)
+	if sync != nil && sync.MappingIncomplete {
+		execResp.Status = providers.ExecFailure
+		execResp.Error = &ErrFederatedUserSyncFailed
+		return nil
+	}
+	if err := setPendingFederatedSync(execResp, sync); err != nil {
+		return err
+	}
+
+	userID := setFederatedEntityState(ctx.Context, execResp, authnProvider)
+
+	switch ctx.FlowType {
+	case providers.FlowTypeAuthentication:
+		if ok, err := syncer.syncPendingUser(ctx, execResp, userID, logger); !ok {
+			return err
+		}
+		if isAuthenticationWithoutLocalUserAllowed(ctx) {
+			execResp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning] = dataValueTrue
+		}
+	case providers.FlowTypeRegistration:
+		if isRegistrationWithExistingUserAllowed(ctx) {
+			if ok, err := syncer.syncPendingUser(ctx, execResp, userID, logger); !ok {
+				return err
+			}
+			execResp.RuntimeData[common.RuntimeKeyAllowRegistrationWithExistingUser] = dataValueTrue
+		}
+	}
+
+	execResp.Status = providers.ExecComplete
+	return nil
+}
+
 // resolveAndSetMappedAuthorizationTargets resolves the IDP's AuthorizationRuleMapping (explicit value
 // rules) and AuthorizationDirectMapping (direct name-based lookup) against federatedAttributes,
-// unions their targets, and stores the result as runtime data for later executors. Logs and continues
+// unions their targets, stores the result as runtime data for later executors, and returns the resolved
+// mapping. Logs and continues
 // without the direct targets when they can't be resolved, rather than failing the federated login over
-// what is best-effort enrichment of its runtime state.
+// what is best-effort enrichment of its runtime state. The mapping is then incomplete, so under the
+// Override all groups and roles sync the sign-in fails instead of removing what the missing targets
+// would have kept, or creating an account without them.
 func resolveAndSetMappedAuthorizationTargets(
 	ctx context.Context, execResp *providers.ExecutorResponse,
 	idpService providers.IDPProvider, idpDTO *providers.IDPDTO, federatedAttributes map[string]interface{},
 	logger *log.Logger,
-) {
-	targets := idp.GetRuleAuthorizationTargets(idpDTO, federatedAttributes)
-	directTargets, svcErr := idpService.GetDirectAuthorizationTargets(ctx, idpDTO, federatedAttributes)
+) *idp.ResolvedAuthorizationMapping {
+	resolved, svcErr := idp.ResolveAuthorizationMapping(
+		ctx, idpDTO, federatedAttributes, idpService.ResolveDirectAuthorizationTargets)
 	if svcErr != nil {
-		logger.Warn(ctx, "Failed to resolve direct authorization targets, continuing with rule-based targets only",
+		logger.Warn(ctx, "Failed to resolve direct authorization targets, continuing without them; "+
+			"an Override all groups and roles sync fails the sign-in",
 			log.String(log.LoggerKeyIDPID, idpDTO.ID), log.String("error", svcErr.Error.DefaultValue))
-	} else {
-		targets = append(targets, directTargets...)
 	}
-	setMappedAuthorizationTargets(execResp, targets)
+	setMappedAuthorizationTargets(execResp, resolved.Targets)
+	return resolved
+}
+
+// syncConfiguration returns the connection's sync configuration, nil when unset.
+func syncConfiguration(idpDTO *providers.IDPDTO) *providers.SyncConfiguration {
+	if idpDTO.AttributeConfiguration == nil {
+		return nil
+	}
+	return idpDTO.AttributeConfiguration.Sync
 }
 
 // setSyncModes records the connection's sync modes as runtime data for later executors.
 func setSyncModes(execResp *providers.ExecutorResponse, idpDTO *providers.IDPDTO) {
-	var sync *providers.SyncConfiguration
-	if idpDTO.AttributeConfiguration != nil {
-		sync = idpDTO.AttributeConfiguration.Sync
-	}
+	sync := syncConfiguration(idpDTO)
 	execResp.RuntimeData[common.RuntimeKeyAttributesSyncMode] = string(sync.AttributesMode())
 	execResp.RuntimeData[common.RuntimeKeyGroupsAndRolesSyncMode] = string(sync.GroupsAndRolesMode())
 }

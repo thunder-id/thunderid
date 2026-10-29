@@ -22,6 +22,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
+	"github.com/thunder-id/thunderid/tests/mocks/groupmock"
 )
 
 type IdentifyingExecutorTestSuite struct {
@@ -29,6 +30,7 @@ type IdentifyingExecutorTestSuite struct {
 	mockEntityProvider *entityprovidermock.EntityProviderInterfaceMock
 	mockFlowFactory    *coremock.FlowFactoryInterfaceMock
 	mockAuthnProvider  *managermock.AuthnProviderManagerMock
+	mockGroupService   *groupmock.GroupServiceInterfaceMock
 	executor           *identifyingExecutor
 }
 
@@ -45,8 +47,10 @@ func (suite *IdentifyingExecutorTestSuite) SetupTest() {
 		[]providers.Input{}, []providers.Input{}, mock.Anything).Return(mockExec)
 
 	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
+	var syncer *federatedSyncer
+	syncer, suite.mockGroupService = testFederatedSyncer(suite.T(), suite.mockEntityProvider, suite.mockAuthnProvider)
 	suite.executor = newIdentifyingExecutor(ExecutorNameIdentifying, []providers.Input{},
-		[]providers.Input{}, suite.mockFlowFactory, suite.mockEntityProvider, suite.mockAuthnProvider,
+		[]providers.Input{}, suite.mockFlowFactory, suite.mockEntityProvider, suite.mockAuthnProvider, syncer,
 		newAccessGuard(nil))
 }
 
@@ -61,7 +65,7 @@ func (suite *IdentifyingExecutorTestSuite) TestNewIdentifyingExecutor() {
 		[]providers.Input{},
 		suite.mockFlowFactory,
 		suite.mockEntityProvider,
-		nil, newAccessGuard(nil),
+		nil, nil, newAccessGuard(nil),
 	)
 	assert.NotNil(suite.T(), exec)
 }
@@ -1483,7 +1487,7 @@ func (suite *IdentifyingExecutorTestSuite) TestCheckStateFederated_HolderLookupF
 func (suite *IdentifyingExecutorTestSuite) identifyRecoveryTarget(decision providers.AccessDecision,
 	fault *tidcommon.ServiceError, hintAttr string) (*providers.ExecutorResponse, error) {
 	suite.executor = newIdentifyingExecutor(ExecutorNameIdentifying, []providers.Input{},
-		[]providers.Input{}, suite.mockFlowFactory, suite.mockEntityProvider, nil,
+		[]providers.Input{}, suite.mockFlowFactory, suite.mockEntityProvider, nil, nil,
 		newAccessGuard(expectAccess(suite.T(), testUserID, providers.AccessPlaneRecovery, "", decision, fault)))
 	userID := testUserID
 	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{"username": "testuser"}).
@@ -1649,4 +1653,35 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_InvitationFlowWithoutTheP
 	suite.Equal(providers.ExecUserInputRequired, resp.Status)
 	suite.Equal(ErrEntityNotFound.Code, resp.Error.Code)
 	suite.NotEmpty(resp.Inputs)
+}
+
+// Only the holder the user picked is synced, through the federated sign-in's link.
+func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_PickSyncsHolder() {
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").Return(linkHolders(), nil).Once()
+	suite.expectBind("holder-support", nil)
+	expectPendingSync(suite.mockEntityProvider, suite.mockGroupService, "holder-support", nil)
+	ctx := linkHolderCtx(map[string]string{common.RuntimeKeyPendingFederatedSync: pendingSync()},
+		map[string]string{"ouHandle": "support"})
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal("", resp.RuntimeData[common.RuntimeKeyPendingFederatedSync])
+}
+
+// A sync that is rejected fails the sign-in instead of binding the holder.
+func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_RejectedSyncFails() {
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").Return(linkHolders(), nil).Once()
+	suite.expectBind("holder-support", nil)
+	expectPendingSync(suite.mockEntityProvider, suite.mockGroupService, "holder-support", syncRefused)
+	ctx := linkHolderCtx(map[string]string{common.RuntimeKeyPendingFederatedSync: pendingSync()},
+		map[string]string{"ouHandle": "support"})
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(&ErrFederatedUserSyncFailed, resp.Error)
+	suite.NotContains(resp.RuntimeData, userAttributeUserID)
 }

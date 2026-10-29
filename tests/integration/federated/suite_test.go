@@ -331,7 +331,8 @@ var fedStrictAuthApp = testutils.Application{
 	RedirectURIs:     []string{"http://localhost:3000/callback"},
 	AllowedUserTypes: []string{fedPersonType.Handle},
 	AssertionConfig: map[string]interface{}{
-		"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
+		"userAttributes": []string{
+			"userTypeHandle", "ouId", "ouName", "ouHandle", "firstName", "lastName", "city"},
 	},
 }
 

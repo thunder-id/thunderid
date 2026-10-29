@@ -19,7 +19,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const (
@@ -51,6 +50,7 @@ type oAuthExecutor struct {
 	authnProvider providers.AuthnProviderManager
 	idpType       providers.IDPType
 	idpService    providers.IDPProvider
+	syncer        *federatedSyncer
 	logger        *log.Logger
 }
 
@@ -65,6 +65,7 @@ func newOAuthExecutor(
 	authService authnoauth.OAuthAuthnCoreServiceInterface,
 	authnProvider providers.AuthnProviderManager,
 	idpType providers.IDPType,
+	syncer *federatedSyncer,
 ) oAuthExecutorInterface {
 	if name == "" {
 		name = ExecutorNameOAuth
@@ -96,6 +97,7 @@ func newOAuthExecutor(
 		authnProvider: authnProvider,
 		idpType:       idpType,
 		idpService:    idpService,
+		syncer:        syncer,
 		logger:        logger,
 	}
 }
@@ -269,32 +271,8 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 		return nil
 	}
 
-	// Keep the connection id with the subject: the idpId runtime entry is overwritten by any later node
-	// with its own connection, so only this pairing tells linking and provisioning which connection
-	// asserted the subject.
-	sub := systemutils.ConvertInterfaceValueToString(federatedAttributes[userAttributeSub])
-	if err := setExternalIdentity(execResp, idpID, sub, federatedAttributes); err != nil {
-		return err
-	}
-
-	resolveAndSetMappedAuthorizationTargets(ctx.Context, execResp, o.idpService, idpDTO, federatedAttributes, logger)
-	setSyncModes(execResp, idpDTO)
-
-	setFederatedEntityState(ctx.Context, execResp, o.authnProvider)
-
-	switch ctx.FlowType {
-	case providers.FlowTypeAuthentication:
-		if isAuthenticationWithoutLocalUserAllowed(ctx) {
-			execResp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning] = dataValueTrue
-		}
-	case providers.FlowTypeRegistration:
-		if isRegistrationWithExistingUserAllowed(ctx) {
-			execResp.RuntimeData[common.RuntimeKeyAllowRegistrationWithExistingUser] = dataValueTrue
-		}
-	}
-
-	execResp.Status = providers.ExecComplete
-	return nil
+	return completeFederatedAuth(ctx, execResp, idpDTO, idpID, federatedAttributes, o.idpService,
+		o.syncer, o.authnProvider, logger)
 }
 
 // HasRequiredInputs checks if the required inputs are provided in the context and appends any

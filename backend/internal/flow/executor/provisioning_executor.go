@@ -49,6 +49,7 @@ type provisioningExecutor struct {
 	roleAssignmentService role.RoleAssignmentServiceInterface
 	entityTypeService     entitytype.EntityTypeServiceInterface
 	authnProvider         providers.AuthnProviderManager
+	syncer                *federatedSyncer
 	logger                *log.Logger
 }
 
@@ -93,7 +94,7 @@ func newProvisioningExecutor(
 		})
 
 	identifyingExec := newIdentifyingExecutor(ExecutorNameProvisioning,
-		[]providers.Input{}, []providers.Input{}, flowFactory, entityProvider, nil, nil)
+		[]providers.Input{}, []providers.Input{}, flowFactory, entityProvider, nil, nil, nil)
 
 	return &provisioningExecutor{
 		Executor:                     base,
@@ -106,7 +107,11 @@ func newProvisioningExecutor(
 		roleAssignmentService:        roleAssignmentService,
 		entityTypeService:            entityTypeService,
 		authnProvider:                authnProvider,
-		logger:                       logger,
+		syncer: newFederatedSyncer(ExecutorDependencies{
+			EntityProvider: entityProvider, EntityTypeService: entityTypeService, GroupService: groupService,
+			RoleAssignmentService: roleAssignmentService, AuthnProvider: authnProvider,
+		}),
+		logger: logger,
 	}
 }
 
@@ -293,6 +298,9 @@ func (p *provisioningExecutor) applyExistingLinkHolderRules(ctx *providers.NodeC
 			execResp.Status = providers.ExecFailure
 			execResp.Error = cmp.Or(statedHold(svcErr), errForEntityCategory(ErrEntityAuthFailed, category))
 			return nil
+		}
+		if ok, err := p.syncer.syncPendingUser(ctx, execResp, holderIDs[0], logger); !ok {
+			return err
 		}
 	}
 	execResp.Status = providers.ExecComplete

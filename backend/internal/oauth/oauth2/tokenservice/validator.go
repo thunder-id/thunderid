@@ -644,9 +644,8 @@ func (tv *tokenValidator) resolveIDJAGIssuer(ctx context.Context, issuer string)
 func (tv *tokenValidator) resolveMappedAuthorization(
 	ctx context.Context, idpDTO *providers.IDPDTO, claims map[string]interface{},
 ) (MappedAuthorization, error) {
-	targets := idp.GetRuleAuthorizationTargets(idpDTO, claims)
-
-	directTargets, svcErr := tv.idpService.GetDirectAuthorizationTargets(ctx, idpDTO, claims)
+	resolved, svcErr := idp.ResolveAuthorizationMapping(
+		ctx, idpDTO, claims, tv.idpService.ResolveDirectAuthorizationTargets)
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ServerErrorType {
 			return MappedAuthorization{}, fmt.Errorf(
@@ -654,13 +653,12 @@ func (tv *tokenValidator) resolveMappedAuthorization(
 		}
 		return MappedAuthorization{}, fmt.Errorf("%s", svcErr.Error.DefaultValue)
 	}
-	targets = append(targets, directTargets...)
 
 	am := idpDTO.AttributeConfiguration
 	configured := am != nil && am.AuthorizationMapping != nil &&
 		(len(am.AuthorizationMapping.Rules) > 0 || len(am.AuthorizationMapping.Direct) > 0)
 
-	return MappedAuthorization{Targets: targets, Configured: configured}, nil
+	return MappedAuthorization{Targets: resolved.Targets, Configured: configured}, nil
 }
 
 // tokenExchangeIssuerInfo holds the resolved properties needed to validate an external token.

@@ -72,6 +72,9 @@ type RoleAssignmentServiceInterface interface {
 		desired map[string][]string) *tidcommon.ServiceError
 	// RemoveMandatedAssignments removes every assignment a sharing policy mandates.
 	RemoveMandatedAssignments(ctx context.Context, policyID string) *tidcommon.ServiceError
+	// GetDirectRoleIDs returns the IDs of the roles assigned directly to the assignee in the organization
+	// unit. It performs no authorization check of its own.
+	GetDirectRoleIDs(ctx context.Context, assigneeID, ouID string) ([]string, *tidcommon.ServiceError)
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	CascadeDeleteDependencies(ctx context.Context, resourceType, id string) (int, error)
@@ -715,6 +718,20 @@ func (as *roleAssignmentService) AddAssigneeToExistingRoles(
 	// The unit is already resolved, so the write doesn't look the assignee up again.
 	assignment.OUID = ouID
 	return as.AddAssigneesToRoles(ctx, []RoleAssignment{assignment}, assignable)
+}
+
+// GetDirectRoleIDs returns the IDs of the roles assigned directly to the assignee in the organization
+// unit.
+func (as *roleAssignmentService) GetDirectRoleIDs(
+	ctx context.Context, assigneeID, ouID string,
+) ([]string, *tidcommon.ServiceError) {
+	roleIDs, err := as.roleStore.GetEntityRoleIDs(ctx, assigneeID, nil, ouID)
+	if err != nil {
+		as.logger.Error(ctx, "Failed to get the assignee's roles",
+			log.MaskedString("assigneeID", assigneeID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	return roleIDs, nil
 }
 
 // prepareAssignments validates and normalizes assignments before a mutation, placing each in ouID,

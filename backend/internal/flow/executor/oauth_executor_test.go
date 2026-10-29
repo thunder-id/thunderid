@@ -14,32 +14,36 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oauthmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
+	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 )
 
 type OAuthExecutorTestSuite struct {
 	suite.Suite
-	mockOAuthService  *oauthmock.OAuthAuthnCoreServiceInterfaceMock
-	mockIDPService    *idpmock.IDPServiceInterfaceMock
-	mockFlowFactory   *coremock.FlowFactoryInterfaceMock
-	mockAuthnProvider *managermock.AuthnProviderManagerMock
-	executor          oAuthExecutorInterface
+	mockOAuthService   *oauthmock.OAuthAuthnCoreServiceInterfaceMock
+	mockIDPService     *idpmock.IDPServiceInterfaceMock
+	mockFlowFactory    *coremock.FlowFactoryInterfaceMock
+	mockAuthnProvider  *managermock.AuthnProviderManagerMock
+	mockEntityProvider *entityprovidermock.EntityProviderInterfaceMock
+	executor           oAuthExecutorInterface
 }
 
 func TestOAuthExecutorSuite(t *testing.T) {
 	suite.Run(t, new(OAuthExecutorTestSuite))
 }
 
-func (suite *OAuthExecutorTestSuite) SetupTest() {
+func (suite *OAuthExecutorTestSuite) SetupTest() { //nolint:dupl // Mirrors the OIDC executor suite setup.
 	suite.mockOAuthService = oauthmock.NewOAuthAuthnCoreServiceInterfaceMock(suite.T())
 	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
+	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
 
 	mockExec := createMockAuthExecutor(suite.T(), ExecutorNameOAuth)
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameOAuth, providers.ExecutorTypeAuthentication,
@@ -47,7 +51,15 @@ func (suite *OAuthExecutorTestSuite) SetupTest() {
 
 	suite.executor = newOAuthExecutor(ExecutorNameOAuth, defaultCodeOnlyInputs, []providers.Input{},
 		suite.mockFlowFactory, suite.mockIDPService, suite.mockOAuthService,
-		suite.mockAuthnProvider, providers.IDPTypeOAuth)
+		suite.mockAuthnProvider, providers.IDPTypeOAuth,
+		newFederatedSyncer(ExecutorDependencies{EntityProvider: suite.mockEntityProvider,
+			AuthnProvider: suite.mockAuthnProvider}))
+}
+
+// expectSync expects the sign-in to sync the user it settles once, writing nothing.
+func (suite *OAuthExecutorTestSuite) expectSync() {
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, mock.Anything, mock.Anything).
+		Return([]*providers.Entity{{ID: "local-user-123", Category: providers.EntityCategoryUser}}, nil).Once()
 }
 
 // expectIdentityProviderResolved stubs the AuthorizationRuleMapping resolution ProcessAuthFlowResponse
@@ -55,8 +67,45 @@ func (suite *OAuthExecutorTestSuite) SetupTest() {
 // it resolves no mapped targets and leaves runtime data untouched.
 func expectIdentityProviderResolved(m *idpmock.IDPServiceInterfaceMock) {
 	m.On("GetIdentityProvider", mock.Anything, "idp-123").Return(&providers.IDPDTO{ID: "idp-123"}, nil).Maybe()
-	m.On("GetDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil, (*tidcommon.ServiceError)(nil)).Maybe()
+	m.On("ResolveDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, nil, (*tidcommon.ServiceError)(nil)).Maybe()
+}
+
+// expectIncompleteMapping stubs idp-123 as a connection that overrides groups and roles from a direct
+// mapping whose lookups fail, so the mapping can't be fully resolved.
+func expectIncompleteMapping(m *idpmock.IDPServiceInterfaceMock) {
+	m.On("GetIdentityProvider", mock.Anything, "idp-123").Return(&providers.IDPDTO{
+		ID: "idp-123",
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			Sync: &providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeOverrideAll},
+			AuthorizationMapping: &providers.AuthorizationMapping{Direct: []providers.AuthorizationDirectMapping{
+				{Claim: "groups", TargetType: providers.AuthorizationTargetGroup},
+			}},
+		},
+	}, nil)
+	m.On("ResolveDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, nil, &tidcommon.InternalServerError)
+}
+
+// incompleteMappingContexts are the flows an incomplete mapping fails: authentication, and
+// registration with and without an existing user allowed.
+func incompleteMappingContexts() []*providers.NodeContext {
+	return []*providers.NodeContext{
+		oauthSyncContext(providers.FlowTypeAuthentication, false),
+		oauthSyncContext(providers.FlowTypeRegistration, false),
+		oauthSyncContext(providers.FlowTypeRegistration, true),
+	}
+}
+
+// requireIncompleteMappingFailure checks that execResp failed the sign-in with the sync error, without
+// syncing anything or keeping a sync for a later node.
+func requireIncompleteMappingFailure(t *testing.T, execResp *providers.ExecutorResponse,
+	entityProvider *entityprovidermock.EntityProviderInterfaceMock) {
+	t.Helper()
+	assert.Equal(t, providers.ExecFailure, execResp.Status)
+	assert.Equal(t, &ErrFederatedUserSyncFailed, execResp.Error)
+	assert.Empty(t, execResp.RuntimeData[common.RuntimeKeyPendingFederatedSync])
+	entityProvider.AssertNotCalled(t, "GetLinkedEntities", mock.Anything, mock.Anything, mock.Anything)
 }
 
 // assertIDPRetrievalFailsClosed runs processResponse on a callback whose subject differs from the
@@ -143,6 +192,7 @@ func (suite *OAuthExecutorTestSuite) TestExecute_CodeNotProvided_BuildsAuthorize
 }
 
 func (suite *OAuthExecutorTestSuite) TestExecute_CodeProvided_AuthenticatesUser() {
+	suite.expectSync()
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAuthentication,
@@ -492,6 +542,7 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_NoLocalUser_Ent
 }
 
 func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_LocalUser_EntityStateExists() { //nolint:dupl
+	suite.expectSync()
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAuthentication,
@@ -813,6 +864,7 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_PreventAuthWith
 }
 
 func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_AllowRegistrationWithExistingUser() {
+	suite.expectSync()
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeRegistration,
@@ -888,6 +940,7 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_PreventRegistra
 // connection's code at the second connection's token endpoint. That second node is exactly what a
 // linking node that sends a candidate to verification forwards to.
 func (suite *OAuthExecutorTestSuite) TestExecute_ClearsCodeAndState_OnceConsumed() {
+	suite.expectSync()
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAuthentication,
@@ -953,4 +1006,89 @@ func (suite *OAuthExecutorTestSuite) TestExecute_NoEntityReference_DoesNotResolv
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.Equal(suite.T(), entityStateNotExists, resp.RuntimeData[common.RuntimeKeyEntityState])
 	suite.mockAuthnProvider.AssertNotCalled(suite.T(), "GetEntityReference", mock.Anything, mock.Anything)
+}
+
+// oauthSyncContext is a sign-in by an identity one user holds the link of.
+func oauthSyncContext(flowType providers.FlowType, allowExistingUser bool) *providers.NodeContext {
+	return &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    flowType,
+		UserInputs:  map[string]string{"code": "auth_code_123"},
+		NodeProperties: map[string]interface{}{
+			"idpId":                             "idp-123",
+			"allowRegistrationWithExistingUser": allowExistingUser,
+		},
+	}
+}
+
+func (suite *OAuthExecutorTestSuite) expectReturningUser() {
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(newOAuthAuthenticatedUser(), providers.AuthenticatedClaims{"sub": "user-sub-123"},
+			(*tidcommon.ServiceError)(nil))
+	expectEntityReferenceResolved(suite.mockAuthnProvider, newOAuthAuthenticatedUser())
+	expectIdentityProviderResolved(suite.mockIDPService)
+}
+
+// The user holding the link is synced through the link the sign-in asserted, in authentication and,
+// when an existing user is allowed, in registration.
+func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_SyncsTheLinkHolder() {
+	for _, ctx := range []*providers.NodeContext{
+		oauthSyncContext(providers.FlowTypeAuthentication, false),
+		oauthSyncContext(providers.FlowTypeRegistration, true),
+	} {
+		suite.SetupTest()
+		suite.expectSync()
+		suite.expectReturningUser()
+		execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+		suite.Require().NoError(suite.executor.ProcessAuthFlowResponse(ctx, execResp))
+
+		suite.Equal(providers.ExecComplete, execResp.Status)
+		suite.mockEntityProvider.AssertCalled(suite.T(), "GetLinkedEntities", mock.Anything, "idp-123",
+			"user-sub-123")
+		suite.Equal("", execResp.RuntimeData[common.RuntimeKeyPendingFederatedSync])
+	}
+}
+
+// Registration that doesn't allow an existing user keeps the sync pending and writes nothing.
+func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_RegistrationWithoutExistingUserDoesNotSync() {
+	suite.expectReturningUser()
+	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+	suite.Require().NoError(suite.executor.ProcessAuthFlowResponse(
+		oauthSyncContext(providers.FlowTypeRegistration, false), execResp))
+
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "GetLinkedEntities",
+		mock.Anything, mock.Anything, mock.Anything)
+	suite.NotEmpty(execResp.RuntimeData[common.RuntimeKeyPendingFederatedSync])
+}
+
+// Groups and roles overridden from a mapping that can't be fully resolved fail the sign-in before
+// anything is synced or kept for a later node, whatever the flow, since the account would lose or start
+// without what the missing targets grant.
+func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_IncompleteMappingFailsSignIn() {
+	for _, ctx := range incompleteMappingContexts() {
+		suite.SetupTest()
+		expectIncompleteMapping(suite.mockIDPService)
+		suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+			mock.Anything, mock.Anything, mock.Anything).
+			Return(newOAuthAuthenticatedUser(), providers.AuthenticatedClaims{"sub": "user-sub-123"},
+				(*tidcommon.ServiceError)(nil))
+		execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+		suite.Require().NoError(suite.executor.ProcessAuthFlowResponse(ctx, execResp))
+
+		requireIncompleteMappingFailure(suite.T(), execResp, suite.mockEntityProvider)
+	}
+}
+
+func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_FailedSyncFailsSignIn() {
+	suite.mockEntityProvider.On("GetLinkedEntities", mock.Anything, "idp-123", "user-sub-123").Return(nil,
+		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "failed", "detail")).Once()
+	suite.expectReturningUser()
+	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+	suite.Error(suite.executor.ProcessAuthFlowResponse(
+		oauthSyncContext(providers.FlowTypeAuthentication, false), execResp))
 }

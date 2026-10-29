@@ -4537,3 +4537,41 @@ func (suite *GroupServiceTestSuite) TestAddMemberToExistingGroups_DeclarativeSto
 	suite.Require().Nil(svcErr)
 	storeMock.AssertNotCalled(suite.T(), "GetGroupsByIDs", mock.Anything, mock.Anything)
 }
+
+func (suite *GroupServiceTestSuite) TestGroupService_GetMemberGroupIDs() {
+	member := Member{ID: "user-1", Type: MemberTypeUser}
+	stored := normalizeMembers([]Member{member})[0]
+
+	suite.Run("returns the member's direct groups", func() {
+		storeMock := newGroupStoreInterfaceMock(suite.T())
+		storeMock.On("GetMemberGroupIDs", mock.Anything, string(stored.Type), "user-1").
+			Return([]string{"group-1"}, nil).Once()
+		service := &groupService{groupStore: storeMock}
+
+		groupIDs, svcErr := service.GetMemberGroupIDs(context.Background(), member)
+
+		suite.Require().Nil(svcErr)
+		suite.Equal([]string{"group-1"}, groupIDs)
+	})
+
+	suite.Run("rejects an unknown member type", func() {
+		service := &groupService{groupStore: newGroupStoreInterfaceMock(suite.T())}
+
+		_, svcErr := service.GetMemberGroupIDs(context.Background(), Member{ID: "user-1", Type: "device"})
+
+		suite.Require().NotNil(svcErr)
+		suite.Equal(tidcommon.ClientErrorType, svcErr.Type)
+	})
+
+	suite.Run("returns a server error when the store fails", func() {
+		storeMock := newGroupStoreInterfaceMock(suite.T())
+		storeMock.On("GetMemberGroupIDs", mock.Anything, string(stored.Type), "user-1").
+			Return(nil, errors.New("db error")).Once()
+		service := &groupService{groupStore: storeMock}
+
+		_, svcErr := service.GetMemberGroupIDs(context.Background(), member)
+
+		suite.Require().NotNil(svcErr)
+		suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	})
+}

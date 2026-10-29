@@ -188,9 +188,9 @@ func compareType(valueType providers.AuthorizationValueType) valuecompare.Type {
 	}
 }
 
-// GetRuleAuthorizationTargets resolves the local roles, groups, and permissions the IDP's
+// getRuleAuthorizationTargets resolves the local roles, groups, and permissions the IDP's
 // AuthorizationRuleMapping grants for claims, deduplicated across every matching rule.
-func GetRuleAuthorizationTargets(
+func getRuleAuthorizationTargets(
 	idp *providers.IDPDTO, claims map[string]interface{},
 ) []providers.AuthorizationTarget {
 	if idp == nil || idp.AttributeConfiguration == nil || idp.AttributeConfiguration.AuthorizationMapping == nil {
@@ -571,6 +571,41 @@ func invalidSyncModeError(setting string, mode providers.SyncMode) *tidcommon.Se
 		DefaultValue: "sync mode '{{param(mode)}}' is not supported for '{{param(setting)}}'",
 		Params:       map[string]string{"mode": string(mode), "setting": setting},
 	})
+}
+
+// ResolveAuthorizationMapping resolves the rule and direct targets idp's authorization mapping grants
+// for claims. When the direct lookups fail it returns the error with a result holding the rule
+// targets only.
+func ResolveAuthorizationMapping(
+	ctx context.Context, idp *providers.IDPDTO, claims map[string]interface{}, resolveDirect DirectTargetResolver,
+) (*ResolvedAuthorizationMapping, *tidcommon.ServiceError) {
+	resolved := &ResolvedAuthorizationMapping{Targets: getRuleAuthorizationTargets(idp, claims)}
+	if idp != nil && idp.AttributeConfiguration != nil && idp.AttributeConfiguration.AuthorizationMapping != nil {
+		mapping := idp.AttributeConfiguration.AuthorizationMapping
+		note := func(t providers.AuthorizationTargetType) {
+			resolved.MapsGroups = resolved.MapsGroups || t == providers.AuthorizationTargetGroup
+			resolved.MapsRoles = resolved.MapsRoles || t == providers.AuthorizationTargetRole
+		}
+		for _, r := range mapping.Rules {
+			for _, v := range r.Values {
+				for _, t := range v.Targets {
+					note(t.Type)
+				}
+			}
+		}
+		for _, d := range mapping.Direct {
+			note(d.TargetType)
+		}
+	}
+
+	directTargets, ambiguous, svcErr := resolveDirect(ctx, idp, claims)
+	if svcErr != nil {
+		return resolved, svcErr
+	}
+	resolved.Targets = append(resolved.Targets, directTargets...)
+	resolved.Ambiguous = ambiguous
+	resolved.Complete = true
+	return resolved, nil
 }
 
 // ValidateIDP validates and normalizes dto in place (required properties, type defaults, openid

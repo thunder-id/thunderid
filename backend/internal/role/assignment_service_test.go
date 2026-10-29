@@ -2361,3 +2361,23 @@ func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneeToExistingRoles_Shar
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 	suite.mockStore.AssertNotCalled(suite.T(), "AddAssignments", mock.Anything, mock.Anything, mock.Anything)
 }
+
+func (suite *RoleAssignmentServiceTestSuite) TestGetDirectRoleIDs() {
+	suite.mockStore.On("GetEntityRoleIDs", mock.Anything, testUserID1, []string(nil), testOwnerOU).
+		Return([]string{"role-1"}, nil).Once()
+
+	roleIDs, err := suite.service.GetDirectRoleIDs(context.Background(), testUserID1, testOwnerOU)
+
+	suite.Require().Nil(err)
+	suite.Equal([]string{"role-1"}, roleIDs)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestGetDirectRoleIDs_StoreError() {
+	suite.mockStore.On("GetEntityRoleIDs", mock.Anything, testUserID1, []string(nil), testOwnerOU).
+		Return(nil, errors.New("db error")).Once()
+
+	_, err := suite.service.GetDirectRoleIDs(context.Background(), testUserID1, testOwnerOU)
+
+	suite.Require().NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+}

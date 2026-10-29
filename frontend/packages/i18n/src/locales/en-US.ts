@@ -4708,7 +4708,7 @@ const translations = {
     'core.executions.provisioning.assignRole.noneExist': 'No roles exist. Create one, then select it here.',
     'core.executions.provisioning.assignRole.loadError': 'Failed to load roles.',
     'core.executions.provisioning.federatedOverrideWarning':
-      "With Override all sync, a federated sign-in removes groups and roles assigned here that the connection's authorization mapping doesn't resolve.",
+      "With Override all sync, a federated sign-in removes groups assigned here that the connection's authorization mapping doesn't resolve when it has a group target, and roles when it has a role target.",
 
     // Session sign out executor
     'core.executions.sessionSignOut.description': 'Configure the session sign out executor settings.',

@@ -3884,8 +3884,10 @@ components:
             How the account's groups and roles follow the connection's authorization mapping.
             `no_sync` adds them at account creation only. `session_only` applies them to the session
             and tokens without adding them to the account. `override_all` matches the account's groups
-            and roles to what the authorization mapping resolves, removing the rest, including groups
-            and roles assigned locally. Defaults to `no_sync`.
+            to what the authorization mapping resolves when it has a group target, and its roles when
+            it has a role target, removing the rest, including those assigned locally. A group
+            membership a control plane deployed or a declaration lists, and a role assignment a sharing
+            policy mandates, are kept. Defaults to `no_sync`.
           enum: [no_sync, session_only, override_all]
           default: no_sync
           example: no_sync

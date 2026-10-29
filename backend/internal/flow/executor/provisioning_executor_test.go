@@ -5501,7 +5501,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_ProvisionsAndL
 	suite.mockUserMgtProvider.On("CreateUser", mock.Anything,
 		mock.MatchedBy(func(u *providers.User) bool {
 			return u.OUID == testOUID && u.Type == testUserType &&
-				*u.LinkedAccount == providers.LinkedAccount{IdpID: testFederatedIdpID, Sub: testFederatedSub}
+				*u.LinkedAccount == providers.LinkedAccount{
+					IdpID: testFederatedIdpID, Sub: testFederatedSub}
 		})).Return(&providers.User{ID: testNewUserID, OUID: testOUID, Type: testUserType},
 		(*tidcommon.ServiceError)(nil))
 
@@ -5668,7 +5669,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_CrossOURegistr
 	suite.mockUserMgtProvider.On("CreateUser", mock.Anything,
 		mock.MatchedBy(func(u *providers.User) bool {
 			return u.OUID == testOUID &&
-				*u.LinkedAccount == providers.LinkedAccount{IdpID: testFederatedIdpID, Sub: testFederatedSub}
+				*u.LinkedAccount == providers.LinkedAccount{
+					IdpID: testFederatedIdpID, Sub: testFederatedSub}
 		})).Return(&providers.User{ID: testNewUserID, OUID: testOUID, Type: testUserType},
 		(*tidcommon.ServiceError)(nil)).Once()
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
@@ -6469,4 +6471,27 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Reject
 	require.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
 	suite.mockAgentMgtProvider.AssertNotCalled(suite.T(), "CreateAgent", mock.Anything, mock.Anything)
+}
+
+// Completing registration as the holder in the target OU syncs that holder through the link.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_AmbiguousRegistrationSyncsBoundHolder() {
+	ctx := suite.linkedRegistrationCtx(
+		&providers.Entity{ID: testExistingUser123ID, OUID: testOUID},
+		&providers.Entity{ID: "holder-elsewhere", OUID: "ou-source"})
+	ctx.NodeProperties = map[string]interface{}{common.NodePropertyAllowCrossOUProvisioning: true}
+	ctx.RuntimeData[common.RuntimeKeyAllowRegistrationWithExistingUser] = dataValueTrue
+	ctx.RuntimeData[common.RuntimeKeyEntityState] = entityStateAmbiguous
+	ctx.RuntimeData[common.RuntimeKeyPendingFederatedSync] = pendingSync()
+	initSyncTestRuntime(suite.T(), nil)
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything,
+		map[string]interface{}{authnprovidercm.CredentialTypeProvisionedEntityID: testExistingUser123ID},
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(newAuthenticatedAuthUser(), providers.AuthenticatedClaims{}, (*tidcommon.ServiceError)(nil)).Once()
+	suite.mockGroupService.On("GetMemberGroupIDs", mock.Anything,
+		group.Member{ID: testExistingUser123ID, Type: group.MemberTypeUser}).Return(nil, nil).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 }
