@@ -78,8 +78,8 @@ export interface ResourceTileProps {
   dimmed: boolean;
   onSelect: (key: string) => void;
   onHover: (key: string | null) => void;
-  /** The gateway holds back this resource's change, so it runs it as it was before. */
-  heldBack?: boolean;
+  /** The gateway refused this resource on its last deploy, so it runs it as it was before, if at all. */
+  refused?: boolean;
 }
 
 /** One resource on the map: its tile and its name, placed where the model put it. */
@@ -89,7 +89,7 @@ export default function ResourceTile({
   dimmed,
   onSelect,
   onHover,
-  heldBack = false,
+  refused = false,
 }: ResourceTileProps): JSX.Element {
   const {t} = useTranslation('deploy');
   const lane = LANE_BY_ID[node.lane];
@@ -131,14 +131,14 @@ export default function ResourceTile({
       <Typography variant="caption" sx={{textAlign: 'center', lineHeight: 1.3, px: 0.5}}>
         {node.name}
       </Typography>
-      {heldBack && (
+      {refused && (
         <Typography
           variant="caption"
-          color="text.secondary"
-          data-testid="explorer-node-held-back"
+          color="error.main"
+          data-testid="explorer-node-refused"
           sx={{mt: -1, fontSize: 10, px: 0.75, borderRadius: 1, bgcolor: 'action.selected'}}
         >
-          {t('explorer.heldBack', 'Held back')}
+          {t('explorer.refused', 'Refused')}
         </Typography>
       )}
     </ButtonBase>

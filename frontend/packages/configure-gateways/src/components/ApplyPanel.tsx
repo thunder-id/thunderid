@@ -7,14 +7,17 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   MenuItem,
   Select,
   Stack,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import {Rocket} from '@wso2/oxygen-ui-icons-react';
@@ -23,7 +26,6 @@ import {useTranslation} from 'react-i18next';
 import ChangedValuesNotice from './ChangedValuesNotice';
 import ChangeList from './ChangeList';
 import MissingValuesFields from './MissingValuesFields';
-import {changedCount} from '../api/useChangedValues';
 import {useApplyCheck, useApplyVersion} from '../api/useGatewayVersions';
 import {useSetStoredValue} from '../api/useStoredValues';
 import useGatewayErrorTranslator from '../hooks/useGatewayErrorTranslator';
@@ -32,6 +34,7 @@ import type {Gateway} from '../models/gateway';
 import {errorCodeOf, isForbidden, REMOVALS_NEED_CONFIRMATION} from '../utils/apiError';
 import {fromListText} from '../utils/listValue';
 import {fieldKey, missingFields, type MissingField} from '../utils/missingValues';
+import {withNeeded} from '../utils/needs';
 
 export interface ApplyPanelProps {
   version: Version;
@@ -48,7 +51,8 @@ export interface ApplyPanelProps {
 /**
  * Deploys a version to a gateway in a dialog over the Deploy page: what the write would do is read as
  * soon as the panel opens, so the resources can be left out one by one and the values the gateway
- * lacks set in place, and one button then writes everything.
+ * lacks set in place, and one button then writes what is ticked, along with what it needs. Nothing
+ * about the choice is kept: what is left out stays on offer.
  */
 export default function ApplyPanel({
   version,
@@ -66,8 +70,10 @@ export default function ApplyPanel({
   const apply = useApplyVersion();
   const setVariable = useSetStoredValue(target, 'variable');
   const setSecret = useSetStoredValue(target, 'secret');
-  // Null until the user ticks or unticks something, so the changes the gateway holds back start excluded.
+  // Null until the user ticks or unticks something, so every change starts ticked.
   const [chosen, setChosen] = useState<Set<string> | null>(null);
+  // Whether what is ticked brings along what it needs that the gateway lacks.
+  const [includeNeeded, setIncludeNeeded] = useState(true);
   const [values, setValues] = useState<Record<string, string>>({});
   const [isWriting, setIsWriting] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -78,14 +84,10 @@ export default function ApplyPanel({
   const changes: Change[] = useMemo(() => check.data?.diff.changes ?? [], [check.data]);
   const active = useMemo(() => changes.filter((change: Change) => change.change !== 'unchanged'), [changes]);
 
-  const heldBack = useMemo(
-    () => new Set(active.filter((change: Change) => change.excluded).map((change: Change) => change.key)),
-    [active],
-  );
-  const excluded = chosen ?? heldBack;
+  const excluded = useMemo(() => chosen ?? new Set<string>(), [chosen]);
 
-  // A new target starts over from what that gateway holds back, with nothing typed. Nothing else
-  // resets them, so a refetch of the same target keeps what the user chose and typed.
+  // A new target starts over with everything ticked and nothing typed. Nothing else resets them, so a
+  // refetch of the same target keeps what the user chose and typed.
   const chooseTarget = (next: string): void => {
     setTarget(next);
     setChosen(null);
@@ -94,24 +96,27 @@ export default function ApplyPanel({
     setConfirmRemovals(false);
   };
 
-  const selected = useMemo(
+  const ticked = useMemo(
     () => new Set(active.map((change: Change) => change.key).filter((key: string) => !excluded.has(key))),
     [active, excluded],
   );
+  // What the ticked changes bring along, as the control plane widens the selection; shown ticked and
+  // marked, not chosen by hand.
+  const required = useMemo(
+    () => (includeNeeded ? withNeeded(ticked, changes) : new Map<string, string>()),
+    [includeNeeded, ticked, changes],
+  );
+  const selected = useMemo(() => new Set([...ticked, ...required.keys()]), [ticked, required]);
   const fields: MissingField[] = useMemo(() => missingFields(check.data?.missing), [check.data?.missing]);
   const unfilled = fields.filter((field: MissingField) => (values[fieldKey(field)] ?? '').trim() === '');
-  // A deploy carries the changes ticked, or, with none, takes up the values set on the gateway since
-  // its version was deployed: the version is sent whole either way, so the gateway fills them in again.
-  const owed = changedCount(check.data?.changed);
-  const canDeploy =
-    Boolean(gateway) && check.isSuccess && (selected.size > 0 || owed > 0) && unfilled.length === 0 && !isWriting;
+  const canDeploy = Boolean(gateway) && check.isSuccess && selected.size > 0 && unfilled.length === 0 && !isWriting;
   const removals = active.filter((change: Change) => change.change === 'deleted' && selected.has(change.key)).length;
 
   // A confirmation covers the removals the user was warned about, so changing what is ticked drops it.
   const toggle = (key: string): void => {
     setConfirmRemovals(false);
     setChosen((previous: Set<string> | null) => {
-      const next = new Set(previous ?? heldBack);
+      const next = new Set(previous ?? []);
       if (next.has(key)) next.delete(key);
       else next.add(key);
       return next;
@@ -134,13 +139,14 @@ export default function ApplyPanel({
         if (field.kind === 'secret') await setSecret.mutateAsync({name: field.name, value});
         else await setVariable.mutateAsync({name: field.name, value});
       }
-      // The selection is always sent, so what is ticked is exactly what is applied: left to the
-      // gateway's standing choice, a change it holds back would stay held back though ticked.
+      // What is ticked is sent as the selection; the control plane brings along what it needs when
+      // asked to, so the two agree on what is deployed.
       const result = await apply.mutateAsync({
         gatewayId: gateway.id,
         data: {
           version: version.version,
-          selection: [...selected],
+          selection: [...ticked],
+          ...(includeNeeded ? {} : {withDependencies: false}),
           ...(confirmRemovals ? {confirmRemovals: true} : {}),
         },
       });
@@ -256,7 +262,36 @@ export default function ApplyPanel({
                 onToggle={toggle}
                 onToggleAll={toggleAll}
                 target={gateway?.name}
+                required={required}
               />
+            )}
+            {check.isSuccess && active.length > 0 && (
+              <Tooltip
+                title={t(
+                  'applyPanel.includeNeededHint',
+                  'A resource names the flows, units and other resources it needs. Ticked, deploying one brings along what it needs that {{gateway}} lacks.',
+                  {gateway: gateway?.name ?? ''},
+                )}
+              >
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      size="small"
+                      checked={includeNeeded}
+                      onChange={(_event, checked: boolean) => {
+                        setConfirmRemovals(false);
+                        setIncludeNeeded(checked);
+                      }}
+                      data-testid="deploy-include-needed"
+                    />
+                  }
+                  label={
+                    <Typography variant="body2">
+                      {t('applyPanel.includeNeeded', 'Also deploy what these need')}
+                    </Typography>
+                  }
+                />
+              </Tooltip>
             )}
             {error && (
               <Alert severity="error">

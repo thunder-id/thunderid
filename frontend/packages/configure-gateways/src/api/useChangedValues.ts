@@ -18,8 +18,8 @@ export interface ChangedValuesCheck {
  * The values set on a target since the version it runs was deployed, such as a client secret
  * regenerated or a secret updated in its store. The target fills values in only when a version is
  * deployed, so these take effect once the version it runs is deployed again; the version itself has
- * not changed, so nothing else shows it is owed. Read from the same check `useHeldBack` reads, so it
- * costs no request of its own. A failed check is reported as one, not as no value changed.
+ * not changed, so nothing else shows it is owed. A failed check is reported as one, not as no value
+ * changed.
  */
 export default function useChangedValues(targetId: string, runningVersion: string | undefined): ChangedValuesCheck {
   const check = useApplyCheck(targetId, runningVersion);

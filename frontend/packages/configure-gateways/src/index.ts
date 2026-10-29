@@ -53,7 +53,8 @@ export {DeploySourceProvider, default as useDeploySource} from './api/source';
 export {default as useGatewaySource} from './api/gatewaySource';
 export {default as useGateways} from './api/useGateways';
 export {default as useAppliedVersions} from './api/useAppliedVersions';
-export {default as useHeldBack} from './api/useHeldBack';
+export {useMaster, useMasterHistory, useResourceHistory, useRefused} from './api/useMaster';
+export {withNeeded} from './utils/needs';
 export {default as useChangedValues, changedCount} from './api/useChangedValues';
 export {useVersions, useVersion} from './api/useVersions';
 export {

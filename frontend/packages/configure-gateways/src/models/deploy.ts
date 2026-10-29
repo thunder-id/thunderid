@@ -86,8 +86,17 @@ export interface Change {
   id?: string;
   name?: string;
   change: ChangeKind;
-  /** The target holds this change back, from an earlier choice. */
-  excluded?: boolean;
+  /** The target refused this resource on its last deploy, so it is offered again. */
+  failed?: boolean;
+  /** On a deploy's answer, the change was sent. */
+  selected?: boolean;
+  /** Offered as updated because a value it refers to was set on the target again, though no document changed. */
+  valueChanged?: boolean;
+  /** The keys of the resources this one names by id in the version, which it needs on the target. */
+  needs?: string[];
+  /** On a deploy's answer, sent because a selected resource needs it; `requiredBy` is that resource's key. */
+  required?: boolean;
+  requiredBy?: string;
   /**
    * Where the changes come from holds this change back, so it does not run it: a promotion carries only
    * what its source runs, so the change cannot be applied.
@@ -109,7 +118,8 @@ export interface DiffSummary {
 }
 
 export interface Diff {
-  fromVersion?: string;
+  /** The hash of the target's master, what it holds now. */
+  fromMaster?: string;
   toVersion: string;
   summary: DiffSummary;
   changes: Change[];
@@ -133,10 +143,14 @@ export interface ApplyRequest {
   /** A version's hash, or `latest`. */
   version?: string;
   dryRun?: boolean;
-  /** The keys of the changes to apply; absent, every change. */
+  /** The keys of the changes to apply; absent, every change. Nothing about it is kept. */
   selection?: string[];
+  /** Widens the selection to what it needs that the target lacks. On unless set to false. */
+  withDependencies?: boolean;
   /** Lets the apply remove more resources than the deployment's threshold allows unconfirmed. */
   confirmRemovals?: boolean;
+  /** A label for where the version came from, recorded on each resource the apply writes. */
+  origin?: string;
 }
 
 export interface ApplyResult {
@@ -145,8 +159,66 @@ export interface ApplyResult {
   diff: Diff;
   import?: ImportResult;
   recorded?: boolean;
+  /** The hash of the master the target holds after the deploy. */
+  master?: string;
   missing?: MissingValues;
   changed?: ChangedValues;
+}
+
+export type EntryState = 'deployed' | 'failed' | 'removed';
+
+/** How one resource got onto a target, as its master records it. */
+export interface MasterEntry {
+  key: string;
+  resourceType: string;
+  id?: string;
+  name?: string;
+  /** The hash of the document the target holds; none for a removed resource or one it never accepted. */
+  contentHash?: string;
+  /** The version the resource was last deployed from. */
+  sourceVersion?: string;
+  /** The label the deploy gave for where the version came from. */
+  origin?: string;
+  state: EntryState;
+  /** What the target answered when it refused the resource. */
+  failure?: {code?: string; message?: string};
+  at?: string;
+  by?: Actor;
+}
+
+export interface MasterSummary {
+  deployed: number;
+  failed: number;
+  removed: number;
+}
+
+/** What a target holds, resource by resource: its master. */
+export interface Master {
+  gatewayId: string;
+  /** The master's place in the target's order, from 1; 0 while nothing was deployed. */
+  number: number;
+  master?: string;
+  createdAt?: string;
+  createdBy?: Actor;
+  /** Every resource the target holds, one document each. A listing leaves it out. */
+  resources?: string;
+  summary: MasterSummary;
+  /** One entry per resource key, sorted by key. A listing leaves it out. */
+  entries?: MasterEntry[];
+}
+
+/** A resource's entry in one master. */
+export interface ResourceHistoryEntry {
+  master: string;
+  number: number;
+  entry: MasterEntry;
+}
+
+/** One resource's entry across a target's masters, newest first. */
+export interface ResourceHistory {
+  gatewayId: string;
+  key: string;
+  history: ResourceHistoryEntry[];
 }
 
 export interface ImportResourceResult {

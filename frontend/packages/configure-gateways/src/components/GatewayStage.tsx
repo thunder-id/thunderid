@@ -4,7 +4,7 @@
 import type {JSX} from 'react';
 import StageCard from './StageCard';
 import useChangedValues from '../api/useChangedValues';
-import useHeldBack from '../api/useHeldBack';
+import {useRefused} from '../api/useMaster';
 import type {AppliedVersion, Version} from '../models/deploy';
 import type {Gateway} from '../models/gateway';
 
@@ -31,7 +31,7 @@ export default function GatewayStage({
   onRedeploy = undefined,
 }: GatewayStageProps): JSX.Element {
   const hash = applied?.appliedVersion ?? undefined;
-  const heldBack = useHeldBack(gateway.id, hash);
+  const refused = useRefused(gateway.id);
   const changedCheck = useChangedValues(gateway.id, hash);
   const index = hash ? versions.findIndex((version: Version) => version.version === hash) : -1;
   const number = index < 0 ? undefined : (versions[index].number ?? versions.length - index);
@@ -42,7 +42,7 @@ export default function GatewayStage({
       version={hash ? {number, hash, capturedAt: index < 0 ? undefined : versions[index].createdAt} : undefined}
       deployedAt={applied?.appliedAt}
       deployedBy={applied?.appliedBy}
-      heldBack={heldBack}
+      refused={refused}
       onExplore={onExplore}
       onConfigure={onConfigure}
       onRevert={onRevert}

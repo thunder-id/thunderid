@@ -18,6 +18,28 @@ function renderStage(props: Partial<StageCardProps>): void {
   );
 }
 
+describe('StageCard refused resources', () => {
+  it('says how many resources the stage refused, naming them on hover', async () => {
+    renderStage({
+      refused: [
+        {key: 'application/app-2', resourceType: 'application', id: 'app-2', name: 'Billing', state: 'failed'},
+        {key: 'flow/f-9', resourceType: 'flow', id: 'f-9', state: 'failed'},
+      ],
+    });
+
+    const refused = screen.getByTestId('stage-refused');
+    expect(refused).toHaveTextContent('2 refused, not running');
+    await userEvent.hover(refused);
+    expect(await screen.findByText('Billing, f-9')).toBeInTheDocument();
+  });
+
+  it('says nothing of refusals when there are none', () => {
+    renderStage({refused: []});
+
+    expect(screen.queryByTestId('stage-refused')).not.toBeInTheDocument();
+  });
+});
+
 describe('StageCard redeploy', () => {
   it('offers a redeploy while values changed since the deploy', () => {
     renderStage({changed: {secrets: ['APPLICATION_MY_APP_CLIENT_SECRET']}});

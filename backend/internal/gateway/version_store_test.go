@@ -203,53 +203,20 @@ func (s *VersionStoreTestSuite) TestAnUnrecordedApplySaysWhy() {
 		"a version replaced as current while it was applied was recorded")
 }
 
-// A gateway's choice is read, written in one transaction, and forgotten, all within the deployment.
-func (s *VersionStoreTestSuite) TestExclusionsAreReadWrittenInOneTransactionAndForgotten() {
-	tx := &recordingTransactioner{}
-	s.providerMock.On("GetConfigDBTransactioner").Return(tx, nil).Once()
+// What a gateway was set to leave alone before masters were recorded is read, and forgotten with the
+// gateway, within the deployment.
+func (s *VersionStoreTestSuite) TestExclusionsAreReadAndForgotten() {
 	s.dbClientMock.On("QueryContext", mock.Anything, queryGetExcluded, "gw-1", storeDeploymentID).
 		Return([]map[string]interface{}{{"resource_key": "organization_unit/ou-a",
 			"resource_type": "organization_unit", "resource_id": "ou-a", "resource_name": nil, "once": false}},
 			nil).Once()
-	s.dbClientMock.On("ExecuteContext", mock.Anything, queryExclude, "gw-1", "organization_unit/ou-b",
-		"organization_unit", "ou-b", nil, storeDeploymentID, true).Return(int64(1), nil).Once()
-	s.dbClientMock.On("ExecuteContext", mock.Anything, queryInclude, "gw-1", "organization_unit/ou-a",
-		storeDeploymentID).Return(int64(1), nil).Once()
 	s.dbClientMock.On("ExecuteContext", mock.Anything, queryDeleteExcluded, "gw-1", storeDeploymentID).
 		Return(int64(1), nil).Once()
 
 	excluded, err := s.store.GetExcluded(scoped(), "gw-1")
 	s.Require().NoError(err)
 	s.Equal([]excludedResource{{Key: "organization_unit/ou-a", Type: "organization_unit", ID: "ou-a"}}, excluded)
-	s.Require().NoError(s.store.SetExcluded(scoped(), "gw-1",
-		[]excludedResource{{Key: "organization_unit/ou-b", Type: "organization_unit", ID: "ou-b", Once: true}},
-		[]string{"organization_unit/ou-a"}))
-	s.True(tx.ran)
-	s.False(tx.rolledBack)
 	s.Require().NoError(s.store.DeleteExcluded(scoped(), "gw-1"))
-}
-
-// A write cut short rolls the whole choice back, so it is never left half made.
-func (s *VersionStoreTestSuite) TestAnExclusionWriteCutShortRollsBack() {
-	tx := &recordingTransactioner{}
-	s.providerMock.On("GetConfigDBTransactioner").Return(tx, nil).Once()
-	s.dbClientMock.On("ExecuteContext", mock.Anything, queryInclude, "gw-1", "organization_unit/ou-a",
-		storeDeploymentID).Return(int64(1), nil).Once()
-	s.dbClientMock.On("ExecuteContext", mock.Anything, queryExclude, "gw-1", "organization_unit/ou-b",
-		"organization_unit", "ou-b", "b", storeDeploymentID, false).
-		Return(int64(0), errors.New("database is down")).Once()
-
-	err := s.store.SetExcluded(scoped(), "gw-1",
-		[]excludedResource{{Key: "organization_unit/ou-b", Type: "organization_unit", ID: "ou-b", Name: "b"}},
-		[]string{"organization_unit/ou-a"})
-
-	s.Error(err)
-	s.True(tx.rolledBack)
-
-	provider := providermock.NewDBProviderInterfaceMock(s.T())
-	provider.On("GetConfigDBTransactioner").Return(nil, errors.New("no database")).Once()
-	store := &versionStore{dbProvider: provider}
-	s.Error(store.SetExcluded(scoped(), "gw-1", nil, []string{"organization_unit/ou-a"}))
 }
 
 func (s *VersionStoreTestSuite) TestEveryCallReportsAFailure() {

@@ -153,27 +153,12 @@ var (
 		ID:    "GTV_MGT-08",
 		Query: `DELETE FROM "GATEWAY_APPLIED_VERSION" WHERE GATEWAY_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
-	// queryGetExcluded reads the resources a gateway is set to leave alone, and those owed to it from a
-	// skipped apply.
+	// queryGetExcluded reads the resources a gateway was set to leave alone before masters were
+	// recorded, which is read once, when the gateway is given its first master.
 	queryGetExcluded = dbmodel.DBQuery{
 		ID: "GTV_MGT-09",
 		Query: `SELECT RESOURCE_KEY, RESOURCE_TYPE, RESOURCE_ID, RESOURCE_NAME, ONCE ` +
 			`FROM "GATEWAY_EXCLUDED_RESOURCE" WHERE GATEWAY_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY RESOURCE_KEY`,
-	}
-	// queryExclude sets a gateway to leave a resource alone, for good or for one apply. A standing
-	// choice is never turned into a one-time one: a resource both skipped and left alone stays left alone.
-	queryExclude = dbmodel.DBQuery{
-		ID: "GTV_MGT-10",
-		Query: `INSERT INTO "GATEWAY_EXCLUDED_RESOURCE" (GATEWAY_ID, RESOURCE_KEY, RESOURCE_TYPE, RESOURCE_ID, ` +
-			`RESOURCE_NAME, DEPLOYMENT_ID, ONCE) VALUES ($1, $2, $3, $4, $5, $6, $7) ` +
-			`ON CONFLICT (DEPLOYMENT_ID, GATEWAY_ID, RESOURCE_KEY) ` +
-			`DO UPDATE SET ONCE = ("GATEWAY_EXCLUDED_RESOURCE".ONCE AND excluded.ONCE)`,
-	}
-	// queryInclude lets an apply write a resource to a gateway again.
-	queryInclude = dbmodel.DBQuery{
-		ID: "GTV_MGT-11",
-		Query: `DELETE FROM "GATEWAY_EXCLUDED_RESOURCE" WHERE GATEWAY_ID = $1 AND RESOURCE_KEY = $2 ` +
-			`AND DEPLOYMENT_ID = $3`,
 	}
 	// queryDeleteExcluded forgets what a removed gateway was set to leave alone.
 	queryDeleteExcluded = dbmodel.DBQuery{
@@ -227,14 +212,19 @@ type versionStoreInterface interface {
 	TakePendingLatest(ctx context.Context, gatewayID string) (*Actor, bool, error)
 	// DeleteLease forgets a removed gateway's lease.
 	DeleteLease(ctx context.Context, gatewayID string) error
-	// GetExcluded reads the resources a gateway is set to leave alone, and those a skipped apply left
-	// owed to it, sorted by key.
+	// GetExcluded reads the resources a gateway was set to leave alone by applies made before masters
+	// were recorded, sorted by key.
 	GetExcluded(ctx context.Context, gatewayID string) ([]excludedResource, error)
-	// SetExcluded takes the include keys off what a gateway leaves alone and then sets it to leave the
-	// exclude resources alone, in one transaction. A resource in both is replaced as given, so a
-	// caller can put a row back exactly as it was; one only excluded keeps a standing choice standing.
-	SetExcluded(ctx context.Context, gatewayID string, exclude []excludedResource, include []string) error
 	DeleteExcluded(ctx context.Context, gatewayID string) error
+	// AddMaster records a gateway's new master, numbered one past its latest.
+	AddMaster(ctx context.Context, master Master) (*Master, error)
+	// GetMaster reads the master a gateway holds now, with its resources, or nil when it has none.
+	GetMaster(ctx context.Context, gatewayID string) (*Master, error)
+	// ListMasters reads a gateway's masters, newest first, with their entries but not their resources.
+	ListMasters(ctx context.Context, gatewayID string) ([]Master, error)
+	// PruneMasters removes a gateway's masters numbered up to and including through.
+	PruneMasters(ctx context.Context, gatewayID string, through int) error
+	DeleteMasters(ctx context.Context, gatewayID string) error
 }
 
 // versionStore keeps versions in the configuration database. It is used whatever the gateway store
@@ -499,29 +489,6 @@ func (s *versionStore) GetExcluded(ctx context.Context, gatewayID string) ([]exc
 			Once: asBool(row["once"])})
 	}
 	return excluded, nil
-}
-
-// SetExcluded writes every key in one transaction, so a failure leaves the choice as it was.
-func (s *versionStore) SetExcluded(ctx context.Context, gatewayID string, exclude []excludedResource,
-	include []string) error {
-	transactioner, err := s.dbProvider.GetConfigDBTransactioner()
-	if err != nil {
-		return fmt.Errorf("failed to get database transactioner: %w", err)
-	}
-	return transactioner.Transact(ctx, func(txCtx context.Context) error {
-		for _, key := range include {
-			if err := s.execute(txCtx, queryInclude, gatewayID, key, deployment.Resolve(txCtx)); err != nil {
-				return fmt.Errorf("failed to set the gateway to take a resource again: %w", err)
-			}
-		}
-		for _, resource := range exclude {
-			if err := s.execute(txCtx, queryExclude, gatewayID, resource.Key, resource.Type,
-				nullable(resource.ID), nullable(resource.Name), deployment.Resolve(txCtx), resource.Once); err != nil {
-				return fmt.Errorf("failed to set the gateway to leave a resource alone: %w", err)
-			}
-		}
-		return nil
-	})
 }
 
 // nullable stores an empty string as NULL.

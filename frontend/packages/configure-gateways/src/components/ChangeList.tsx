@@ -14,10 +14,12 @@ export interface ChangeListProps {
   selected?: Set<string>;
   onToggle?: (key: string) => void;
   onToggleAll?: (keys: string[], checked: boolean) => void;
-  /** Where the changes are applied, to say a change held back there is held back on it. */
+  /** Where the changes are applied, to say a change the target refused was refused there. */
   target?: string;
   /** Where the changes come from, to say a change held back there is held back on it. */
   source?: string;
+  /** The changes a selection brings along, each with the key of the selected change that needs it. */
+  required?: ReadonlyMap<string, string>;
 }
 
 const COLORS: Readonly<Record<ChangeKind, 'success' | 'info' | 'error' | 'default'>> = {
@@ -31,6 +33,8 @@ const COLORS: Readonly<Record<ChangeKind, 'success' | 'info' | 'error' | 'defaul
  * The resources an apply would write or delete, each with a checkbox to leave it alone this time when
  * the changes are selectable, and each opening to its document diffed line by line against what the
  * gateway runs. Resources the gateway already runs as the version has them are counted, not listed.
+ * A change the target refused last time, one sent for a changed value, and one brought along for
+ * another's need each say so.
  */
 export default function ChangeList({
   changes,
@@ -39,6 +43,7 @@ export default function ChangeList({
   onToggleAll = undefined,
   target = undefined,
   source = undefined,
+  required = undefined,
 }: ChangeListProps): JSX.Element {
   const {t} = useTranslation('deploy');
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
@@ -57,6 +62,10 @@ export default function ChangeList({
   };
   const active = changes.filter((change: Change) => change.change !== 'unchanged');
   const unchanged = changes.length - active.length;
+  const nameOf = (key: string): string => {
+    const change = changes.find((entry: Change) => entry.key === key);
+    return change?.name ?? change?.id ?? key;
+  };
   // A change the source holds back can never be applied, so it is not one to tick.
   const keys = active.filter((change: Change) => !change.sourceExcluded).map((change: Change) => change.key);
   const allChecked = keys.length > 0 && keys.every((key: string) => selected?.has(key));
@@ -99,13 +108,34 @@ export default function ChangeList({
           sx={{height: 18, fontSize: 11, bgcolor: 'action.selected', color: 'text.secondary'}}
         />
       )}
-      {change.excluded && !change.sourceExcluded && (
+      {change.failed && (
         <Chip
           size="small"
+          color="error"
+          variant="outlined"
           label={
-            target ? t('changes.heldBackOn', 'Held back on {{target}}', {target}) : t('changes.heldBack', 'Held back')
+            target
+              ? t('changes.refusedOn', 'Refused by {{target}} last time', {target})
+              : t('changes.refused', 'Refused last time')
           }
-          data-testid="change-held-back"
+          data-testid="change-refused"
+          sx={{height: 18, fontSize: 11}}
+        />
+      )}
+      {change.valueChanged && (
+        <Chip
+          size="small"
+          label={t('changes.valueChanged', 'Value changed')}
+          data-testid="change-value-changed"
+          title={t('changes.valueChangedHint', 'A value it refers to was set again, so it is written to read it.')}
+          sx={{height: 18, fontSize: 11, bgcolor: 'action.selected', color: 'text.secondary'}}
+        />
+      )}
+      {required?.has(change.key) && (
+        <Chip
+          size="small"
+          label={t('changes.neededBy', 'Needed by {{name}}', {name: nameOf(required.get(change.key) ?? '')})}
+          data-testid="change-needed-by"
           sx={{height: 18, fontSize: 11, bgcolor: 'action.selected', color: 'text.secondary'}}
         />
       )}

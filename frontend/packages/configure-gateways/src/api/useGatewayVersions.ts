@@ -71,6 +71,9 @@ export function useApplyVersion(): UseMutationResult<ApplyResult, Error, ApplyIn
       if (result.dryRun) return;
       void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.APPLIED_VERSION, gatewayId]});
       void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.APPLIED_CONFIGURATION, gatewayId]});
+      void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.MASTER, gatewayId]});
+      void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.MASTER_HISTORY, gatewayId]});
+      void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.RESOURCE_HISTORY, gatewayId]});
       void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.APPLY_CHECK, gatewayId]});
       void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.RUNNING_REFERENCES, gatewayId]});
     },
@@ -94,6 +97,9 @@ export function useRevert(): UseMutationResult<ApplyResult, Error, RevertInput> 
       if (result.dryRun) return;
       void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.APPLIED_VERSION, gatewayId]});
       void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.APPLIED_CONFIGURATION, gatewayId]});
+      void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.MASTER, gatewayId]});
+      void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.MASTER_HISTORY, gatewayId]});
+      void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.RESOURCE_HISTORY, gatewayId]});
       void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.APPLY_CHECK, gatewayId]});
       void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.RUNNING_REFERENCES, gatewayId]});
     },

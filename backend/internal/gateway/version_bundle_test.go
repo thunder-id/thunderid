@@ -83,15 +83,42 @@ func TestLineDiffReportsAReplacedLine(t *testing.T) {
 	assert.Nil(t, lineDiff("same", "same"))
 }
 
-// Only a removed resource with an id can be named to the gateway for deletion.
-func TestDeletionsNeedAnID(t *testing.T) {
-	deletions := deletionsOf([]Change{
-		{ResourceType: "organization_unit", ID: "ou-1", Change: ChangeDeleted},
-		{ResourceType: "translation", Name: "en-US", Change: ChangeDeleted},
-		{ResourceType: "organization_unit", ID: "ou-2", Change: ChangeAdded},
-	})
+// An apply sends the documents of the changes chosen and names the removals chosen; only a removed
+// resource with an id can be named to the gateway, and an unchanged resource is never sent.
+func TestChosenSendsOnlyTheChangesChosen(t *testing.T) {
+	target := &Version{Resources: joinBundle([]string{unit("ou-2"), unit("ou-3"), unit("ou-4")})}
+	changes := []Change{
+		{Key: "organization_unit/ou-1", ResourceType: "organization_unit", ID: "ou-1", Change: ChangeDeleted},
+		{Key: "translation/en-US", ResourceType: "translation", Name: "en-US", Change: ChangeDeleted},
+		{Key: "organization_unit/ou-2", ResourceType: "organization_unit", ID: "ou-2", Change: ChangeAdded},
+		{Key: "organization_unit/ou-3", ResourceType: "organization_unit", ID: "ou-3", Change: ChangeUpdated},
+		{Key: "organization_unit/ou-4", ResourceType: "organization_unit", ID: "ou-4", Change: ChangeUnchanged},
+	}
 
-	assert.Equal(t, []gatewayDeletion{{ResourceType: "organization_unit", ID: "ou-1"}}, deletions)
+	all, svcErr := chosen(&Diff{Changes: append([]Change{}, changes...)}, target, nil, true)
+	assert.Nil(t, svcErr)
+	assert.Equal(t, []gatewayDeletion{{ResourceType: "organization_unit", ID: "ou-1"}}, all.deletions)
+	assert.Equal(t, joinBundle([]string{unit("ou-2"), unit("ou-3")}), all.content)
+
+	diff := &Diff{Changes: append([]Change{}, changes...)}
+	some, svcErr := chosen(diff, target, &[]string{"organization_unit/ou-3", "organization_unit/ou-1",
+		"organization_unit/ou-4"}, true)
+	assert.Nil(t, svcErr)
+	assert.Equal(t, []gatewayDeletion{{ResourceType: "organization_unit", ID: "ou-1"}}, some.deletions)
+	assert.Equal(t, unit("ou-3"), some.content)
+	selected := make([]bool, 0, len(diff.Changes))
+	for _, change := range diff.Changes {
+		selected = append(selected, change.Selected)
+	}
+	assert.Equal(t, []bool{true, false, false, true, false}, selected)
+
+	none, svcErr := chosen(&Diff{Changes: append([]Change{}, changes...)}, target, &[]string{}, true)
+	assert.Nil(t, svcErr)
+	assert.Empty(t, none.content)
+	assert.Empty(t, none.deletions)
+
+	_, svcErr = chosen(&Diff{Changes: changes}, target, &[]string{"organization_unit/ou-9"}, true)
+	assert.Equal(t, &ErrorInvalidSelection, svcErr, "a key the diff does not report was accepted")
 }
 
 func TestParseEnvFileReadsKeyValueLines(t *testing.T) {

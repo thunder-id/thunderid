@@ -11,7 +11,7 @@ import DeployCard from './DeployCard';
 import Timestamp from './Timestamp';
 import VersionName from './VersionName';
 import {changedCount} from '../api/useChangedValues';
-import type {Actor, Change, ChangedValues} from '../models/deploy';
+import type {Actor, ChangedValues, MasterEntry} from '../models/deploy';
 
 export interface StageCardProps {
   name: string;
@@ -22,8 +22,8 @@ export interface StageCardProps {
   deployedAt?: string;
   /** Who deployed it, promoted it there or rolled the stage back to it. */
   deployedBy?: Actor;
-  /** The changes of its version the stage holds back, so it does not run them. */
-  heldBack?: Change[];
+  /** The resources the stage refused on their last deploy, so it does not run them as the version has them. */
+  refused?: MasterEntry[];
   /** Opens the stage's explorer. */
   onExplore: () => void;
   /** Opens the stage's variables and secrets. */
@@ -57,7 +57,7 @@ export default function StageCard({
   version = undefined,
   deployedAt = undefined,
   deployedBy = undefined,
-  heldBack = [],
+  refused = [],
   onExplore,
   onConfigure,
   onRevert = undefined,
@@ -239,12 +239,12 @@ export default function StageCard({
                   </Typography>
                 </Tooltip>
               )}
-              {heldBack.length > 0 && (
-                <Tooltip title={heldBack.map((change: Change) => change.name ?? change.id ?? change.key).join(', ')}>
+              {refused.length > 0 && (
+                <Tooltip title={refused.map((entry: MasterEntry) => entry.name ?? entry.id ?? entry.key).join(', ')}>
                   <Typography
                     variant="caption"
-                    color="text.secondary"
-                    data-testid="stage-held-back"
+                    color="error.main"
+                    data-testid="stage-refused"
                     sx={{
                       width: 'fit-content',
                       cursor: 'help',
@@ -253,7 +253,7 @@ export default function StageCard({
                       borderColor: 'divider',
                     }}
                   >
-                    {t('stage.heldBack', '{{count}} held back, not running', {count: heldBack.length})}
+                    {t('stage.refused', '{{count}} refused, not running', {count: refused.length})}
                   </Typography>
                 </Tooltip>
               )}

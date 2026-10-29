@@ -96,6 +96,62 @@ beforeEach(() => {
 });
 
 describe('GatewayExplorerPage', () => {
+  it('marks what the gateway refused, and tells how the selected resource got there', async () => {
+    routes['GET /gateways/gw-dev/master'] = {
+      gatewayId: 'gw-dev',
+      number: 3,
+      master: 'm-3',
+      summary: {deployed: 4, failed: 1, removed: 0},
+      entries: [
+        {
+          key: 'application/app-1',
+          resourceType: 'application',
+          id: 'app-1',
+          name: 'Orders',
+          state: 'failed',
+          sourceVersion: hash,
+          origin: 'dev',
+          failure: {code: 'APP-1001', message: 'the flow is not there'},
+          at: '2026-10-12T13:55:00Z',
+        },
+        {key: 'flow/f-1', resourceType: 'flow', id: 'f-1', name: 'Sign in', state: 'deployed', sourceVersion: hash},
+      ],
+    };
+    routes['GET /gateways/gw-dev/master/resources/application/app-1'] = {
+      gatewayId: 'gw-dev',
+      key: 'application/app-1',
+      history: [
+        {master: 'm-3', number: 3, entry: {key: 'application/app-1', resourceType: 'application', state: 'failed'}},
+        {
+          master: 'm-2',
+          number: 2,
+          entry: {
+            key: 'application/app-1',
+            resourceType: 'application',
+            state: 'deployed',
+            sourceVersion: 'abcdef1234',
+          },
+        },
+      ],
+    };
+    http = fakeHttp(routes);
+    render(<GatewayExplorerPage />);
+
+    const tile = await screen.findByTestId('explorer-node-application/app-1');
+    expect(await within(tile).findByTestId('explorer-node-refused')).toHaveTextContent('Refused');
+    expect(within(screen.getByTestId('explorer-node-flow/f-1')).queryByTestId('explorer-node-refused')).toBeNull();
+
+    await userEvent.click(tile);
+    const deployment = await screen.findByTestId('explorer-deployment');
+    expect(within(deployment).getByTestId('explorer-entry-state')).toHaveTextContent(
+      `Refused · from ${hash.slice(0, 7)} · dev`,
+    );
+    expect(deployment).toHaveTextContent('APP-1001: the flow is not there');
+    const history = await within(deployment).findByTestId('explorer-history');
+    expect(history).toHaveTextContent('Deployed');
+    expect(history).toHaveTextContent('abcdef1');
+  });
+
   it('pans by dragging and by the wheel, zooms by its buttons, and keeps a selection a drag ends on', async () => {
     render(<GatewayExplorerPage />);
     await screen.findByTestId('explorer-node-application/app-1');

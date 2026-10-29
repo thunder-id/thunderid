@@ -40,8 +40,8 @@ export interface ExplorerCanvasProps {
   labelFor: (label: Label) => string;
   /** Draws the lines between lanes as curves rather than straight. */
   curved?: boolean;
-  /** The keys of the resources the gateway holds back. */
-  heldBack?: ReadonlySet<string>;
+  /** The keys of the resources the gateway refused on their last deploy. */
+  refused?: ReadonlySet<string>;
   /** Whether the explorer fills the screen; with onToggleFullscreen, a button switches it. */
   fullscreen?: boolean;
   onToggleFullscreen?: () => void;
@@ -67,7 +67,7 @@ export default function ExplorerCanvas({
   onSelect,
   labelFor,
   curved = false,
-  heldBack = undefined,
+  refused = undefined,
   fullscreen = false,
   onToggleFullscreen = undefined,
 }: ExplorerCanvasProps): JSX.Element {
@@ -290,7 +290,7 @@ export default function ExplorerCanvas({
               dimmed={Boolean(related && !related.has(node.key))}
               onSelect={onSelect}
               onHover={setHoverNode}
-              heldBack={heldBack?.has(node.key)}
+              refused={refused?.has(node.key)}
             />
           ))}
           {graph.overflow.map((entry: OverflowNode) => {

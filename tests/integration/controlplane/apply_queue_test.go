@@ -142,7 +142,8 @@ func applyLatest(gatewayID string) applyOutcome {
 // An apply of the latest version that arrives while another apply runs is queued rather than refused
 // or run alongside, and is sent once the running one finishes, for the user who asked for it.
 func (ts *ControlPlaneTestSuite) TestAnApplyOfTheLatestVersionIsQueuedBehindARunningOne() {
-	g := newApplyGateway(2 * time.Second)
+	// Long enough for a change to be made and captured while the first apply runs.
+	g := newApplyGateway(8 * time.Second)
 	ts.T().Cleanup(g.server.Close)
 	gatewayID := ts.registerGateway(g.server)
 	unit, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
@@ -159,6 +160,14 @@ func (ts *ControlPlaneTestSuite) TestAnApplyOfTheLatestVersionIsQueuedBehindARun
 	case <-time.After(20 * time.Second):
 		ts.FailNow("the first apply never reached the gateway")
 	}
+	// A change made while the apply runs is what the queued apply has to send: an apply sends only
+	// what the gateway lacks, and the running one is sending everything else.
+	later, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: unique("queued-later"), Name: "Queued later", Parent: &ts.ouID,
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(later) }()
+	ts.waitForCurrent(later)
 
 	queued := applyLatest(gatewayID)
 	ts.Require().Equal(http.StatusAccepted, queued.status, queued.raw)
