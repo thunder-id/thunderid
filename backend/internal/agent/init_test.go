@@ -101,7 +101,7 @@ func (suite *InitializeTestSuite) TestInitialize_EntityLoadError_AllDeclarativeM
 
 			svc, exporter, err := Initialize(http.NewServeMux(), mockEntity, mockInbound, mockOU, mockRole,
 				newAllowAllAuthz(suite.T()), nil, nil, nil,
-				newEntityDBProvider(suite.T()), nil)
+				newEntityDBProvider(suite.T()), nil, nil)
 
 			suite.EqualError(err, "entity load error")
 			suite.Nil(svc)
@@ -132,7 +132,7 @@ func (suite *InitializeTestSuite) TestInitialize_InboundLoadError_AllDeclarative
 			mux := http.NewServeMux()
 			svc, exporter, err := Initialize(
 				mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil,
-				newEntityDBProvider(suite.T()), nil)
+				newEntityDBProvider(suite.T()), nil, nil)
 
 			suite.Error(err)
 			suite.Equal("inbound load error", err.Error())
@@ -159,7 +159,7 @@ func (suite *InitializeTestSuite) TestInitialize_DeclarativeMode_Success() {
 	mux := http.NewServeMux()
 	svc, exporter, err := Initialize(
 		mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil,
-		newEntityDBProvider(suite.T()), nil)
+		newEntityDBProvider(suite.T()), nil, nil)
 
 	suite.NoError(err)
 	suite.NotNil(svc)
@@ -180,7 +180,7 @@ func (suite *InitializeTestSuite) TestInitialize_MutableMode_SkipsDeclarativeLoa
 	mux := http.NewServeMux()
 	svc, exporter, err := Initialize(
 		mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil,
-		newEntityDBProvider(suite.T()), nil)
+		newEntityDBProvider(suite.T()), nil, nil)
 
 	suite.NoError(err)
 	suite.NotNil(svc)
@@ -202,7 +202,7 @@ func (suite *InitializeTestSuite) TestInitialize_IndexedAttributesLoadError() {
 
 	svc, exporter, err := Initialize(
 		http.NewServeMux(), mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil,
-		newEntityDBProvider(suite.T()), nil)
+		newEntityDBProvider(suite.T()), nil, nil)
 
 	suite.EqualError(err, "indexed load error")
 	suite.Nil(svc)
@@ -219,7 +219,7 @@ func (suite *InitializeTestSuite) TestInitialize_TransactionerError() {
 	svc, exporter, err := Initialize(http.NewServeMux(), mockEntity,
 		inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T()),
 		oumock.NewOrganizationUnitServiceInterfaceMock(suite.T()), rolemock.NewRoleServiceInterfaceMock(suite.T()),
-		newAllowAllAuthz(suite.T()), nil, nil, nil, dbProvider, nil)
+		newAllowAllAuthz(suite.T()), nil, nil, nil, dbProvider, nil, nil)
 
 	suite.EqualError(err, "entity db unavailable")
 	suite.Nil(svc)

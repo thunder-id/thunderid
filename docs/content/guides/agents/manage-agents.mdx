@@ -34,15 +34,14 @@ Creating an agent gives that agent its own identity in <ProductName />, with its
 curl -X POST https://localhost:8090/agents \
   -H 'Content-Type: application/json' \
   -d '{
-    "name": "Invoice Reconciler",
     "type": "default",
     "ouId": "<organization-unit-id>",
     "owner": "<owner-user-id>",
-    "attributes": { }
+    "attributes": { "name": "Invoice Reconciler" }
   }'
 ```
 
-`ouId`, `type`, and `name` are required; `owner` and `attributes` are optional. `type` is the agent type's name. <ProductName /> ships a single agent type, `default`, and does not accept others. See the [Agents API Reference](../../../apis#tag/agents) for the create request and all fields.
+`type` and `attributes.name` are required, and so is an organization unit, given as `ouId` or `ouHandle`, unless you pass `projectId` (see [Scope agents to a project](#scope-agents-to-a-project)); `owner` is optional, and so are the other attributes unless the [agent schema](../agent-schema) marks them required. `type` is the agent type's name. <ProductName /> ships a single agent type, `default`, and does not accept others. See the [Agents API Reference](../../../apis#tag/agents) for the create request and all fields.
 
 </TabItem>
 </Tabs>
@@ -57,7 +56,7 @@ That profile is configured on the **Credentials**, **Flows**, **Tokens**, and **
 
 In the Console, open the agent from the list. The name and description are editable inline in the header, and changes across tabs are saved together from the unsaved-changes bar.
 
-Through the API, update an agent with `PUT /agents/<AGENT_ID>`, sending only the fields being changed. See the [Agents API Reference](../../../apis#tag/agents) for the full request and response.
+Through the API, update an agent with `PUT /agents/<AGENT_ID>`. The request replaces the agent, so send `type` and every field to keep, not only the ones being changed. Leaving out the OAuth profile fields removes the agent's OAuth profile. See the [Agents API Reference](../../../apis#tag/agents) for the full request and response.
 
 ### Identifiers and owner
 
@@ -134,3 +133,15 @@ For what each operation does, see [Suspend and Restore Accounts](../../account-p
 :::warning
 Deletion is permanent and revokes the agent's credentials. Tokens the agent was already issued stay valid until they expire, so keep agent token lifetimes short.
 :::
+
+## Scope agents to a project
+
+A project on the control plane is backed by one root organization unit. When you manage agents through the REST API on the control plane, pass a project ID to work within a project.
+
+- **List**: `GET /agents?projectId=<project-id>` returns the agents that the project's root organization unit owns, followed by the ones shared into it. To list an organization unit below the root instead, add `filter=ouId eq "<ou-id>"`. That is the only filter accepted with `projectId`; any other filter fails with `AGT-1020`. A project that does not exist, or an organization unit outside the project, returns an empty list.
+- **Create**: set `projectId` in the request body of `POST /agents`. Without `ouId` or `ouHandle`, the agent belongs to the project's root organization unit. With either one, that organization unit must be the project's root organization unit or one below it.
+- **Update**: set `projectId` in the request body of `PUT /agents/<AGENT_ID>` to check that the agent stays in the project. The request still replaces the whole agent, as described in [Manage an agent](#manage-an-agent). The organization unit checked is the one the request names with `ouId` or `ouHandle`, or the agent's current one when the request names none. A project ID never moves the agent on its own.
+
+A project that does not exist fails a create or update with `AGT-1047`, and an organization unit outside the project fails it with `AGT-1048`. An organization unit that does not exist, or a create request with none of `ouId`, `ouHandle`, and `projectId`, fails with `AGT-1005`.
+
+A data plane has no projects. It rejects a `projectId` in a create or update request with `AGT-1047`, and returns an empty list for `GET /agents?projectId=<project-id>`.

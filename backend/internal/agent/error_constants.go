@@ -546,6 +546,35 @@ var (
 			DefaultValue: "validUntil must be later than the current time",
 		},
 	}
+
+	// ErrorInvalidProject is returned when an agent names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1047",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+
+	// ErrorOUNotInProject is returned when an agent names an organization unit outside the project
+	// it names.
+	ErrorOUNotInProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1048",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.ou_not_in_project",
+			DefaultValue: "Organization unit not in project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.ou_not_in_project_description",
+			DefaultValue: "The organization unit must be the project's root organization unit or one below it",
+		},
+	}
 )
 
 // errInvalidDeclarativeLifespan is returned when a declarative agent's validUntil is not an RFC 3339
