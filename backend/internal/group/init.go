@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
@@ -21,6 +23,7 @@ import (
 // Initialize initializes the group service and registers its routes.
 func Initialize(
 	mux *http.ServeMux,
+	mcpServer *mcp.Server,
 	dbProvider provider.DBProviderInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	entityService entity.EntityServiceInterface,
@@ -55,6 +58,11 @@ func Initialize(
 	exporter := newGroupExporter(groupService)
 	groupHandler := newGroupHandler(groupService)
 	registerRoutes(mux, groupHandler)
+
+	if mcpServer != nil {
+		registerMCPTools(mcpServer, groupService)
+	}
+
 	return groupService, ouGroupResolver, exporter, nil
 }
 
