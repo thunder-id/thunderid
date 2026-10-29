@@ -10,6 +10,9 @@ import (
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 )
 
+// hydrateBatchSize bounds how many policy IDs one hydration statement matches.
+const hydrateBatchSize = 100
+
 const policyColumns = `ID, RESOURCE_TYPE, RESOURCE_ID, OWNING_OU_ID, INITIATING_OU_ID,
 	POLICY_STAGE, PARENT_POLICY_ID, SECTIONS, VERSION`
 
@@ -237,6 +240,50 @@ func buildRelevantPoliciesQuery(
 
 	return dbmodel.DBQuery{
 		ID:            "SHQ-SHARING_MGT-19",
+		Query:         postgresQuery,
+		PostgresQuery: postgresQuery,
+		SQLiteQuery:   sqliteQuery,
+	}, args
+}
+
+// buildListUnitsForPoliciesQuery returns the named units of every policy in policyIDs, so a set of
+// policies is hydrated in one statement rather than one per policy.
+func buildListUnitsForPoliciesQuery(policyIDs []string, deploymentID string) (dbmodel.DBQuery, []interface{}) {
+	return buildPolicyIDsQuery("SHQ-SHARING_MGT-21",
+		`SELECT POLICY_ID, SECTION, OU_ID, REACH FROM "RESOURCE_SHARING_POLICY_UNIT"
+			WHERE POLICY_ID IN (%s) AND DEPLOYMENT_ID = %s`,
+		policyIDs, deploymentID)
+}
+
+// buildListRulesForPoliciesQuery returns the overlay rules of every policy in policyIDs, for the same
+// reason.
+func buildListRulesForPoliciesQuery(policyIDs []string, deploymentID string) (dbmodel.DBQuery, []interface{}) {
+	return buildPolicyIDsQuery("SHQ-SHARING_MGT-22",
+		`SELECT POLICY_ID, ID, SECTION, OU_ID, FIELD_KEY, RESOLVED, REQUESTED
+			FROM "RESOURCE_SHARING_POLICY_OVERLAY_RULE"
+			WHERE POLICY_ID IN (%s) AND DEPLOYMENT_ID = %s`,
+		policyIDs, deploymentID)
+}
+
+// buildPolicyIDsQuery renders a statement that matches a list of policy IDs for both dialects.
+func buildPolicyIDsQuery(
+	queryID, statement string, policyIDs []string, deploymentID string,
+) (dbmodel.DBQuery, []interface{}) {
+	args := make([]interface{}, 0, len(policyIDs)+1)
+	postgresPlaceholders := make([]string, len(policyIDs))
+	sqlitePlaceholders := make([]string, len(policyIDs))
+	for i, id := range policyIDs {
+		postgresPlaceholders[i] = fmt.Sprintf("$%d", i+1)
+		sqlitePlaceholders[i] = "?"
+		args = append(args, id)
+	}
+	args = append(args, deploymentID)
+
+	postgresQuery := fmt.Sprintf(statement, strings.Join(postgresPlaceholders, ","),
+		fmt.Sprintf("$%d", len(policyIDs)+1))
+	sqliteQuery := fmt.Sprintf(statement, strings.Join(sqlitePlaceholders, ","), "?")
+	return dbmodel.DBQuery{
+		ID:            queryID,
 		Query:         postgresQuery,
 		PostgresQuery: postgresQuery,
 		SQLiteQuery:   sqliteQuery,

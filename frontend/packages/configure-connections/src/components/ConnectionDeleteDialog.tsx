@@ -27,6 +27,8 @@ interface ConnectionDeleteDialogProps {
   connectionType: ConnectionType;
   connectionId: string;
   connectionName: string;
+  /** Whether this connection is the default email sender, which server-sent email goes through. */
+  isDefaultEmailSender?: boolean;
   isPending: boolean;
   /** Resolved error message from a failed delete, rendered inline. The dialog stays open on failure. */
   error?: string | null;
@@ -39,6 +41,7 @@ export default function ConnectionDeleteDialog({
   connectionType,
   connectionId,
   connectionName,
+  isDefaultEmailSender = false,
   isPending,
   error = null,
   onConfirm,
@@ -63,6 +66,15 @@ export default function ConnectionDeleteDialog({
       <DialogTitle>{t('delete.title')}</DialogTitle>
       <DialogContent>
         <DialogContentText sx={{mb: 2}}>{t('delete.message', {name: connectionName})}</DialogContentText>
+
+        {isDefaultEmailSender && (
+          <Alert severity="warning" sx={{mb: 2}} data-testid="connection-delete-default-sender-warning">
+            {t(
+              'delete.defaultEmailSender',
+              'This is the default email sender. After you delete it, system-generated emails, such as account lock notifications, are not sent until another sender is set as the default.',
+            )}
+          </Alert>
+        )}
 
         {isLoadingUsages ? (
           <Alert severity="info" icon={<CircularProgress size={16} />}>

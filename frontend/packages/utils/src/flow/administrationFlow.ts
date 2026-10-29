@@ -64,12 +64,16 @@ export interface FlowExecutionResponse {
 }
 
 /**
- * One entry of `GET /flows`, narrowed to the fields needed to resolve a handle to an id.
+ * One entry of `GET /flows`, narrowed to the fields needed to resolve a handle to an id and list the
+ * flow.
  */
 export interface BasicFlowSummary {
   id: string;
   handle: string;
   flowType: string;
+  name: string;
+  updatedAt: string;
+  isReadOnly?: boolean;
 }
 
 /**
@@ -101,7 +105,8 @@ export const ADMINISTRATION_FLOW_TYPE = 'ADMINISTRATION';
 export const FLOW_PAGE_SIZE = 100;
 
 /**
- * `flow` server-config entries; an unset handle is the opt-out, running the native endpoint.
+ * `flow` server-config entries; an unset handle is the opt-out, running the native endpoint. The
+ * account lifecycle actions have no native endpoint, so an unset handle withholds them.
  */
 export const AdministrationFlowConfigKey = {
   APPLICATION_DELETION: 'applicationDeletionFlow',
@@ -113,6 +118,14 @@ export const AdministrationFlowConfigKey = {
   ROLE_PERMISSION_REMOVAL: 'rolePermissionRemovalFlow',
   ACTION_DELETION: 'actionDeletionFlow',
   USER_DELETION: 'userDeletionFlow',
+  USER_UNLOCK: 'userUnlockFlow',
+  USER_SUSPEND: 'userSuspendFlow',
+  USER_UNSUSPEND: 'userUnsuspendFlow',
+  AGENT_UNLOCK: 'agentUnlockFlow',
+  AGENT_SUSPEND: 'agentSuspendFlow',
+  AGENT_UNSUSPEND: 'agentUnsuspendFlow',
+  APPLICATION_SUSPEND: 'applicationSuspendFlow',
+  APPLICATION_UNSUSPEND: 'applicationUnsuspendFlow',
 } as const;
 
 export type AdministrationFlowConfigKeyValue =
@@ -128,6 +141,7 @@ export const AdministrationFlowInput = {
   ASSIGNEE: 'targetAssigneeId',
   GROUP: 'targetGroupId',
   MEMBER: 'targetMemberId',
+  OPERATOR_NOTE: 'operatorNote',
   PERMISSIONS: 'targetPermissions',
   RESOURCE: 'targetResourceId',
   RESOURCE_SERVER: 'targetResourceServerId',
@@ -136,10 +150,12 @@ export const AdministrationFlowInput = {
 } as const;
 
 /**
- * Keys of values a flow returns; a regenerated client secret is readable only here.
+ * Keys of values a flow returns; a regenerated client secret is readable only here. `emailSent` is
+ * `"false"` when a best-effort email node sent nothing.
  */
 export const AdministrationFlowData = {
   CLIENT_SECRET: 'clientSecret',
+  EMAIL_SENT: 'emailSent',
 } as const;
 
 /**
@@ -175,15 +191,9 @@ export async function resolveAdministrationFlowHandle(
   serverUrl: string,
   configKey: AdministrationFlowConfigKeyValue,
 ): Promise<string> {
-  const response = await http.request({
-    url: `${serverUrl}/server-config/flow`,
-    method: 'GET',
-  });
-  // The endpoint returns the declarative, writable and merged layers. Only the merged layer is the
-  // effective configuration, so reading the envelope directly would always miss the value.
-  const layers = (response?.data ?? {}) as ServerConfigLayers<Record<string, AdministrationFlowConfig>>;
+  const handles = await resolveAdministrationFlowHandles(http, serverUrl, [configKey]);
 
-  return layers.merged?.[configKey]?.defaultHandle ?? '';
+  return handles[configKey] ?? '';
 }
 
 /**
@@ -202,22 +212,9 @@ export async function findAdministrationFlowId(
   serverUrl: string,
   handle: string,
 ): Promise<string | null> {
-  for (let offset = 0; ; offset += FLOW_PAGE_SIZE) {
-    const response = await http.request({
-      url: `${serverUrl}/flows?flowType=${ADMINISTRATION_FLOW_TYPE}&limit=${FLOW_PAGE_SIZE}&offset=${offset}`,
-      method: 'GET',
-    });
-    const flows = ((response?.data ?? {}) as FlowListResponse).flows ?? [];
-    const match = flows.find((flow) => flow.handle === handle && flow.flowType === ADMINISTRATION_FLOW_TYPE);
+  const flows = await findAdministrationFlows(http, serverUrl, [handle]);
 
-    if (match) {
-      return match.id;
-    }
-    // A short page is the last page, so the handle is genuinely absent rather than further along.
-    if (flows.length < FLOW_PAGE_SIZE) {
-      return null;
-    }
-  }
+  return flows[handle]?.id ?? null;
 }
 
 /**
@@ -302,4 +299,94 @@ export async function runAdministrationFlow(
   const flowId = await resolveAdministrationFlowId(http, serverUrl, handle, action);
 
   return executeAdministrationFlow(http, serverUrl, flowId, inputs, action);
+}
+
+/**
+ * Reads the handle configured for each of several actions in one request. An action with no handle is
+ * absent from the result. Read failures propagate, as in {@link resolveAdministrationFlowHandle}.
+ */
+export async function resolveAdministrationFlowHandles(
+  http: HttpLike,
+  serverUrl: string,
+  configKeys: readonly AdministrationFlowConfigKeyValue[],
+): Promise<Record<string, string>> {
+  const response = await http.request({
+    url: `${serverUrl}/server-config/flow`,
+    method: 'GET',
+  });
+  // The endpoint returns the declarative, writable and merged layers. Only the merged layer is the
+  // effective configuration, so reading the envelope directly would always miss the value.
+  const layers = (response?.data ?? {}) as ServerConfigLayers<Record<string, AdministrationFlowConfig>>;
+  const section = layers.merged ?? {};
+  const handles: Record<string, string> = {};
+
+  configKeys.forEach((configKey) => {
+    const handle = section[configKey]?.defaultHandle;
+
+    if (handle) {
+      handles[configKey] = handle;
+    }
+  });
+
+  return handles;
+}
+
+/**
+ * Finds the administration flows carrying the given handles, in one walk of the listing that stops
+ * once every handle is found. A handle with no flow is absent from the result.
+ */
+export async function findAdministrationFlows(
+  http: HttpLike,
+  serverUrl: string,
+  handles: readonly string[],
+): Promise<Record<string, BasicFlowSummary>> {
+  const wanted = new Set(handles);
+  const found: Record<string, BasicFlowSummary> = {};
+
+  if (wanted.size === 0) {
+    return found;
+  }
+
+  for (let offset = 0; ; offset += FLOW_PAGE_SIZE) {
+    // Sequential: a page is requested only when the previous one did not complete the set.
+    const response = await http.request({
+      url: `${serverUrl}/flows?flowType=${ADMINISTRATION_FLOW_TYPE}&limit=${FLOW_PAGE_SIZE}&offset=${offset}`,
+      method: 'GET',
+    });
+    const flows = ((response?.data ?? {}) as FlowListResponse).flows ?? [];
+
+    flows.forEach((flow) => {
+      if (wanted.has(flow.handle) && flow.flowType === ADMINISTRATION_FLOW_TYPE) {
+        found[flow.handle] = flow;
+        wanted.delete(flow.handle);
+      }
+    });
+
+    // Everything found, or a short page, which is the last page, so the rest are genuinely absent.
+    if (wanted.size === 0 || flows.length < FLOW_PAGE_SIZE) {
+      return found;
+    }
+  }
+}
+
+/**
+ * Resolves each action whose configured handle names an existing flow to that flow, in one
+ * server-config read and one listing walk. A caller that needs only the identifier reads `id`.
+ */
+export async function resolveAdministrationFlows(
+  http: HttpLike,
+  serverUrl: string,
+  configKeys: readonly AdministrationFlowConfigKeyValue[],
+): Promise<Record<string, BasicFlowSummary>> {
+  const handles = await resolveAdministrationFlowHandles(http, serverUrl, configKeys);
+  const flows = await findAdministrationFlows(http, serverUrl, Object.values(handles));
+  const resolved: Record<string, BasicFlowSummary> = {};
+
+  Object.entries(handles).forEach(([configKey, handle]) => {
+    if (flows[handle]) {
+      resolved[configKey] = flows[handle];
+    }
+  });
+
+  return resolved;
 }

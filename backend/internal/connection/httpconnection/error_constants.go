@@ -13,8 +13,16 @@ var (
 	// errNameConflict reports that the unique index refused a write because another connection in
 	// the deployment has the same name.
 	errNameConflict = errors.New("an HTTP connection with the same name already exists")
+	// errIDConflict reports a create whose ID another connection, stored or declared, already has.
+	errIDConflict = errors.New("an HTTP connection with the same ID already exists")
 	// errConnectionNotFound reports that a write matched no connection.
 	errConnectionNotFound = errors.New("HTTP connection not found")
+	// errHTTPConnectionIsImmutable reports a write to a connection defined in a declarative file.
+	errHTTPConnectionIsImmutable = errors.New("HTTP connection is immutable")
+	// errInvalidDeclarativeData reports a file store entry that does not hold an HTTP connection.
+	errInvalidDeclarativeData = errors.New("invalid HTTP connection data")
+	// errResultLimitExceededInCompositeMode reports that a composite list exceeds its record cap.
+	errResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
 )
 
 var (
@@ -129,6 +137,75 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.connectionservice.invalid_http_connection_description_description",
 			DefaultValue: "The HTTP connection description must be at most 500 characters",
+		},
+	}
+	// ErrorHasBlockingDependencies is returned when an HTTP connection cannot be deleted because other
+	// resources use it.
+	ErrorHasBlockingDependencies = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1026",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.http_connection_has_blocking_dependencies",
+			DefaultValue: "HTTP connection cannot be deleted",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.connectionservice.http_connection_has_blocking_dependencies_description",
+			DefaultValue: "The HTTP connection cannot be deleted because {{param(dependencies)}} depend on it. " +
+				"Remove or reassign them first.",
+		},
+	}
+	// ErrorResultLimitExceededInCompositeMode is returned when the database and declarative HTTP
+	// connections together exceed the composite-mode record limit.
+	ErrorResultLimitExceededInCompositeMode = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1027",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.http_connection_result_limit_exceeded",
+			DefaultValue: "Result limit exceeded in composite mode",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.http_connection_result_limit_exceeded_description",
+			DefaultValue: "The total number of HTTP connections exceeds the maximum limit in composite mode",
+		},
+	}
+	// ErrorInvalidOU is the error returned when the organization unit given for an HTTP connection does not exist.
+	ErrorInvalidOU = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1028",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_http_connection_ou",
+			DefaultValue: "Invalid organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_http_connection_ou_description",
+			DefaultValue: "The organization unit given for the HTTP connection does not exist",
+		},
+	}
+	// ErrorOUUpdateNotAllowed is the error returned when attempting to change the
+	// organization unit of an HTTP connection.
+	ErrorOUUpdateNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1029",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.http_connection_ou_update_not_allowed",
+			DefaultValue: "Organization unit update not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.http_connection_ou_update_not_allowed_description",
+			DefaultValue: "The organization unit of an HTTP connection cannot be changed",
+		},
+	}
+	// ErrorOURequired is the error returned when an HTTP connection is created without an organization unit.
+	ErrorOURequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1030",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.http_connection_ou_required",
+			DefaultValue: "Organization unit required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.http_connection_ou_required_description",
+			DefaultValue: "An HTTP connection needs an organization unit. Give its ouId in the request",
 		},
 	}
 )

@@ -43,13 +43,13 @@ Check the pinned version first. It is the `@wso2/oxygen-ui` entry in the root `p
 | Story source at the pinned version | `https://github.com/wso2/oxygen-ui/tree/@wso2/oxygen-ui@<version>/packages/oxygen-ui-docs/stories/<Category>/<Component>.stories.tsx` | The same guidance, matching what is installed. Authoritative when it disagrees with the hosted Storybook |
 | How-to guides and page templates | `stories/Guides/` (browser tab title), the root-level `stories/HowToAddRuntimeThemeSupport.stories.tsx`, and `stories/Templates/` (wizard, tabbed content, empty state, form validation, create-service form, dashboard, login) | Composed patterns, before assembling a page from scratch |
 | Accessibility audit | `packages/oxygen-ui-docs/ACCESSIBILITY.md` at the same tag | WCAG 2.1 AA status, per-component fixes, known exceptions (section 7) |
-| Bundled agent docs | `frontend/apps/console/node_modules/@wso2/oxygen-ui/.ai/` (`AGENTS.md`, `components.md`, `patterns.md`, `theming.md`, `migration.md`) | Quick offline API reference. It is incomplete and can lag the stories: in 0.16.0 `components.md` lists only the `table` and `card` `ListingTable` variants (the stories also document `data-grid` and `data-grid-card`), and its `PageTitle` section omits `PageTitle.BackButton` and `PageTitle.Actions` |
+| Bundled agent docs | `frontend/apps/console/node_modules/@wso2/oxygen-ui/.ai/` (`AGENTS.md`, `components.md`, `patterns.md`, `theming.md`, `migration.md`) | Quick offline API reference. It is incomplete and can lag the stories: in 0.17.0 `components.md` lists only the `table` and `card` `ListingTable` variants (the stories also document `data-grid` and `data-grid-card`), does not document `ListingTable.Filter`, and its `PageTitle` section omits `PageTitle.BackButton` and `PageTitle.Actions` |
 | Type definitions | `frontend/apps/console/node_modules/@wso2/oxygen-ui/dist/components/<Name>/*.d.ts` | The final word on which props and sub-components exist in the installed version. Check here whenever the docs omit something |
 
 Fetch a story file without cloning:
 
 ```bash
-gh api 'repos/wso2/oxygen-ui/contents/packages/oxygen-ui-docs/stories/AppElements/ListingTable.stories.tsx?ref=@wso2/oxygen-ui@0.16.0' \
+gh api 'repos/wso2/oxygen-ui/contents/packages/oxygen-ui-docs/stories/AppElements/ListingTable.stories.tsx?ref=@wso2/oxygen-ui@0.17.0' \
   -H 'Accept: application/vnd.github.raw'
 ```
 
@@ -147,17 +147,35 @@ to the rules, not to the nearest example.
 </PageContent>
 ```
 
-The table is `ListingTable.Provider variant="data-grid-card" loading={isLoading}` >
-`ListingTable.Container disablePaper` > `ListingTable.DataGrid`, with `ListingTable.RowActions` for per-row menus
-(reference: `packages/configure-groups/src/components/GroupsList.tsx`). Every top-level `ListingTable` resource list in
-the Console uses `data-grid-card`. Not every list is a `ListingTable`, though:
+The table is `ListingTable.Provider variant="data-grid" loading={isLoading}` > `ListingTable.Container` (a paper
+surface, so no `disablePaper`) > `ListingTable.DataGrid`, with `ListingTable.RowActions` for per-row actions
+(reference: `packages/configure-groups/src/components/GroupsList.tsx`). Start from Oxygen's "Guides/Choosing a Table"
+story (`stories/Guides/ChoosingATable.stories.tsx`), then choose the `ListingTable` variant by what the table holds:
 
-- Member and assignment sub-lists inside edit pages and dialogs use `DataGrid.DataGrid` directly (groups
-  `ManageMembersSection`, roles `ManageAssignmentsSection`).
-- Connections and design render card grids, and organization units render a tree view.
+| Table | Variant | Reference |
+|---|---|---|
+| Top-level resource list whose rows open a detail page | `data-grid` on the `Provider`, in a paper `ListingTable.Container` | `configure-groups` `GroupsList` |
+| Sub-records inside an edit page, and pickers in dialogs (members, assignments, checkbox selection) | `data-grid` on the `Provider`, in a paper `ListingTable.Container` with a fixed height | `configure-groups` `ManageMembersSection`, `AddMemberDialog` |
+| Small static table, often with expandable rows | `table` (the default) with `density="compact"` | `configure-import-export` `ResourceSummaryTable` |
 
-Match the sibling surface. Choose a different variant or list type only after reading the variant guidance in the
-`ListingTable` stories.
+- Render the name column as `ListingTable.CellIcon`: the resource's avatar or its sidebar icon (size 20), the name as
+  `primary`, and a description or handle as `secondary` where one exists. A two-line cell needs `rowHeight={64}`,
+  as in Oxygen's "DataGrid Row Actions" story, since the default 52px row is too short for it.
+- Type chips are neutral: `size="small" variant="outlined"`, no color. Keep color only on status chips, which also
+  carry a text label.
+- Keep row actions always visible. `RowActions visibility="hover"` reveals them on mouse hover only, so a keyboard user
+  tabs onto invisible buttons. Every action `IconButton` has an `aria-label` matching its `Tooltip`.
+- `ListingTable.DataGrid` controls the grid's filter model for its own search, so set `disableColumnFilter` on every
+  `ListingTable.DataGrid`. Otherwise the column menu shows a filter that does nothing.
+- In the `table` variant, `<ListingTable>` sets cell padding by density, which overrides a cell's `sx` padding. Give a
+  collapse cell `padding="none"` (with `'& .MuiTableCell-paddingNone': {p: 0}` on the table), and put indents and extra
+  spacing on a `Box` inside the cell.
+
+Not every list is a `ListingTable`: connections and design render card grids, organization units render a tree view,
+and editable form rows (CORS origins, attribute mappings) are form fields, not tables.
+
+Match the sibling surface. Choose a different variant or list type only after reading the "Choosing a Table" guide and
+the variant guidance in the `ListingTable` stories.
 
 **Edit page** (reference: `packages/configure-groups/src/pages/GroupEditPage.tsx`): `PageContent` with
 `PageTitle.BackButton` (a `Link` built from the package's routes hook), `PageTitle.Header` with an inline-editable

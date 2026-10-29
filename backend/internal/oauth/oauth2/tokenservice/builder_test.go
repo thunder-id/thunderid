@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package tokenservice
@@ -2840,6 +2840,58 @@ func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_CarriesSessionID() {
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), testRefreshToken, result.Token)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_CarriesAuthorizationDetails() {
+	details := json.RawMessage(`[{"type":"payment_initiation","id":"d1"}]`)
+	buildCtx := &AccessTokenBuildContext{
+		Subject:              "user123",
+		Audiences:            []string{"app123"},
+		ClientID:             "test-client",
+		Scopes:               []string{"read"},
+		GrantType:            string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:             suite.oauthApp,
+		AuthorizationDetails: details,
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, "user123", "https://example.com", mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			value, ok := claims[constants.ClaimAuthorizationDetails].(json.RawMessage)
+			return ok && string(value) == string(details)
+		}), mock.Anything, mock.Anything,
+	).Return(testAccessToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), buildCtx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), details, result.AuthorizationDetails)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_OmitsAuthorizationDetailsWhenNone() {
+	buildCtx := &AccessTokenBuildContext{
+		Subject:   "user123",
+		Audiences: []string{"app123"},
+		ClientID:  "test-client",
+		Scopes:    []string{"read"},
+		GrantType: string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:  suite.oauthApp,
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, "user123", "https://example.com", mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			_, exists := claims[constants.ClaimAuthorizationDetails]
+			return !exists
+		}), mock.Anything, mock.Anything,
+	).Return(testAccessToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), buildCtx)
+
+	assert.NoError(suite.T(), err)
+	assert.Nil(suite.T(), result.AuthorizationDetails)
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
 

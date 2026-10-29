@@ -513,6 +513,7 @@ func TestACaptureRecordsTheExportOfEveryResource(t *testing.T) {
 	assert.NotEmpty(t, f.exporter.asked.Users)
 	assert.NotEmpty(t, f.exporter.asked.Groups)
 	assert.NotEmpty(t, f.exporter.asked.Applications)
+	assert.NotEmpty(t, f.exporter.asked.NotificationTemplates)
 }
 
 // The values an export carries beside its documents are kept, sealed, and never returned.

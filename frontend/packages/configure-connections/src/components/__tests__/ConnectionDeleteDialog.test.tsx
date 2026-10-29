@@ -120,4 +120,28 @@ describe('ConnectionDeleteDialog', () => {
 
     expect(screen.getByTestId('connection-delete-confirm')).not.toBeDisabled();
   });
+
+  it('warns that the default email sender is being deleted', () => {
+    render(
+      <ConnectionDeleteDialog
+        open
+        connectionType="email-smtp"
+        connectionId="sm1"
+        connectionName="Corp SMTP"
+        isDefaultEmailSender
+        isPending={false}
+        onConfirm={onConfirm}
+        onClose={onClose}
+      />,
+    );
+
+    expect(screen.getByTestId('connection-delete-default-sender-warning')).toBeInTheDocument();
+    expect(screen.getByTestId('connection-delete-confirm')).not.toBeDisabled();
+  });
+
+  it('does not warn for a connection that is not the default email sender', () => {
+    renderDialog();
+
+    expect(screen.queryByTestId('connection-delete-default-sender-warning')).not.toBeInTheDocument();
+  });
 });

@@ -45,12 +45,16 @@ vi.mock('@wso2/oxygen-ui', async () => {
   return {
     ...actual,
     ListingTable: {
-      Provider: ({children, loading}: {children: React.ReactNode; loading: boolean}) => (
-        <div data-testid="data-grid" data-loading={String(loading)}>
+      Provider: ({children, loading, variant}: {children: React.ReactNode; loading: boolean; variant: string}) => (
+        <div data-testid="data-grid" data-loading={String(loading)} data-variant={variant}>
           {children}
         </div>
       ),
-      Container: ({children}: {children: React.ReactNode}) => children,
+      Container: ({children, disablePaper = undefined}: {children: React.ReactNode; disablePaper?: boolean}) => (
+        <div data-testid="listing-container" data-disable-paper={disablePaper}>
+          {children}
+        </div>
+      ),
       DataGrid: ({
         rows,
         columns,
@@ -122,6 +126,13 @@ describe('TranslationsList', () => {
 
     expect(screen.getByTestId('row-fr-FR')).toBeInTheDocument();
     expect(screen.getByTestId('row-de-DE')).toBeInTheDocument();
+  });
+
+  it('renders the listing as a papered data grid', () => {
+    render(<TranslationsList />);
+
+    expect(screen.getByTestId('data-grid')).toHaveAttribute('data-variant', 'data-grid');
+    expect(screen.getByTestId('listing-container')).not.toHaveAttribute('data-disable-paper');
   });
 
   it('navigates to the edit page when a row is clicked', () => {

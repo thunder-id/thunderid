@@ -40,7 +40,7 @@ func registerMCPTools(server *mcp.Server, entityTypeService EntityTypeServiceInt
 	tools := &entityTypeTools{entityTypeService: entityTypeService}
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "thunderid_list_user_types",
+		Name:        "list_user_types",
 		Description: `List all user types.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "List User Types",

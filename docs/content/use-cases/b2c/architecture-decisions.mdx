@@ -11,13 +11,14 @@ You have now seen the [consumer access pattern](../overview), how [you build it,
 and [run it in Wayfinder](../try-it-out). This page is the reasoning behind that shape: the boundaries it assumes, and
 what to pick instead when your product does not fit those assumptions.
 
-The decisions fall into six groups:
+The decisions fall into seven groups:
 
 - Which system renders identity screens.
 - Which system owns customer records.
 - Which tokens and permissions backend APIs trust.
 - How long a sign-in lasts, how many applications it opens, and what ends it.
 - How the messages those journeys send are delivered, and what they say, look like, and are translated into.
+- Where a journey branches for different customers, and what decides the path.
 - Which operational controls your team needs before production.
 
 ## Decision Map
@@ -82,6 +83,19 @@ Decide how the recovery links, invitations, magic links, and one-time codes your
 - Customize notification content, design, and language so messages reflect your application and reach recipients in their language.
 
 See [Notification](../notification) for the full decision.
+
+## Choose Where Journeys Branch
+
+Decide which differences between customers get their own journey, and which become branching inside one journey.
+
+- Use separate journeys for applications that should not share a sign-in, as decided in
+  [Sessions & Logout](../sessions-and-logout#how-many-applications-one-sign-in-opens).
+- Branch inside a journey when the fact that decides the path only appears mid-journey, such as whether an account exists.
+- Decide on facts the journey already holds, and do not let what a customer typed skip a security step.
+- When branching on security, send missing information toward the stronger check, and give every branching point a
+  fallback path.
+
+See [Conditional Journeys](../conditional-journeys) for the full decision.
 
 ## Choose the Operating Model
 

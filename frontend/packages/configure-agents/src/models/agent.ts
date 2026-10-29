@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type {AssertionConfig, OAuth2Config} from '@thunderid/configure-applications';
+import type {AccessStatusReport} from '@thunderid/types';
+
 /**
  * Handle of the bootstrap-provisioned `default` agent type, which the agent listing's Schema button
  * looks up to show the schema behind the listed agents.
@@ -41,6 +43,10 @@ export interface Agent {
   assertion?: AssertionConfig;
   loginConsent?: AgentLoginConsentConfig;
   isReadOnly?: boolean;
+  /**
+   * Effective access status, derived by the server at read time. Read-only.
+   */
+  status?: AccessStatusReport;
 }
 
 export interface BasicAgent {
@@ -54,6 +60,10 @@ export interface BasicAgent {
   clientId?: string;
   attributes?: Record<string, unknown>;
   isReadOnly?: boolean;
+  /**
+   * Effective access status, derived by the server at read time. Read-only.
+   */
+  status?: AccessStatusReport;
 }
 
 export interface AgentListResponse {
@@ -79,6 +89,8 @@ export interface UpdateAgentRequest {
   description?: string;
   logoUrl?: string;
   owner?: string;
+  /** Whether the agent acts on behalf of a signed-in user. Not stored; it selects the grant rules checked on save. */
+  delegated?: boolean;
   attributes?: Record<string, unknown>;
   allowedUserTypes?: string[];
   allowedAgentTypes?: string[];

@@ -103,7 +103,7 @@ func (suite *FlowInferenceTestSuite) listFlowsByType(flowType string) []BasicFlo
 
 // createFlow posts a flow definition and returns the created flow.
 func (suite *FlowInferenceTestSuite) createFlow(flowDef FlowDefinition) *CompleteFlowDefinition {
-	body, err := json.Marshal(flowDef)
+	body, err := json.Marshal(withOwner(flowDef))
 	suite.Require().NoError(err)
 
 	req, err := http.NewRequest(http.MethodPost, testServerURL+flowsEndpoint, bytes.NewBuffer(body))
@@ -225,7 +225,7 @@ func (suite *FlowInferenceTestSuite) TestCreateRegistrationFlow_RequiresProvisio
 	regFlow.Name = "Missing Provisioning Probe Flow"
 	regFlow.FlowType = "REGISTRATION"
 
-	body, err := json.Marshal(regFlow)
+	body, err := json.Marshal(withOwner(regFlow))
 	suite.Require().NoError(err)
 
 	req, err := http.NewRequest(http.MethodPost, testServerURL+flowsEndpoint, bytes.NewBuffer(body))

@@ -350,6 +350,14 @@ func InitSystemPermissions(handle string) {
 		{"PUT /agent-types/**", p.AgentType},
 		{"DELETE /agent-types/**", p.AgentType},
 
+		// Project APIs. Creating a project creates a root organization unit, which is a root
+		// administrator operation, so the whole surface requires root.
+		{"GET /projects", p.Root},
+		{"POST /projects", p.Root},
+		{"GET /projects/**", p.Root},
+		{"PUT /projects/**", p.Root},
+		{"DELETE /projects/**", p.Root},
+
 		// Variable store APIs. The whole surface requires root rather than a narrower permission:
 		// the store holds credentials, and even the list of names is sensitive. This matches the
 		// default for an unlisted path, and says so rather than relying on it.

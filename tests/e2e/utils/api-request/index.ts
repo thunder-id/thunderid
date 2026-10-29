@@ -16,6 +16,12 @@ import { getAdminToken } from "../authentication";
 
 export const serverUrl = process.env.SERVER_URL || "https://localhost:8090";
 
+/** The effective access status a user, agent or application read carries. */
+export type ApiAccessStatus = {
+  value: "ACTIVE" | "LOCKED" | "SUSPENDED";
+  details?: { reason?: string; operatorNote?: string };
+};
+
 type Method = "GET" | "POST" | "PUT" | "DELETE";
 
 // One token per worker process, shared by every helper in it. getAdminToken costs two

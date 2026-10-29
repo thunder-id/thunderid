@@ -1,7 +1,7 @@
 # Agent Onboarding Flow Specification
 
 - **Status:** Draft
-- **Version:** 0.1
+- **Version:** 0.2
 
 ## Summary
 
@@ -387,6 +387,8 @@ The Console must read the `merged` configuration layer. A missing handle, a hand
 
 Handle resolution must search subsequent pages of administration flows. The Console must not assume the bootstrap flow is on the first page or hardcode its ID.
 
+Every flow, including this one, belongs to exactly one organization unit. A flow document in a bootstrap or declarative file names its owner with `ouId` or `ouHandle`, so the default flow will carry `ouHandle: default`. A flow created through `POST /flows` must give `ouId`, and a flow's owner cannot change afterwards.
+
 The default flow and its configuration will be bootstrap resources. Existing deployments must apply those resources through the bootstrap process during upgrade; a binary update alone must not be assumed to install them. Flow authors may select another administration flow by changing the configured handle.
 
 ## Requirements
@@ -519,9 +521,11 @@ The default flow and its configuration will be bootstrap resources. Existing dep
 - **AC11.3:** Given an agent resolver or uniqueness validator, when its properties are edited, then the corresponding allowed types or category can be configured.
 - **AC11.4:** Given another valid administration flow handle in the merged server configuration, when onboarding starts, then the Console runs that flow.
 - **AC11.5:** Given a flow authored from the Agent Onboarding Flow template with no agent type resolver added, when it runs, then provisioning fails rather than creating an agent under an assumed type.
+- **AC11.6:** Given a flow document with neither `ouId` nor `ouHandle`, when it is imported, loaded from a declarative or bootstrap file, or created through `POST /flows`, then it is refused, and given a flow that already has an owner, when an update names a different organization unit, then the update is refused.
 
 ## Change log
 
 | Version | Date | Change |
 |---|---|---|
 | 0.1 | 2026-09-07 | Initial specification. |
+| 0.2 | 2026-10-26 | Every flow is owned by exactly one organization unit. A flow names its owner with `ouId` on create, or with `ouId` or `ouHandle` in a bootstrap or declarative file, and the default onboarding flow carries `ouHandle: default` (AC11.6). |

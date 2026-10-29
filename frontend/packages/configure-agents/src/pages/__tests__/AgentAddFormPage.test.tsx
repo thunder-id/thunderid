@@ -61,6 +61,13 @@ const agentTypes = {
   types: [{id: 'type-1', handle: 'default', displayName: 'Default', ouId: 'ou-root'}],
 };
 
+const users = {
+  totalResults: 1,
+  startIndex: 1,
+  count: 1,
+  users: [{id: 'user-1', ouId: 'ou-root', type: 'person', display: 'alice'}],
+};
+
 const defaultType = {
   id: 'type-1',
   handle: 'default',
@@ -82,9 +89,14 @@ function requests(): RecordedRequest[] {
   return h.http.request.mock.calls.map(([config]) => config as RecordedRequest);
 }
 
+// The agent type select comes first in the form and the owner select second.
+async function chooseOption(user: ReturnType<typeof userEvent.setup>, index: number, label: string): Promise<void> {
+  await user.click((await screen.findAllByRole('combobox'))[index]);
+  await user.click(within(await screen.findByRole('listbox')).getByText(label));
+}
+
 async function fillRequired(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-  await user.click(await screen.findByRole('combobox'));
-  await user.click(within(await screen.findByRole('listbox')).getByText('Default'));
+  await chooseOption(user, 0, 'Default');
   await user.click(await screen.findByTestId('ou-picker'));
   await user.type(await screen.findByRole('textbox', {name: /^name/}), 'Calendar Agent');
 }
@@ -98,6 +110,9 @@ describe('AgentAddFormPage', () => {
       const {url, method} = config as RecordedRequest;
       if (method === 'POST' && url.endsWith('/agents')) {
         return Promise.resolve({data: h.created.current});
+      }
+      if (url.includes('/users')) {
+        return Promise.resolve({data: users});
       }
       if (url.includes('/agent-types/type-1')) {
         return Promise.resolve({data: defaultType});
@@ -142,6 +157,81 @@ describe('AgentAddFormPage', () => {
     // No flow is involved anywhere along the way.
     expect(requests().some((request) => request.url.includes('/flow/execute'))).toBe(false);
     expect(requests().some((request) => request.url.includes('/server-config/flow'))).toBe(false);
+  });
+
+  it('posts the chosen owner, and none when no owner is chosen', async () => {
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await fillRequired(user);
+    await user.type(await screen.findByRole('textbox', {name: /llmModel/}), 'claude');
+    await chooseOption(user, 1, 'alice');
+    await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
+
+    await waitFor(() => {
+      expect(requests().find((request) => request.method === 'POST')?.data).toMatchObject({owner: 'user-1'});
+    });
+  });
+
+  // Answers the users request with the given outcome and everything else as the other tests do.
+  function answerUsersWith(outcome: () => Promise<{data: unknown}>): void {
+    const base = h.http.request.getMockImplementation() as (config: unknown) => Promise<{data: unknown}>;
+    h.http.request.mockImplementation((config: unknown) =>
+      (config as RecordedRequest).url.includes('/users') ? outcome() : base(config),
+    );
+  }
+
+  it('tells two users with the same display name apart by their IDs', async () => {
+    answerUsersWith(() =>
+      Promise.resolve({
+        data: {
+          totalResults: 3,
+          startIndex: 1,
+          count: 3,
+          users: [
+            {id: 'user-1', ouId: 'ou-root', type: 'person', display: 'sam'},
+            {id: 'user-2', ouId: 'ou-root', type: 'person', display: 'sam'},
+            {id: 'user-3', ouId: 'ou-root', type: 'person', display: 'alice'},
+          ],
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await fillRequired(user);
+    await user.click((await screen.findAllByRole('combobox'))[1]);
+    const listbox = await screen.findByRole('listbox');
+
+    expect(within(listbox).getByText('sam (user-1)')).toBeInTheDocument();
+    expect(within(listbox).getByText('sam (user-2)')).toBeInTheDocument();
+    expect(within(listbox).getByText('alice')).toBeInTheDocument();
+  });
+
+  it('says so when the users to choose an owner from cannot be loaded, and offers a retry', async () => {
+    let attempts = 0;
+    answerUsersWith(() => {
+      attempts += 1;
+      return attempts === 1 ? Promise.reject(new Error('network down')) : Promise.resolve({data: users});
+    });
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await fillRequired(user);
+    await user.click(await screen.findByRole('button', {name: 'common:actions.refresh'}));
+
+    // Only the agent type select is left until the owners load, then the owner select is back.
+    await waitFor(() => {
+      expect(screen.getAllByRole('combobox')).toHaveLength(2);
+    });
+    expect(attempts).toBeGreaterThan(1);
+  });
+
+  it('says when only the first users are offered as owners', async () => {
+    answerUsersWith(() => Promise.resolve({data: {...users, totalResults: 250}}));
+    render(<AgentAddFormPage />);
+
+    expect(await screen.findByText('agents:addForm.ownerTruncated')).toBeInTheDocument();
   });
 
   it('shows the issued client secret once, then opens the agent', async () => {
@@ -228,11 +318,8 @@ describe('AgentAddFormPage', () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);
 
-    const choose = async (type: string): Promise<void> => {
-      await user.click(screen.getByRole('combobox'));
-      await user.click(within(await screen.findByRole('listbox')).getByText(type));
-    };
-    await screen.findByRole('combobox');
+    const choose = (type: string): Promise<void> => chooseOption(user, 0, type);
+    await screen.findAllByRole('combobox');
     await choose('Default');
     await screen.findByRole('textbox', {name: /environment/});
     await choose('Assistant');
@@ -263,8 +350,7 @@ describe('AgentAddFormPage', () => {
     const submit = await screen.findByRole('button', {name: 'agents:addForm.submit'});
     expect(submit).toBeDisabled();
 
-    await user.click(await screen.findByRole('combobox'));
-    await user.click(within(await screen.findByRole('listbox')).getByText('Default'));
+    await chooseOption(user, 0, 'Default');
     await user.click(await screen.findByTestId('ou-picker'));
     await screen.findByRole('textbox', {name: /llmModel/});
     expect(submit).toBeEnabled();

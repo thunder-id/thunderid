@@ -147,7 +147,7 @@ func main() {
 	go func() {
 		startupDuration := time.Since(startupStartedAt)
 		logger.Info(ctx, "ThunderID Control Plane started",
-			log.String("startup_time", startupDuration.String()))
+			log.String("mode", string(config.GetServerMode())), log.String("startup_time", startupDuration.String()))
 		if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
 			logger.Fatal(ctx, "Failed to serve requests", log.Error(err))
 		}
@@ -210,7 +210,8 @@ func initThunderConfigurations(ctx context.Context, logger *log.Logger, serverHo
 	}
 
 	// Initialize runtime configurations.
-	if err := config.InitializeServerRuntime(serverHome, cfg); err != nil {
+	if err := config.InitializeServerRuntime(serverHome, cfg,
+		config.WithMode(config.ServerModeControlPlane)); err != nil {
 		logger.Fatal(ctx, "Failed to initialize server runtime", log.Error(err))
 	}
 
@@ -263,12 +264,13 @@ func createHTTPServer(ctx context.Context, logger *log.Logger, cfg *config.Confi
 	// Build the server address using hostname and port from the configurations.
 	serverAddr := fmt.Sprintf("%s:%d", cfg.Server.Hostname, cfg.Server.Port)
 
+	timeouts := cfg.Server.Timeouts
 	server := &http.Server{
 		Addr:              serverAddr,
 		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second, // Mitigate Slowloris attacks
-		WriteTimeout:      10 * time.Second,
-		IdleTimeout:       120 * time.Second,
+		ReadHeaderTimeout: timeouts.ReadHeader(), // Mitigate Slowloris attacks
+		WriteTimeout:      timeouts.Write(),
+		IdleTimeout:       timeouts.Idle(),
 		ErrorLog:          log.NewServerErrorLog(logger),
 	}
 

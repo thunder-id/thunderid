@@ -26,13 +26,14 @@ func Initialize(
 	discoveryService discovery.DiscoveryServiceInterface,
 	tokenValidator tokenservice.TokenValidatorInterface,
 	jtiStore jti.JTIStoreInterface,
+	governance providers.IdentityGovernanceProvider,
 	assertionCfg engineconfig.ClientAssertionConfig,
 	jwtLeeway int64,
 ) TokenIntrospectionServiceInterface {
 	introspectionService := newTokenIntrospectionService(tokenValidator)
 	introspectHandler := newTokenIntrospectionHandler(introspectionService)
 	registerRoutes(mux, introspectHandler, actorProvider, authnProvider, jwtService, discoveryService,
-		jtiStore, assertionCfg, jwtLeeway)
+		jtiStore, governance, assertionCfg, jwtLeeway)
 	return introspectionService
 }
 
@@ -45,6 +46,7 @@ func registerRoutes(
 	jwtService jwt.JWTServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 	jtiStore jti.JTIStoreInterface,
+	governance providers.IdentityGovernanceProvider,
 	assertionCfg engineconfig.ClientAssertionConfig,
 	jwtLeeway int64,
 ) {
@@ -56,7 +58,7 @@ func registerRoutes(
 	}
 
 	issuer := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).Issuer
-	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, jwtService,
+	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, governance, jwtService,
 		jtiStore, issuer, assertionCfg, jwtLeeway)
 	handler := clientAuthMiddleware(http.HandlerFunc(introspectHandler.HandleIntrospect))
 

@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
@@ -1445,4 +1446,38 @@ func (suite *HTTPUtilTestSuite) TestIsZeroValue_EmptySlice() {
 	var valErr *ValidationError
 	assert.True(suite.T(), errors.As(err, &valErr))
 	assert.Contains(suite.T(), valErr.Errors, "items")
+}
+
+// A route that extends its write deadline answers after the server's write timeout has passed, where
+// one that does not loses its connection; a zero extension leaves the server's timeout in place. The
+// handler only has to outlast the server's 100 ms, which a slow machine makes it do all the more, and
+// the extension is an hour, so no pause decides either outcome.
+func (suite *HTTPUtilTestSuite) TestExtendWriteDeadline() {
+	slow := func(extend time.Duration) http.HandlerFunc {
+		return func(w http.ResponseWriter, _ *http.Request) {
+			suite.Require().NoError(ExtendWriteDeadline(w, extend))
+			time.Sleep(300 * time.Millisecond)
+			_, _ = w.Write([]byte("done"))
+		}
+	}
+	get := func(handler http.Handler) (string, error) {
+		server := httptest.NewUnstartedServer(handler)
+		server.Config.WriteTimeout = 100 * time.Millisecond
+		server.Start()
+		defer server.Close()
+		resp, err := server.Client().Get(server.URL)
+		if err != nil {
+			return "", err
+		}
+		defer func() { _ = resp.Body.Close() }()
+		body, err := io.ReadAll(resp.Body)
+		return string(body), err
+	}
+
+	body, err := get(slow(time.Hour))
+	suite.Require().NoError(err)
+	suite.Equal("done", body)
+
+	_, err = get(slow(0))
+	suite.Error(err, "a route that keeps the server's timeout should lose its connection")
 }

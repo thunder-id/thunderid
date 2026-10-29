@@ -15,7 +15,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -432,6 +434,17 @@ func (h *handler) deleteHTTPConnection(w http.ResponseWriter, r *http.Request) {
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
 }
 
+// usagesHTTPConnection lists the resources that use an HTTP connection.
+func (h *handler) usagesHTTPConnection(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	usages, svcErr := h.svc.usagesHTTP(ctx, r.PathValue("id"))
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, usages)
+}
+
 // writeHTTPConnection writes an HTTP connection with its secret masked.
 func writeHTTPConnection(ctx context.Context, w http.ResponseWriter, status int,
 	connection *httpconnection.HTTPConnection) {
@@ -630,5 +643,116 @@ func (h *handler) usagesSenderInstance(senderType ncommon.NotificationSenderType
 			return
 		}
 		sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, usages)
+	}
+}
+
+// handleSharingPolicyPost records a sharing policy on a connection.
+func (h *handler) handleSharingPolicyPost(owner ownerLookup) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		wire, ok := sharing.DecodePolicyBody[sharing.PolicyCreateBody](ctx, w, r, ErrorInvalidRequestFormat)
+		if !ok {
+			return
+		}
+		req := wire.ToPolicyRequest()
+		// A reach not bounded by where the issuer sits is a deployment decision, so this API leaves it
+		// to a resource file or an import. An edit may still restate such a section to move its
+		// exclusions, and the framework refuses any edit that would introduce one.
+		if req.IsDeploymentWide() {
+			sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, apierror.ErrorResponse{
+				Code:        ErrorDeploymentWideSharingNotAllowed.Code,
+				Message:     ErrorDeploymentWideSharingNotAllowed.Error,
+				Description: ErrorDeploymentWideSharingNotAllowed.ErrorDescription,
+			})
+			return
+		}
+
+		policy, svcErr := h.svc.createSharingPolicy(ctx, owner, r.PathValue("id"), req)
+		if svcErr != nil {
+			writeServiceError(ctx, w, svcErr)
+			return
+		}
+		sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, sharing.ToPolicyResponse(policy))
+	}
+}
+
+// handleSharingPolicyList returns one page of a connection's sharing policies.
+func (h *handler) handleSharingPolicyList(owner ownerLookup) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		limit, offset, svcErr := parsePaginationParams(r.URL.Query())
+		if svcErr != nil {
+			writeServiceError(ctx, w, svcErr)
+			return
+		}
+		list, svcErr := h.svc.listSharingPolicies(ctx, owner, r.PathValue("id"), limit, offset)
+		if svcErr != nil {
+			writeServiceError(ctx, w, svcErr)
+			return
+		}
+		sysutils.WriteSuccessResponse(ctx, w, http.StatusOK,
+			sharing.ToPolicyListResponse(list, r.URL.Path, limit, offset))
+	}
+}
+
+// handleSharingPolicyGet returns one of a connection's sharing policies.
+func (h *handler) handleSharingPolicyGet(owner ownerLookup) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		policy, svcErr := h.svc.getSharingPolicy(ctx, owner, r.PathValue("id"), r.PathValue("policyId"))
+		if svcErr != nil {
+			writeServiceError(ctx, w, svcErr)
+			return
+		}
+		sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, sharing.ToPolicyResponse(policy))
+	}
+}
+
+// handleSharingPolicyPut replaces a sharing policy's contents.
+func (h *handler) handleSharingPolicyPut(owner ownerLookup) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		wire, ok := sharing.DecodePolicyBody[sharing.PolicyUpdateBody](ctx, w, r, ErrorInvalidRequestFormat)
+		if !ok {
+			return
+		}
+		policy, svcErr := h.svc.updateSharingPolicy(ctx, owner, r.PathValue("id"), r.PathValue("policyId"),
+			wire.ToPolicyRequest())
+		if svcErr != nil {
+			writeServiceError(ctx, w, svcErr)
+			return
+		}
+		sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, sharing.ToPolicyResponse(policy))
+	}
+}
+
+// handleSharingPolicyDelete removes a sharing policy.
+func (h *handler) handleSharingPolicyDelete(owner ownerLookup) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		if svcErr := h.svc.deleteSharingPolicy(ctx, owner, r.PathValue("id"), r.PathValue("policyId")); svcErr != nil {
+			writeServiceError(ctx, w, svcErr)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// handleOverlayRuleGet answers what the organization unit named in ouId may do with the connection.
+func (h *handler) handleOverlayRuleGet(owner ownerLookup) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		overlay, svcErr := h.svc.resolveSharingOverlay(ctx, owner, r.PathValue("id"), r.URL.Query().Get("ouId"))
+		if svcErr != nil {
+			writeServiceError(ctx, w, svcErr)
+			return
+		}
+		sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, sharing.ToResolvedOverlayResponse(overlay))
 	}
 }

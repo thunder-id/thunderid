@@ -11,6 +11,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -29,11 +30,15 @@ const (
 type roleExporter struct {
 	service           RoleServiceInterface
 	assignmentService RoleAssignmentServiceInterface
+	sharingService    sharing.SharingServiceInterface
 }
 
 // newRoleExporter creates a new role exporter.
-func newRoleExporter(service RoleServiceInterface, assignmentService RoleAssignmentServiceInterface) *roleExporter {
-	return &roleExporter{service: service, assignmentService: assignmentService}
+func newRoleExporter(
+	service RoleServiceInterface, assignmentService RoleAssignmentServiceInterface,
+	sharingService sharing.SharingServiceInterface,
+) *roleExporter {
+	return &roleExporter{service: service, assignmentService: assignmentService, sharingService: sharingService}
 }
 
 // GetResourceType returns the resource type for roles.
@@ -80,7 +85,7 @@ func (e *roleExporter) GetAllResourceIDs(ctx context.Context) ([]string, *tidcom
 	return ids, nil
 }
 
-// GetResourceByID retrieves a role by its ID.
+// GetResourceByID retrieves a role by its ID, with the sharing policies recorded for it.
 func (e *roleExporter) GetResourceByID(
 	ctx context.Context, id string) (interface{}, string, *tidcommon.ServiceError) {
 	roleWithPermissions, err := e.service.GetRoleWithPermissions(ctx, id)
@@ -93,18 +98,30 @@ func (e *roleExporter) GetResourceByID(
 		return nil, "", err
 	}
 
+	// A document that silently lost its sharing would re-import as a role shared with nobody, so
+	// this fails the export rather than thinning it.
+	replayable, sharingErr := e.sharingService.ExportPolicies(ctx, RoleSharingType, id)
+	if sharingErr != nil {
+		return nil, "", translateSharingError(sharingErr)
+	}
+	var policies []sharing.PolicyRequest
+	for _, r := range replayable {
+		policies = append(policies, r.Request)
+	}
+
 	perms := make([]roleDeclarativePermission, 0, len(roleWithPermissions.Permissions))
 	for _, p := range roleWithPermissions.Permissions {
 		perms = append(perms, roleDeclarativePermission(p))
 	}
 
 	role := &roleDeclarativeResource{
-		ID:          roleWithPermissions.ID,
-		Name:        roleWithPermissions.Name,
-		Description: roleWithPermissions.Description,
-		OUID:        roleWithPermissions.OUID,
-		Permissions: perms,
-		Assignments: assignments,
+		ID:              roleWithPermissions.ID,
+		Name:            roleWithPermissions.Name,
+		Description:     roleWithPermissions.Description,
+		OUID:            roleWithPermissions.OUID,
+		Permissions:     perms,
+		SharingPolicies: policies,
+		Assignments:     assignments,
 	}
 
 	return role, role.Name, nil
@@ -215,13 +232,14 @@ func parseToRoleWrapper(data []byte) (interface{}, error) {
 type roleDeclarativePermission ResourcePermissions
 
 type roleDeclarativeResource struct {
-	ID          string                      `yaml:"id"`
-	Name        string                      `yaml:"name"`
-	Description string                      `yaml:"description,omitempty"`
-	OUID        string                      `yaml:"ouId,omitempty"`
-	OUHandle    string                      `yaml:"ouHandle,omitempty"`
-	Permissions []roleDeclarativePermission `yaml:"permissions"`
-	Assignments []RoleAssignment            `yaml:"assignments,omitempty"`
+	ID              string                      `yaml:"id"`
+	Name            string                      `yaml:"name"`
+	Description     string                      `yaml:"description,omitempty"`
+	OUID            string                      `yaml:"ouId,omitempty"`
+	OUHandle        string                      `yaml:"ouHandle,omitempty"`
+	Permissions     []roleDeclarativePermission `yaml:"permissions"`
+	SharingPolicies []sharing.PolicyRequest     `yaml:"sharingPolicies,omitempty"`
+	Assignments     []RoleAssignment            `yaml:"assignments,omitempty"`
 }
 
 // toResourcePermissions converts roleDeclarativePermission to ResourcePermissions.
@@ -352,4 +370,50 @@ func (e *roleExporter) getAllRoleAssignments(
 	}
 
 	return assignments, nil
+}
+
+// makeRoleSharingConfig creates the loader config the sharing framework reads a role's declared
+// policies with. It names the roles directory, because a policy is carried inside the role that
+// declares it rather than in a document of its own.
+func makeRoleSharingConfig(service RoleServiceInterface) sharing.DeclarativeLoaderConfig {
+	return sharing.DeclarativeLoaderConfig{
+		ResourceType:  RoleSharingType,
+		DirectoryName: "roles",
+		Parser:        makeRoleSharingParser(service),
+	}
+}
+
+// makeRoleSharingParser returns a parser that reads the sharing half of one role document.
+//
+// It resolves through the service because a document may name its organization unit by handle,
+// and a policy has to be declared against the id.
+func makeRoleSharingParser(
+	service RoleServiceInterface,
+) func([]byte) (*sharing.DeclaredResourcePolicies, error) {
+	return func(data []byte) (*sharing.DeclaredResourcePolicies, error) {
+		var resource roleDeclarativeResource
+		if err := yaml.Unmarshal(data, &resource); err != nil {
+			return nil, fmt.Errorf("failed to parse role YAML: %w", err)
+		}
+		// Most documents declare no policy, and resolving one that has nothing to declare would be
+		// a lookup for an answer nobody reads.
+		if len(resource.SharingPolicies) == 0 {
+			return &sharing.DeclaredResourcePolicies{ResourceID: resource.ID}, nil
+		}
+
+		role := &RoleWithPermissionsAndAssignments{
+			ID: resource.ID, Name: resource.Name, OUID: resource.OUID, OUHandle: resource.OUHandle,
+		}
+		if svcErr := service.ResolveRoleOUHandle(context.Background(), role); svcErr != nil {
+			return nil, fmt.Errorf("organization unit with handle %q not found for role '%s'",
+				resource.OUHandle, resource.Name)
+		}
+
+		return &sharing.DeclaredResourcePolicies{
+			ResourceID:   resource.ID,
+			ResourceName: resource.Name,
+			OwningOUID:   role.OUID,
+			Policies:     resource.SharingPolicies,
+		}, nil
+	}
 }

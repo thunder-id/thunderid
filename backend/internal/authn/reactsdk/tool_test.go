@@ -51,6 +51,14 @@ func (suite *ReactSDKToolsTestSuite) TestIntegrateReactSDK_Defaults() {
 	assert.Contains(suite.T(), output.CodeSnippets, "https://localhost:8090")
 }
 
+func (suite *ReactSDKToolsTestSuite) TestIntegrateReactSDK_NamesToolsWithoutPrefix() {
+	_, output, err := integrateReactSDK(context.Background(), nil, integrateReactSDKInput{})
+
+	assert.NoError(suite.T(), err)
+	assert.NotContains(suite.T(), output.Instructions, "thunderid_")
+	assert.Contains(suite.T(), output.Instructions, "`update_application`")
+}
+
 func (suite *ReactSDKToolsTestSuite) TestRegisterTools() {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "test-server",
@@ -73,10 +81,10 @@ func (suite *ReactSDKToolsTestSuite) TestRegisterTools() {
 	found := false
 	iter := featuresField.MapRange()
 	for iter.Next() {
-		if iter.Key().String() == "thunderid_integrate_react_sdk" {
+		if iter.Key().String() == "integrate_react_sdk" {
 			found = true
 			break
 		}
 	}
-	assert.True(suite.T(), found, "thunderid_integrate_react_sdk tool should be registered")
+	assert.True(suite.T(), found, "integrate_react_sdk tool should be registered")
 }

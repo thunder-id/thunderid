@@ -76,7 +76,7 @@ This section applies to OAuth 2.0 / OIDC applications (Browser App, Full-stack A
 
 On the **Token** tab, configure what your application's tokens carry and how long they stay valid. The tab has two sub-tabs:
 
-- **User**: the tokens issued when a user signs in. Available when the application supports a user sign-in grant, such as `authorization_code`.
+- **User**: the tokens issued when a user signs in. Available when the application supports a user sign-in grant, such as `authorization_code`. The access token validity here also applies to the access tokens <ProductName /> issues when the application redeems an ID-JAG with the `jwt-bearer` grant. The Console edits the **User** sub-tab only when the application holds a sign-in grant (`authorization_code` or CIBA). For an application that only redeems ID-JAGs, set `token.accessToken.userConfig.validityPeriod` through the API. See [Accept Identity Assertions from an External IdP](../../protocols/oauth-oidc/identity-assertion-grant/accept-identity-assertions#token-lifetime).
 - **Application**: the access token the application receives for itself through the `client_credentials` grant.
 
 Each sub-tab stays read-only until its grant type is enabled on the Advanced tab.

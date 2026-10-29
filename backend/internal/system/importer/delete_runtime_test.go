@@ -8,12 +8,15 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -60,7 +63,10 @@ func (f *fakeOUService) DeleteOrganizationUnit(context.Context, string) *tidcomm
 	return nil
 }
 
-func (f *fakeRoleService) DeleteRole(context.Context, string) *tidcommon.ServiceError { return nil }
+func (f *fakeRoleService) DeleteRole(_ context.Context, id string) *tidcommon.ServiceError {
+	f.deleted = append(f.deleted, id)
+	return nil
+}
 
 func (f *fakeGroupService) DeleteGroup(context.Context, string) *tidcommon.ServiceError { return nil }
 
@@ -413,4 +419,66 @@ func TestImportResources_DeleteDryRunStillRefusesAnUnsupportedType(t *testing.T)
 	require.Len(t, resp.Results, 1)
 	assert.Equal(t, statusFailed, resp.Results[0].Status)
 	assert.Equal(t, ErrorDeleteNotSupported.Code, resp.Results[0].Code)
+}
+
+func (s *ImportHTTPConnectionTestSuite) deleteConnections(ids ...string) *ImportResponse {
+	s.T().Helper()
+	idpSvc := &fakeIDPService{byID: map[string]*providers.IDPDTO{}, byName: map[string]*providers.IDPDTO{}}
+	senderSvc := &fakeSenderService{byID: map[string]*ncommon.NotificationSenderDTO{}}
+	s.svc = s.newService(idpSvc, senderSvc, s.adapter)
+	deletions := make([]ResourceDeletion, 0, len(ids))
+	for _, id := range ids {
+		deletions = append(deletions, ResourceDeletion{ResourceType: resourceTypeConnection, ID: id})
+	}
+	resp, err := s.svc.ImportResources(context.Background(), &ImportRequest{
+		Deletions: deletions,
+		Options:   deleteOptions(),
+	})
+	s.Require().Nil(err)
+	s.Require().Len(resp.Results, len(ids))
+	return resp
+}
+
+// The HTTP connection service is the last one asked, so it is reached only when no other holds the id.
+func (s *ImportHTTPConnectionTestSuite) TestDeleteAnHTTPConnection() {
+	s.adapter.EXPECT().GetHTTPConnection(mock.Anything, "http-1").
+		Return(&httpconnection.HTTPConnection{ID: "http-1"}, nil)
+	s.adapter.EXPECT().DeleteHTTPConnection(mock.Anything, "http-1").Return(nil)
+	s.adapter.EXPECT().GetHTTPConnection(mock.Anything, "gone").Return(nil, &httpconnection.ErrorNotFound)
+
+	resp := s.deleteConnections("http-1", "gone")
+
+	s.Equal(statusSuccess, resp.Results[0].Status, "message: %s", resp.Results[0].Message)
+	s.Empty(resp.Results[0].Message, "the HTTP connection was reported absent rather than removed")
+	s.Equal(statusSuccess, resp.Results[1].Status)
+	s.Equal("resource already absent", resp.Results[1].Message)
+	s.Equal(1, resp.Summary.Deleted)
+}
+
+func (s *ImportHTTPConnectionTestSuite) TestDeleteADeclaredHTTPConnectionIsRefused() {
+	s.adapter.EXPECT().GetHTTPConnection(mock.Anything, "file-1").
+		Return(&httpconnection.HTTPConnection{ID: "file-1"}, nil)
+	s.adapter.EXPECT().DeleteHTTPConnection(mock.Anything, "file-1").
+		Return(&declarativeresource.ErrorDeclarativeResourceDeleteOperation)
+
+	resp, err := s.svc.ImportResources(context.Background(), &ImportRequest{
+		Deletions: []ResourceDeletion{{ResourceType: resourceTypeConnection, ID: "file-1"}},
+		Options:   deleteOptions(),
+	})
+
+	s.Require().Nil(err)
+	s.Require().Len(resp.Results, 1)
+	s.Equal(statusFailed, resp.Results[0].Status)
+	s.Equal(declarativeresource.ErrorDeclarativeResourceDeleteOperation.Code, resp.Results[0].Code)
+	s.Equal(0, resp.Summary.Deleted)
+}
+
+func (s *ImportHTTPConnectionTestSuite) TestDeleteReportsAnHTTPConnectionLookupFailure() {
+	s.adapter.EXPECT().GetHTTPConnection(mock.Anything, "http-1").Return(nil, &tidcommon.InternalServerError)
+
+	resp := s.deleteConnections("http-1")
+
+	s.Equal(statusFailed, resp.Results[0].Status)
+	s.Equal(tidcommon.InternalServerError.Code, resp.Results[0].Code)
+	s.Equal(0, resp.Summary.Deleted)
 }

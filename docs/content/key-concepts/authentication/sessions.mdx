@@ -34,9 +34,9 @@ Two independent timeouts bound every session:
 
 A session expires when it passes either deadline. After expiry, the next sign-in through the flow authenticates the user again. An administrator configures both timeouts in the server configuration. See [Configure Session Lifetime](../../../guides/flows/single-sign-on#configure-session-lifetime).
 
-## Browser Scope
+## Session Reference
 
-Flow SSO applies to browser-based authentication. <ProductName /> references each session with a per-flow cookie that carries only an opaque handle, never user data. Because the cookie is the reference, SSO reuse happens within a browser: a user who authenticates in one browser does not gain a session in another.
+<ProductName /> references each session with an opaque handle that carries no user data. A browser holds the handle in a per-flow cookie, so SSO reuse happens within that browser: a user who authenticates in one browser does not gain a session in another. An application that runs flows itself through the Flow Execution API receives the handle in the response body and sends it back on later requests. See [App-Native Sign-In](../../../guides/flows/single-sign-on#app-native-sign-in).
 
 ## Ending a Session
 
@@ -49,11 +49,14 @@ Every application resolves a sign-out flow from the first of three sources that 
 There are two ways to run the sign-out flow, matching the two [integration models](../integration-models):
 
 - **Redirect-based (OIDC).** A browser-based application redirects the user to the `end_session_endpoint`, which runs the sign-out flow and returns the browser to the application. See [RP-Initiated Logout](../../../guides/protocols/oauth-oidc/rp-initiated-logout).
-- **App-native.** An application that drives flows directly runs the sign-out flow through the Flow Execution API. See [Build a Sign-Out Flow](../../../guides/flows/build-a-flow#go-further).
+- **App-native.** An application that drives flows directly runs the sign-out flow through the Flow Execution API, sending the session it holds in `sessionData`. Without it, the sign-out ends nothing. See [App-Native Sign-In](../../../guides/flows/single-sign-on#app-native-sign-in) and [Build a Sign-Out Flow](../../../guides/flows/build-a-flow#go-further).
 
 A session also ends on its own when it passes the idle or absolute timeout, as described above.
+
+When a session ends, through either path or through an administrative action such as deleting the user, <ProductName /> posts a logout token to every application that took part in the session and registered a back-channel logout URI. Expiry sends no notification. See [Back-Channel Logout](../../../guides/protocols/oauth-oidc/backchannel-logout).
 
 ## Related
 
 - [Single Sign-On for Flows](../../../guides/flows/single-sign-on) shows how to add the SSO nodes to a flow in the Console Flow Builder.
 - [RP-Initiated Logout](../../../guides/protocols/oauth-oidc/rp-initiated-logout) shows how a browser-based application ends the session over OIDC.
+- [Back-Channel Logout](../../../guides/protocols/oauth-oidc/backchannel-logout) shows how the other applications in a session are told that it ended.

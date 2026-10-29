@@ -13,6 +13,8 @@ type ConnectionRequest struct {
 	ID                       string                       `json:"-" yaml:"-"`
 	Name                     string                       `json:"name"`
 	Description              string                       `json:"description,omitempty"`
+	OUID                     string                       `json:"ouId,omitempty"`
+	OUHandle                 string                       `json:"-" yaml:"-"`
 	Endpoint                 string                       `json:"endpoint"`
 	BatchEndpoint            string                       `json:"batchEndpoint,omitempty"`
 	TimeoutMS                int                          `json:"timeoutMs,omitempty"`
@@ -26,6 +28,7 @@ type ConnectionResponse struct {
 	ID                       string                      `json:"id"`
 	Name                     string                      `json:"name"`
 	Description              string                      `json:"description,omitempty"`
+	OUID                     string                      `json:"ouId"`
 	Type                     string                      `json:"type"`
 	Endpoint                 string                      `json:"endpoint"`
 	BatchEndpoint            string                      `json:"batchEndpoint,omitempty"`
@@ -42,7 +45,7 @@ func ToResponse(connection AuthZENPDPConnection) ConnectionResponse {
 		authentication = outboundauth.Authentication{Type: string(outboundauth.TypeNone)}
 	}
 	return ConnectionResponse{
-		ID: connection.ID, Name: connection.Name, Description: connection.Description,
+		ID: connection.ID, Name: connection.Name, Description: connection.Description, OUID: connection.OUID,
 		Type: "authzen-pdp", Endpoint: connection.Endpoint, BatchEndpoint: connection.BatchEndpoint,
 		TimeoutMS: connection.TimeoutMS, RetryCount: connection.RetryCount,
 		Authentication:           authentication,
@@ -55,6 +58,8 @@ type AuthZENPDPConnection struct {
 	ID                       string
 	Name                     string
 	Description              string
+	OUID                     string
+	OUHandle                 string
 	IsReadOnly               bool
 	Endpoint                 string
 	BatchEndpoint            string

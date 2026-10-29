@@ -191,7 +191,7 @@ func (_c *entityRuntimeStoreInterfaceMock_ClearAccessStateIfUnchanged_Call) RunA
 }
 
 // ClearAccessSuspension provides a mock function for the type entityRuntimeStoreInterfaceMock
-func (_mock *entityRuntimeStoreInterfaceMock) ClearAccessSuspension(ctx context.Context, entityID string, hold *identitygovernance.EntityHold, suspendedAt string) (bool, error) {
+func (_mock *entityRuntimeStoreInterfaceMock) ClearAccessSuspension(ctx context.Context, entityID string, hold *identitygovernance.AccountHold, suspendedAt string) (bool, error) {
 	ret := _mock.Called(ctx, entityID, hold, suspendedAt)
 
 	if len(ret) == 0 {
@@ -200,15 +200,15 @@ func (_mock *entityRuntimeStoreInterfaceMock) ClearAccessSuspension(ctx context.
 
 	var r0 bool
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *identitygovernance.EntityHold, string) (bool, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *identitygovernance.AccountHold, string) (bool, error)); ok {
 		return returnFunc(ctx, entityID, hold, suspendedAt)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *identitygovernance.EntityHold, string) bool); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *identitygovernance.AccountHold, string) bool); ok {
 		r0 = returnFunc(ctx, entityID, hold, suspendedAt)
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *identitygovernance.EntityHold, string) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *identitygovernance.AccountHold, string) error); ok {
 		r1 = returnFunc(ctx, entityID, hold, suspendedAt)
 	} else {
 		r1 = ret.Error(1)
@@ -224,13 +224,13 @@ type entityRuntimeStoreInterfaceMock_ClearAccessSuspension_Call struct {
 // ClearAccessSuspension is a helper method to define mock.On call
 //   - ctx context.Context
 //   - entityID string
-//   - hold *identitygovernance.EntityHold
+//   - hold *identitygovernance.AccountHold
 //   - suspendedAt string
 func (_e *entityRuntimeStoreInterfaceMock_Expecter) ClearAccessSuspension(ctx any, entityID any, hold any, suspendedAt any) *entityRuntimeStoreInterfaceMock_ClearAccessSuspension_Call {
 	return &entityRuntimeStoreInterfaceMock_ClearAccessSuspension_Call{Call: _e.mock.On("ClearAccessSuspension", ctx, entityID, hold, suspendedAt)}
 }
 
-func (_c *entityRuntimeStoreInterfaceMock_ClearAccessSuspension_Call) Run(run func(ctx context.Context, entityID string, hold *identitygovernance.EntityHold, suspendedAt string)) *entityRuntimeStoreInterfaceMock_ClearAccessSuspension_Call {
+func (_c *entityRuntimeStoreInterfaceMock_ClearAccessSuspension_Call) Run(run func(ctx context.Context, entityID string, hold *identitygovernance.AccountHold, suspendedAt string)) *entityRuntimeStoreInterfaceMock_ClearAccessSuspension_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -240,9 +240,9 @@ func (_c *entityRuntimeStoreInterfaceMock_ClearAccessSuspension_Call) Run(run fu
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 *identitygovernance.EntityHold
+		var arg2 *identitygovernance.AccountHold
 		if args[2] != nil {
-			arg2 = args[2].(*identitygovernance.EntityHold)
+			arg2 = args[2].(*identitygovernance.AccountHold)
 		}
 		var arg3 string
 		if args[3] != nil {
@@ -263,7 +263,7 @@ func (_c *entityRuntimeStoreInterfaceMock_ClearAccessSuspension_Call) Return(b b
 	return _c
 }
 
-func (_c *entityRuntimeStoreInterfaceMock_ClearAccessSuspension_Call) RunAndReturn(run func(ctx context.Context, entityID string, hold *identitygovernance.EntityHold, suspendedAt string) (bool, error)) *entityRuntimeStoreInterfaceMock_ClearAccessSuspension_Call {
+func (_c *entityRuntimeStoreInterfaceMock_ClearAccessSuspension_Call) RunAndReturn(run func(ctx context.Context, entityID string, hold *identitygovernance.AccountHold, suspendedAt string) (bool, error)) *entityRuntimeStoreInterfaceMock_ClearAccessSuspension_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -281,7 +281,7 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_Success() {
 func (suite *ResourceServiceTestSuite) TestCreateResourceServer_WithType() {
 	rs := providers.ResourceServer{
 		Name:       "test-rs",
-		Identifier: "test-identifier",
+		Identifier: "https://mcp.example.com/mcp",
 		Type:       providers.ResourceServerTypeMCP,
 		OUID:       "ou-123",
 	}
@@ -289,7 +289,8 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_WithType() {
 	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
 		Return(oupkg.OrganizationUnit{ID: "ou-123"}, nil)
 	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "test-rs").Return(false, nil)
-	suite.mockStore.On("CheckResourceServerIdentifierExists", mock.Anything, "test-identifier").Return(false, nil)
+	suite.mockStore.On("CheckResourceServerIdentifierExists", mock.Anything,
+		"https://mcp.example.com/mcp").Return(false, nil)
 	suite.mockStore.On("CreateResourceServer", mock.Anything,
 		mock.AnythingOfType("string"), mock.MatchedBy(func(r providers.ResourceServer) bool {
 			return r.Type == providers.ResourceServerTypeMCP
@@ -340,6 +341,155 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_InvalidType() {
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(ErrorInvalidRequestFormat.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateResourceServer_InvalidMCPIdentifier() {
+	testCases := []struct {
+		name       string
+		identifier string
+	}{
+		{"PlainName", "my-mcp-server"},
+		{"NotAURI", "not a uri"},
+		{"Path", "/mcp"},
+		{"HostWithoutScheme", "mcp.example.com"},
+		{"HostAndPortWithoutScheme", "mcp.example.com:8443/mcp"},
+		{"LocalhostWithoutScheme", "localhost:8000/mcp"},
+		{"OpaqueHTTPS", "https:mcp.example.com"},
+		{"EmptyHost", "https://:8443"},
+		{"URN", "urn:example:mcp"},
+		{"NonHTTPScheme", "ftp://mcp.example.com"},
+		{"Fragment", "https://mcp.example.com/mcp#tools"},
+		{"EmptyFragment", "https://mcp.example.com/mcp#"},
+		{"BackslashInHost", `https://mcp.example.com\mcp`},
+		{"BackslashInPath", `https://mcp.example.com/a\b`},
+	}
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			rs := providers.ResourceServer{
+				Name:       "test-rs",
+				Identifier: tc.identifier,
+				Type:       providers.ResourceServerTypeMCP,
+				OUID:       "ou-123",
+			}
+
+			result, err := suite.service.CreateResourceServer(context.Background(), rs)
+
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(ErrorInvalidMCPIdentifier.Code, err.Code)
+		})
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateResourceServer_MCPIdentifierReferenceByPlane() {
+	testCases := []struct {
+		name       string
+		options    []Option
+		identifier string
+		accepted   bool
+	}{
+		{"ControlPlaneVariableReference", []Option{KeepingValueReferences()},
+			"var:RESOURCE_SERVER_ORDERS_IDENTIFIER", true},
+		{"ControlPlaneSecretReference", []Option{KeepingValueReferences()},
+			"sec:RESOURCE_SERVER_ORDERS_IDENTIFIER", false},
+		{"ControlPlaneMalformedReference", []Option{KeepingValueReferences()}, "var:orders", false},
+		{"DataPlaneVariableReference", nil, "var:RESOURCE_SERVER_ORDERS_IDENTIFIER", false},
+	}
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			mockStore := newResourceStoreInterfaceMock(suite.T())
+			mockOU := new(oumock.OrganizationUnitServiceInterfaceMock)
+			service, err := newResourceService(mockOU, mockStore, &fakeTransactioner{}, nil, nil, tc.options...)
+			suite.Require().NoError(err)
+			if tc.accepted {
+				mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
+					Return(oupkg.OrganizationUnit{ID: "ou-123"}, nil)
+				mockStore.On("CheckResourceServerNameExists", mock.Anything, "test-rs").Return(false, nil)
+				mockStore.On("CheckResourceServerIdentifierExists", mock.Anything, tc.identifier).Return(false, nil)
+				mockStore.On("CreateResourceServer", mock.Anything, mock.AnythingOfType("string"),
+					mock.Anything).Return(nil)
+			}
+
+			result, svcErr := service.CreateResourceServer(context.Background(), providers.ResourceServer{
+				Name:       "test-rs",
+				Identifier: tc.identifier,
+				Type:       providers.ResourceServerTypeMCP,
+				OUID:       "ou-123",
+			})
+
+			if tc.accepted {
+				suite.Nil(svcErr)
+				suite.Require().NotNil(result)
+				suite.Equal(tc.identifier, result.Identifier)
+				return
+			}
+			suite.Nil(result)
+			suite.Require().NotNil(svcErr)
+			suite.Equal(ErrorInvalidMCPIdentifier.Code, svcErr.Code)
+		})
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_ControlPlaneMCPIdentifierReference() {
+	reference := "var:RESOURCE_SERVER_ORDERS_IDENTIFIER"
+	mockStore := newResourceStoreInterfaceMock(suite.T())
+	mockOU := new(oumock.OrganizationUnitServiceInterfaceMock)
+	service, err := newResourceService(mockOU, mockStore, &fakeTransactioner{}, nil, nil,
+		KeepingValueReferences())
+	suite.Require().NoError(err)
+	mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{
+		ID: "rs-123", Name: "my-rs", Identifier: "https://mcp.example.com/mcp",
+		Type: providers.ResourceServerTypeMCP, Delimiter: ":", OUID: "ou-123",
+	}, nil)
+	mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	mockStore.On("CheckResourceServerIdentifierExists", mock.Anything, reference).Return(false, nil)
+	mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").Return(oupkg.OrganizationUnit{ID: "ou-123"}, nil)
+	mockStore.On("UpdateResourceServer", mock.Anything, "rs-123", mock.Anything).Return(nil)
+
+	result, svcErr := service.UpdateResourceServer(context.Background(), "rs-123", providers.ResourceServer{
+		Name: "my-rs", Identifier: reference, OUID: "ou-123",
+	})
+
+	suite.Nil(svcErr)
+	suite.Require().NotNil(result)
+	suite.Equal(reference, result.Identifier)
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateResourceServer_IdentifierRuleByType() {
+	testCases := []struct {
+		name         string
+		resourceType providers.ResourceServerType
+		identifier   string
+	}{
+		{"MCPWithHTTPLocalhost", providers.ResourceServerTypeMCP, "http://localhost:8000/mcp"},
+		{"MCPWithUppercaseScheme", providers.ResourceServerTypeMCP, "HTTPS://MCP.example.com/mcp"},
+		{"APIWithNonURI", providers.ResourceServerTypeAPI, "my-api"},
+		{"CustomWithNonURI", providers.ResourceServerTypeCustom, "my-custom-server"},
+	}
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			rs := providers.ResourceServer{
+				Name:       "test-rs",
+				Identifier: tc.identifier,
+				Type:       tc.resourceType,
+				OUID:       "ou-123",
+			}
+			suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
+				Return(oupkg.OrganizationUnit{ID: "ou-123"}, nil)
+			suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "test-rs").Return(false, nil)
+			suite.mockStore.On("CheckResourceServerIdentifierExists", mock.Anything, tc.identifier).
+				Return(false, nil)
+			suite.mockStore.On("CreateResourceServer", mock.Anything, mock.AnythingOfType("string"),
+				mock.Anything).Return(nil)
+
+			result, err := suite.service.CreateResourceServer(context.Background(), rs)
+
+			suite.Nil(err)
+			suite.Require().NotNil(result)
+			suite.Equal(tc.identifier, result.Identifier)
+		})
+	}
 }
 
 func (suite *ResourceServiceTestSuite) TestCreateResourceServer_ValidationErrors() {
@@ -5155,6 +5305,99 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_IdentifierChange
 	suite.NotNil(result)
 	suite.Equal("https://api.example.com/new/", result.Identifier)
 	suite.mockStore.AssertExpectations(suite.T())
+}
+
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_InvalidMCPIdentifier() {
+	rs := providers.ResourceServer{
+		Name:       "my-rs",
+		Identifier: "my-mcp-server",
+		OUID:       "ou-123",
+	}
+
+	existingRS := providers.ResourceServer{
+		ID:         "rs-123",
+		Name:       "my-rs",
+		Identifier: "https://mcp.example.com/mcp",
+		Type:       providers.ResourceServerTypeMCP,
+		Delimiter:  ":",
+		OUID:       "ou-123",
+	}
+
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(existingRS, nil)
+
+	result, svcErr := suite.service.UpdateResourceServer(context.Background(), "rs-123", rs)
+
+	suite.Nil(result)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorInvalidMCPIdentifier.Code, svcErr.Code)
+	suite.mockStore.AssertNotCalled(suite.T(), "CheckResourceServerIdentifierExists", mock.Anything, mock.Anything)
+	suite.mockStore.AssertNotCalled(suite.T(), "UpdateResourceServer", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_ValidMCPIdentifierChange() {
+	rs := providers.ResourceServer{
+		Name:       "my-rs",
+		Identifier: "https://mcp.example.com/v2/mcp",
+		OUID:       "ou-123",
+	}
+
+	existingRS := providers.ResourceServer{
+		ID:         "rs-123",
+		Name:       "my-rs",
+		Identifier: "https://mcp.example.com/mcp",
+		Type:       providers.ResourceServerTypeMCP,
+		Delimiter:  ":",
+		OUID:       "ou-123",
+	}
+
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(existingRS, nil)
+	suite.mockStore.On("CheckResourceServerIdentifierExists", mock.Anything,
+		"https://mcp.example.com/v2/mcp").Return(false, nil)
+	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
+		Return(oupkg.OrganizationUnit{ID: "ou-123"}, nil)
+	suite.mockStore.On("UpdateResourceServer", mock.Anything, "rs-123",
+		mock.MatchedBy(func(r providers.ResourceServer) bool {
+			return r.Identifier == "https://mcp.example.com/v2/mcp"
+		})).Return(nil)
+
+	result, svcErr := suite.service.UpdateResourceServer(context.Background(), "rs-123", rs)
+
+	suite.Nil(svcErr)
+	suite.Require().NotNil(result)
+	suite.Equal("https://mcp.example.com/v2/mcp", result.Identifier)
+	suite.mockStore.AssertExpectations(suite.T())
+}
+
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_MCPKeepsUnchangedIdentifier() {
+	rs := providers.ResourceServer{
+		Name:       "renamed-rs",
+		Identifier: "legacy-mcp-server",
+		OUID:       "ou-123",
+	}
+
+	existingRS := providers.ResourceServer{
+		ID:         "rs-123",
+		Name:       "my-rs",
+		Identifier: "legacy-mcp-server",
+		Type:       providers.ResourceServerTypeMCP,
+		Delimiter:  ":",
+		OUID:       "ou-123",
+	}
+
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(existingRS, nil)
+	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
+		Return(oupkg.OrganizationUnit{ID: "ou-123"}, nil)
+	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "renamed-rs").Return(false, nil)
+	suite.mockStore.On("UpdateResourceServer", mock.Anything, "rs-123", mock.Anything).Return(nil)
+
+	result, svcErr := suite.service.UpdateResourceServer(context.Background(), "rs-123", rs)
+
+	suite.Nil(svcErr)
+	suite.Require().NotNil(result)
+	suite.Equal("legacy-mcp-server", result.Identifier)
 }
 
 func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_IdentifierConflict() {

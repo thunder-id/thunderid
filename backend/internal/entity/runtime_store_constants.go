@@ -22,9 +22,9 @@ const (
 	sqliteAccessStateRoot = `$.accessState`
 	pgAccessStateKey      = `accessState`
 
-	// sqliteEntityHoldUnlockAt and pgEntityHoldUnlockAt address the entity-wide lock's unlockAt.
-	sqliteEntityHoldUnlockAt = `'` + sqliteAccessStateRoot + `.lock.entity.unlockAt'`
-	pgEntityHoldUnlockAt     = `RUNTIME_ATTRIBUTES->'` + pgAccessStateKey + `'->'lock'->'entity'->>'unlockAt'`
+	// sqliteAccountHoldUnlockAt and pgAccountHoldUnlockAt address the account-wide lock's unlockAt.
+	sqliteAccountHoldUnlockAt = `'` + sqliteAccessStateRoot + `.lock.account.unlockAt'`
+	pgAccountHoldUnlockAt     = `RUNTIME_ATTRIBUTES->'` + pgAccessStateKey + `'->'lock'->'account'->>'unlockAt'`
 )
 
 // Each access-state statement updates one path of the document, so a write to one member never
@@ -90,13 +90,13 @@ var (
 	}
 
 	// queryClearAccessSuspensionWithHold removes the suspension and replaces the lock member with an
-	// entity-wide lock in one statement. $2 is the unlockAt value and $3 the reason.
+	// account-wide lock in one statement. $2 is the unlockAt value and $3 the reason.
 	queryClearAccessSuspensionWithHold = model.DBQuery{
 		ID: "ERD-ENTITY_MGT-05",
 		PostgresQuery: `UPDATE "ENTITY_RUNTIME_DATA" SET STATE = 'ACTIVE', RUNTIME_ATTRIBUTES = ` +
 			`RUNTIME_ATTRIBUTES || jsonb_build_object('accessState', ` +
 			`(COALESCE(RUNTIME_ATTRIBUTES->'accessState', '{}'::jsonb) - 'suspend') || ` +
-			`jsonb_build_object('lock', jsonb_build_object('entity', ` +
+			`jsonb_build_object('lock', jsonb_build_object('account', ` +
 			`jsonb_build_object('unlockAt', $2::text, 'reason', $3::text)))), ` +
 			`REVISION = REVISION + 1, UPDATED_AT = $4 ` +
 			`WHERE ENTITY_ID = $1 ` +
@@ -104,7 +104,7 @@ var (
 			`AND DEPLOYMENT_ID = $6`,
 		SQLiteQuery: `UPDATE "ENTITY_RUNTIME_DATA" SET STATE = 'ACTIVE', RUNTIME_ATTRIBUTES = json_set(json_remove(` +
 			`RUNTIME_ATTRIBUTES, '$.accessState.suspend'), ` +
-			`'$.accessState.lock', json_object('entity', ` +
+			`'$.accessState.lock', json_object('account', ` +
 			`json_object('unlockAt', $2, 'reason', $3))), REVISION = REVISION + 1, UPDATED_AT = $4 ` +
 			`WHERE ENTITY_ID = $1 AND ` +
 			`COALESCE(json_extract(RUNTIME_ATTRIBUTES, '$.accessState.suspend.suspendedAt'), '') = $5 ` +
@@ -139,7 +139,7 @@ var (
 )
 
 // accessLockPath is where one method's lock entry lives in the access-state document, in both
-// dialects. The entity-wide entry is lock.entity; a method entry is lock.authenticationMethods.<method>.
+// dialects. The account-wide entry is lock.account; a method entry is lock.authenticationMethods.<method>.
 type accessLockPath struct {
 	// sqlite is the json_extract / json_set path of the entry, without a trailing field.
 	sqlite string
@@ -286,13 +286,13 @@ func buildAccessLockPath(method providers.AuthenticationMethod) (accessLockPath,
 			pgAccessStateKey, pgAccessStateKey, lockParent, inner)
 	}
 
-	if method == identitygovernance.AuthenticationMethodEntity {
+	if method == identitygovernance.AuthenticationMethodAccount {
 		return accessLockPath{
-			sqlite:  sqliteAccessStateRoot + `.lock.entity`,
-			pgEntry: lockParent + `->'entity'`,
-			pgPath:  fmt.Sprintf(`'%s','lock','entity'`, pgAccessStateKey),
+			sqlite:  sqliteAccessStateRoot + `.lock.account`,
+			pgEntry: lockParent + `->'account'`,
+			pgPath:  fmt.Sprintf(`'%s','lock','account'`, pgAccessStateKey),
 			pgWrap: func(entry string) string {
-				return wrapLock(fmt.Sprintf(`jsonb_build_object('entity', %s)`, entry))
+				return wrapLock(fmt.Sprintf(`jsonb_build_object('account', %s)`, entry))
 			},
 		}, nil
 	}
@@ -321,15 +321,15 @@ func (p accessLockPath) pgField(field string) string {
 	return fmt.Sprintf(`%s->>'%s'`, p.pgEntry, field)
 }
 
-// noLiveHoldSQLite skips the write while a live entity-wide lock or a live lock on this method exists.
+// noLiveHoldSQLite skips the write while a live account-wide lock or a live lock on this method exists.
 func noLiveHoldSQLite(path accessLockPath, nowParam string) string {
-	return liveHoldExclusionSQLite(sqliteEntityHoldUnlockAt, nowParam) + ` ` +
+	return liveHoldExclusionSQLite(sqliteAccountHoldUnlockAt, nowParam) + ` ` +
 		liveHoldExclusionSQLite(path.sqliteField("unlockAt"), nowParam)
 }
 
 // noLiveHoldPostgres is noLiveHoldSQLite for Postgres.
 func noLiveHoldPostgres(path accessLockPath, nowParam string) string {
-	return liveHoldExclusionPostgres(pgEntityHoldUnlockAt, nowParam) + ` ` +
+	return liveHoldExclusionPostgres(pgAccountHoldUnlockAt, nowParam) + ` ` +
 		liveHoldExclusionPostgres(path.pgField("unlockAt"), nowParam)
 }
 

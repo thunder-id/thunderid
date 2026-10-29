@@ -59,6 +59,16 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 	challengeToken := sysutils.SanitizeString(flowR.ChallengeToken)
 	flowSecret := sysutils.SanitizeString(r.Header.Get(serverconst.FlowSecretHeaderName))
 	attestationToken := sysutils.SanitizeString(r.Header.Get(serverconst.AttestationTokenHeaderName))
+	sessionData := make([]SessionData, 0, len(flowR.SessionData))
+	for _, entry := range flowR.SessionData {
+		flowIdentifier := sysutils.SanitizeString(entry.FlowIdentifier)
+		sessionHandle := sysutils.SanitizeString(entry.SessionHandle)
+		if flowIdentifier == "" || sessionHandle == "" {
+			sysutils.WriteErrorResponse(r.Context(), w, http.StatusBadRequest, APIErrorInvalidSessionData)
+			return
+		}
+		sessionData = append(sessionData, SessionData{FlowIdentifier: flowIdentifier, SessionHandle: sessionHandle})
+	}
 
 	// Read the inbound SSO transport inputs and make them available to the flow service, which
 	// selects the handle once the flow is known.
@@ -80,11 +90,11 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 	var flowErr *tidcommon.ServiceError
 	if flowID != "" {
 		flowStep, flowErr = h.flowExecService.ExecuteByID(
-			ctx, flowID, executionID, verbose, action, inputs, challengeToken)
+			ctx, flowID, executionID, verbose, action, inputs, challengeToken, sessionData)
 	} else {
 		flowStep, flowErr = h.flowExecService.Execute(
 			ctx, appID, executionID, flowTypeStr, verbose, action, inputs, challengeToken,
-			flowSecret, attestationToken)
+			flowSecret, attestationToken, sessionData)
 	}
 
 	if flowErr != nil {
@@ -118,15 +128,17 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 	}
 
 	flowResp := FlowResponse{
-		ExecutionID:    flowStep.ExecutionID,
-		StepID:         flowStep.StepID,
-		FlowStatus:     string(flowStep.Status),
-		Type:           string(flowStep.Type),
-		Data:           flowStep.Data,
-		Assertion:      flowStep.Assertion,
-		ErrorAssertion: flowStep.ErrorAssertion,
-		Error:          stepErrorResp,
-		ChallengeToken: flowStep.ChallengeToken,
+		ExecutionID:     flowStep.ExecutionID,
+		StepID:          flowStep.StepID,
+		FlowStatus:      string(flowStep.Status),
+		Type:            string(flowStep.Type),
+		Data:            flowStep.Data,
+		Assertion:       flowStep.Assertion,
+		ErrorAssertion:  flowStep.ErrorAssertion,
+		Error:           stepErrorResp,
+		ChallengeToken:  flowStep.ChallengeToken,
+		SessionData:     flowStep.SessionData,
+		ClearedSessions: flowStep.ClearedSessions,
 	}
 
 	sysutils.WriteSuccessResponse(r.Context(), w, http.StatusOK, flowResp)
@@ -156,7 +168,7 @@ func handleFlowError(ctx context.Context, w http.ResponseWriter, flowErr *tidcom
 	if flowErr.Type == tidcommon.ClientErrorType {
 		switch flowErr.Code {
 		case ErrorDirectFlowInitiationNotPermitted.Code, ErrorFlowIDExecutionNotPermitted.Code,
-			ErrorAdministrationPermissionRequired.Code:
+			ErrorAdministrationPermissionRequired.Code, ErrorFlowApplicationNotUsable.Code:
 			statusCode = http.StatusForbidden
 		case ErrorFlowSecretRequired.Code, ErrorFlowSecretInvalid.Code,
 			ErrorAttestationRequired.Code, ErrorAttestationInvalid.Code,

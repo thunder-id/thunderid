@@ -74,6 +74,15 @@ describe('useOrganizationAccess', () => {
     expect(mockHttpRequest).not.toHaveBeenCalled();
   });
 
+  it('carries its wording namespace to the screen', () => {
+    serve([owned]);
+    const {result} = renderHook(() =>
+      useOrganizationAccess({resourcePath: 'applications/app-1', wordingNamespace: 'applications'}),
+    );
+
+    expect(result.current.wordingNamespace).toBe('applications');
+  });
+
   it('marks a declared policy', async () => {
     serve([{...owned, isReadOnly: true}]);
 
@@ -104,6 +113,30 @@ describe('useOrganizationAccess', () => {
       }),
     );
     await waitFor(() => expect(result.current.hasChanges).toBe(false));
+  });
+
+  it('saves against the version the edit started from, even after a reload', async () => {
+    serve([owned]);
+    const {result} = renderHook(() => useOrganizationAccess({resourcePath: 'applications/app-1'}));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => {
+      result.current.updateDraft((draft) => ({...draft, childUnitExclusions: []}));
+    });
+    // Someone else saves meanwhile, and a reload (window focus, a failed save) brings version 3.
+    serve([{...owned, version: 3}]);
+    act(() => {
+      result.current.reload();
+    });
+    await waitFor(() => expect(result.current.savedPolicy?.version).toBe(3));
+
+    await act(async () => {
+      await result.current.save();
+    });
+
+    expect(mockHttpRequest).toHaveBeenCalledWith(
+      expect.objectContaining({url: `${collection}/p1`, method: 'PUT', data: {childUnits: {mode: 'all'}, version: 2}}),
+    );
   });
 
   it('treats an edit that lands back on the saved access as no change', async () => {

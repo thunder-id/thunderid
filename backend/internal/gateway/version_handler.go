@@ -4,8 +4,11 @@
 package gateway
 
 import (
+	"context"
 	"net/http"
 
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -82,9 +85,20 @@ func (h *versionHandler) handleDiff(w http.ResponseWriter, r *http.Request) {
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, diff)
 }
 
+// allowApplyTime gives an apply or revert request the time the gateway configuration allows it, in
+// place of the server's write timeout: it may wait for an apply already running on the gateway, and
+// then for the gateway's import.
+func allowApplyTime(ctx context.Context, w http.ResponseWriter) {
+	if err := sysutils.ExtendWriteDeadline(w, config.GetServerRuntime().Config.Gateway.ApplyTimeout()); err != nil {
+		log.GetLogger().Warn(ctx, "Could not extend the write deadline of an apply; the server's write timeout applies",
+			log.Error(err))
+	}
+}
+
 // handleApply writes a version to a gateway.
 func (h *versionHandler) handleApply(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	allowApplyTime(ctx, w)
 	var req ApplyRequest
 	if r.ContentLength != 0 && !decodeBody(w, r, &req) {
 		return
@@ -105,6 +119,7 @@ func (h *versionHandler) handleApply(w http.ResponseWriter, r *http.Request) {
 // handleRevert returns a gateway to the version it held before.
 func (h *versionHandler) handleRevert(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	allowApplyTime(ctx, w)
 	var req RevertRequest
 	if r.ContentLength != 0 && !decodeBody(w, r, &req) {
 		return

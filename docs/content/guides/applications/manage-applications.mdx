@@ -119,6 +119,16 @@ To update an application:
 
 Changes take effect immediately for new authentication requests. Active sessions and issued access tokens are not affected until they expire. Rotating the client secret is the exception: it also rejects refresh tokens issued before the rotation.
 
+## Suspend an Application
+
+Suspend an application to stop it from authenticating without deleting it. Suspending revokes the tokens issued to it or through its client ID, including user tokens. Sign-ins through the application are refused until it is unsuspended.
+
+1. Open the application from the **Applications** list.
+2. Click **Actions**. Select **Suspend**.
+3. Click **Suspend** to confirm.
+
+To lift the suspension, select **Unsuspend** from the same menu. Revoked tokens are not restored. Applications are never locked automatically. For what a suspension refuses and how to customize the suspend flows, see [Suspend and Restore Accounts](../../account-protection/suspend-and-restore-accounts).
+
 ## Delete an Application
 
 To delete an application:
@@ -135,3 +145,4 @@ Deleting an application is permanent. Any client using the application's Client 
 - [Application Settings](../application-settings) - Configure OAuth 2.0, tokens, flows, and consent for your application
 - [Flows](../../flows/what-are-flows) - Build and assign custom authentication and registration flows
 - [Dynamic Client Registration](../../protocols/oauth-oidc/dynamic-client-registration) - Register OAuth 2.0 clients programmatically without using the Console
+- [Account Protection](../../account-protection/overview) - How a suspension holds an application

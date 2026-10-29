@@ -211,6 +211,47 @@ var (
 				"and select it on the flow node.",
 		},
 	}
+	// ErrorInvalidSenderOU is the error returned when the organization unit given for a notification sender does not
+	// exist.
+	ErrorInvalidSenderOU = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "MNS-1018",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationservice.invalid_sender_ou",
+			DefaultValue: "Invalid organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.notificationservice.invalid_sender_ou_description",
+			DefaultValue: "The organization unit given for the notification sender does not exist",
+		},
+	}
+	// ErrorSenderOUUpdateNotAllowed is the error returned when attempting to change the organization unit of a
+	// notification sender.
+	ErrorSenderOUUpdateNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "MNS-1019",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationservice.sender_ou_update_not_allowed",
+			DefaultValue: "Organization unit update not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.notificationservice.sender_ou_update_not_allowed_description",
+			DefaultValue: "The organization unit of a notification sender cannot be changed",
+		},
+	}
+	// ErrorSenderOURequired is the error returned when a notification sender is created without an organization unit.
+	ErrorSenderOURequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "MNS-1020",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationservice.sender_ou_required",
+			DefaultValue: "Organization unit required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.notificationservice.sender_ou_required_description",
+			DefaultValue: "A notification sender needs an organization unit. Give its ouId in the request",
+		},
+	}
 )
 
 // Sentinel errors for validating the "notification" server-config section.

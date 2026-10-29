@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package flowmgt
@@ -11,14 +11,14 @@ var (
 	// queryCreateFlow is the query to creates a new flow definition.
 	queryCreateFlow = model.DBQuery{
 		ID: "FLQ-FLOW_MGT-01",
-		Query: `INSERT INTO "FLOW" (ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, DEPLOYMENT_ID) ` +
-			`VALUES ($1, $2, $3, $4, $5, $6)`,
+		Query: `INSERT INTO "FLOW" (ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, OU_ID, DEPLOYMENT_ID) ` +
+			`VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 	}
 
 	// queryGetFlow is the query to retrieves a flow definition by its ID.
 	queryGetFlow = model.DBQuery{
 		ID: "FLQ-FLOW_MGT-02",
-		Query: `SELECT f.ID, f.HANDLE, f.NAME, f.FLOW_TYPE, f.ACTIVE_VERSION, ` +
+		Query: `SELECT f.ID, f.HANDLE, f.NAME, f.FLOW_TYPE, f.ACTIVE_VERSION, f.OU_ID, ` +
 			`fv.NODES, fv.INTERCEPTORS, f.CREATED_AT, ` +
 			`f.UPDATED_AT FROM "FLOW" f INNER JOIN "FLOW_VERSION" fv ON f.ID = fv.FLOW_ID ` +
 			`AND f.DEPLOYMENT_ID = fv.DEPLOYMENT_ID AND f.ACTIVE_VERSION = fv.VERSION ` +
@@ -39,7 +39,7 @@ var (
 	// queryListFlows is the query to retrieves a list of flow definitions.
 	queryListFlows = model.DBQuery{
 		ID: "FLQ-FLOW_MGT-05",
-		Query: `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, CREATED_AT, UPDATED_AT ` +
+		Query: `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, OU_ID, CREATED_AT, UPDATED_AT ` +
 			`FROM "FLOW" WHERE DEPLOYMENT_ID = $1 ORDER BY CREATED_AT DESC LIMIT $2 OFFSET $3`,
 	}
 
@@ -47,7 +47,7 @@ var (
 	// single query, for dependency lookups that must scan node definitions across all flows.
 	queryListActiveFlowsWithNodes = model.DBQuery{
 		ID: "FLQ-FLOW_MGT-19",
-		Query: `SELECT f.ID, f.HANDLE, f.NAME, f.FLOW_TYPE, f.ACTIVE_VERSION, ` +
+		Query: `SELECT f.ID, f.HANDLE, f.NAME, f.FLOW_TYPE, f.ACTIVE_VERSION, f.OU_ID, ` +
 			`fv.NODES, fv.INTERCEPTORS, f.CREATED_AT, f.UPDATED_AT ` +
 			`FROM "FLOW" f INNER JOIN "FLOW_VERSION" fv ON f.ID = fv.FLOW_ID ` +
 			`AND f.DEPLOYMENT_ID = fv.DEPLOYMENT_ID AND f.ACTIVE_VERSION = fv.VERSION ` +
@@ -57,7 +57,7 @@ var (
 	// queryListFlowsWithType is the query to retrieves a list of flow definitions filtered by type.
 	queryListFlowsWithType = model.DBQuery{
 		ID: "FLQ-FLOW_MGT-06",
-		Query: `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, CREATED_AT, UPDATED_AT FROM "FLOW" ` +
+		Query: `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, OU_ID, CREATED_AT, UPDATED_AT FROM "FLOW" ` +
 			`WHERE FLOW_TYPE = $1 AND DEPLOYMENT_ID = $2 ORDER BY CREATED_AT DESC LIMIT $3 OFFSET $4`,
 	}
 
@@ -133,7 +133,7 @@ var (
 	// queryGetFlowByHandle retrieves a flow definition by handle and flow type.
 	queryGetFlowByHandle = model.DBQuery{
 		ID: "FLQ-FLOW_MGT-18",
-		Query: `SELECT f.ID, f.HANDLE, f.NAME, f.FLOW_TYPE, f.ACTIVE_VERSION, ` +
+		Query: `SELECT f.ID, f.HANDLE, f.NAME, f.FLOW_TYPE, f.ACTIVE_VERSION, f.OU_ID, ` +
 			`fv.NODES, fv.INTERCEPTORS, f.CREATED_AT, ` +
 			`f.UPDATED_AT FROM "FLOW" f INNER JOIN "FLOW_VERSION" fv ON f.ID = fv.FLOW_ID ` +
 			`AND f.DEPLOYMENT_ID = fv.DEPLOYMENT_ID AND f.ACTIVE_VERSION = fv.VERSION ` +

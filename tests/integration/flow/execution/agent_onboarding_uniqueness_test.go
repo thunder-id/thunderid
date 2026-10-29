@@ -73,11 +73,8 @@ func (ts *AgentOnboardingUniquenessTestSuite) TestDuplicateNameReturnsToTheDetai
 	ts.Contains(inputIdentifiers(step), agentNameInput,
 		"the name is asked again, on the details prompt that collects it")
 	ts.Contains(inputIdentifiers(step), agentModelInput, "the run is back on the details prompt")
-	for _, input := range step.Data.Inputs {
-		if input.Identifier == agentModelProviderInput {
-			ts.NotEmpty(input.Options, "the re-shown details prompt still offers the model provider choices")
-		}
-	}
+	ts.NotEmpty(detailsSelectOptions(&ts.Suite, ts.flowID)[agentModelProviderInput],
+		"the details prompt carries the model provider choices")
 	ts.Require().NotNil(step.Error)
 	ts.Equal("FET-1061", step.Error.Code, "the conflict names the attribute rather than the entity")
 }

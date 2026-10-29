@@ -277,7 +277,7 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupListRequest() {
 			requestPath: "/groups?limit=3&offset=2",
 			setup: func(svc *GroupServiceInterfaceMock) {
 				svc.
-					On("GetGroupList", mock.Anything, 3, 2, false).
+					On("GetGroupList", mock.Anything, 3, 2, map[string]interface{}(nil), false).
 					Return(&GroupListResponse{
 						TotalResults: 5,
 						StartIndex:   3,
@@ -307,7 +307,7 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupListRequest() {
 			requestPath: "/groups?limit=3&offset=0&include=display",
 			setup: func(svc *GroupServiceInterfaceMock) {
 				svc.
-					On("GetGroupList", mock.Anything, 3, 0, true).
+					On("GetGroupList", mock.Anything, 3, 0, map[string]interface{}(nil), true).
 					Return(&GroupListResponse{
 						TotalResults: 1,
 						Count:        1,
@@ -347,7 +347,8 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupListRequest() {
 			useFlaky:    true,
 			setup: func(svc *GroupServiceInterfaceMock) {
 				svc.
-					On("GetGroupList", mock.Anything, serverconst.DefaultPageSize, 0, false).
+					On("GetGroupList", mock.Anything, serverconst.DefaultPageSize, 0,
+						map[string]interface{}(nil), false).
 					Return(&GroupListResponse{}, nil).
 					Once()
 			},
@@ -373,7 +374,8 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupListRequest() {
 			requestPath: "/groups",
 			setup: func(svc *GroupServiceInterfaceMock) {
 				svc.
-					On("GetGroupList", mock.Anything, serverconst.DefaultPageSize, 0, false).
+					On("GetGroupList", mock.Anything, serverconst.DefaultPageSize, 0,
+						map[string]interface{}(nil), false).
 					Return((*GroupListResponse)(nil), &tidcommon.InternalServerError).
 					Once()
 			},
@@ -382,6 +384,20 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupListRequest() {
 				var body apierror.ErrorResponse
 				suite.Require().NoError(json.Unmarshal(recorder.Body.Bytes(), &body))
 				suite.Require().Equal(tidcommon.InternalServerError.Code, body.Code)
+			},
+		},
+		{
+			name:        "organization unit filter",
+			requestPath: "/groups?filter=" + url.QueryEscape(`ouId eq "`+testOUID+`"`),
+			setup: func(svc *GroupServiceInterfaceMock) {
+				svc.
+					On("GetGroupList", mock.Anything, serverconst.DefaultPageSize, 0,
+						map[string]interface{}{"ouId": testOUID}, false).
+					Return(&GroupListResponse{Groups: []GroupBasic{}}, nil).
+					Once()
+			},
+			assertBody: func(recorder *httptest.ResponseRecorder) {
+				suite.Require().Equal(http.StatusOK, recorder.Code)
 			},
 		},
 	}
@@ -420,6 +436,29 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupListRequest() {
 			}
 
 			serviceMock.AssertExpectations(suite.T())
+		})
+	}
+}
+
+func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupListRequest_InvalidFilter() {
+	for name, expression := range map[string]string{
+		"an empty filter":                   "",
+		"no value":                          "ouId eq",
+		"an unquoted ID":                    "ouId eq ou-001",
+		"another operator":                  `ouId sw "ou-001"`,
+		"a second expression joined by and": `ouId eq "ou-001" and name eq "Admins"`,
+	} {
+		suite.Run(name, func() {
+			handler := newGroupHandler(NewGroupServiceInterfaceMock(suite.T()))
+			req := httptest.NewRequest(http.MethodGet, "/groups?filter="+url.QueryEscape(expression), nil)
+			recorder := httptest.NewRecorder()
+
+			handler.HandleGroupListRequest(recorder, req)
+
+			suite.Require().Equal(http.StatusBadRequest, recorder.Code)
+			var body apierror.ErrorResponse
+			suite.Require().NoError(json.Unmarshal(recorder.Body.Bytes(), &body))
+			suite.Require().Equal(ErrorInvalidFilter.Code, body.Code)
 		})
 	}
 }

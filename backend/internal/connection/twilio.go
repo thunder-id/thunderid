@@ -12,6 +12,7 @@ import (
 type twilioConnectionRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
+	OUID        string `json:"ouId,omitempty"`
 	AccountSID  string `json:"accountSid"`
 	AuthToken   string `json:"authToken"`
 	SenderID    string `json:"senderId"`
@@ -22,6 +23,7 @@ type twilioConnectionResponse struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
+	OUID        string `json:"ouId"`
 	Type        string `json:"type"`
 	AccountSID  string `json:"accountSid,omitempty"`
 	AuthToken   string `json:"authToken,omitempty"`
@@ -43,6 +45,7 @@ func twilioToSenderDTO(req twilioConnectionRequest) (*ncommon.NotificationSender
 	return &ncommon.NotificationSenderDTO{
 		Name:        req.Name,
 		Description: req.Description,
+		OUID:        req.OUID,
 		Type:        ncommon.NotificationSenderTypeMessage,
 		Provider:    ncommon.NotificationProviderTypeTwilio,
 		Properties:  props,
@@ -58,6 +61,7 @@ func twilioFromSenderDTO(dto ncommon.NotificationSenderDTO) (twilioConnectionRes
 		ID:          dto.ID,
 		Name:        dto.Name,
 		Description: dto.Description,
+		OUID:        dto.OUID,
 		Type:        string(ncommon.NotificationProviderTypeTwilio),
 		AccountSID:  values[ncommon.TwilioPropKeyAccountSID],
 		AuthToken:   values[ncommon.TwilioPropKeyAuthToken],

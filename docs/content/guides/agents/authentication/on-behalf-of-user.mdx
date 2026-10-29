@@ -11,7 +11,7 @@ import TabItem from '@theme/TabItem';
 
 # Agent Access on Behalf of Users
 
-An agent can hold an access token that represents a user instead of itself. The token names the user in the `sub` claim, and on the sign-in and exchange paths it also names the agent in the `act` (actor) claim, so a resource sees both the user who authorized the action and the agent that carried it out. <ProductName /> issues these tokens once the agent is extended to act on behalf of a user.
+An agent can hold an access token that represents a user instead of itself. The token names the user in the `sub` claim, and on the sign-in, exchange, and ID-JAG redemption paths it also names the agent in the `act` (actor) claim, so a resource sees both the user who authorized the action and the agent that carried it out. <ProductName /> issues these tokens once the agent is extended to act on behalf of a user.
 
 ## Extend the agent to act for a user
 
@@ -25,11 +25,11 @@ By default an agent acts only on its own. Extending it lets the same agent also 
 Flows are designed in the flow builder, not here. See [Login and Registration Flows](../../../flows/build-a-flow) to build them; this page only selects which flow the agent uses.
 :::
 
-Through the API there is no single switch; each method below adds the grant it needs.
+Through the API, send `delegated: true` on the agent and add the grants for the method you use. The flag is not stored, so send it on every update. With `delegated: true` and any grant beyond `client_credentials`, the agent must hold at least one grant that lets it act for a user: `authorization_code`, `urn:openid:params:grant-type:ciba`, `urn:ietf:params:oauth:grant-type:token-exchange`, or `urn:ietf:params:oauth:grant-type:jwt-bearer`. With `delegated: true` and no grant beyond `client_credentials`, <ProductName /> adds `authorization_code` and `refresh_token`. The methods below cover the authorization code, CIBA, and token exchange grants. To let the agent redeem an ID-JAG from an external identity provider with the `jwt-bearer` grant, see [Accept Identity Assertions from an External IdP](../../../protocols/oauth-oidc/identity-assertion-grant/accept-identity-assertions).
 
 ## Choose what the user token carries
 
-Once the agent is extended to act for users, the **User** token becomes editable on the **Tokens** tab (under **Issued to**, alongside the Agent token). Open it to choose which of the user's attributes the access token carries and to set the validity periods for the access, ID, and refresh tokens. The agent's actor (`act`) claim is shown here too. Through the API, configure these in the agent's OAuth token settings; see the [Agents API Reference](../../../../apis#tag/agents).
+Once the agent is extended to act for users, the **User** token becomes editable on the **Tokens** tab (under **Issued to**, alongside the Agent token). Open it to choose which of the user's attributes the access token carries and to set the validity periods for the access, ID, and refresh tokens. The agent's actor (`act`) claim is shown here too. The access token validity you set here also applies to the access tokens the agent receives by redeeming an ID-JAG with the JWT bearer grant. Through the API, configure these in the agent's OAuth token settings; see the [Agents API Reference](../../../../apis#tag/agents).
 
 ## Get a token for the user
 
@@ -160,12 +160,13 @@ A resource reads `sub` to apply the user's permissions and `act` to see which ag
 
 | Claim | Value |
 |---|---|
-| `sub` | The user's subject identifier. |
+| `sub` | The user's subject identifier. For an access token from redeeming an ID-JAG with the JWT bearer grant, the subject of the external identity provider's assertion, not a local user ID. |
 | `iss` | The <ProductName /> instance URL. |
+| `idp` | Present only on an access token from redeeming an ID-JAG with the JWT bearer grant: the issuer of the assertion, which identifies the external identity provider that `sub` belongs to. |
 | `aud` | The resolved resource server, or the agent's default audience (its client ID when none is set) when the request carries no permission scopes or `resource`. |
-| `scope` | A subset of the user's scopes, never more than the user's own token held. |
+| `scope` | A subset of the user's scopes, never more than the user's own token held. For a JWT bearer token, bounded by the assertion's `scope` claim and narrowed by the request's `scope`. |
 | `client_id` | The agent's client ID. |
-| `act` | The agent acting for the user, on the access token only and never the ID token. It is appended automatically on the `authorization_code` and CIBA grants, and built from the `actor_token` on a token exchange. |
+| `act` | The agent acting for the user, on the access token only and never the ID token. It is appended automatically on the `authorization_code`, CIBA, `refresh_token`, and JWT bearer grants. On a token exchange it names the `actor_token`'s subject, or the agent itself when the request has no `actor_token`. Earlier actors in a `subject_token` that <ProductName /> issued stay nested beneath it. See [The nested act claim](../agent-to-agent#the-nested-act-claim). |
 | `exp`, `iat`, `nbf`, `jti` | Standard JWT lifetime and identity claims. |
 
 ## Troubleshooting

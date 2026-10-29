@@ -1,9 +1,10 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package tokenservice
 
 import (
+	"maps"
 	"time"
 
 	"context"
@@ -423,6 +424,7 @@ func ReservedAccessTokenClaimNames() map[string]bool {
 	reserved[constants.ClaimIDP] = true
 	reserved[constants.ClaimTokenFamilyID] = true
 	reserved[constants.ClaimSessionID] = true
+	reserved[constants.ClaimAuthorizationDetails] = true
 	return reserved
 }
 
@@ -754,7 +756,8 @@ func ArtifactLifetime(cfg oauthconfig.Config, client *providers.OAuthClient) tim
 }
 
 // BuildAccessEvaluationsRequest builds a batch access evaluation request, one evaluation per
-// permission, for the given subject. Shared by grant handlers that evaluate authorization permissions.
+// permission, for the given subject, each with the given context when there is one. Shared by grant handlers
+// that evaluate authorization permissions.
 func BuildAccessEvaluationsRequest(
 	entityID string,
 	entityCategory string,
@@ -762,6 +765,7 @@ func BuildAccessEvaluationsRequest(
 	roleIDs []string,
 	permissions []string,
 	resourceServerID string,
+	context map[string]interface{},
 ) providers.AccessEvaluationsRequest {
 	evaluations := make([]providers.AccessEvaluationRequest, 0, len(permissions))
 	for _, permission := range permissions {
@@ -774,6 +778,7 @@ func BuildAccessEvaluationsRequest(
 			},
 			ResourceServer: providers.AccessEvaluationResourceServer{ID: resourceServerID},
 			Permission:     providers.Permission{Name: permission},
+			Context:        maps.Clone(context),
 		})
 	}
 	return providers.AccessEvaluationsRequest{Evaluations: evaluations}
@@ -839,7 +844,7 @@ func ApplyMappedAuthorization(
 	}
 
 	authzResp, svcErr := authzService.EvaluateAccessBatch(ctx,
-		BuildAccessEvaluationsRequest("", "", groupIDs, roleIDs, pending, resourceServerID))
+		BuildAccessEvaluationsRequest("", "", groupIDs, roleIDs, pending, resourceServerID, nil))
 	if svcErr != nil {
 		logger.Error(ctx, "Failed to evaluate mapped authorization",
 			log.String("error", svcErr.Error.DefaultValue))

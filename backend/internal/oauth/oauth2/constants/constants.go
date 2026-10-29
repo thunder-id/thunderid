@@ -60,6 +60,9 @@ const (
 	RequestParamBindingMessage      string = "binding_message"
 	RequestParamRequestedExpiry     string = "requested_expiry"
 	RequestParamAuthReqID           string = "auth_req_id"
+
+	// RequestParamAuthorizationDetails is the RFC 9396 authorization request parameter.
+	RequestParamAuthorizationDetails string = "authorization_details"
 )
 
 // OAuth2 HTTP headers.
@@ -115,17 +118,18 @@ const (
 
 // OAuth2 endpoints.
 const (
-	OAuth2TokenEndpoint                   string = "/oauth2/token" // #nosec G101
-	OAuth2AuthorizationEndpoint           string = "/oauth2/authorize"
-	OAuth2IntrospectionEndpoint           string = "/oauth2/introspect"
-	OAuth2RevokeEndpoint                  string = "/oauth2/revoke"
-	OAuth2UserInfoEndpoint                string = "/oauth2/userinfo"
-	OAuth2JWKSEndpoint                    string = "/oauth2/jwks"
-	OAuth2LogoutEndpoint                  string = "/oauth2/logout"
-	OAuth2DCREndpoint                     string = "/oauth2/dcr/register"
-	OAuth2PAREndpoint                     string = "/oauth2/par"
-	OAuth2BackchannelAuthEndpoint         string = "/oauth2/bc-authorize"
-	OAuth2BackchannelAuthCallbackEndpoint string = "/oauth2/bc-authorize/callback"
+	OAuth2TokenEndpoint                     string = "/oauth2/token" // #nosec G101
+	OAuth2AuthorizationEndpoint             string = "/oauth2/authorize"
+	OAuth2IntrospectionEndpoint             string = "/oauth2/introspect"
+	OAuth2RevokeEndpoint                    string = "/oauth2/revoke"
+	OAuth2UserInfoEndpoint                  string = "/oauth2/userinfo"
+	OAuth2JWKSEndpoint                      string = "/oauth2/jwks"
+	OAuth2LogoutEndpoint                    string = "/oauth2/logout"
+	OAuth2DCREndpoint                       string = "/oauth2/dcr/register"
+	OAuth2PAREndpoint                       string = "/oauth2/par"
+	OAuth2BackchannelAuthEndpoint           string = "/oauth2/bc-authorize"
+	OAuth2BackchannelAuthCallbackEndpoint   string = "/oauth2/bc-authorize/callback"
+	OAuth2AuthorizationDetailsTypesEndpoint string = "/oauth2/authorization-details-types"
 )
 
 // OAuth2 token types.
@@ -199,6 +203,9 @@ const (
 	ErrorInvalidBindingMessage    string = "invalid_binding_message"
 	ErrorRequestNotSupported      string = "request_not_supported"
 	ErrorRequestURINotSupported   string = "request_uri_not_supported"
+
+	// ErrorInvalidAuthorizationDetails is the RFC 9396 error for an unacceptable authorization_details.
+	ErrorInvalidAuthorizationDetails string = "invalid_authorization_details"
 )
 
 // UnSupportedGrantTypeError is returned when an unsupported grant type is requested.
@@ -283,6 +290,10 @@ const (
 	ClaimAccessTokenSubject     string = "access_token_sub"
 	// ClaimAccessTokenAudience carries the audience of a refresh token's access tokens.
 	ClaimAccessTokenAudience string = "access_token_aud"
+
+	// ClaimAuthorizationDetails carries the granted RFC 9396 authorization details on an access token.
+	ClaimAuthorizationDetails string = "authorization_details"
+
 	// ClaimIDP identifies the source identity provider (by issuer) that authenticated the subject of a
 	// jwt-bearer-grant (ID-JAG) access token, so downstream consumers can distinguish a federated
 	// principal from a local one.

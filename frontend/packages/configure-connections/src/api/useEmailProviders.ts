@@ -7,12 +7,17 @@ import {useThunderID} from '@thunderid/react';
 import ConnectionQueryKeys from '../constants/query-keys';
 import {ConnectionInstanceCategories, type ConnectionInstance, type ConnectionListResponse} from '../models/connection';
 
+export interface UseEmailProvidersOptions {
+  enabled?: boolean;
+}
+
 /**
  * Custom hook to fetch email providers from the server.
  *
  * Backed by GET /connections?category=email-provider (server default page size — up to
  * 30 instances; larger deployments would need pagination support added here).
  *
+ * @param options - Set `enabled` to false to skip the request
  * @returns TanStack Query result object with email providers data
  *
  * @example
@@ -33,12 +38,13 @@ import {ConnectionInstanceCategories, type ConnectionInstance, type ConnectionLi
  * }
  * ```
  */
-export default function useEmailProviders(): UseQueryResult<ConnectionInstance[]> {
+export default function useEmailProviders(options?: UseEmailProvidersOptions): UseQueryResult<ConnectionInstance[]> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
 
   return useQuery<ConnectionInstance[]>({
     queryKey: [ConnectionQueryKeys.CONNECTIONS, ConnectionQueryKeys.EMAIL_PROVIDERS],
+    enabled: options?.enabled ?? true,
     queryFn: async (): Promise<ConnectionInstance[]> => {
       const serverUrl: string = getServerUrl();
 

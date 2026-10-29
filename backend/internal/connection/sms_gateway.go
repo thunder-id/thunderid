@@ -19,6 +19,7 @@ import (
 type smsGatewayConnectionRequest struct {
 	Name           string                       `json:"name"`
 	Description    string                       `json:"description,omitempty"`
+	OUID           string                       `json:"ouId,omitempty"`
 	URL            string                       `json:"url"`
 	HTTPMethod     string                       `json:"httpMethod,omitempty"`
 	HTTPHeaders    *string                      `json:"httpHeaders,omitempty"`
@@ -31,6 +32,7 @@ type smsGatewayConnectionResponse struct {
 	ID             string                      `json:"id"`
 	Name           string                      `json:"name"`
 	Description    string                      `json:"description,omitempty"`
+	OUID           string                      `json:"ouId"`
 	Type           string                      `json:"type"`
 	URL            string                      `json:"url,omitempty"`
 	HTTPMethod     string                      `json:"httpMethod,omitempty"`
@@ -97,7 +99,7 @@ func smsGatewayToSenderDTOWithMasked(
 		return nil, err
 	}
 	return &ncommon.NotificationSenderDTO{
-		Name: req.Name, Description: req.Description, Type: ncommon.NotificationSenderTypeMessage,
+		Name: req.Name, Description: req.Description, OUID: req.OUID, Type: ncommon.NotificationSenderTypeMessage,
 		Provider: ncommon.NotificationProviderTypeCustom, Properties: props,
 	}, nil
 }
@@ -116,7 +118,7 @@ func smsGatewayFromSenderDTO(dto ncommon.NotificationSenderDTO) (smsGatewayConne
 		return smsGatewayConnectionResponse{}, err
 	}
 	return smsGatewayConnectionResponse{
-		ID: dto.ID, Name: dto.Name, Description: dto.Description, Type: smsGatewayVendorName,
+		ID: dto.ID, Name: dto.Name, Description: dto.Description, OUID: dto.OUID, Type: smsGatewayVendorName,
 		URL: values[ncommon.CustomPropKeyURL], HTTPMethod: values[ncommon.CustomPropKeyHTTPMethod],
 		HTTPHeaders: headers, Authentication: auth, ContentType: values[ncommon.CustomPropKeyContentType],
 	}, nil

@@ -36,8 +36,8 @@ catalog:
   '@testing-library/jest-dom': 6.9.1
   '@testing-library/react': 16.3.0
   '@testing-library/user-event': 14.6.1
-  '@thunderid/react': 1.3.2
-  '@thunderid/react-router': 1.2.2
+  '@thunderid/react': 1.9.2
+  '@thunderid/react-router': 1.7.0
   '@types/lodash-es': 4.17.12
   '@types/node': 24.7.2
   '@types/react': 19.2.14
@@ -47,8 +47,8 @@ catalog:
   '@vitejs/plugin-react': 6.0.2
   '@vitest/browser-playwright': 4.1.10
   '@vitest/coverage-istanbul': 4.1.10
-  '@wso2/oxygen-ui': 0.16.0
-  '@wso2/oxygen-ui-icons-react': 0.16.0
+  '@wso2/oxygen-ui': 0.17.0
+  '@wso2/oxygen-ui-icons-react': 0.17.0
   babel-plugin-react-compiler: 19.1.0-rc.3
   clsx: 2.1.1
   dayjs: 1.11.18
@@ -78,7 +78,7 @@ catalog:
   vite: 8.1.6
   vite-plugin-svgr: 5.2.0
   vitest: 4.1.10
-  zod: 4.3.6
+  zod: 4.6.6
 
 overrides:
   # JUSTIFICATION: Fixes GHSA-w7jw-789q-3m8p and GHSA-395f-4hp3-45gv (quadratic-complexity DoS in
@@ -255,6 +255,15 @@ overrides:
   # resolver dedupe this edge onto the 4.x major, which those consumers were never tested against.
   # 3.1.8 is a patch release on the 3.1.x line already resolved here (3.1.6), so no API change.
   fast-uri: '>=3.1.8 <4'
+  # JUSTIFICATION: Fixes GHSA-mrhx-c7xc-m3w5, memory exhaustion while validating oversized
+  # constrained collections. Enters through @codecov/vite-plugin@2.0.1 >
+  # @codecov/bundler-plugin-core@2.0.1 > zod@3.25.76 in the Console, Console CP and Gate builds.
+  # The latest Codecov release still requires zod ^3.22.4, and no patched 3.x release exists. The
+  # plugin only validates its options and CI metadata with zod, which works on 4.6.6. Capped below
+  # 5 so a future major release is not forced on it.
+  # Added 2026-10-24. Remove once @codecov/bundler-plugin-core requires zod >=4.6.6.
+  # Tracking: https://github.com/thunder-id/thunderid/issues/6036
+  '@codecov/bundler-plugin-core>zod': '>=4.6.6 <5'
 
 packageExtensions:
   '@hookform/resolvers':

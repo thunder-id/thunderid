@@ -14,6 +14,7 @@ import type {Application} from '../../../models/application';
 import type {ApplicationTemplate} from '../../../models/application-templates';
 import type {InboundAuthConfig} from '../../../models/inbound-auth';
 import type {OAuth2Config, OAuth2Token} from '../../../models/oauth';
+import isSystemConsoleClient from '../../../utils/isSystemConsoleClient';
 import ApplicationDeleteDialog from '../../ApplicationDeleteDialog';
 import DangerZoneSection from '../general-settings/DangerZoneSection';
 
@@ -112,8 +113,6 @@ export default function EditAdvancedSettings({
     identityAssertionsInvalid || passkeysInvalid,
   );
 
-  const systemConsoleClientId = (config?.client?.client_id ?? 'CONSOLE').toUpperCase();
-
   const handleOAuth2ConfigChange = (updates: Partial<OAuth2Config>) => {
     const currentInboundAuth: InboundAuthConfig[] = editedApp.inboundAuthConfig ?? application.inboundAuthConfig ?? [];
     const updatedInboundAuth = currentInboundAuth.map((auth) =>
@@ -186,7 +185,7 @@ export default function EditAdvancedSettings({
           onValidationChange={setPasskeysInvalid}
         />
         <MetadataSection application={application} />
-        {!application.isReadOnly && oauth2Config?.clientId?.toUpperCase() !== systemConsoleClientId && (
+        {!application.isReadOnly && !isSystemConsoleClient(oauth2Config?.clientId, config?.client?.client_id) && (
           <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />
         )}
       </Stack>

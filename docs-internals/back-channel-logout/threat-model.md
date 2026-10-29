@@ -348,7 +348,7 @@ sequenceDiagram
 
 **Description**
 
-The worker POSTs `logout_token=<JWT>` as `application/x-www-form-urlencoded` to the registered URI, with a per-attempt timeout, a redirect policy returning `http.ErrUseLastResponse`, and a capped response drain. 200 and 204 are success. Connection errors, timeouts, 5xx, and 429 are retryable with exponential backoff from `retry_delay`, honouring a `Retry-After` on 429 up to the longest wait of that schedule. While `reject_private_addresses` is on, the connection goes through the SSRF-safe dialer. Any other 4xx and any 3xx fail immediately. Concurrency across the dispatcher is bounded by `max_in_flight`.
+The worker POSTs `logout_token=<JWT>` as `application/x-www-form-urlencoded` to the registered URI, with a per-attempt timeout, a redirect policy returning `http.ErrUseLastResponse`, and a capped response drain. 200 and 204 are success. Connection errors, timeouts, 5xx, and 429 are retryable with exponential backoff from `retry_delay`, honouring a `Retry-After` on 429 up to the longest wait of that schedule. While `reject_private_addresses` is on, the connection goes through the SSRF-safe dialer. Any other status, including a 2xx other than 200 and 204, any 3xx and any other 4xx, fails immediately. Concurrency across the dispatcher is bounded by `max_in_flight`.
 
 **Assets involved**
 
@@ -532,3 +532,4 @@ The feature processes one personal identifier, the subject id, and one identifie
 | Version | Date | Change |
 |---|---|---|
 | 0.1 | 2026-09-16 | Initial threat model, from design discussion #5258 version 0.3. |
+| 0.2 | 2026-10-26 | Delivery classifies a 2xx other than 200 and 204 as rejected, as reviewed in #5777. |

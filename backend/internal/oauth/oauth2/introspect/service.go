@@ -6,6 +6,7 @@ package introspect
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -61,7 +62,25 @@ func (s *tokenIntrospectionService) IntrospectToken(
 		}, nil
 	}
 
-	return s.prepareValidResponse(payload), nil
+	response := s.prepareValidResponse(payload)
+	if _, present := payload[constants.ClaimAuthorizationDetails]; present {
+		response.AuthorizationDetails = authorizationDetailsClaim(token)
+	}
+	return response, nil
+}
+
+// authorizationDetailsClaim returns the token's authorization details as the claim's JSON text, so numbers are
+// kept exactly, or nil when the claim is not a non-empty array.
+func authorizationDetailsClaim(token string) json.RawMessage {
+	raw, ok, err := jwt.DecodeJWTClaim(token, constants.ClaimAuthorizationDetails)
+	if err != nil || !ok {
+		return nil
+	}
+	var details []json.RawMessage
+	if json.Unmarshal(raw, &details) != nil || len(details) == 0 {
+		return nil
+	}
+	return raw
 }
 
 // validateByType validates the token with the validator for its typ header and returns its claims.

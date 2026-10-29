@@ -10,6 +10,7 @@ const BASE_CONNECTION: ConnectionResponse = {
   id: 'ti-1',
   type: ConnectionTypes.OIDC,
   name: 'Acme Okta',
+  ouId: 'ou-1',
   clientId: '',
   redirectUri: '',
   authorizationEndpoint: '',
@@ -27,6 +28,7 @@ describe('mapConnectionToTrustedIssuer', () => {
       expect.objectContaining({
         id: 'ti-1',
         name: 'Acme Okta',
+        ouId: 'ou-1',
         issuer: 'https://acme.okta.com',
         jwksEndpoint: 'https://acme.okta.com/keys',
         idJagEnabled: true,

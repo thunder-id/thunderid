@@ -4,14 +4,12 @@
 /**
  * User Management E2E Tests
  *
- * Covers deleting a user from the details page's Danger Zone. Each user is created via the
- * Users API (not the Create User wizard), so these tests stay green independent of the
- * create-user UI flow, and reached directly by id, since the users list has no search box
- * and sorts oldest-first.
+ * Covers deleting a user from its details page, and cancelling the confirmation. Each user is
+ * created via the Users API, so these stay green independent of the Add people flow.
  *
  * Required environment variables:
- * - BASE_URL: Console base URL
- * - ADMIN_USERNAME / ADMIN_PASSWORD: admin credentials (console sign-in + API user setup/teardown)
+ * - BASE_URL: Admin Console base URL
+ * - ADMIN_USERNAME / ADMIN_PASSWORD: admin credentials (sign-in + API user setup/teardown)
  *
  * Optional:
  * - SERVER_URL: backend base URL (default https://localhost:8090)
@@ -20,6 +18,7 @@
 
 import { ConsoleRoutes, expect, test, UsersApi } from "../../fixtures/console";
 import { Timeouts } from "../../constants/timeouts";
+import { UIMessages } from "../../constants/ui-messages";
 import { TestDataFactory } from "../../utils/test-data";
 
 test.describe("User Management - Delete User", () => {
@@ -37,7 +36,7 @@ test.describe("User Management - Delete User", () => {
     }
   });
 
-  /** TC001: Verify a user can be deleted from the details page's Danger Zone */
+  /** TC001: Verify a user can be deleted from its details page */
   test("TC001: Delete a user from the details page", async ({ usersPage, usersApi }) => {
     const user = await test.step("Create the user to delete via the Users API", async () => {
       return usersApi.createUser(deletedUser);
@@ -45,10 +44,8 @@ test.describe("User Management - Delete User", () => {
 
     await test.step("Open the user's details page and delete it", async () => {
       await usersPage.gotoUserDetails(user.id);
-      // Go to advanced tab
-      await usersPage.clickTab("Advanced");
       await usersPage.clickDeleteUser();
-      await expect(usersPage.deleteConfirmDialog).toBeVisible({ timeout: Timeouts.ELEMENT_VISIBILITY });
+      await expect(usersPage.deleteConfirmation).toContainText(UIMessages.deletion.question(deletedUser.username));
       await usersPage.confirmDeleteUser();
       await usersPage.page.waitForURL(`**${ConsoleRoutes.users}`, { timeout: Timeouts.PAGE_LOAD });
     });
@@ -59,19 +56,19 @@ test.describe("User Management - Delete User", () => {
     });
   });
 
-  /** TC002: Verify cancelling the delete dialog leaves the user intact */
+  /** TC002: Verify cancelling the confirmation leaves the user intact */
   test("TC002: Cancel deleting a user from the details page", async ({ usersPage, usersApi }) => {
     const user = await test.step("Create the user via the Users API", async () => {
       return usersApi.createUser(keptUser);
     });
 
-    await test.step("Open the delete dialog and cancel it", async () => {
+    await test.step("Ask to delete the user and cancel", async () => {
       await usersPage.gotoUserDetails(user.id);
-      await usersPage.clickTab("Advanced");
       await usersPage.clickDeleteUser();
-      await expect(usersPage.deleteConfirmDialog).toBeVisible({ timeout: Timeouts.ELEMENT_VISIBILITY });
+      await expect(usersPage.deleteConfirmation).toBeVisible({ timeout: Timeouts.ELEMENT_VISIBILITY });
       await usersPage.cancelDeleteUser();
-      await expect(usersPage.deleteConfirmDialog).toBeHidden({ timeout: Timeouts.ELEMENT_VISIBILITY });
+      await expect(usersPage.deleteConfirmation).toBeHidden({ timeout: Timeouts.ELEMENT_VISIBILITY });
+      await expect(usersPage.deleteUserButton).toBeVisible();
     });
 
     await test.step("Verify the user still exists via the Users API", async () => {

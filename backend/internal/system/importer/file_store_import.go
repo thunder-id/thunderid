@@ -18,17 +18,18 @@ import (
 )
 
 var fileStoreDirectoryByResourceType = map[string]string{
-	resourceTypeApplication:      "applications",
-	resourceTypeConnection:       "connections",
-	resourceTypeFlow:             "flows",
-	resourceTypeOrganizationUnit: "organization_units",
-	resourceTypeEntityType:       "user_types",
-	resourceTypeRole:             "roles",
-	resourceTypeResourceServer:   "resource_servers",
-	resourceTypeTheme:            "themes",
-	resourceTypeLayout:           "layouts",
-	resourceTypeUser:             "users",
-	resourceTypeTranslation:      "translations",
+	resourceTypeApplication:             "applications",
+	resourceTypeConnection:              "connections",
+	resourceTypeFlow:                    "flows",
+	resourceTypeOrganizationUnit:        "organization_units",
+	resourceTypeEntityType:              "user_types",
+	resourceTypeRole:                    "roles",
+	resourceTypeResourceServer:          "resource_servers",
+	resourceTypeAuthorizationDetailType: "authorization_detail_types",
+	resourceTypeTheme:                   "themes",
+	resourceTypeLayout:                  "layouts",
+	resourceTypeUser:                    "users",
+	resourceTypeTranslation:             "translations",
 }
 
 func deleteFileBackedResource(resourceType, resourceKey string) (string, *tidcommon.ServiceError) {

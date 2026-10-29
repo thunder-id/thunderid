@@ -16,11 +16,10 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
-	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/system/log/rollingfile"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/hashmock"
+	"github.com/thunder-id/thunderid/tests/testhelpers"
 )
 
 type DeclarativeResourceTestSuite struct {
@@ -179,7 +178,7 @@ func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_WarnsOnANear
 			},
 		}
 
-		out := s.captureLogs(func() {
+		out := testhelpers.CaptureLogs(s.T(), "INFO", func() {
 			s.Require().NoError(loadDeclarativeResources(fileStore, newEntityServiceMock(s.T()), cfg), name)
 		})
 
@@ -229,21 +228,6 @@ func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_RefusesAStat
 		s.Require().NoError(err)
 		s.Equal(providers.EntityState(state), got.State)
 	}
-}
-
-// captureLogs sends the shared logger's output to a file while fn runs and returns what it wrote.
-func (s *DeclarativeResourceTestSuite) captureLogs(fn func()) string {
-	path := filepath.Join(s.T().TempDir(), "declarative.log")
-	logger := log.GetLogger()
-	s.Require().NoError(logger.Configure(log.OutputOptions{FileEnabled: true, File: rollingfile.Config{Path: path}}))
-	defer func() {
-		s.Require().NoError(logger.Configure(log.OutputOptions{ConsoleEnabled: true}))
-	}()
-	fn()
-	// #nosec G304 -- path is in the test's temp directory
-	out, err := os.ReadFile(path)
-	s.Require().NoError(err)
-	return string(out)
 }
 
 func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_ParserError() {
@@ -309,7 +293,7 @@ func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_HashesSystem
 			Salt: "salt", Iterations: 1, KeySize: 32,
 		},
 	}, nil).Once()
-	svc := newEntityService(fileStore, nil, hashService, nil, nil, transaction.NewNoOpTransactioner())
+	svc := newEntityService(fileStore, nil, hashService, nil, nil, transaction.NewNoOpTransactioner(), nil)
 
 	cfg := DeclarativeLoaderConfig{
 		Directory: "applications",

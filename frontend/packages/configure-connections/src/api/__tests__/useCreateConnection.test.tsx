@@ -31,6 +31,7 @@ describe('useCreateConnection', () => {
   it('POSTs to /connections/{type} and toasts success', async () => {
     const {result} = renderHook(() => useCreateConnection('oidc'));
     result.current.mutate({
+      ouId: 'ou-1',
       name: 'Acme',
       clientId: 'x',
       redirectUri: 'https://r',
@@ -44,6 +45,7 @@ describe('useCreateConnection', () => {
     expect(mockHttpRequest).toHaveBeenCalledWith(
       expect.objectContaining({url: 'https://localhost:8090/connections/oidc', method: 'POST'}),
     );
+    expect(mockHttpRequest.mock.calls[0]?.[0]).toMatchObject({data: {ouId: 'ou-1', name: 'Acme'}});
     expect(showToast).toHaveBeenCalledWith(expect.any(String), 'success');
   });
 

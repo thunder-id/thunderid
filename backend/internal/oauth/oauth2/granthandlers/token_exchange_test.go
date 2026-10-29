@@ -100,6 +100,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) SetupTest() {
 		tokenBuilder:    suite.mockTokenBuilder,
 		tokenValidator:  suite.mockTokenValidator,
 		resourceService: suite.mockResourceService,
+		cfg:             oauthconfig.Config{JWT: engineconfig.JWTConfig{Issuer: testCustomIssuer}},
 	}
 
 	suite.oauthApp = &providers.OAuthClient{
@@ -248,6 +249,21 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_Success() {
 
 	result := suite.handler.ValidateGrant(context.Background(), tokenRequest, suite.oauthApp)
 	assert.Nil(suite.T(), result)
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_MetadataDocumentClient() {
+	cimdApp := *suite.oauthApp
+	cimdApp.ClientIDMetadataDocument = true
+
+	ordinary := suite.createBasicTokenRequest("subject-token")
+	result := suite.handler.ValidateGrant(context.Background(), ordinary, &cimdApp)
+	suite.Require().NotNil(result)
+	assert.Equal(suite.T(), constants.ErrorUnauthorizedClient, result.Error)
+
+	idJag := suite.createBasicTokenRequest("subject-token")
+	idJag.SubjectTokenType = string(constants.TokenTypeIdentifierIDToken)
+	idJag.RequestedTokenType = string(constants.TokenTypeIdentifierIDJAG)
+	assert.Nil(suite.T(), suite.handler.ValidateGrant(context.Background(), idJag, &cimdApp))
 }
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_WrongGrantType() {
@@ -781,8 +797,10 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_WithAct
 			if ctx.ActorClaims == nil {
 				return false
 			}
-			// Check new actor (from actor token)
-			return ctx.ActorClaims.Sub == "service456" && ctx.ActorClaims.Iss == testCustomIssuer
+			// The new actor heads the chain, with the subject token's actor beneath it
+			return ctx.ActorClaims.Sub == "service456" && ctx.ActorClaims.Iss == testCustomIssuer &&
+				ctx.ActorClaims.NestedAct["sub"] == "service789" &&
+				ctx.ActorClaims.NestedAct["iss"] == "https://existing-actor.com"
 		})).Return(&model.TokenDTO{
 		Token:     testTokenExchangeJWT,
 		TokenType: constants.TokenTypeBearer,
@@ -800,14 +818,18 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_WithAct
 
 // With no actor_token, the act claim follows the authenticated client: an agent exchanging a
 // user's token always gets an OBO actor claim naming itself, while an application gets one only
-// when it opts in through includeActClaim.
+// when it opts in through includeActClaim. The implicit actor heads the subject token's chain, and a
+// client that records no actor does not carry that chain forward.
 func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ImplicitActorClaim_WithoutActorToken() {
 	const actAppID = "act-entity-id"
+	priorActor := map[string]interface{}{"sub": "earlier-agent"}
 	testCases := []struct {
 		name            string
 		entityCategory  providers.EntityCategory
 		includeActClaim bool
+		subjectAct      map[string]interface{}
 		expectActor     bool
+		expectedNested  map[string]interface{}
 	}{
 		{name: "AgentClientAlwaysAppendsActor", entityCategory: providers.EntityCategoryAgent,
 			includeActClaim: false, expectActor: true},
@@ -815,6 +837,14 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ImplicitActorCl
 			includeActClaim: false, expectActor: false},
 		{name: "AppClientWithFlagAppendsActor", entityCategory: providers.EntityCategoryApp,
 			includeActClaim: true, expectActor: true},
+		{name: "AgentNestsPriorActor", entityCategory: providers.EntityCategoryAgent,
+			subjectAct: priorActor, expectActor: true, expectedNested: priorActor},
+		{name: "AppClientWithFlagNestsPriorActor", entityCategory: providers.EntityCategoryApp,
+			includeActClaim: true, subjectAct: priorActor, expectActor: true, expectedNested: priorActor},
+		{name: "AgentReExchangingOwnTokenIsNotRepeated", entityCategory: providers.EntityCategoryAgent,
+			subjectAct: map[string]interface{}{"sub": actAppID}, expectActor: true},
+		{name: "AppClientWithoutFlagDropsChain", entityCategory: providers.EntityCategoryApp,
+			subjectAct: priorActor, expectActor: false},
 	}
 
 	for _, tc := range testCases {
@@ -837,7 +867,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ImplicitActorCl
 					Sub:            testUserID,
 					Iss:            testCustomIssuer,
 					UserAttributes: map[string]interface{}{},
-					NestedAct:      nil,
+					NestedAct:      tc.subjectAct,
 				}, nil)
 
 			var capturedActor *tokenservice.SubjectTokenClaims
@@ -861,11 +891,89 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ImplicitActorCl
 				suite.Require().NotNil(capturedActor)
 				assert.Equal(suite.T(), actAppID, capturedActor.Sub)
 				assert.Empty(suite.T(), capturedActor.Iss)
+				assert.Equal(suite.T(), tc.expectedNested, capturedActor.NestedAct)
 			} else {
 				assert.Nil(suite.T(), capturedActor)
 			}
 		})
 	}
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestExtendDelegationChain() {
+	const (
+		serverIssuer = testCustomIssuer
+		otherIssuer  = "https://other-issuer.example.com"
+	)
+	priorChain := map[string]interface{}{"sub": "earlier-actor"}
+	actorChain := map[string]interface{}{"sub": "actor-of-actor"}
+	testCases := []struct {
+		name       string
+		actor      *tokenservice.SubjectTokenClaims
+		subjectIss string
+		subjectAct map[string]interface{}
+		expected   map[string]interface{}
+	}{
+		{name: "NoSubjectChainKeepsActorChain",
+			actor:    &tokenservice.SubjectTokenClaims{Sub: "actor", NestedAct: actorChain},
+			expected: actorChain},
+		{name: "SubjectChainNestedUnderActor",
+			actor:      &tokenservice.SubjectTokenClaims{Sub: "actor", Iss: serverIssuer},
+			subjectAct: priorChain,
+			expected:   priorChain},
+		{name: "SubjectChainReplacesActorChain",
+			actor:      &tokenservice.SubjectTokenClaims{Sub: "actor", NestedAct: actorChain},
+			subjectAct: priorChain,
+			expected:   priorChain},
+		{name: "ExternalSubjectChainIsNotCarried",
+			actor:      &tokenservice.SubjectTokenClaims{Sub: "actor", NestedAct: actorChain},
+			subjectIss: otherIssuer,
+			subjectAct: priorChain,
+			expected:   actorChain},
+		{name: "SameActorKeepsOnlyPriorActors",
+			actor: &tokenservice.SubjectTokenClaims{Sub: "actor", Iss: serverIssuer},
+			subjectAct: map[string]interface{}{
+				"sub": "actor", "iss": serverIssuer, "act": priorChain},
+			expected: priorChain},
+		{name: "SameActorDropsActorChain",
+			actor: &tokenservice.SubjectTokenClaims{Sub: "actor", Iss: serverIssuer,
+				NestedAct: actorChain},
+			subjectAct: map[string]interface{}{"sub": "actor"},
+			expected:   nil},
+		{name: "ActorTokenMatchesImplicitHead",
+			actor:      &tokenservice.SubjectTokenClaims{Sub: "actor", Iss: serverIssuer},
+			subjectAct: map[string]interface{}{"sub": "actor"},
+			expected:   nil},
+		{name: "ImplicitActorMatchesHeadFromThisServer",
+			actor:      &tokenservice.SubjectTokenClaims{Sub: "actor"},
+			subjectAct: map[string]interface{}{"sub": "actor", "iss": serverIssuer},
+			expected:   nil},
+		{name: "ImplicitActorDoesNotMatchHeadFromAnotherIssuer",
+			actor:      &tokenservice.SubjectTokenClaims{Sub: "actor"},
+			subjectAct: map[string]interface{}{"sub": "actor", "iss": otherIssuer},
+			expected:   map[string]interface{}{"sub": "actor", "iss": otherIssuer}},
+		{name: "ActorFromAnotherIssuerDoesNotMatchImplicitHead",
+			actor:      &tokenservice.SubjectTokenClaims{Sub: "actor", Iss: otherIssuer},
+			subjectAct: map[string]interface{}{"sub": "actor"},
+			expected:   map[string]interface{}{"sub": "actor"}},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			subjectIss := serverIssuer
+			if tc.subjectIss != "" {
+				subjectIss = tc.subjectIss
+			}
+			subject := &tokenservice.SubjectTokenClaims{Sub: testUserID, Iss: subjectIss, NestedAct: tc.subjectAct}
+
+			extendDelegationChain(tc.actor, subject, serverIssuer)
+			assert.Equal(suite.T(), tc.expected, tc.actor.NestedAct)
+		})
+	}
+
+	suite.NotPanics(func() {
+		extendDelegationChain(nil, &tokenservice.SubjectTokenClaims{Iss: serverIssuer, NestedAct: priorChain},
+			serverIssuer)
+	})
 }
 
 // An explicit actor_token identifies the acting party, so it takes precedence over the implicit
@@ -1943,11 +2051,9 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_ActorDelegationChai
 			if ctx.ActorClaims.Sub != "current-actor" || ctx.ActorClaims.Iss != testCustomIssuer {
 				return false
 			}
-			// Check that actor token's act claim is preserved
-			if len(ctx.ActorClaims.NestedAct) > 0 {
-				return ctx.ActorClaims.NestedAct["sub"] == "actor-of-actor"
-			}
-			return false
+			// The subject token's chain wins over the actor token's own act claim
+			return ctx.ActorClaims.NestedAct["sub"] == "previous-actor" &&
+				ctx.ActorClaims.NestedAct["iss"] == "https://previous-issuer.com"
 		})).Return(&model.TokenDTO{
 		Token:     testTokenExchangeJWT,
 		TokenType: constants.TokenTypeBearer,

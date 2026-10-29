@@ -78,3 +78,9 @@ func (lrw *loggingResponseWriter) Write(b []byte) (int, error) {
 	lrw.size += size
 	return size, err
 }
+
+// Unwrap returns the wrapped ResponseWriter, so http.ResponseController reaches the connection, as a
+// route that extends its write deadline needs.
+func (lrw *loggingResponseWriter) Unwrap() http.ResponseWriter {
+	return lrw.ResponseWriter
+}

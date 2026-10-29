@@ -5,6 +5,8 @@
 package tokenservice
 
 import (
+	"encoding/json"
+
 	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -71,6 +73,8 @@ type AccessTokenBuildContext struct {
 	// Neither is emitted as a token claim; both are carried for observability.
 	SubjectEntityID string
 	SubjectCategory string
+	// AuthorizationDetails, when set, is emitted as the RFC 9396 `authorization_details` claim.
+	AuthorizationDetails json.RawMessage
 }
 
 // RefreshTokenBuildContext contains all the information needed to build a refresh token.

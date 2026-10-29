@@ -1,0 +1,72 @@
+---
+title: Conditional Journeys
+docType: use-case
+description: Where a B2C sign-in, sign-up, or recovery journey should branch, what each branching point decides on, and what happens when that information is missing.
+sidebar_position: 13
+---
+
+# Conditional Journeys
+
+A consumer product rarely treats every customer the same way. A staff member who can issue refunds should not skip a second factor. A customer who enters a phone number should not be asked for a password they never set. A customer who tries to sign up with an email that already has an account should be offered sign-in, not an error. Each of these is a branching point in a journey, and where it sits decides whether the policy lives in one journey or is scattered across copies of a journey and your application code.
+
+## Decide Where the Journey Branches
+
+Not every difference between customers belongs inside one journey.
+
+- **Use separate journeys** for applications that should not share a sign-in. See [Sessions & Logout](../sessions-and-logout#how-many-applications-one-sign-in-opens).
+- **Branch inside one journey** when the fact that decides the path only exists once the journey is running. Whether the identifier matched an account, which provider the customer signed in with, or how many attempts have failed cannot be known when the application starts the journey.
+
+Copying a journey for each customer segment works until the copies drift apart.
+
+## Choose What Branching Decides On
+
+A branching point reads facts the journey already holds. Group them by where they come from:
+
+- **Who the customer is**, such as their groups, roles, user type, or organization.
+- **How they arrived**, such as the kind of identifier they entered or the identity provider that verified them.
+- **What the application asked for**, such as a fresh sign-in or a stronger level of assurance.
+- **The session**, such as whether one is present and how long ago the customer signed in.
+- **Earlier steps**, such as repeated failed attempts or an account that already exists.
+- **An outside service**, such as a risk score or a verification result.
+
+Treat anything the customer typed as untrusted. Use it to make the journey convenient, like choosing which sign-in options to show for an email domain. Do not use it to skip a security step.
+
+## Decide What Happens When Information Is Missing
+
+A branching point depends on facts that are sometimes unavailable. An outside service times out, or a social account arrives with no group information. Decide, for each branching point, which path the missing case takes:
+
+- **Fail toward the stronger check** when branching on security, such as step-up or risk. A customer whose risk score is unknown gets the second factor.
+- **Fall back to the default path** when branching for convenience, such as which sign-in options to show.
+
+Give every branching point a path for when nothing matches, so no customer is left without a next step. Missing information is not the same as information that does not match, and the two should not land on the same path by accident.
+
+## Keep Branching Explainable
+
+Support will be asked why a customer was sent down a particular path. Name each branching point and each path by the policy it applies, such as "Privileged staff" rather than "Rule 2," so the answer is readable from the journey itself.
+
+Order the checks deliberately. When the first matching check decides the path, put narrow, high-assurance checks before broad ones, so a staff member who is also a customer still gets the second factor.
+
+## Common Branching in a Consumer Product
+
+| Branching | Decides on | Typical paths |
+| --- | --- | --- |
+| Step up for privileged users | Group or role membership | Second factor for staff with refund rights, password only for everyone else |
+| Repeated failures | Failed attempts earlier in the journey | A stronger challenge after several wrong passwords or codes |
+| Sign-in options from the identifier | Email domain or identifier kind | Company identity provider for a corporate domain, SMS code for a phone number, password otherwise |
+| Existing account at sign-up | Whether the identifier already has an account | Offer sign-in or recovery instead of an error |
+| Verify the contact supplied | Which contact details the customer gave | Verify the email, the phone, or ask for one |
+| Act on an outside service | A risk or verification result | Continue, challenge, or deny, with a defined path when the service is unavailable |
+
+For what a returning customer skips, see [Sessions & Logout](../sessions-and-logout#what-a-returning-customer-skips). For a social account that matches an existing one, see [Identity Sources](../identity-sources#account-linking).
+
+<ProductName /> expresses a journey as an authentication flow, and applications that run the same flow share its sign-in. Inside a flow, a node can run or be skipped based on a value the flow already holds. See [Flow Concepts](../../../guides/flows/flow-concepts).
+
+## Expected Outcome
+
+Each journey branches only where a fact appears mid-journey. Every branching point has a path for when nothing matches, branching on security fails toward the stronger check, and each path is named by the policy it applies.
+
+## Continue Designing Your Architecture
+
+Review the other architecture decisions that shape your B2C application.
+
+<B2CArchitectureDecisions currentDecision="conditional-journeys" />

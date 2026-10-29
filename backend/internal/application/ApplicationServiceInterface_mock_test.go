@@ -464,8 +464,8 @@ func (_c *ApplicationServiceInterfaceMock_GetApplication_Call) RunAndReturn(run 
 }
 
 // GetApplicationList provides a mock function for the type ApplicationServiceInterfaceMock
-func (_mock *ApplicationServiceInterfaceMock) GetApplicationList(ctx context.Context) (*model.ApplicationListResponse, *common.ServiceError) {
-	ret := _mock.Called(ctx)
+func (_mock *ApplicationServiceInterfaceMock) GetApplicationList(ctx context.Context, filters map[string]interface{}) (*model.ApplicationListResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, filters)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetApplicationList")
@@ -473,18 +473,18 @@ func (_mock *ApplicationServiceInterfaceMock) GetApplicationList(ctx context.Con
 
 	var r0 *model.ApplicationListResponse
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context) (*model.ApplicationListResponse, *common.ServiceError)); ok {
-		return returnFunc(ctx)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}) (*model.ApplicationListResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, filters)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context) *model.ApplicationListResponse); ok {
-		r0 = returnFunc(ctx)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}) *model.ApplicationListResponse); ok {
+		r0 = returnFunc(ctx, filters)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*model.ApplicationListResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context) *common.ServiceError); ok {
-		r1 = returnFunc(ctx)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, map[string]interface{}) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, filters)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common.ServiceError)
@@ -500,18 +500,24 @@ type ApplicationServiceInterfaceMock_GetApplicationList_Call struct {
 
 // GetApplicationList is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *ApplicationServiceInterfaceMock_Expecter) GetApplicationList(ctx any) *ApplicationServiceInterfaceMock_GetApplicationList_Call {
-	return &ApplicationServiceInterfaceMock_GetApplicationList_Call{Call: _e.mock.On("GetApplicationList", ctx)}
+//   - filters map[string]interface{}
+func (_e *ApplicationServiceInterfaceMock_Expecter) GetApplicationList(ctx any, filters any) *ApplicationServiceInterfaceMock_GetApplicationList_Call {
+	return &ApplicationServiceInterfaceMock_GetApplicationList_Call{Call: _e.mock.On("GetApplicationList", ctx, filters)}
 }
 
-func (_c *ApplicationServiceInterfaceMock_GetApplicationList_Call) Run(run func(ctx context.Context)) *ApplicationServiceInterfaceMock_GetApplicationList_Call {
+func (_c *ApplicationServiceInterfaceMock_GetApplicationList_Call) Run(run func(ctx context.Context, filters map[string]interface{})) *ApplicationServiceInterfaceMock_GetApplicationList_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
+		var arg1 map[string]interface{}
+		if args[1] != nil {
+			arg1 = args[1].(map[string]interface{})
+		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -522,7 +528,7 @@ func (_c *ApplicationServiceInterfaceMock_GetApplicationList_Call) Return(applic
 	return _c
 }
 
-func (_c *ApplicationServiceInterfaceMock_GetApplicationList_Call) RunAndReturn(run func(ctx context.Context) (*model.ApplicationListResponse, *common.ServiceError)) *ApplicationServiceInterfaceMock_GetApplicationList_Call {
+func (_c *ApplicationServiceInterfaceMock_GetApplicationList_Call) RunAndReturn(run func(ctx context.Context, filters map[string]interface{}) (*model.ApplicationListResponse, *common.ServiceError)) *ApplicationServiceInterfaceMock_GetApplicationList_Call {
 	_c.Call.Return(run)
 	return _c
 }

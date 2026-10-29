@@ -124,6 +124,71 @@ func (_c *notificationTemplateAdapterMock_CreateTemplate_Call) RunAndReturn(run 
 	return _c
 }
 
+// DeleteTemplate provides a mock function for the type notificationTemplateAdapterMock
+func (_mock *notificationTemplateAdapterMock) DeleteTemplate(ctx context.Context, channel notificationtemplate.ChannelType, id string) *common.ServiceError {
+	ret := _mock.Called(ctx, channel, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteTemplate")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, notificationtemplate.ChannelType, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, channel, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// notificationTemplateAdapterMock_DeleteTemplate_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteTemplate'
+type notificationTemplateAdapterMock_DeleteTemplate_Call struct {
+	*mock.Call
+}
+
+// DeleteTemplate is a helper method to define mock.On call
+//   - ctx context.Context
+//   - channel notificationtemplate.ChannelType
+//   - id string
+func (_e *notificationTemplateAdapterMock_Expecter) DeleteTemplate(ctx any, channel any, id any) *notificationTemplateAdapterMock_DeleteTemplate_Call {
+	return &notificationTemplateAdapterMock_DeleteTemplate_Call{Call: _e.mock.On("DeleteTemplate", ctx, channel, id)}
+}
+
+func (_c *notificationTemplateAdapterMock_DeleteTemplate_Call) Run(run func(ctx context.Context, channel notificationtemplate.ChannelType, id string)) *notificationTemplateAdapterMock_DeleteTemplate_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 notificationtemplate.ChannelType
+		if args[1] != nil {
+			arg1 = args[1].(notificationtemplate.ChannelType)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *notificationTemplateAdapterMock_DeleteTemplate_Call) Return(serviceError *common.ServiceError) *notificationTemplateAdapterMock_DeleteTemplate_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *notificationTemplateAdapterMock_DeleteTemplate_Call) RunAndReturn(run func(ctx context.Context, channel notificationtemplate.ChannelType, id string) *common.ServiceError) *notificationTemplateAdapterMock_DeleteTemplate_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetTemplateByHandle provides a mock function for the type notificationTemplateAdapterMock
 func (_mock *notificationTemplateAdapterMock) GetTemplateByHandle(ctx context.Context, channel notificationtemplate.ChannelType, handle string) (*notificationtemplate.Template, *common.ServiceError) {
 	ret := _mock.Called(ctx, channel, handle)

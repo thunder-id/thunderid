@@ -338,7 +338,7 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_Invali
 // ResolveAudienceBinding tests
 
 func (suite *ResourceIndicatorsTestSuite) TestResolveAudienceBinding_NoResourceNoPermissionScopes_ReturnsNil() {
-	rs, err := ResolveAudienceBinding(context.Background(), suite.mockResourceService, nil, nil)
+	rs, err := ResolveAudienceBinding(context.Background(), suite.mockResourceService, nil, nil, false)
 
 	assert.Nil(suite.T(), rs)
 	assert.Nil(suite.T(), err)
@@ -349,7 +349,7 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveAudienceBinding_PermissionS
 		Return(&providers.ResourceServer{ID: "rs-1", Identifier: "https://api.example.com"}, nil)
 
 	rs, err := ResolveAudienceBinding(context.Background(), suite.mockResourceService,
-		nil, []string{"read"})
+		nil, []string{"read"}, false)
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), rs)
@@ -362,7 +362,41 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveAudienceBinding_ExplicitRes
 		Return(&rs, nil)
 
 	resolved, err := ResolveAudienceBinding(context.Background(), suite.mockResourceService,
-		[]string{"https://api.example.com"}, nil)
+		[]string{"https://api.example.com"}, nil, false)
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), &rs, resolved)
+}
+
+func (suite *ResourceIndicatorsTestSuite) TestResolveAudienceBinding_AuthorizationDetailsOnly_ResolvesDefault() {
+	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "").
+		Return(&providers.ResourceServer{ID: "rs-default", Identifier: "https://default.example.com"}, nil)
+
+	rs, err := ResolveAudienceBinding(context.Background(), suite.mockResourceService, nil, nil, true)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), rs)
+	assert.Equal(suite.T(), "https://default.example.com", rs.Identifier)
+}
+
+func (suite *ResourceIndicatorsTestSuite) TestResolveAudienceBinding_AuthorizationDetailsNoDefault_InvalidTarget() {
+	svcErr := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RSE-4041"}
+	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "").Return(nil, svcErr)
+
+	rs, err := ResolveAudienceBinding(context.Background(), suite.mockResourceService, nil, nil, true)
+
+	assert.Nil(suite.T(), rs)
+	assert.NotNil(suite.T(), err)
+	assert.Equal(suite.T(), constants.ErrorInvalidTarget, err.Error)
+}
+
+func (suite *ResourceIndicatorsTestSuite) TestResolveAudienceBinding_AuthorizationDetailsExplicitResource_Resolves() {
+	rs := providers.ResourceServer{ID: "rs02", Identifier: "https://payments.example.com"}
+	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "https://payments.example.com").
+		Return(&rs, nil)
+
+	resolved, err := ResolveAudienceBinding(context.Background(), suite.mockResourceService,
+		[]string{"https://payments.example.com"}, nil, true)
 
 	assert.Nil(suite.T(), err)
 	assert.Equal(suite.T(), &rs, resolved)

@@ -31,6 +31,7 @@ func (f *fileBasedStore) Create(id string, data interface{}) error {
 		FlowType:     flow.FlowType,
 		Interceptors: flow.Interceptors,
 		Nodes:        flow.Nodes,
+		OUID:         flow.OUID,
 	})
 	return err
 }
@@ -46,6 +47,7 @@ func (f *fileBasedStore) CreateFlow(_ context.Context, flowID string, flow *Flow
 		ActiveVersion: 1,
 		Interceptors:  flow.Interceptors,
 		Nodes:         flow.Nodes,
+		OUID:          flow.OUID,
 		CreatedAt:     "",
 		UpdatedAt:     "",
 	}
@@ -74,6 +76,7 @@ func (f *fileBasedStore) ListFlows(_ context.Context, limit, offset int, flowTyp
 				FlowType:      flow.FlowType,
 				Name:          flow.Name,
 				ActiveVersion: flow.ActiveVersion,
+				OUID:          flow.OUID,
 			}
 			flows = append(flows, basicFlow)
 		}

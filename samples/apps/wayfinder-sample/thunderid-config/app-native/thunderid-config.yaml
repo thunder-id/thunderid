@@ -142,6 +142,7 @@ resources:
 resource_type: connection
 id: 0193b0a1-1002-7000-8000-000000000001
 name: Wayfinder Mock SMTP
+ouHandle: default
 description: Mock SMTP server that the Wayfinder sample's email steps send through
 type: email-smtp
 host: 127.0.0.1
@@ -154,6 +155,7 @@ authentication:
 ---
 resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000001
+ouHandle: default
 name: Wayfinder Registration Flow
 handle: wayfinder-registration-flow
 flowType: REGISTRATION
@@ -311,6 +313,7 @@ nodes:
 ---
 resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000002
+ouHandle: default
 name: Wayfinder Password Recovery Flow
 handle: wayfinder-recovery-flow
 flowType: RECOVERY
@@ -462,6 +465,12 @@ nodes:
     type: TASK_EXECUTION
     executor:
       name: CredentialSetter
+    onSuccess: release_account_locks
+  - id: release_account_locks
+    type: TASK_EXECUTION
+    executor:
+      name: IdentityGovernanceExecutor
+      mode: unlock
     onSuccess: recovery_complete
   - id: recovery_complete
     type: PROMPT
@@ -495,6 +504,7 @@ nodes:
 ---
 resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000003
+ouHandle: default
 name: Wayfinder Sign Out Flow
 handle: wayfinder-signout-flow
 flowType: SIGNOUT
@@ -543,6 +553,7 @@ nodes:
 ---
 resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000005
+ouHandle: default
 name: Wayfinder Staff Onboarding Flow
 handle: wayfinder-onboarding-flow
 flowType: USER_ONBOARDING
@@ -713,11 +724,6 @@ nodes:
     next: invite_verify_support
   - id: invite_verify_support
     type: TASK_EXECUTION
-    inputs:
-      - ref: input_invite_token_s
-        identifier: inviteToken
-        type: HIDDEN
-        required: true
     executor:
       name: InviteExecutor
       mode: verify
@@ -834,11 +840,6 @@ nodes:
     next: invite_verify_destinations
   - id: invite_verify_destinations
     type: TASK_EXECUTION
-    inputs:
-      - ref: input_invite_token_d
-        identifier: inviteToken
-        type: HIDDEN
-        required: true
     executor:
       name: InviteExecutor
       mode: verify
@@ -905,6 +906,7 @@ nodes:
 ---
 resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000008
+ouHandle: default
 name: Wayfinder Registration with Auto Sign-In Flow
 handle: wayfinder-registration-autosignin-flow
 flowType: REGISTRATION
@@ -1057,6 +1059,7 @@ nodes:
 ---
 resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000010
+ouHandle: default
 name: Wayfinder App Authentication Flow
 handle: wayfinder-app-auth-flow
 flowType: AUTHENTICATION
@@ -1237,6 +1240,7 @@ inboundAuthConfig:
 ---
 resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000006
+ouHandle: default
 name: Default Wayfinder CIBA Email Notification Flow
 handle: wayfinder-ciba-email-flow
 flowType: AUTHENTICATION
@@ -1440,6 +1444,7 @@ nodes:
 ---
 resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000007
+ouHandle: default
 name: Default Wayfinder CIBA SMS Notification Flow
 handle: wayfinder-ciba-sms-flow
 flowType: AUTHENTICATION
@@ -1642,6 +1647,7 @@ nodes:
 ---
 resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000004
+ouHandle: default
 name: Wayfinder Agent Authentication Flow
 handle: wayfinder-agent-auth-flow
 flowType: AUTHENTICATION
@@ -1778,6 +1784,7 @@ nodes:
 ---
 resource_type: agent
 id: wayfinder-concierge
+owner: "{{.AGENT_OWNER_ID}}"
 description: Wayfinder Concierge AI agent for the Wayfinder Travel sample
 ouHandle: default
 type: default
@@ -1816,6 +1823,7 @@ resource_type: agent
 # auth_flow_handle is shared between authorization_code and CIBA — they need
 # different flows (interactive vs backchannel notification).
 id: wayfinder-upgrade-agent
+owner: "{{.AGENT_OWNER_ID}}"
 description: Upgrade scheduler agent — initiates CIBA for users with pending flight upgrade requests
 ouHandle: default
 type: default

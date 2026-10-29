@@ -114,6 +114,17 @@ The **Advanced** tab gathers the agent's OAuth and operational settings:
 
 The custom attributes every agent carries come from the agent schema, a single built-in schema shared by all agents. See [Agent Schema](../agent-schema) to view the default attributes and change what an agent holds.
 
+## Suspend or unlock an agent
+
+An agent locks automatically after repeated failed sign-in attempts, but its client secret never locks. To stop an agent while you investigate, suspend it. Suspending revokes the agent's tokens, including user tokens issued through its OAuth client, and ends its sessions.
+
+- **Console:** open the agent, click **Actions** in its header, and select **Suspend**, **Unsuspend**, or **Unlock**. The menu offers only the operations that apply to the agent's **Status**.
+- **API:** `GET /agents/<AGENT_ID>` returns the agent's `status`. Suspend, unsuspend, and unlock run as administration flows; there is no direct endpoint.
+
+To find agents that no longer authenticate, set `accountAccess.agent.recordLastLogin` to `true`. `GET /agents/<AGENT_ID>` then returns `lastLoginAt`, the time the agent was last granted access, and every `client_credentials` token the agent obtains records it too. The value is absent until the first recorded grant, and it can lag the latest grant by up to `lastLoginResolutionSeconds`, one hour by default. See [Account Access](../../../deployment/configuration#account-access).
+
+For what each operation does, see [Suspend and Restore Accounts](../../account-protection/suspend-and-restore-accounts). For the agent lock policy, see [Configure Account Lockout](../../account-protection/configure-account-lockout).
+
 ## Delete an agent
 
 - **Console:** on the **Advanced** tab, in the **Danger zone** section, click **Delete agent**.

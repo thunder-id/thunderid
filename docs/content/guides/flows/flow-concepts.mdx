@@ -146,6 +146,49 @@ For the full field reference and lifecycle details, see [Interceptors](../advanc
 
 Every time you save a flow, <ProductName /> creates a new version. The version number appears in the **Version** column on the Flows list page. You can view version history and restore any earlier version via API. See [Flow Versioning API Reference](../../../apis#tag/flow-versioning).
 
+## Organization Unit Ownership
+
+Every flow belongs to exactly one organization unit (OU).
+
+- **Required on create.** There is no default, so the request has to name the organization unit. In the Console, creating a flow asks which organization unit it belongs to when your deployment has more than one. When there is exactly one, the Console uses it without asking.
+- **Cannot change.** To keep the owner on update, leave `ouId` out or send the current one. The Console sends the current one on every update.
+- **Blocks deleting the organization unit.** An organization unit that still owns a flow cannot be deleted. Delete the flow first. See [Delete an Organization Unit](../../organization-units/manage-organization-units#delete-an-organization-unit).
+
+Every flow response, and every entry of the `GET /flows` list, carries `ouId`.
+
+### Create a Flow Through the API
+
+Send `ouId` in the body of `POST /flows`, next to the other flow fields. Get the organization unit's `id` from `GET /organization-units`.
+
+```json
+{
+  "handle": "my-sign-in-flow",
+  "name": "My Sign-In Flow",
+  "flowType": "AUTHENTICATION",
+  "ouId": "<organization-unit-id>",
+  "nodes": [ ... ]
+}
+```
+
+A request without `ouId` fails with `FLM-1029`, and one that names an organization unit that does not exist fails with `FLM-1027`. A `PUT` that names a different organization unit than the current owner fails with `FLM-1028`. All three return `400`.
+
+### Declare a Flow in a Resource File
+
+A `flow` document in an import, a declarative resource file, or a bootstrap file names its organization unit with `ouId` or `ouHandle`. A document with neither fails to load, and a dry run reports the same failure. When both are present, `ouId` wins and <ProductName /> logs a warning. Exports always write `ouId`.
+
+```yaml
+resource_type: flow
+id: 0193b0a1-1001-7000-8000-000000000001
+handle: my-sign-in-flow
+name: My Sign-In Flow
+flowType: AUTHENTICATION
+ouHandle: default
+nodes:
+  # ...
+```
+
+For the full list of handle fields, see [Cross-Resource References by Handle](../../declarative-configurations/import-resources#cross-resource-references-by-handle).
+
 ## What's Next
 
 - Start building: Follow a step-by-step walkthrough in [Build a Flow](../build-a-flow).

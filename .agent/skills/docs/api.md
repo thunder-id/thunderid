@@ -69,6 +69,9 @@ Scalar renders `summary`, `description`, and tag `description` directly with no 
 
 - The file must parse as valid YAML.
 - Every `$ref` must resolve to a component that actually exists in `components.schemas`/`components.parameters`/etc. — either in the same file or correctly referencing another `api/*.yaml` file. A dangling `$ref` breaks the merged spec at build time; treat it as CRITICAL, not a style nit.
+- The docs build merges all `api/*.yaml` by component name, so a duplicate name silently takes the other file's definition.
+  A component with resource-specific descriptions or examples, such as a filter parameter, whose name appears in another `api/*.yaml` is CRITICAL.
+  Components that read the same for every resource, such as `limit` and `offset`, can share a name.
 
 ### 6. Tag Declaration and Grouping
 

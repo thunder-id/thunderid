@@ -15,8 +15,8 @@ const E2E_ADMIN_NATIVE_FLOW_SECRET = "e2e-admin-native-app-secret";
 // OAuth client credentials declared for the same app in tests/e2e/thunderid-config.yaml. The
 // assertion names the app in its `aud` claim and the subject-token validator requires the
 // exchanging client to be that app, so these belong to the app above, not a separate client.
-const E2E_ADMIN_CLIENT_ID = "E2E_ADMIN";
-const E2E_ADMIN_CLIENT_SECRET = "e2e-admin-client-secret";
+export const E2E_ADMIN_CLIENT_ID = "E2E_ADMIN";
+export const E2E_ADMIN_CLIENT_SECRET = "e2e-admin-client-secret";
 
 // Resource server the admin token is bound to (RFC 8707). It must match the resource_server_identifier
 // the flow evaluates permissions against, and it is required: without a resource the exchange resolves

@@ -129,6 +129,15 @@ describe('useEmailProviders', () => {
     });
   });
 
+  describe('Enabled option', () => {
+    it('should not fetch when disabled', () => {
+      const {result} = renderHook(() => useEmailProviders({enabled: false}));
+
+      expect(mockHttpRequest).not.toHaveBeenCalled();
+      expect(result.current.data).toBeUndefined();
+    });
+  });
+
   describe('Loading State', () => {
     it('should be loading initially', () => {
       mockHttpRequest.mockImplementation(() => new Promise(() => null)); // Never resolves

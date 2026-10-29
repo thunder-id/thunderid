@@ -9,6 +9,12 @@ server:
   {{- if .Values.configuration.server.identifier }}
   identifier: {{ .Values.configuration.server.identifier | quote }}
   {{- end }}
+  {{- with .Values.configuration.server.timeouts }}
+  timeouts:
+    read_header_seconds: {{ .readHeaderSeconds }}
+    write_seconds: {{ .writeSeconds }}
+    idle_seconds: {{ .idleSeconds }}
+  {{- end }}
   {{- if or .Values.configuration.server.security .Values.setup.enabled }}
   security:
     {{- with .Values.configuration.server.security }}
@@ -292,6 +298,9 @@ oauth:
     max_iat_age: {{ .Values.configuration.oauth.clientAssertion.maxIatAge }}
   cimd:
     enabled: {{ .Values.configuration.oauth.cimd.enabled }}
+  authorization_details:
+    processor_timeout: {{ .Values.configuration.oauth.authorizationDetails.processorTimeout }}
+    type_metadata_enabled: {{ .Values.configuration.oauth.authorizationDetails.typeMetadataEnabled }}
   revocation:
     criteria:
       max_entries_per_change: {{ .Values.configuration.oauth.revocation.criteria.maxEntriesPerChange }}
@@ -327,6 +336,12 @@ flow:
     - {{ . | quote }}
   {{- end }}
 {{- end }}
+
+import:
+  timeout_seconds: {{ .Values.configuration.import.timeoutSeconds }}
+
+gateway:
+  apply_timeout_seconds: {{ .Values.configuration.gateway.applyTimeoutSeconds }}
 
 direct_api:
   enabled: {{ .Values.configuration.directApi.enabled }}
@@ -453,7 +468,7 @@ log:
 {{- end }}
 
 {{- $stores := default dict .Values.configuration.stores }}
-{{- range $section := (list "user" "group" "role" "theme" "layout" "translation" "agent" "user_type" "organization_unit" "identity_provider" "application" "server_config" "resource") }}
+{{- range $section := (list "user" "group" "role" "theme" "layout" "translation" "agent" "user_type" "organization_unit" "identity_provider" "application" "server_config" "resource" "authorization_detail_type" "http_connection") }}
 {{- $mode := index $stores $section }}
 {{- if $mode }}
 
@@ -515,6 +530,13 @@ account_access:
 {{- end }}
 {{- end }}
 {{- end }}
+{{- end }}
+{{- /* Identity governance provider: rendered only when set, so the product default applies otherwise. */}}
+{{- $governanceProviderType := (default dict .Values.configuration.identityGovernanceProvider).type }}
+{{- if $governanceProviderType }}
+
+identity_governance_provider:
+  type: {{ $governanceProviderType | quote }}
 {{- end }}
 {{- /* Notification template store lives under the nested notification.template path. */}}
 {{- if $stores.notification_template }}

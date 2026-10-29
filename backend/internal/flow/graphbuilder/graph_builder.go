@@ -152,6 +152,23 @@ func (b *graphBuilder) buildGraph(
 	return graph, nil
 }
 
+// variablesNodeProperties returns the properties every VARIABLES node of the flow carries: the declarations of all the
+// VARIABLES nodes, so that each time one runs it resolves the whole set of variables again. The flow definition keeps
+// each node with only what it declares.
+func (b *graphBuilder) variablesNodeProperties(nodes []providers.NodeDefinition) (map[string]interface{}, error) {
+	var all []providers.VariableDefinition
+	for i := range nodes {
+		if nodes[i].Type == string(common.NodeTypeVariables) {
+			all = append(all, nodes[i].Inputs...)
+		}
+	}
+	properties, err := core.PropertiesFor(all)
+	if err != nil {
+		return nil, fmt.Errorf("the variables of the flow are not readable: %w", err)
+	}
+	return properties, nil
+}
+
 // processNode processes a single node definition and adds it to the graph.
 func (b *graphBuilder) processNode(
 	ctx context.Context,
@@ -175,8 +192,16 @@ func (b *graphBuilder) processNode(
 		}
 	}
 
+	properties := nodeDef.Properties
+	if nodeDef.Type == string(common.NodeTypeVariables) {
+		var err error
+		if properties, err = b.variablesNodeProperties(allNodes); err != nil {
+			return err
+		}
+	}
+
 	// Construct a new node. Here we set isStartNode to false by default
-	node, err := b.flowFactory.CreateNode(nodeDef.ID, nodeDef.Type, nodeDef.Properties,
+	node, err := b.flowFactory.CreateNode(nodeDef.ID, nodeDef.Type, properties,
 		false, isFinalNode)
 	if err != nil {
 		return fmt.Errorf("failed to create node %s: %w", nodeDef.ID, err)

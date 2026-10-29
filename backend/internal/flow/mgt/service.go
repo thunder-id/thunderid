@@ -6,8 +6,10 @@ package flowmgt
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
@@ -63,15 +65,28 @@ type FlowMgtServiceInterface interface {
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	ResolveEffectiveFlowID(ctx context.Context, overriddenFlowID, ouID string, flowType providers.FlowType) (
 		string, *tidcommon.ServiceError)
+	GetSystemFlow(ctx context.Context, handle string) (*providers.CompleteFlowDefinition, *tidcommon.ServiceError)
+	ResolveFlowOU(ctx context.Context, flowDef *FlowDefinition) *tidcommon.ServiceError
 }
 
-// ouProvider is the minimal subset of the OU service consumed by flowmgt for OU-level default
-// flow resolution. It reads the organization unit's per-flow-type default flow IDs, which belong to
-// the management model rather than the runtime provider contract. If those IDs are ever promoted
-// into providers.OrganizationUnit, this can return the contract type and the internal/ou import
-// here goes away.
+// ouProvider is the minimal subset of the OU service consumed by flowmgt. It reads the organization unit's
+// per-flow-type default flow IDs for OU-level default flow resolution, which belong to the management model rather
+// than the runtime provider contract, and it checks and resolves the organization unit a flow is owned by. If those
+// IDs are ever promoted into providers.OrganizationUnit, this can return the contract type and the internal/ou
+// import here goes away.
 type ouProvider interface {
 	GetOrganizationUnit(ctx context.Context, id string) (ou.OrganizationUnit, *tidcommon.ServiceError)
+	ResolveOwner(ctx context.Context, ouID, ouHandle string, errs ou.OwnerErrors) (string, *tidcommon.ServiceError)
+	ResolveOwnerForUpdate(
+		ctx context.Context, requestedID, requestedHandle, currentID string, errs ou.OwnerErrors,
+	) (string, *tidcommon.ServiceError)
+}
+
+// flowOwnerErrors are the errors given when the organization unit of a flow is refused.
+var flowOwnerErrors = ou.OwnerErrors{
+	Required: ErrorFlowOURequired,
+	NotFound: ErrorInvalidFlowOU,
+	Changed:  ErrorOUUpdateNotAllowed,
 }
 
 // flowMgtService is the default implementation of the FlowMgtServiceInterface.
@@ -88,7 +103,9 @@ type flowMgtService struct {
 	templateResolver    notificationTemplateProvider
 	serverConfigSvc     serverConfigProvider
 	ouSvc               ouProvider
-	logger              *log.Logger
+	// systemFlows are the system flows, by handle, as validated at startup.
+	systemFlows map[string]json.RawMessage
+	logger      *log.Logger
 }
 
 // notificationTemplateProvider maps a template handle (within a channel) to its id.
@@ -110,6 +127,7 @@ func newFlowMgtService(
 	serverConfigSvc serverConfigProvider,
 	ouSvc ouProvider,
 	templateResolver notificationTemplateProvider,
+	systemFlows map[string]json.RawMessage,
 ) FlowMgtServiceInterface {
 	return &flowMgtService{
 		store:               store,
@@ -123,6 +141,7 @@ func newFlowMgtService(
 		serverConfigSvc:     serverConfigSvc,
 		ouSvc:               ouSvc,
 		templateResolver:    templateResolver,
+		systemFlows:         systemFlows,
 		logger:              log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 	}
 }
@@ -168,6 +187,9 @@ func (s *flowMgtService) CreateFlow(ctx context.Context, flowDef *FlowDefinition
 	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
 	if err := s.flowValidator.ValidateFlowDefinition(ctx, flowDef); err != nil {
 		return nil, err
+	}
+	if svcErr := s.ResolveFlowOU(ctx, flowDef); svcErr != nil {
+		return nil, svcErr
 	}
 
 	flowID := flowDef.ID
@@ -220,6 +242,19 @@ func (s *flowMgtService) CreateFlow(ctx context.Context, flowDef *FlowDefinition
 	s.tryInferRegistrationFlow(ctx, flowID, flowDef)
 
 	return createdFlow, nil
+}
+
+// ResolveFlowOU sets the organization unit a flow is owned by. A flow has to name one, by id or by handle, and it has
+// to exist. The handle is replaced by the id it resolves to. It is only recorded: nothing restricts what an
+// organization unit can do with a flow it does not own.
+func (s *flowMgtService) ResolveFlowOU(ctx context.Context, flowDef *FlowDefinition) *tidcommon.ServiceError {
+	ouID, svcErr := s.ouSvc.ResolveOwner(ctx, flowDef.OUID, flowDef.OUHandle, flowOwnerErrors)
+	if svcErr != nil {
+		return svcErr
+	}
+	flowDef.OUID = ouID
+	flowDef.OUHandle = ""
+	return nil
 }
 
 // GetFlow retrieves a flow definition by its ID.
@@ -339,26 +374,39 @@ func (s *flowMgtService) GetFlowUsages(
 // GetResourceDependencies returns the flows that reference the resource identified by
 // (resourceType, id). It implements the resourcedependency.Provider interface: an active flow
 // references an identity provider or notification sender when one of its nodes carries the matching
-// ID in its properties, and references a notification template when a node carries the matching
-// email/SMS template handle. Such a reference blocks deletion of the target, since the flow would
-// break without it.
+// ID in its properties, an HTTP connection when one of its extension steps does, and a notification
+// template when a node carries the matching email/SMS template handle. An organization unit is used by the flows
+// it owns and by the flows whose nodes name it as their parentOuId. Such a reference blocks deletion of the
+// target, since the flow would break without it.
 func (s *flowMgtService) GetResourceDependencies(
 	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
 	// Templates are referenced by handle, not id, so they need a channel-aware path.
 	if resourceType == resourcedependency.ResourceTypeNotificationTemplate {
 		return s.notificationTemplateUsages(ctx, id)
 	}
+	if resourceType == resourcedependency.ResourceTypeOU {
+		return s.organizationUnitUsages(ctx, id)
+	}
 
-	var propertyKey string
+	var propertyKey, executorName string
 	switch resourceType {
 	case resourcedependency.ResourceTypeIDP:
 		propertyKey = nodePropertyKeyIDPID
 	case resourcedependency.ResourceTypeNotificationSender:
 		propertyKey = nodePropertyKeyNotificationSenderID
+	case resourcedependency.ResourceTypeHTTPConnection:
+		propertyKey, executorName = common.NodePropertyConnectionID, executormeta.ExecutorNameExtension
 	default:
 		return []resourcedependency.ResourceDependency{}, nil
 	}
 
+	return s.referencingFlows(ctx, executorName, propertyKey, id)
+}
+
+// referencingFlows lists the active flows whose nodes carry the given ID in the named property key. A non-empty
+// executorName counts only the nodes that run that executor.
+func (s *flowMgtService) referencingFlows(
+	ctx context.Context, executorName, propertyKey, id string) ([]resourcedependency.ResourceDependency, error) {
 	flows, err := s.store.ListActiveFlowsWithNodes(ctx)
 	if err != nil {
 		// The registry logs provider errors; don't double-log here.
@@ -367,7 +415,7 @@ func (s *flowMgtService) GetResourceDependencies(
 
 	usages := make([]resourcedependency.ResourceDependency, 0)
 	for _, flow := range flows {
-		if flowReferencesResource(flow, propertyKey, id) {
+		if flowReferencesResource(flow, executorName, propertyKey, id) {
 			usages = append(usages, resourcedependency.ResourceDependency{
 				ResourceType:     resourcedependency.ResourceTypeFlow,
 				ID:               flow.ID,
@@ -380,14 +428,71 @@ func (s *flowMgtService) GetResourceDependencies(
 	return usages, nil
 }
 
-// flowReferencesResource reports whether any node in the flow carries the given ID in the named
-// property key.
-func flowReferencesResource(flow *providers.CompleteFlowDefinition, propertyKey, id string) bool {
+// organizationUnitUsages lists the flows that block the deletion of an organization unit: the flows it owns, since a
+// flow cannot exist without its owner, and the flows whose nodes name it as their parentOuId, since those would fail
+// to resolve it. A flow that does both is listed once.
+func (s *flowMgtService) organizationUnitUsages(
+	ctx context.Context, ouID string) ([]resourcedependency.ResourceDependency, error) {
+	usages, err := s.ownedFlows(ctx, ouID)
+	if err != nil {
+		return nil, err
+	}
+	referencing, err := s.referencingFlows(ctx, "", common.NodePropertyOUParent, ouID)
+	if err != nil {
+		return nil, err
+	}
+
+	listed := make(map[string]struct{}, len(usages))
+	for _, usage := range usages {
+		listed[usage.ID] = struct{}{}
+	}
+	for _, usage := range referencing {
+		if _, ok := listed[usage.ID]; !ok {
+			usages = append(usages, usage)
+		}
+	}
+
+	return usages, nil
+}
+
+// ownedFlows lists the flows an organization unit owns, which block the deletion of the organization unit.
+func (s *flowMgtService) ownedFlows(ctx context.Context, ouID string) ([]resourcedependency.ResourceDependency, error) {
+	owned := make([]resourcedependency.ResourceDependency, 0)
+	for offset := 0; ; offset += maxPageSize {
+		flows, total, err := s.store.ListFlows(ctx, maxPageSize, offset, "")
+		if err != nil {
+			// The registry logs provider errors; don't double-log here.
+			return nil, err
+		}
+		for _, flow := range flows {
+			if flow.OUID == ouID {
+				owned = append(owned, resourcedependency.ResourceDependency{
+					ResourceType:     resourcedependency.ResourceTypeFlow,
+					ID:               flow.ID,
+					DisplayName:      flow.Name,
+					BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+				})
+			}
+		}
+		if len(flows) == 0 || offset+len(flows) >= total {
+			return owned, nil
+		}
+	}
+}
+
+// flowReferencesResource reports whether any node in the flow carries the given ID, ignoring
+// surrounding whitespace, in the named property key. A non-empty executorName counts only the nodes
+// that run that executor.
+func flowReferencesResource(flow *providers.CompleteFlowDefinition, executorName, propertyKey, id string) bool {
 	for i := range flow.Nodes {
 		if flow.Nodes[i].Properties == nil {
 			continue
 		}
-		if val, ok := flow.Nodes[i].Properties[propertyKey].(string); ok && val == id {
+		if executorName != "" &&
+			(flow.Nodes[i].Executor == nil || flow.Nodes[i].Executor.Name != executorName) {
+			continue
+		}
+		if val, ok := flow.Nodes[i].Properties[propertyKey].(string); ok && strings.TrimSpace(val) == id {
 			return true
 		}
 	}
@@ -479,6 +584,21 @@ func flowReferencesTemplate(flow *providers.CompleteFlowDefinition, id string,
 	return false, nil
 }
 
+// GetSystemFlow returns the system flow with the given handle. Each call decodes a fresh copy, so a
+// caller changing it changes nothing another call sees.
+func (s *flowMgtService) GetSystemFlow(_ context.Context, handle string) (
+	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
+	data, ok := s.systemFlows[handle]
+	if !ok {
+		return nil, &ErrorFlowNotFound
+	}
+	var flow providers.CompleteFlowDefinition
+	if err := json.Unmarshal(data, &flow); err != nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	return &flow, nil
+}
+
 // GetFlowByHandle retrieves a flow definition by its handle and type.
 func (s *flowMgtService) GetFlowByHandle(ctx context.Context, handle string, flowType providers.FlowType) (
 	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
@@ -544,6 +664,19 @@ func (s *flowMgtService) UpdateFlow(ctx context.Context, flowID string, flowDef 
 			validationSvcErr = &ErrorHandleUpdateNotAllowed
 			return errClientValidation
 		}
+
+		// The organization unit is kept when left out, and cannot be changed when given.
+		ouID, ouErr := s.ouSvc.ResolveOwnerForUpdate(
+			txCtx, flowDef.OUID, flowDef.OUHandle, existingFlow.OUID, flowOwnerErrors)
+		if ouErr != nil {
+			if ouErr.Type == tidcommon.ClientErrorType {
+				validationSvcErr = ouErr
+				return errClientValidation
+			}
+			return fmt.Errorf("failed to check the organization unit of the flow: code=%s", ouErr.Code)
+		}
+		flowDef.OUID = ouID
+		flowDef.OUHandle = ""
 
 		storeWriteAttempted = true
 		var updateErr error
@@ -943,6 +1076,9 @@ func (s *flowMgtService) tryInferRegistrationFlow(ctx context.Context, authFlowI
 		logger.Error(ctx, "Failed to generate UUID for inferred registration flow", log.Error(uuidErr))
 		return
 	}
+
+	// The inferred flow belongs to the organization unit of the flow it was inferred from.
+	regFlowDef.OUID = authFlowDef.OUID
 
 	_, storeErr := s.store.CreateFlow(ctx, regFlowID, regFlowDef)
 	if storeErr != nil {

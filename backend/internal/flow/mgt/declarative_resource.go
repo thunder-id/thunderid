@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package flowmgt
@@ -13,6 +13,7 @@ import (
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 
 	"gopkg.in/yaml.v3"
 )
@@ -104,7 +105,9 @@ func (e *flowGraphExporter) ViewResource(_ context.Context, document *yaml.Node)
 }
 
 // loadDeclarativeResources loads immutable flow graph resources from files.
-func loadDeclarativeResources(flowStore flowStoreInterface, flowValidator FlowValidatorInterface) error {
+func loadDeclarativeResources(
+	flowStore flowStoreInterface, flowValidator FlowValidatorInterface, ouSvc ouProvider,
+) error {
 	// Type assert to access Storer interface for resource loading
 	fileBasedStore, ok := flowStore.(*fileBasedStore)
 	if !ok {
@@ -115,7 +118,7 @@ func loadDeclarativeResources(flowStore flowStoreInterface, flowValidator FlowVa
 		ResourceType:  "Flow",
 		DirectoryName: "flows",
 		Parser:        parseToCompleteFlowDefinition,
-		Validator:     validateFlowGraphWrapper(flowValidator),
+		Validator:     validateFlowGraphWrapper(flowValidator, ouSvc),
 		IDExtractor: func(data interface{}) string {
 			flow, ok := data.(*providers.CompleteFlowDefinition)
 			if !ok || flow == nil {
@@ -144,8 +147,9 @@ func parseToCompleteFlowDefinition(data []byte) (interface{}, error) {
 }
 
 // validateFlowGraphWrapper returns a validator closure that uses the flowValidator
-// to validate flow definitions, matching the ResourceConfig.Validator signature.
-func validateFlowGraphWrapper(v FlowValidatorInterface) func(interface{}) error {
+// to validate flow definitions, matching the ResourceConfig.Validator signature. A flow has to name its
+// organization unit by ouId or ouHandle. The handle is resolved to the unit's id, so the flow is stored with the id.
+func validateFlowGraphWrapper(v FlowValidatorInterface, ouSvc ouProvider) func(interface{}) error {
 	return func(dto interface{}) error {
 		flowDef, ok := dto.(*providers.CompleteFlowDefinition)
 		if !ok {
@@ -164,6 +168,20 @@ func validateFlowGraphWrapper(v FlowValidatorInterface) func(interface{}) error 
 		if svcErr != nil {
 			return fmt.Errorf("validation failed: %s - %s", svcErr.Code, svcErr.Error)
 		}
+
+		if flowDef.OUID == "" && flowDef.OUHandle == "" {
+			return fmt.Errorf("flow resource %q needs an organization unit, give its ouId or ouHandle", flowDef.ID)
+		}
+		// Declarative resources load at startup with no authenticated subject, so the owner is resolved with the
+		// runtime context.
+		ouID, ouErr := ouSvc.ResolveOwner(
+			security.WithRuntimeContext(context.Background()), flowDef.OUID, flowDef.OUHandle, flowOwnerErrors)
+		if ouErr != nil {
+			return fmt.Errorf("organization unit of flow resource %q could not be resolved: %s",
+				flowDef.ID, ouErr.ErrorDescription.DefaultValue)
+		}
+		flowDef.OUID = ouID
+		flowDef.OUHandle = ""
 
 		return nil
 	}

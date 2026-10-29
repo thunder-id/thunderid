@@ -11,6 +11,7 @@ import AddCustomConnectionCard from './AddCustomConnectionCard';
 import ConnectionCard from './ConnectionCard';
 import ConnectionCategoryFilters, {type CategoryFilterValue} from './ConnectionCategoryFilters';
 import useConnections from '../api/useConnections';
+import useGetNotificationConfig from '../api/useGetNotificationConfig';
 import {CONNECTION_VENDOR_META, getAvailableConnectionCategories} from '../config/connectionVendorMeta';
 import useConnectionRoutes from '../hooks/useConnectionRoutes';
 import type {ConnectionCardModel, ConnectionCategory} from '../models/connection';
@@ -27,10 +28,19 @@ export default function ConnectionsList(): JSX.Element {
   const [category, setCategory] = useState<CategoryFilterValue>('all');
 
   const connectionsQuery = useConnections();
+  const notificationConfigQuery = useGetNotificationConfig();
+  const notificationConfig = notificationConfigQuery.data;
+  const defaultEmailSenderId = notificationConfig?.merged?.defaultEmailSenderId;
 
   const cards: ConnectionCardModel[] = useMemo(
-    () => buildConnectionCards(connectionsQuery.data?.connections ?? [], CONNECTION_VENDOR_META, routes),
-    [connectionsQuery.data?.connections, routes],
+    () =>
+      buildConnectionCards(
+        connectionsQuery.data?.connections ?? [],
+        CONNECTION_VENDOR_META,
+        routes,
+        defaultEmailSenderId,
+      ),
+    [connectionsQuery.data?.connections, routes, defaultEmailSenderId],
   );
 
   const availableCategories: ConnectionCategory[] = useMemo(() => getAvailableConnectionCategories(cards), [cards]);
@@ -107,6 +117,17 @@ export default function ConnectionsList(): JSX.Element {
           )}
         </Stack>
       </Stack>
+
+      {!connectionsQuery.error && notificationConfigQuery.error && (
+        <QueryErrorNotice
+          error={notificationConfigQuery.error}
+          t={t}
+          variant="inline"
+          fallbackKey="defaultSender.loadError"
+          fallbackDefaultValue="Failed to load the default email sender."
+          onRetry={() => void notificationConfigQuery.refetch()}
+        />
+      )}
 
       {isLoading ? (
         <Grid container spacing={2}>

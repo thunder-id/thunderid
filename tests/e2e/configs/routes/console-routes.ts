@@ -55,8 +55,8 @@ export const ConsoleRoutes = {
   /** Users list page */
   users: "/console/users",
 
-  /** Create new user page */
-  userCreate: "/console/users/create",
+  /** Add people dialog, over the users list */
+  userCreate: "/console/users/new",
 
   /**
    * User details page
@@ -85,8 +85,8 @@ export const ConsoleRoutes = {
   /** Agents list page */
   agents: "/console/agents",
 
-  /** Agent onboarding page, which runs the configured agent onboarding flow */
-  agentCreate: "/console/agents/create",
+  /** Register agent dialog, over the agents list */
+  agentCreate: "/console/agents/new",
 
   /**
    * Agent details page

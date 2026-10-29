@@ -145,3 +145,16 @@ func (s *HTTPConnectionMappingTestSuite) TestEveryHTTPBindingMethodIsAccepted() 
 		})
 	}
 }
+
+func (s *HTTPConnectionMappingTestSuite) TestOUCarriedThroughMapping() {
+	dto, err := httpRequestToDTO(httpConnectionRequest{
+		Name: "n", OUID: "ou-1", URL: "https://risk.example.com",
+		Authentication: &outboundauth.Authentication{Type: string(outboundauth.TypeNone)},
+	}, false)
+	s.Require().NoError(err)
+	s.Equal("ou-1", dto.OUID)
+
+	resp, err := httpFromDTO(*dto)
+	s.Require().NoError(err)
+	s.Equal("ou-1", resp.OUID)
+}

@@ -21,6 +21,10 @@ export interface UseGetApplicationsParams {
    * Number of records to skip for pagination.
    */
   offset?: number;
+  /**
+   * Filter expression, for example `ouId eq "<id>"`.
+   */
+  filter?: string;
 }
 
 /**
@@ -33,6 +37,7 @@ export interface UseGetApplicationsParams {
  * @param params - Optional pagination parameters
  * @param params.limit - Maximum number of records to return (default: 30)
  * @param params.offset - Number of records to skip for pagination (default: 0)
+ * @param params.filter - Optional filter expression
  * @returns TanStack Query result object containing applications list data, loading state, and error information
  *
  * @example
@@ -58,16 +63,19 @@ export interface UseGetApplicationsParams {
 export default function useGetApplications(params?: UseGetApplicationsParams): UseQueryResult<ApplicationListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
-  const {limit = 30, offset = 0} = params ?? {};
+  const {limit = 30, offset = 0, filter} = params ?? {};
 
   return useQuery<ApplicationListResponse>({
-    queryKey: [ApplicationQueryKeys.APPLICATIONS, {limit, offset}],
+    queryKey: [ApplicationQueryKeys.APPLICATIONS, {limit, offset, filter}],
     queryFn: async (): Promise<ApplicationListResponse> => {
       const serverUrl: string = getServerUrl();
       const queryParams: URLSearchParams = new URLSearchParams({
         limit: limit.toString(),
         offset: offset.toString(),
       });
+      if (filter) {
+        queryParams.append('filter', filter);
+      }
 
       const response: {
         data: ApplicationListResponse;

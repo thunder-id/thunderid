@@ -68,7 +68,8 @@ type PerResourceRuler interface {
 //
 // Each field is a path from the document root, keys joined by dots, with "[]" standing for any
 // item of a list, such as "inboundAuthConfig[].config.clientSecret". A trailing ".*" names every
-// key of a mapping, for a map of credentials keyed by name. The paths are the YAML side of the
+// key of a mapping, for a map of credentials keyed by name, and a leading "!" excludes one field
+// of it. The paths are the YAML side of the
 // exporter's SecretVariables, which is where its reference export writes "sec:" placeholders.
 type SecretFieldLister interface {
 	SecretFields() []string

@@ -40,6 +40,12 @@ func (s *TransportTestSuite) TestCookieName() {
 	s.NotEqual(cookieName("flow-1"), cookieName("flow-2"), "different flows must get different cookie names")
 }
 
+func (s *TransportTestSuite) TestFlowIdentifier_IsTheCookieNameKey() {
+	s.Len(FlowIdentifier("flow-1"), 16)
+	s.Equal(cookieNamePrefix+FlowIdentifier("flow-1"), cookieName("flow-1"))
+	s.NotEqual(FlowIdentifier("flow-1"), FlowIdentifier("flow-2"))
+}
+
 func (s *TransportTestSuite) TestInbound_ContextRoundTrip() {
 	ih := cookieInbound{flow1CookieName: "handle-1"}
 

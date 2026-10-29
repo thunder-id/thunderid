@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -298,7 +299,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_GetGroupList() {
 				groupStore:   storeMock,
 			}
 
-			response, err := service.GetGroupList(context.Background(), tc.limit, tc.offset, false)
+			response, err := service.GetGroupList(context.Background(), tc.limit, tc.offset, nil, false)
 
 			if tc.wantErr != nil {
 				suite.Require().Nil(response)
@@ -1088,7 +1089,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_GetGroupList_WithIncludeDis
 	}
 
 	response, err := service.GetGroupList(
-		context.Background(), 10, 0, true)
+		context.Background(), 10, 0, nil, true)
 	suite.Require().Nil(err)
 	suite.Require().NotNil(response)
 	suite.Require().Len(response.Groups, 2)
@@ -2726,7 +2727,7 @@ func TestListGroupsByOUIDs_CountError(t *testing.T) {
 		groupStore:   storeMock,
 	}
 
-	response, err := service.GetGroupList(context.Background(), 5, 0, false)
+	response, err := service.GetGroupList(context.Background(), 5, 0, nil, false)
 	require.Nil(t, response)
 	require.NotNil(t, err)
 	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
@@ -2744,10 +2745,86 @@ func TestListGroupsByOUIDs_ListError(t *testing.T) {
 		groupStore:   storeMock,
 	}
 
-	response, err := service.GetGroupList(context.Background(), 5, 0, false)
+	response, err := service.GetGroupList(context.Background(), 5, 0, nil, false)
 	require.Nil(t, response)
 	require.NotNil(t, err)
 	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
+}
+
+func TestGetGroupList_OUFilter(t *testing.T) {
+	cases := map[string]struct {
+		authz func(t *testing.T) sysauthz.SystemAuthorizationServiceInterface
+		ouID  string
+	}{
+		"system caller":                  {authz: newAllowAllAuthz, ouID: testOUID2},
+		"caller scoped to the filter OU": {authz: newScopedListAuthz, ouID: testOUID1},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			storeMock := newGroupStoreInterfaceMock(t)
+			storeMock.On("GetGroupListCountByOUIDs", mock.Anything, []string{tc.ouID}).Return(3, nil).Once()
+			storeMock.On("GetGroupListByOUIDs", mock.Anything, []string{tc.ouID}, 2, 0).
+				Return([]GroupBasicDAO{
+					{ID: "grp-1", Name: "Admins", OUID: tc.ouID},
+					{ID: "grp-2", Name: "Editors", OUID: tc.ouID},
+				}, nil).Once()
+
+			service := &groupService{
+				authzService: tc.authz(t),
+				groupStore:   storeMock,
+			}
+
+			response, err := service.GetGroupList(
+				context.Background(), 2, 0, map[string]interface{}{"ouId": tc.ouID}, false)
+			require.Nil(t, err)
+			require.Equal(t, 3, response.TotalResults)
+			require.Equal(t, 2, response.Count)
+			require.Equal(t, "grp-1", response.Groups[0].ID)
+			require.Equal(t, "grp-2", response.Groups[1].ID)
+			filterQuery := "&filter=" + url.QueryEscape(`ouId eq "`+tc.ouID+`"`)
+			require.Equal(t, []utils.Link{
+				{Href: "/groups?offset=2&limit=2" + filterQuery, Rel: "next"},
+				{Href: "/groups?offset=2&limit=2" + filterQuery, Rel: "last"},
+			}, response.Links)
+		})
+	}
+}
+
+func TestGetGroupList_OUFilter_NoAccessToOU(t *testing.T) {
+	storeMock := newGroupStoreInterfaceMock(t)
+
+	service := &groupService{
+		authzService: newScopedListAuthz(t),
+		groupStore:   storeMock,
+	}
+
+	response, err := service.GetGroupList(
+		context.Background(), 5, 0, map[string]interface{}{"ouId": testOUID2}, false)
+	require.Nil(t, err)
+	require.Equal(t, 0, response.TotalResults)
+	require.Empty(t, response.Groups)
+	storeMock.AssertNotCalled(t, "GetGroupListCountByOUIDs", mock.Anything, mock.Anything)
+}
+
+func TestGetGroupList_InvalidFilter(t *testing.T) {
+	for name, filters := range map[string]map[string]interface{}{
+		"another attribute":            {"name": "Admins"},
+		"an ouId with another":         {"ouId": testOUID1, "name": "Admins"},
+		"an ouId that is not a string": {"ouId": int64(5)},
+		"an empty ouId":                {"ouId": ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			service := &groupService{
+				authzService: sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t),
+				groupStore:   newGroupStoreInterfaceMock(t),
+			}
+
+			response, err := service.GetGroupList(context.Background(), 5, 0, filters, false)
+			require.Nil(t, response)
+			require.NotNil(t, err)
+			require.Equal(t, ErrorInvalidFilter.Code, err.Code)
+		})
+	}
 }
 
 func TestUpdateGroup_IsDeclarativeError(t *testing.T) {

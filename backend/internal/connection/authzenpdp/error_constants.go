@@ -114,4 +114,45 @@ var (
 				"non-credential attribute. The groups attribute is reserved for group IDs.",
 		},
 	}
+	// ErrorInvalidOU is the error returned when the organization unit given for an AuthZEN PDP connection does not
+	// exist.
+	ErrorInvalidOU = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1023",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_connection_ou",
+			DefaultValue: "Invalid organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_connection_ou_description",
+			DefaultValue: "The organization unit given for the AuthZEN PDP connection does not exist",
+		},
+	}
+	// ErrorOUUpdateNotAllowed is the error returned when attempting to change the
+	// organization unit of an AuthZEN PDP connection.
+	ErrorOUUpdateNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1024",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.connection_ou_update_not_allowed",
+			DefaultValue: "Organization unit update not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.connection_ou_update_not_allowed_description",
+			DefaultValue: "The organization unit of an AuthZEN PDP connection cannot be changed",
+		},
+	}
+	// ErrorOURequired is the error returned when an AuthZEN PDP connection is created without an organization unit.
+	ErrorOURequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1025",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.connection_ou_required",
+			DefaultValue: "Organization unit required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.connection_ou_required_description",
+			DefaultValue: "An AuthZEN PDP connection needs an organization unit. Give its ouId in the request",
+		},
+	}
 )

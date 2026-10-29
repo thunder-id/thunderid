@@ -8,8 +8,10 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {ApiUserType, UserTypeListResponse} from '../../models/users';
 import UserEditPage from '../UserEditPage';
 
-const {mockLoggerError, stagingCallbackIdentities} = vi.hoisted(() => ({
+const {mockLoggerError, signedIn, stagingCallbackIdentities} = vi.hoisted(() => ({
   mockLoggerError: vi.fn(),
+  // The signed-in user's profile, as the SDK exposes it.
+  signedIn: {user: null as Record<string, unknown> | null},
   // Every distinct onFieldChange the Attributes tab is handed.
   stagingCallbackIdentities: new Set<unknown>(),
 }));
@@ -18,6 +20,16 @@ vi.mock('@thunderid/components', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/components')>();
   return {
     ...actual,
+    AccountStatusAction: ({listQueryKey, onChanged}: {listQueryKey: unknown; onChanged: () => void}) => (
+      <button
+        type="button"
+        data-testid="account-status-action"
+        data-list-query-key={JSON.stringify(listQueryKey)}
+        onClick={onChanged}
+      >
+        status action
+      </button>
+    ),
     CopyableId: vi.fn(() => null),
   };
 });
@@ -28,6 +40,15 @@ const mockDeleteMutate = vi.fn();
 const mockResetDeleteError = vi.fn();
 
 // Mock logger
+vi.mock('@thunderid/react', async (importOriginal) => {
+  const actual = await importOriginal();
+
+  return {
+    ...(actual as object),
+    useThunderID: () => ({http: {request: vi.fn()}, user: signedIn.user}),
+  };
+});
+
 vi.mock('@thunderid/logger/react', () => ({
   useLogger: () => ({
     info: vi.fn(),
@@ -164,6 +185,23 @@ vi.mock('@/components/edit-user/EditUserAttributes', () => ({
   },
 }));
 
+// The Affiliations tab has its own tests. The page holds its access state and saves it through its own bar.
+vi.mock('@/components/edit-user/organization-access/EditOrganizationAccessSettings', () => ({
+  default: () => <div data-testid="user-organization-access" />,
+}));
+
+const mockAccess: {
+  hasChanges: boolean;
+  isSaving: boolean;
+  saveError: Error | null;
+  save: ReturnType<typeof vi.fn>;
+  reset: ReturnType<typeof vi.fn>;
+} = {hasChanges: false, isSaving: false, saveError: null, save: vi.fn(), reset: vi.fn()};
+
+vi.mock('@thunderid/configure-resource-sharing', () => ({
+  useOrganizationAccess: () => mockAccess,
+}));
+
 vi.mock('@/components/edit-user/CredentialsTabPanel', () => ({
   default: ({userId, credentialFields}: {userId: string; credentialFields: {fieldName: string}[]}) => (
     <div data-testid="credentials-tab-panel" data-user-id={userId}>
@@ -228,6 +266,9 @@ describe('UserEditPage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    signedIn.user = null;
+    mockAccess.hasChanges = false;
+    mockAccess.saveError = null;
     stagingCallbackIdentities.clear();
     mockNavigate.mockResolvedValue(undefined);
     mockUpdateMutateAsync.mockResolvedValue(mockUserData);
@@ -450,6 +491,109 @@ describe('UserEditPage', () => {
     });
   });
 
+  describe('Access status', () => {
+    const renderUser = (user: Record<string, unknown>): void => {
+      mockUseGetUser.mockReturnValue({
+        data: {...mockUserData, ...user},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+      render(<UserEditPage />);
+    };
+
+    it('shows the lock banner for a locked user', () => {
+      renderUser({status: {value: 'LOCKED'}});
+
+      expect(screen.getByRole('status')).toHaveTextContent('Locked');
+      expect(screen.getByRole('status')).toHaveTextContent('The account is locked');
+    });
+
+    it('shows no banner for an active user', () => {
+      renderUser({});
+
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+
+    it('offers the lifecycle action on a writable user', () => {
+      renderUser({});
+
+      expect(screen.getByTestId('account-status-action')).toBeInTheDocument();
+    });
+
+    // The lifecycle flows change only runtime state, which a declared record keeps too.
+    it('offers the lifecycle action on a read-only user', () => {
+      renderUser({isReadOnly: true});
+
+      expect(screen.getByTestId('account-status-action')).toBeInTheDocument();
+    });
+
+    it('shows the banner below the read-only notice and above the header', () => {
+      renderUser({isReadOnly: true, status: {value: 'LOCKED'}});
+
+      const notice = screen.getByText('This resource is read-only and cannot be modified.');
+      const banner = screen.getByRole('status');
+      expect(banner).toHaveTextContent('Locked');
+      expect(notice.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(
+        banner.compareDocumentPosition(screen.getByTestId('account-status-action')) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    describe('for the signed-in user', () => {
+      const signedInAs = (signedInUser: Record<string, unknown>): void => {
+        signedIn.user = signedInUser;
+      };
+
+      // The server refuses every lifecycle operation on one's own account.
+      it('hides the lifecycle actions on the signed-in user, matched by the token subject', () => {
+        signedInAs({sub: 'user123'});
+        renderUser({});
+
+        expect(screen.queryByTestId('account-status-action')).not.toBeInTheDocument();
+      });
+
+      it('hides the lifecycle actions on the signed-in user, matched by the profile id', () => {
+        signedInAs({id: 'user123'});
+        renderUser({});
+
+        expect(screen.queryByTestId('account-status-action')).not.toBeInTheDocument();
+      });
+
+      it('offers the lifecycle actions on another user', () => {
+        signedInAs({id: 'admin-1', sub: 'admin-1'});
+        renderUser({});
+
+        expect(screen.getByTestId('account-status-action')).toBeInTheDocument();
+      });
+    });
+
+    it('hands the users list query to the lifecycle action', () => {
+      renderUser({});
+
+      expect(screen.getByTestId('account-status-action')).toHaveAttribute('data-list-query-key', '["users"]');
+    });
+
+    it('refetches the user after a lifecycle operation', async () => {
+      const user = userEvent.setup();
+      renderUser({});
+
+      await user.click(screen.getByTestId('account-status-action'));
+
+      expect(mockRefetch).toHaveBeenCalled();
+    });
+
+    it('keeps a suspended user editable', async () => {
+      const user = userEvent.setup();
+      renderUser({status: {value: 'SUSPENDED'}});
+
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+
+      expect(screen.getByRole('button', {name: 'Save'})).toBeEnabled();
+    });
+  });
+
   describe('View Mode', () => {
     it('renders user profile page with header', () => {
       render(<UserEditPage />);
@@ -469,7 +613,12 @@ describe('UserEditPage', () => {
       const user = userEvent.setup();
       render(<UserEditPage />);
 
-      expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['General', 'Attributes', 'Advanced']);
+      expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+        'General',
+        'Attributes',
+        'Affiliations',
+        'Advanced',
+      ]);
 
       await user.click(screen.getByRole('tab', {name: 'Advanced'}));
       expect(screen.getByRole('button', {name: /^delete$/i})).toBeInTheDocument();
@@ -756,6 +905,32 @@ describe('UserEditPage', () => {
       });
     });
 
+    it('keeps the bar up, saving, until the refetch after the update has finished', async () => {
+      const user = userEvent.setup();
+      let finishRefetch: () => void = () => undefined;
+      mockRefetch.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishRefetch = () => resolve({});
+          }),
+      );
+      render(<UserEditPage />);
+
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+      await user.click(screen.getByRole('button', {name: 'Save'}));
+
+      await waitFor(() => expect(mockRefetch).toHaveBeenCalled());
+      expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Saving…'})).toBeDisabled();
+
+      finishRefetch();
+
+      await waitFor(() => {
+        expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
+      });
+    });
+
     it('clears the staged edit and hides the bar when Reset is clicked', async () => {
       const user = userEvent.setup();
       render(<UserEditPage />);
@@ -837,6 +1012,7 @@ describe('UserEditPage', () => {
         'General',
         'Attributes',
         'Credentials',
+        'Affiliations',
         'Advanced',
       ]);
     });
@@ -859,6 +1035,24 @@ describe('UserEditPage', () => {
       expect(screen.queryByRole('tab', {name: 'Credentials'})).not.toBeInTheDocument();
     });
 
+    it('keeps the Credentials tab for a suspended user', () => {
+      mockUseGetUser.mockReturnValue({
+        data: {...mockUserData, status: {value: 'SUSPENDED'}},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+      mockUseGetUserType.mockReturnValue({
+        data: schemaWithCredentials,
+        isLoading: false,
+        error: null,
+      });
+
+      render(<UserEditPage />);
+
+      expect(screen.getByRole('tab', {name: 'Credentials'})).toBeInTheDocument();
+    });
+
     it('passes the userId and derived credential fields to CredentialsTabPanel when selected', async () => {
       const user = userEvent.setup();
       mockUseGetUserType.mockReturnValue({
@@ -874,6 +1068,75 @@ describe('UserEditPage', () => {
       const panel = screen.getByTestId('credentials-tab-panel');
       expect(panel).toHaveAttribute('data-user-id', 'user123');
       expect(panel).toHaveTextContent('password,pin');
+    });
+  });
+
+  describe('Affiliations tab', () => {
+    it('shows the Affiliations tab for a read-only user, since a declared user can still be shared on', () => {
+      mockUseGetUser.mockReturnValue({
+        data: {...mockUserData, isReadOnly: true},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+
+      render(<UserEditPage />);
+
+      expect(screen.getByRole('tab', {name: 'Affiliations'})).toBeInTheDocument();
+    });
+
+    it('shows the affiliation settings when the tab is opened', async () => {
+      const user = userEvent.setup();
+      render(<UserEditPage />);
+
+      await user.click(screen.getByRole('tab', {name: 'Affiliations'}));
+
+      expect(screen.getByRole('tab', {name: 'Affiliations'})).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByTestId('user-organization-access')).toBeInTheDocument();
+    });
+
+    it('saves a sharing change through the page bar, without touching the user', async () => {
+      const user = userEvent.setup();
+      mockAccess.hasChanges = true;
+      mockAccess.save.mockResolvedValue(undefined);
+
+      render(<UserEditPage />);
+      await user.click(screen.getByRole('button', {name: 'Save'}));
+
+      expect(mockAccess.save).toHaveBeenCalled();
+      expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
+    });
+
+    it('discards the sharing draft on Reset', async () => {
+      const user = userEvent.setup();
+      mockAccess.hasChanges = true;
+
+      render(<UserEditPage />);
+      await user.click(screen.getByRole('button', {name: 'Reset'}));
+
+      expect(mockAccess.reset).toHaveBeenCalled();
+    });
+
+    it('keeps Save and Reset disabled until the whole save has finished', async () => {
+      const user = userEvent.setup();
+      mockAccess.hasChanges = true;
+      let finishSave: () => void = () => undefined;
+      mockAccess.save.mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          finishSave = resolve;
+        }),
+      );
+
+      render(<UserEditPage />);
+      await user.click(screen.getByRole('button', {name: 'Save'}));
+
+      // A Reset now would discard a draft the running save still sends; a second Save would send it twice.
+      expect(screen.getByRole('button', {name: 'Reset'})).toBeDisabled();
+      expect(screen.getByRole('button', {name: /Saving/})).toBeDisabled();
+
+      finishSave();
+      await waitFor(() => expect(screen.getByRole('button', {name: 'Reset'})).not.toBeDisabled());
+      expect(mockAccess.save).toHaveBeenCalledTimes(1);
     });
   });
 

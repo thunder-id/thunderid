@@ -31,6 +31,9 @@ paths:
       description: >
         Imports one or more declarative YAML documents into runtime stores or file storage.
         Supports template variable substitution, dry-run mode, and configurable error handling.
+        A `connection` document for an identity provider, an SMS or email sender, or an AuthZEN PDP
+        has to carry `ouId` or `ouHandle`, because every connection belongs to one organization unit.
+        An item without either fails, a dry run included.
       requestBody:
         required: true
         content:
@@ -53,17 +56,18 @@ paths:
                 summary: Import with template variables
                 value:
                   content: |
-                    apiVersion: v1
-                    kind: Connection
-                    metadata:
-                      name: Google IDP
-                    spec:
-                      type: google
-                      clientId: "{{.GOOGLE_CLIENT_ID}}"
-                      clientSecret: "{{.GOOGLE_CLIENT_SECRET}}"
+                    resource_type: connection
+                    id: 0193b0a1-1004-7000-8000-000000000001
+                    name: Google IDP
+                    ouHandle: default
+                    type: google
+                    clientId: "{{.GOOGLE_CLIENT_ID}}"
+                    clientSecret: "{{.GOOGLE_CLIENT_SECRET}}"
+                    redirectUri: "{{.GOOGLE_REDIRECT_URI}}"
                   variables:
                     GOOGLE_CLIENT_ID: "client-123"
                     GOOGLE_CLIENT_SECRET: "secret-456"
+                    GOOGLE_REDIRECT_URI: "https://localhost:8090/gate/callback"
                   options:
                     upsert: true
               dry-run-import:

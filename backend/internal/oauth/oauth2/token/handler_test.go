@@ -218,6 +218,38 @@ func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_Success() {
 	assert.Equal(suite.T(), "openid profile", response["scope"])
 }
 
+func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_AuthorizationDetails() {
+	handler := suite.newHandler()
+	mockApp := &providers.OAuthClient{ClientID: "test-client-id"}
+	const details = `[{"type":"payment_initiation","amount":"10"}]`
+	formData := url.Values{}
+	formData.Set("grant_type", "client_credentials")
+	formData.Set(constants.RequestParamAuthorizationDetails, details)
+	req := suite.withClientContext(suite.buildRequest(formData), mockApp)
+
+	granted := json.RawMessage(`[{"type":"payment_initiation","amount":"10"}]`)
+	suite.mockTokenService.EXPECT().
+		ProcessTokenRequest(mock.Anything,
+			mock.MatchedBy(func(tr *model.TokenRequest) bool { return tr.AuthorizationDetails == details }),
+			mockApp).
+		Return(&model.TokenResponse{
+			AccessToken:          "at",
+			TokenType:            constants.TokenTypeBearer,
+			ExpiresIn:            3600,
+			AuthorizationDetails: granted,
+		}, nil)
+
+	rr := httptest.NewRecorder()
+	handler.HandleTokenRequest(rr, req)
+
+	assert.Equal(suite.T(), http.StatusOK, rr.Code)
+	var response map[string]any
+	assert.NoError(suite.T(), json.Unmarshal(rr.Body.Bytes(), &response))
+	assert.Equal(suite.T(), []any{map[string]any{
+		"type": "payment_initiation", "amount": "10",
+	}}, response["authorization_details"])
+}
+
 func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_MultipleDPoPHeaders_Rejected() {
 	handler := suite.newHandler()
 	mockApp := &providers.OAuthClient{ClientID: "test-client-id"}

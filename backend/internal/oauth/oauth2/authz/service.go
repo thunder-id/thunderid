@@ -69,6 +69,7 @@ type authorizeService struct {
 	// session store (the embedded engine), where prompt=none keeps answering login_required.
 	ssoSession   flowsession.Service
 	flowProvider providers.FlowProvider
+	governance   providers.IdentityGovernanceProvider
 	logger       *log.Logger
 }
 
@@ -85,6 +86,7 @@ func newAuthorizeService(
 	criteriaRevoker revocation.CriteriaRevokerInterface,
 	ssoSession flowsession.Service,
 	flowProvider providers.FlowProvider,
+	governance providers.IdentityGovernanceProvider,
 	cfg oauthconfig.Config,
 	jtiStore jti.JTIStoreInterface,
 ) AuthorizeServiceInterface {
@@ -102,6 +104,7 @@ func newAuthorizeService(
 		criteriaRevoker: criteriaRevoker,
 		ssoSession:      ssoSession,
 		flowProvider:    flowProvider,
+		governance:      governance,
 		jtiStore:        jtiStore,
 		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AuthorizeService")),
 	}
@@ -321,6 +324,23 @@ func (as *authorizeService) HandleInitialAuthorizationRequest(ctx context.Contex
 		return nil, &AuthorizationError{
 			Code:    oauth2const.ErrorInvalidRequest,
 			Message: "Invalid client_id",
+		}
+	}
+
+	// A held application is shown as unavailable here, where a person reads it, and never
+	// redirected (RFC 6749 §3.1.2.4, §4.1.2.1).
+	held, svcErr := oauth2utils.IsClientHeld(ctx, as.governance, app)
+	if svcErr != nil {
+		return nil, &AuthorizationError{
+			Code:    oauth2const.ErrorServerError,
+			Message: "Failed to process authorization request",
+		}
+	}
+	if held {
+		as.logger.Debug(ctx, "Refusing an authorization request for an unavailable application")
+		return nil, &AuthorizationError{
+			Code:    oauth2const.ErrorUnauthorizedClient,
+			Message: "This application is currently unavailable",
 		}
 	}
 
@@ -545,7 +565,7 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 	// when neither is available. The resolved resource server id is threaded into the flow so the
 	// authorization executor scopes its permission evaluation to it.
 	targetRS, errResp := resourceindicators.ResolveAudienceBinding(
-		ctx, as.resourceService, oauthParams.Resources, oauthParams.PermissionScopes)
+		ctx, as.resourceService, oauthParams.Resources, oauthParams.PermissionScopes, false)
 	if errResp != nil {
 		return nil, &AuthorizationError{
 			Code:              errResp.Error,
@@ -694,7 +714,7 @@ func (as *authorizeService) tryCompleteWithSSOSession(
 	authID, executionID string,
 ) (string, *AuthorizationError) {
 	step, svcErr := as.flowExecService.Execute(ctx, app.ID, executionID,
-		string(providers.FlowTypeAuthentication), false, "", nil, "", "", "")
+		string(providers.FlowTypeAuthentication), false, "", nil, "", "", "", nil)
 	completed := svcErr == nil && step != nil && step.Status == providers.FlowStatusComplete &&
 		step.Assertion != ""
 	if !completed {

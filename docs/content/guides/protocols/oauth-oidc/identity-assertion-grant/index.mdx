@@ -34,7 +34,7 @@ flowchart LR
 
 ## Notes
 
-No ID-JAG discovery metadata is advertised in well-known documents; only the two grant URNs appear in `grant_types_supported`. Configuration, including trusted issuers and allowed audiences, is exchanged out of band. Scope semantics differ per leg: issuance passes the requested scope through verbatim, while acceptance intersects it with the assertion's own scope. Neither leg issues a refresh token.
+While `oauth.allowed_grant_types` allows them, the well-known documents list `urn:ietf:params:oauth:grant-type:token-exchange` and `urn:ietf:params:oauth:grant-type:jwt-bearer` in `grant_types_supported` and, with the JWT bearer grant, the ID-JAG grant profile `urn:ietf:params:oauth:grant-profile:id-jag` in `authorization_grant_profiles_supported`. Configuration, including trusted issuers and allowed audiences, is exchanged out of band. Scope semantics differ per leg: issuance passes the requested scope through verbatim, while acceptance intersects it with the assertion's own scope. Neither leg issues a refresh token.
 
 ## Related Guides
 

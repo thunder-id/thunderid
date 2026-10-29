@@ -4,15 +4,35 @@
 import {fireEvent, render, screen} from '@thunderid/test-utils';
 import {useEffect} from 'react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
+import type {NotificationConfigResponse} from '../../models/connection';
 import ConnectionCreateWizardPage from '../ConnectionCreateWizardPage';
 
 const mutateMock = vi.fn();
 const resetMock = vi.fn();
 const navigateMock = vi.fn();
 const showToastMock = vi.fn();
-const mutationState = {isPending: false, isError: false};
+const mutationState = {isPending: false, isError: false, isSuccess: false};
 /** Extra form values the stubbed form enters after the defaults, e.g. authentication fields. */
 const formExtraValues: Record<string, string> = {};
+const ouSelection = {ouId: 'ou-root', setOuId: vi.fn(), needsPicker: false, isLoading: false};
+
+vi.mock('../../hooks/useConnectionOuSelection', () => ({default: () => ouSelection}));
+vi.mock('../../components/create-connection/ConnectionOuPickerStep', () => ({
+  default: ({
+    value,
+    onChange,
+    onContinue,
+  }: {
+    value: string;
+    onChange: (ouId: string) => void;
+    onContinue: () => void;
+  }) => (
+    <div data-testid="ou-picker-step" data-value={value}>
+      <button type="button" data-testid="ou-picker-select" onClick={() => onChange('ou-picked')} />
+      <button type="button" data-testid="ou-picker-continue" onClick={onContinue} />
+    </div>
+  ),
+}));
 
 vi.mock('react-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-router')>()),
@@ -54,6 +74,18 @@ vi.mock('../../api/useConnectionMeta', () => ({
 vi.mock('../../api/useCreateConnection', () => ({
   default: () => ({mutate: mutateMock, reset: resetMock, ...mutationState}),
 }));
+const emailProviders: {isSuccess: boolean; data: {id: string}[] | undefined} = {isSuccess: true, data: [{id: 'sm0'}]};
+vi.mock('../../api/useEmailProviders', () => ({default: () => emailProviders}));
+const notificationConfig: {isSuccess: boolean; data: NotificationConfigResponse | undefined} = {
+  isSuccess: true,
+  data: {readOnly: {}, writable: {}, merged: {}},
+};
+vi.mock('../../api/useGetNotificationConfig', () => ({default: () => notificationConfig}));
+const setDefaultSenderMock = vi.fn();
+const setDefaultSenderState = {isPending: false};
+vi.mock('../../api/useSetDefaultEmailSender', () => ({
+  default: () => ({mutate: setDefaultSenderMock, ...setDefaultSenderState}),
+}));
 
 vi.mock('../../components/ConnectionForm', () => ({
   default: function StubConnectionForm({
@@ -87,15 +119,17 @@ vi.mock('../../components/ConnectionForm', () => ({
 vi.mock('../../components/TrustedIssuerCreateForm', () => ({
   default: function StubTrustedIssuerCreateForm({
     name,
+    ouId,
     onNameConflict,
     onBack,
   }: {
     name: string;
+    ouId: string;
     onNameConflict: () => void;
     onBack: () => void;
   }) {
     return (
-      <div data-testid="custom-step">
+      <div data-testid="custom-step" data-ou-id={ouId}>
         {name}
         <button type="button" data-testid="custom-step-conflict" onClick={onNameConflict}>
           trigger conflict
@@ -123,6 +157,15 @@ describe('ConnectionCreateWizardPage', () => {
     }
     mutationState.isPending = false;
     mutationState.isError = false;
+    ouSelection.ouId = 'ou-root';
+    ouSelection.needsPicker = false;
+    ouSelection.isLoading = false;
+    mutationState.isSuccess = false;
+    setDefaultSenderState.isPending = false;
+    emailProviders.isSuccess = true;
+    emailProviders.data = [{id: 'sm0'}];
+    notificationConfig.isSuccess = true;
+    notificationConfig.data = {readOnly: {}, writable: {}, merged: {}};
   });
 
   it('shows the type heading without the redundant step label', () => {
@@ -239,6 +282,7 @@ describe('ConnectionCreateWizardPage', () => {
       attributeConfiguration?: unknown;
     };
     expect(payload.name).toBe('Acme Workforce OIDC');
+    expect(payload).toMatchObject({ouId: 'ou-root'});
     expect(payload.redirectUri).toBe('https://id.acme.io/gate/callback');
     expect('attributeConfiguration' in payload).toBe(false);
 
@@ -258,6 +302,7 @@ describe('ConnectionCreateWizardPage', () => {
     expect(mutateMock).toHaveBeenCalledTimes(1);
     expect(mutateMock.mock.calls[0][0]).toEqual({
       name: 'Custom SMS Sender',
+      ouId: 'ou-root',
       url: 'https://sms.example.com/send',
       httpMethod: 'POST',
       contentType: 'JSON',
@@ -278,6 +323,7 @@ describe('ConnectionCreateWizardPage', () => {
     expect(mutateMock).toHaveBeenCalledTimes(1);
     expect(mutateMock.mock.calls[0][0]).toEqual({
       name: 'Corp SMTP',
+      ouId: 'ou-root',
       host: 'smtp.example.com',
       port: 587,
       fromAddress: 'noreply@example.com',
@@ -298,7 +344,11 @@ describe('ConnectionCreateWizardPage', () => {
     fireEvent.click(screen.getByTestId('wizard-create'));
 
     expect(mutateMock).toHaveBeenCalledTimes(1);
-    expect(mutateMock.mock.calls[0][0]).toEqual({name: 'Risk Engine', url: 'https://sms.example.com/send'});
+    expect(mutateMock.mock.calls[0][0]).toEqual({
+      name: 'Risk Engine',
+      ouId: 'ou-root',
+      url: 'https://sms.example.com/send',
+    });
 
     const {onSuccess} = mutateMock.mock.calls[0][1] as {onSuccess: (data: {id: string}) => void};
     onSuccess({id: 'http-1'});
@@ -319,6 +369,7 @@ describe('ConnectionCreateWizardPage', () => {
 
     expect(mutateMock.mock.calls[0][0]).toEqual({
       name: 'Risk Engine',
+      ouId: 'ou-root',
       url: 'https://sms.example.com/send',
       authentication: {type: 'basic', properties: {username: 'risk-client', password: 's3cret'}},
     });
@@ -337,6 +388,7 @@ describe('ConnectionCreateWizardPage', () => {
 
     expect(mutateMock.mock.calls[0][0]).toEqual({
       name: 'Risk Engine',
+      ouId: 'ou-root',
       url: 'https://sms.example.com/send',
       authentication: {type: 'bearer', properties: {token: 'tok-1'}},
     });
@@ -357,6 +409,7 @@ describe('ConnectionCreateWizardPage', () => {
 
     expect(mutateMock.mock.calls[0][0]).toEqual({
       name: 'Risk Engine',
+      ouId: 'ou-root',
       url: 'https://sms.example.com/send',
       authentication: {type: 'api_key', properties: {'X-Api-Key': 'k-1', 'X-Client': 'c-1'}},
     });
@@ -367,6 +420,28 @@ describe('ConnectionCreateWizardPage', () => {
       'authentication.type': 'api_key',
       'authentication.additionalProperties': JSON.stringify([{name: 'X-Api-Key', value: ''}]),
     });
+    render(<ConnectionCreateWizardPage />);
+
+    selectTypeAndName('connection-type-option-http', 'Risk Engine');
+
+    expect(screen.getByTestId('wizard-create')).toBeDisabled();
+  });
+
+  it('blocks creating an HTTP endpoint while a required authentication field is empty', () => {
+    Object.assign(formExtraValues, {
+      'authentication.type': 'basic',
+      'authentication.properties.username': 'risk-client',
+      'authentication.properties.password': '  ',
+    });
+    render(<ConnectionCreateWizardPage />);
+
+    selectTypeAndName('connection-type-option-http', 'Risk Engine');
+
+    expect(screen.getByTestId('wizard-create')).toBeDisabled();
+  });
+
+  it('blocks creating an HTTP endpoint with bearer authentication and no token', () => {
+    Object.assign(formExtraValues, {'authentication.type': 'bearer'});
     render(<ConnectionCreateWizardPage />);
 
     selectTypeAndName('connection-type-option-http', 'Risk Engine');
@@ -529,6 +604,98 @@ describe('ConnectionCreateWizardPage', () => {
     expect(screen.queryByTestId('custom-step')).not.toBeInTheDocument();
   });
 
+  it('creates an OAuth 2 connection owned by the selected organization unit', () => {
+    render(<ConnectionCreateWizardPage />);
+
+    selectTypeAndName('connection-type-option-oauth', 'Acme OAuth');
+    fireEvent.click(screen.getByTestId('wizard-create'));
+
+    expect(mutateMock.mock.calls[0][0]).toMatchObject({name: 'Acme OAuth', ouId: 'ou-root'});
+  });
+
+  it('creates an AuthZEN PDP connection owned by the selected organization unit', () => {
+    Object.assign(formExtraValues, {endpoint: 'https://pdp.example.com/access/v1/evaluation'});
+    render(<ConnectionCreateWizardPage />);
+
+    fireEvent.click(screen.getByTestId('connection-type-option-policy-decision-point'));
+    fireEvent.click(screen.getByTestId('pdp-protocol-option-authzen'));
+    fireEvent.click(screen.getByTestId('wizard-continue'));
+    fireEvent.change(screen.getByTestId('connection-name-input'), {target: {value: 'Booking PDP'}});
+    fireEvent.click(screen.getByTestId('wizard-continue'));
+    fireEvent.click(screen.getByTestId('wizard-create'));
+
+    expect(mutateMock.mock.calls[0][0]).toMatchObject({name: 'Booking PDP', ouId: 'ou-root'});
+  });
+
+  it('passes the default organization unit to the trusted issuer step', () => {
+    render(<ConnectionCreateWizardPage />);
+
+    selectTypeAndName('connection-type-option-trusted-idp');
+
+    expect(screen.getByTestId('custom-step')).toHaveAttribute('data-ou-id', 'ou-root');
+  });
+
+  it('sends the selected organization unit as ouId', () => {
+    ouSelection.ouId = 'ou-acme';
+    render(<ConnectionCreateWizardPage />);
+
+    expect(screen.queryByTestId('ou-picker-step')).not.toBeInTheDocument();
+    expect(screen.getByText('What kind of connection do you want to add?')).toBeInTheDocument();
+    selectTypeAndName('connection-type-option-http', 'Risk Engine');
+    fireEvent.click(screen.getByTestId('wizard-create'));
+
+    expect(mutateMock.mock.calls[0][0]).toMatchObject({name: 'Risk Engine', ouId: 'ou-acme'});
+  });
+
+  it('asks for an organization unit before the wizard when there are several', () => {
+    ouSelection.ouId = '';
+    ouSelection.needsPicker = true;
+    render(<ConnectionCreateWizardPage />);
+
+    expect(screen.getByTestId('ou-picker-step')).toBeInTheDocument();
+    expect(screen.queryByText('What kind of connection do you want to add?')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('ou-picker-select'));
+    expect(ouSelection.setOuId).toHaveBeenCalledWith('ou-picked');
+
+    ouSelection.ouId = 'ou-picked';
+    fireEvent.click(screen.getByTestId('ou-picker-continue'));
+
+    expect(screen.getByText('What kind of connection do you want to add?')).toBeInTheDocument();
+    selectTypeAndName('connection-type-option-http', 'Risk Engine');
+    fireEvent.click(screen.getByTestId('wizard-create'));
+    expect(mutateMock.mock.calls[0][0]).toMatchObject({name: 'Risk Engine', ouId: 'ou-picked'});
+  });
+
+  it('passes the selected organization unit to the trusted issuer step', () => {
+    ouSelection.ouId = 'ou-acme';
+    render(<ConnectionCreateWizardPage />);
+
+    selectTypeAndName('connection-type-option-trusted-idp');
+
+    expect(screen.getByTestId('custom-step')).toHaveAttribute('data-ou-id', 'ou-acme');
+  });
+
+  it('reports a missing organization unit instead of creating', () => {
+    ouSelection.ouId = '';
+    render(<ConnectionCreateWizardPage />);
+
+    selectTypeAndName('connection-type-option-http', 'Risk Engine');
+    fireEvent.click(screen.getByTestId('wizard-create'));
+
+    expect(screen.getByText('Organization unit is required')).toBeInTheDocument();
+    expect(mutateMock).not.toHaveBeenCalled();
+  });
+
+  it('shows no wizard while organization units load', () => {
+    ouSelection.ouId = '';
+    ouSelection.isLoading = true;
+    render(<ConnectionCreateWizardPage />);
+
+    expect(screen.queryByText('What kind of connection do you want to add?')).not.toBeInTheDocument();
+    expect(screen.getByRole('progressbar', {name: 'Loading...'})).toBeInTheDocument();
+  });
+
   it('shows seven type cards including trusted-idp, policy decision point, email-smtp and http', () => {
     render(<ConnectionCreateWizardPage />);
 
@@ -537,5 +704,101 @@ describe('ConnectionCreateWizardPage', () => {
     expect(screen.getByTestId('connection-type-option-trusted-idp')).toBeInTheDocument();
     expect(screen.getByTestId('connection-type-option-policy-decision-point')).toBeInTheDocument();
     expect(screen.getByTestId('connection-type-option-email-smtp')).toBeInTheDocument();
+  });
+
+  describe('first email sender', () => {
+    function createSender(type = 'email-smtp'): void {
+      render(<ConnectionCreateWizardPage />);
+      selectTypeAndName(`connection-type-option-${type}`, 'Corp Sender');
+      fireEvent.click(screen.getByTestId('wizard-create'));
+      const {onSuccess} = mutateMock.mock.calls[0][1] as {onSuccess: (data: {id: string}) => void};
+      onSuccess({id: 'new-1'});
+    }
+
+    beforeEach(() => {
+      emailProviders.data = [];
+    });
+
+    it('makes the only email sender the default, then opens it', () => {
+      createSender();
+
+      expect(setDefaultSenderMock).toHaveBeenCalledWith({defaultEmailSenderId: 'new-1'}, expect.any(Object));
+      expect(navigateMock).not.toHaveBeenCalled();
+
+      const {onSuccess} = setDefaultSenderMock.mock.calls[0][1] as {onSuccess: () => void};
+      onSuccess();
+      expect(navigateMock).toHaveBeenCalledWith('/connections/email-smtp/new-1');
+    });
+
+    it('warns and still opens the sender when it cannot be made the default', () => {
+      createSender();
+
+      const {onError} = setDefaultSenderMock.mock.calls[0][1] as {onError: () => void};
+      onError();
+      expect(showToastMock).toHaveBeenCalledWith(
+        'Connection created, but it could not be made the default email sender.',
+        'warning',
+      );
+      expect(navigateMock).toHaveBeenCalledWith('/connections/email-smtp/new-1');
+    });
+
+    it('leaves the default alone when another email sender exists', () => {
+      emailProviders.data = [{id: 'sm0'}];
+      createSender();
+
+      expect(setDefaultSenderMock).not.toHaveBeenCalled();
+      expect(navigateMock).toHaveBeenCalledWith('/connections/email-smtp/new-1');
+    });
+
+    it('leaves the default alone when the deployment configuration fixes it', () => {
+      notificationConfig.data = {
+        readOnly: {defaultEmailSenderId: 'file'},
+        writable: {},
+        merged: {defaultEmailSenderId: 'file'},
+      };
+      createSender();
+
+      expect(setDefaultSenderMock).not.toHaveBeenCalled();
+    });
+
+    it('leaves the default alone when the existing senders are not known', () => {
+      emailProviders.isSuccess = false;
+      emailProviders.data = undefined;
+      createSender();
+
+      expect(setDefaultSenderMock).not.toHaveBeenCalled();
+    });
+
+    it('leaves the default alone when the notification section is not known', () => {
+      notificationConfig.isSuccess = false;
+      notificationConfig.data = undefined;
+      createSender();
+
+      expect(setDefaultSenderMock).not.toHaveBeenCalled();
+    });
+
+    // The create succeeded, so a second click would create a duplicate.
+    it('keeps create disabled after the connection is created', () => {
+      mutationState.isSuccess = true;
+      render(<ConnectionCreateWizardPage />);
+      selectTypeAndName('connection-type-option-email-smtp', 'Corp Sender');
+
+      expect(screen.getByTestId('wizard-create')).toBeDisabled();
+    });
+
+    it('keeps create disabled while the new sender is being made the default', () => {
+      setDefaultSenderState.isPending = true;
+      render(<ConnectionCreateWizardPage />);
+      selectTypeAndName('connection-type-option-email-smtp', 'Corp Sender');
+
+      expect(screen.getByTestId('wizard-create')).toBeDisabled();
+    });
+
+    it('never makes a connection that is not an email sender the default', () => {
+      createSender('http');
+
+      expect(setDefaultSenderMock).not.toHaveBeenCalled();
+      expect(navigateMock).toHaveBeenCalledWith('/connections/http/new-1');
+    });
   });
 });

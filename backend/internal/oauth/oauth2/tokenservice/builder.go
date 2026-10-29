@@ -79,17 +79,18 @@ func (tb *tokenBuilder) BuildAccessToken(
 	}
 
 	tokenDTO := &oauth2model.TokenDTO{
-		TokenType:        tokenType,
-		ExpiresIn:        tokenConfig.ValidityPeriod,
-		Scopes:           tokenCtx.Scopes,
-		ClientID:         tokenCtx.ClientID,
-		UserAttributes:   tokenCtx.SubjectAttributes,
-		AttributeCacheID: tokenCtx.AttributeCacheID,
-		Subject:          tokenCtx.Subject,
-		Audiences:        tokenCtx.Audiences,
-		ClaimsRequest:    tokenCtx.ClaimsRequest,
-		ClaimsLocales:    tokenCtx.ClaimsLocales,
-		TokenFamilyID:    tokenCtx.TokenFamilyID,
+		TokenType:            tokenType,
+		ExpiresIn:            tokenConfig.ValidityPeriod,
+		Scopes:               tokenCtx.Scopes,
+		ClientID:             tokenCtx.ClientID,
+		UserAttributes:       tokenCtx.SubjectAttributes,
+		AttributeCacheID:     tokenCtx.AttributeCacheID,
+		Subject:              tokenCtx.Subject,
+		Audiences:            tokenCtx.Audiences,
+		ClaimsRequest:        tokenCtx.ClaimsRequest,
+		ClaimsLocales:        tokenCtx.ClaimsLocales,
+		TokenFamilyID:        tokenCtx.TokenFamilyID,
+		AuthorizationDetails: tokenCtx.AuthorizationDetails,
 	}
 	if tokenCtx.ActorClaims != nil {
 		tokenDTO.Delegated = true
@@ -338,6 +339,10 @@ func (tb *tokenBuilder) buildAccessTokenClaims(
 
 	if ctx.TokenFamilyID != "" {
 		claims[constants.ClaimTokenFamilyID] = ctx.TokenFamilyID
+	}
+
+	if len(ctx.AuthorizationDetails) > 0 {
+		claims[constants.ClaimAuthorizationDetails] = ctx.AuthorizationDetails
 	}
 
 	return claims, nil

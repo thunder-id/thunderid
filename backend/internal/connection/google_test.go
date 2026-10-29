@@ -175,3 +175,15 @@ func (s *GoogleTestSuite) TestGetRoundTrip() {
 	s.Equal("https://app/cb", resp.RedirectURI)
 	s.Equal([]string{"openid", "email"}, resp.Scopes)
 }
+
+func (s *GoogleTestSuite) TestOUCarriedThroughMapping() {
+	dto, err := googleToIDPDTO(googleConnectionRequest{
+		Name: "n", OUID: "ou-1", ClientID: "c", RedirectURI: "https://app/cb",
+	})
+	s.Require().NoError(err)
+	s.Equal("ou-1", dto.OUID)
+
+	resp, err := googleFromIDPDTO(*dto)
+	s.Require().NoError(err)
+	s.Equal("ou-1", resp.OUID)
+}

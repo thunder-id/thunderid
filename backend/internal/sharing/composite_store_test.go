@@ -372,3 +372,19 @@ func (s *CompositeStoreTestSuite) TestIssuedByReportsADatabaseFailure() {
 
 	s.ErrorIs(err, unreachable)
 }
+
+// A read spanning every resource of a type holds one policy per resource for the same issuing unit,
+// so a stored policy for one resource must not hide a declared policy the unit holds for another.
+func (s *CompositeStoreTestSuite) TestATypeWideReadKeepsDeclarationsForOtherResources() {
+	ctx := context.Background()
+	chain := []string{rootOU, childOU}
+	s.file.seed(declaredPolicy("declared", "resource-2", rootOU))
+	s.db.EXPECT().ListPoliciesRelevantToChain(ctx, testType, "", chain).
+		Return([]Policy{storedPolicy(rootOU)}, nil).Once()
+
+	held, err := s.store.ListPoliciesRelevantToChain(ctx, testType, "", chain)
+
+	s.Require().NoError(err)
+	s.Require().Len(held, 2)
+	s.ElementsMatch([]string{"stored", "declared"}, []string{held[0].ID, held[1].ID})
+}

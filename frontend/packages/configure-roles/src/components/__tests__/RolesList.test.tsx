@@ -36,8 +36,31 @@ vi.mock('@wso2/oxygen-ui', async (importOriginal) => {
     ...actual,
     OxygenUIThemeProvider: ({children}: {children: React.ReactNode}) => children,
     ListingTable: {
-      Provider: ({children}: {children: React.ReactNode}): React.ReactElement => children as React.ReactElement,
-      Container: ({children}: {children: React.ReactNode}): React.ReactElement => children as React.ReactElement,
+      Provider: ({children, variant = undefined}: {children: React.ReactNode; variant?: string}) => (
+        <div data-testid="listing-table-provider" data-variant={variant}>
+          {children}
+        </div>
+      ),
+      Container: ({children, disablePaper = false}: {children: React.ReactNode; disablePaper?: boolean}) => (
+        <div data-testid="listing-table-container" data-disable-paper={disablePaper ? 'true' : undefined}>
+          {children}
+        </div>
+      ),
+      CellIcon: ({
+        icon,
+        primary,
+        secondary = undefined,
+      }: {
+        icon: React.ReactNode;
+        primary: React.ReactNode;
+        secondary?: React.ReactNode;
+      }) => (
+        <div data-testid="cell-icon">
+          {icon}
+          <span>{primary}</span>
+          {secondary && <span>{secondary}</span>}
+        </div>
+      ),
       DataGrid: ({
         rows,
         columns,
@@ -206,7 +229,7 @@ describe('RolesList', () => {
     expect(screen.getByText('Administrator role')).toBeInTheDocument();
   });
 
-  it('should display "-" for missing description', () => {
+  it('should render the description as a secondary line only when present', () => {
     vi.mocked(useGetRoles).mockReturnValue({
       data: mockRolesData,
       isLoading: false,
@@ -215,8 +238,51 @@ describe('RolesList', () => {
 
     renderComponent();
 
-    const dashElements = screen.getAllByText('-');
-    expect(dashElements.length).toBeGreaterThan(0);
+    const nameCells = screen.getAllByTestId('cell-icon');
+    expect(nameCells[0]).toHaveTextContent('Admin RoleAdministrator role');
+    expect(nameCells[1]).toHaveTextContent(/^Viewer Role$/);
+  });
+
+  it('should not render a secondary line for an empty description', () => {
+    vi.mocked(useGetRoles).mockReturnValue({
+      data: {...mockRolesData, roles: [{id: 'role-3', name: 'Auditor Role', description: '', ouId: 'ou-1'}]},
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetRoles>);
+
+    renderComponent();
+
+    expect(screen.getByTestId('cell-icon')).toHaveTextContent(/^Auditor Role$/);
+  });
+
+  it('should render the data grid variant inside a paper container', () => {
+    vi.mocked(useGetRoles).mockReturnValue({
+      data: mockRolesData,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetRoles>);
+
+    renderComponent();
+
+    expect(screen.getByTestId('listing-table-provider')).toHaveAttribute('data-variant', 'data-grid');
+    expect(screen.getByTestId('listing-table-container')).not.toHaveAttribute('data-disable-paper');
+  });
+
+  it('should label the row action buttons', () => {
+    vi.mocked(useGetRoles).mockReturnValue({
+      data: {
+        ...mockRolesData,
+        roles: [...mockRolesData.roles, {id: 'role-3', name: 'System Role', ouId: 'ou-1', isReadOnly: true}],
+      },
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetRoles>);
+
+    renderComponent();
+
+    expect(screen.getAllByRole('button', {name: 'Edit'})).toHaveLength(2);
+    expect(screen.getAllByRole('button', {name: 'Delete'})).toHaveLength(2);
+    expect(screen.getByRole('button', {name: 'Read only'})).toBeInTheDocument();
   });
 
   it('should open delete dialog when clicking Delete action', async () => {

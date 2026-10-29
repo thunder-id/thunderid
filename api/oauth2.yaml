@@ -29,6 +29,8 @@ tags:
     description: Pushed Authorization Requests per RFC 9126.
   - name: JWKS
     description: JSON Web Key Set endpoint for token verification.
+  - name: Authorization Details Types
+    description: Request view of the RFC 9396 authorization details types the server supports.
   - name: UserInfo
     description: OIDC UserInfo endpoint for retrieving claims about the authenticated user.
   - name: DCR
@@ -204,36 +206,13 @@ paths:
     post:
       summary: Token endpoint
       description: |
-        Issues access tokens, refresh tokens, and ID tokens. Supports the following grant types:
-        `authorization_code`, `client_credentials`, `refresh_token`, `password`,
-        `urn:openid:params:grant-type:ciba` (CIBA Core 1.0),
-        `urn:ietf:params:oauth:grant-type:token-exchange` (RFC 8693), and
-        `urn:ietf:params:oauth:grant-type:jwt-bearer` (draft-ietf-oauth-identity-assertion-authz-grant).
-        Requires client authentication via HTTP Basic auth or `client_id`/`client_secret` form parameters.
+        Issues access tokens, refresh tokens, and ID tokens. Supports the following grant types: `authorization_code`, `client_credentials`, `refresh_token`, `urn:openid:params:grant-type:ciba` (CIBA Core 1.0), `urn:ietf:params:oauth:grant-type:token-exchange` (RFC 8693), and `urn:ietf:params:oauth:grant-type:jwt-bearer` (draft-ietf-oauth-identity-assertion-authz-grant). Confidential clients authenticate with HTTP Basic auth, `client_id`/`client_secret` form parameters, or a `private_key_jwt` client assertion; a public client sends only `client_id`.
 
-        An access token issued for a user through the `authorization_code` or
-        `urn:openid:params:grant-type:ciba` grant keeps that user in `sub` and adds an on-behalf-of
-        `act` claim naming the client that obtained it. Agent clients always receive the claim;
-        application clients receive it when `includeActClaim` is enabled on the client. The `act.sub`
-        value is the agent or application resource id rather than the client id, and the claim is
-        present on the access token only, never on the ID token.
+        An access token issued for a user through the `authorization_code`, `urn:openid:params:grant-type:ciba` or `urn:ietf:params:oauth:grant-type:jwt-bearer` grant keeps that user in `sub` and adds an on-behalf-of `act` claim naming the client that obtained it. Token exchange adds the same claim when no `actor_token` is given, and a refreshed access token keeps the claim its refresh token was issued with. Agent clients always receive the claim; application clients receive it when `includeActClaim` is enabled on the client. The `act.sub` value is the agent or application resource id rather than the client id, and the claim is present on the access token only, never on the ID token.
 
-        Token exchange additionally supports requesting an Identity Assertion Authorization Grant
-        (ID-JAG) by setting `requested_token_type` to
-        `urn:ietf:params:oauth:token-type:id-jag`, with `subject_token_type` set to
-        `urn:ietf:params:oauth:token-type:id_token` and a single required `audience` value matching
-        one of the client's configured `allowedAudiences`. The `resource` parameter is optional and,
-        when present, is embedded in the issued ID-JAG for the resource authorization server to
-        process. Requires the client to be confidential and to have ID-JAG issuance enabled
-        (`token.idJag.enabled`) on its application configuration. The response has
-        `issued_token_type=urn:ietf:params:oauth:token-type:id-jag` and `token_type=N_A`, since the
-        issued value is a JWT authorization grant rather than an access token.
+        Token exchange additionally supports requesting an Identity Assertion Authorization Grant (ID-JAG) by setting `requested_token_type` to `urn:ietf:params:oauth:token-type:id-jag`, with `subject_token_type` set to `urn:ietf:params:oauth:token-type:id_token` and a single required `audience` value matching one of the client's configured `allowedAudiences`. The `resource` parameter is optional and, when present, is embedded in the issued ID-JAG for the resource authorization server to process. Requires the client to be confidential and to have ID-JAG issuance enabled (`token.idJag.enabled`) on its OAuth configuration. The response has `issued_token_type=urn:ietf:params:oauth:token-type:id-jag` and `token_type=N_A`, since the issued value is a JWT authorization grant rather than an access token.
 
-        The `urn:ietf:params:oauth:grant-type:jwt-bearer` grant presents an ID-JAG assertion (obtained
-        from a trusted external IdP) via the required `assertion` parameter, and exchanges it for a
-        ThunderID access token. Optional `scope` and `resource` parameters further narrow the granted
-        scopes and audience; `resource` must be a subset of the assertion's own `resource` claim when
-        the assertion carries one. No refresh token is issued for this grant.
+        The `urn:ietf:params:oauth:grant-type:jwt-bearer` grant presents an ID-JAG assertion (obtained from a trusted external IdP) via the required `assertion` parameter, and exchanges it for a ThunderID access token. Optional `scope` and `resource` parameters further narrow the granted scopes and audience; `resource` must be a subset of the assertion's own `resource` claim when the assertion carries one. No refresh token is issued for this grant.
       tags:
         - Token
       requestBody:
@@ -551,6 +530,14 @@ paths:
               schema:
                 type: string
               example: 'Bearer error="insufficient_scope", error_description="Required scope is missing"'
+        "500":
+          description: >-
+            Internal server error — the request could not be processed, for example when the
+            token's application cannot be read.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
     post:
       summary: UserInfo endpoint (POST)
       description: |
@@ -572,6 +559,14 @@ paths:
           description: Unauthorized — missing or invalid Bearer token.
         "403":
           description: Forbidden — token scope is insufficient.
+        "500":
+          description: >-
+            Internal server error — the request could not be processed, for example when the
+            token's application cannot be read.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
 
   /oauth2/dcr/register:
     post:
@@ -754,6 +749,115 @@ paths:
               schema:
                 $ref: '#/components/schemas/OAuthError'
 
+  /oauth2/authorization-details-types:
+    get:
+      summary: List authorization details types
+      description: |
+        Returns the request view of every registered RFC 9396 authorization details type: the fields a client may send, with their constraints, and the changes it may make to a granted detail at the token endpoint. Processor, consent and reuse settings, the user and processor rules, and internal identifiers are never returned. Public and read-only, advertised in discovery as `authorization_details_types_endpoint`, and not served when `oauth.authorization_details.type_metadata_enabled` is `false`.
+      tags:
+        - Authorization Details Types
+      parameters:
+        - $ref: '#/components/parameters/IfNoneMatchHeader'
+      responses:
+        "200":
+          description: The request view of every registered type.
+          headers:
+            ETag:
+              $ref: '#/components/headers/AuthorizationDetailsTypesETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizationDetailsTypesResponse'
+        "304":
+          description: The content matches the `If-None-Match` ETag.
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
+  /oauth2/authorization-details-types/{type}:
+    get:
+      summary: Get an authorization details type
+      description: Returns the request view of one registered type.
+      tags:
+        - Authorization Details Types
+      parameters:
+        - name: type
+          in: path
+          required: true
+          description: The type value, URL-encoded since it may be a URI.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/IfNoneMatchHeader'
+      responses:
+        "200":
+          description: The request view of the type.
+          headers:
+            ETag:
+              $ref: '#/components/headers/AuthorizationDetailsTypesETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizationDetailsTypeMetadata'
+              example:
+                type: "payment_initiation"
+                name: "Payment initiation"
+                description: "Initiates a single payment from the user's account"
+                version: 3
+                schema:
+                  type: "object"
+                  required: ["instructedAmount", "creditorName"]
+                  properties:
+                    instructedAmount:
+                      type: "object"
+                      properties:
+                        amount: {type: "number", maximum: 10000}
+                        currency: {type: "string"}
+                    creditorName: {type: "string", maxLength: 140}
+                modifications:
+                  - field: "instructedAmount.amount"
+                    modification: "decrease"
+        "304":
+          description: The content matches the `If-None-Match` ETag.
+        "404":
+          description: No type is registered under the value.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "RAR-1029"
+                message:
+                  key: "error.discoveryservice.authorization_details_type_not_found"
+                  defaultValue: "Authorization details type not found"
+                description:
+                  key: "error.discoveryservice.authorization_details_type_not_found_description"
+                  defaultValue: "No authorization details type is registered under the requested value"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
 components:
   securitySchemes:
     OAuth2:
@@ -764,7 +868,59 @@ components:
           tokenUrl: https://localhost:8090/oauth2/token
           scopes:
             system: Access to system management APIs
+  parameters:
+    IfNoneMatchHeader:
+      name: If-None-Match
+      in: header
+      required: false
+      description: An ETag from an earlier response; the server answers `304` when the content is unchanged.
+      schema:
+        type: string
+  headers:
+    AuthorizationDetailsTypesETag:
+      description: An ETag of the response content.
+      schema:
+        type: string
   schemas:
+    AuthorizationDetailsTypesResponse:
+      type: object
+      required: [types]
+      properties:
+        types:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthorizationDetailsTypeMetadata'
+    AuthorizationDetailsTypeMetadata:
+      type: object
+      required: [type, name, version, schema, modifications]
+      properties:
+        type:
+          type: string
+          description: The type value clients send in `authorization_details`.
+        name:
+          type: string
+        description:
+          type: string
+        version:
+          type: integer
+          description: The type's version, which increments when a change affects earlier approvals and grants.
+        schema:
+          type: object
+          description: |
+            The JSON Schema 2020-12 of the fields a client may send, in the order the type declares them. Fields the processor supplies and field policies are left out.
+        modifications:
+          type: array
+          description: The changes a client may make to a granted detail at the token endpoint.
+          items:
+            type: object
+            required: [field, modification]
+            properties:
+              field:
+                type: string
+                description: The dot-separated path of the field.
+              modification:
+                type: string
+                enum: [decrease, increase, removeItems, addItems]
     AuthCallbackRequest:
       type: object
       required:
@@ -801,7 +957,6 @@ components:
             - authorization_code
             - client_credentials
             - refresh_token
-            - password
             - urn:ietf:params:oauth:grant-type:token-exchange
             - urn:ietf:params:oauth:grant-type:jwt-bearer
             - urn:openid:params:grant-type:ciba
@@ -827,12 +982,6 @@ components:
         refresh_token:
           type: string
           description: The refresh token (required for refresh_token grant).
-        username:
-          type: string
-          description: The resource owner username (required for password grant).
-        password:
-          type: string
-          description: The resource owner password (required for password grant).
         subject_token:
           type: string
           description: The subject token for token exchange (RFC 8693).
@@ -864,8 +1013,8 @@ components:
           type: string
           description: >-
             Resource indicator (RFC 8707). For access-token issuance, binds the issued access token
-            to exactly one resource server. When omitted from a permission-bearing request, the
-            configured defaultResourceServer is used, and if neither is available the request is
+            to exactly one resource server. When omitted from a request carrying permission scopes or
+            authorization details, the configured defaultResourceServer is used, and if neither is available the request is
             rejected with invalid_target. OIDC-only and scopeless requests use the client_id audience. Optional
             for ID-JAG requests, where it is embedded in the issued ID-JAG's `resource` claim. For
             the jwt-bearer grant, when present it must be a subset of the assertion's own `resource`
@@ -880,6 +1029,10 @@ components:
           description: >-
             The backchannel authentication request identifier returned by /oauth2/bc-authorize.
             Required for the `urn:openid:params:grant-type:ciba` grant.
+        authorization_details:
+          type: string
+          description: >-
+            RFC 9396 authorization details as a JSON array. On `client_credentials` it is a new request: every requested type must have a processor, the token carries only the details the processors approve, and a request whose details are all refused fails with `invalid_authorization_details`. The `authorization_code`, `urn:openid:params:grant-type:ciba` and `refresh_token` grants ignore it. Other grants refuse it with `invalid_authorization_details`.
 
     TokenResponse:
       type: object
@@ -910,6 +1063,13 @@ components:
         issued_token_type:
           type: string
           description: The type of the issued token (token exchange only).
+        authorization_details:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: >-
+            The RFC 9396 authorization details the access token carries, when the grant has any.
 
     PARRequest:
       type: object
@@ -1038,6 +1198,12 @@ components:
           type: string
         jti:
           type: string
+        authorization_details:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: The RFC 9396 authorization details the token carries, when it has any.
 
     JWKSResponse:
       type: object
@@ -1381,6 +1547,32 @@ components:
         interval:
           type: integer
           description: Minimum number of seconds the client must wait between token endpoint polls.
+    Error:
+      type: object
+      description: Error returned by the authorization details type metadata endpoints.
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Error code.
+          example: "RAR-1029"
+        message:
+          $ref: '#/components/schemas/I18nMessage'
+        description:
+          $ref: '#/components/schemas/I18nMessage'
+
+    I18nMessage:
+      type: object
+      description: Internationalized message with translation key and default value.
+      required: [key, defaultValue]
+      properties:
+        key:
+          type: string
+          description: Translation key for fetching localized message.
+        defaultValue:
+          type: string
+          description: Default message in English (fallback).
+
     OAuthError:
       type: object
       required:

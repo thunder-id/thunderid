@@ -7,7 +7,6 @@ package httpauth
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
 	"strings"
 
@@ -94,9 +93,10 @@ func ValidateAPIKeyHeader(name, value string) (string, error) {
 	if value == maskedCredential {
 		return "", fmt.Errorf("masked API-key header value cannot be stored")
 	}
+	// A dot is refused, though HTTP allows it, since an export names each header in a dot-separated path.
 	for _, char := range name {
 		if char >= 'A' && char <= 'Z' || char >= 'a' && char <= 'z' ||
-			char >= '0' && char <= '9' || strings.ContainsRune("!#$%&'*+-.^_`|~", char) {
+			char >= '0' && char <= '9' || strings.ContainsRune("!#$%&'*+-^_`|~", char) {
 			continue
 		}
 		return "", fmt.Errorf("invalid API-key header name %q", name)
@@ -134,11 +134,8 @@ func ValidateCredentialTransport(request *http.Request) error {
 	if request.URL.Scheme == "https" {
 		return nil
 	}
-	if request.URL.Scheme == "http" {
-		address := net.ParseIP(host)
-		if strings.EqualFold(host, "localhost") || address != nil && address.IsLoopback() {
-			return nil
-		}
+	if request.URL.Scheme == "http" && IsLoopbackHost(host) {
+		return nil
 	}
 	return fmt.Errorf("HTTPS is required when authentication is configured")
 }

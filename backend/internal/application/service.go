@@ -27,6 +27,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -41,7 +42,8 @@ type ApplicationServiceInterface interface {
 		ctx context.Context, app *model.ApplicationDTO) (*model.ApplicationDTO, *tidcommon.ServiceError)
 	ValidateApplication(ctx context.Context, app *model.ApplicationDTO) (
 		*model.ApplicationProcessedDTO, *providers.InboundAuthConfigWithSecret, *tidcommon.ServiceError)
-	GetApplicationList(ctx context.Context) (*model.ApplicationListResponse, *tidcommon.ServiceError)
+	GetApplicationList(ctx context.Context, filters map[string]interface{}) (
+		*model.ApplicationListResponse, *tidcommon.ServiceError)
 	GetOAuthApplication(
 		ctx context.Context, clientID string) (*providers.OAuthClient, *tidcommon.ServiceError)
 	GetApplication(ctx context.Context, appID string) (*providers.Application, *tidcommon.ServiceError)
@@ -327,9 +329,18 @@ func (as *applicationService) ValidateApplication(ctx context.Context, app *mode
 	return processedDTO, inboundAuthConfig, nil
 }
 
-// GetApplicationList list the applications.
+// GetApplicationList list the applications. An organization unit filter lists the applications that
+// unit owns, followed by the ones shared into it.
 func (as *applicationService) GetApplicationList(
-	ctx context.Context) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
+	ctx context.Context, filters map[string]interface{}) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
+	ouID, rest, err := filter.SplitOUIDFilter(filters)
+	if err != nil || len(rest) > 0 {
+		return nil, &ErrorInvalidFilter
+	}
+	if ouID != "" {
+		return as.listApplicationsInOU(ctx, ouID)
+	}
+
 	totalResults, entErr := as.entityService.GetEntityListCount(ctx, providers.EntityCategoryApp, nil)
 	if entErr != nil {
 		as.logger.Error(ctx, "Failed to count application entities", log.Error(entErr))
@@ -342,6 +353,28 @@ func (as *applicationService) GetApplicationList(
 		as.logger.Error(ctx, "Failed to list application entities", log.Error(entErr))
 		return nil, &tidcommon.InternalServerError
 	}
+	return as.buildApplicationList(ctx, entities, len(entities), totalResults)
+}
+
+// listApplicationsInOU lists the applications an organization unit owns, followed by the ones shared
+// into it.
+func (as *applicationService) listApplicationsInOU(
+	ctx context.Context, ouID string) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
+	page, err := as.entityService.GetEntityPageInOU(ctx, providers.EntityCategoryApp, ouID,
+		entity.OUEntityScopeAll, serverconst.MaxCompositeStoreRecords, 0, nil)
+	if err != nil {
+		as.logger.Error(ctx, "Failed to list application entities in organization unit",
+			log.String("ouID", ouID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	return as.buildApplicationList(ctx, slices.Concat(page.Owned, page.Shared), len(page.Owned),
+		page.TotalResults)
+}
+
+// buildApplicationList builds the list response for application entities, of which the first
+// ownedCount are owned by the listed organization unit and the rest are shared into it.
+func (as *applicationService) buildApplicationList(ctx context.Context, entities []providers.Entity,
+	ownedCount, totalResults int) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
 	if len(entities) == 0 {
 		return &model.ApplicationListResponse{
 			TotalResults: totalResults,
@@ -382,6 +415,13 @@ func (as *applicationService) GetApplicationList(
 		}
 		resp := buildBasicApplicationResponse(*cfg, &entities[i])
 		resp.Status = statuses[i]
+		owned := i < ownedCount
+		resp.IsOwnedByOU = new(owned)
+		// The organization unit an application is shared into cannot change it until templated configs are
+		// supported for applications.
+		if !owned {
+			resp.IsReadOnly = true
+		}
 		applicationList = append(applicationList, resp)
 	}
 
@@ -1465,6 +1505,17 @@ func (as *applicationService) validateApplicationForUpdate(
 		return nil, nil, &ErrorApplicationTypeImmutable
 	}
 	app.Type = existingApp.Type
+
+	// A shared application stays in its organization unit: its policies were issued against that unit.
+	if app.OUID != existingApp.OUID {
+		policies, svcErr := as.sharingService.ListPolicies(ctx, ApplicationSharingType, appID)
+		if svcErr != nil {
+			return nil, nil, translateSharingError(svcErr)
+		}
+		if len(policies) > 0 {
+			return nil, nil, &ErrorSharedApplicationCannotMove
+		}
+	}
 
 	inboundAuthConfig, svcErr := as.processInboundAuthConfig(ctx, app, existingApp)
 	if svcErr != nil {

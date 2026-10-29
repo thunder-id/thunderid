@@ -41,7 +41,7 @@ func Initialize(
 	jweService jwe.JWEServiceInterface,
 	cimdService cimd.CIMDServiceInterface,
 	sharingService sharing.SharingServiceInterface,
-	sharedTypes map[providers.EntityCategory]sharing.ResourceType,
+	sharedTypes SharedTypeResolver,
 	options ...Option,
 ) (InboundClientServiceInterface, error) {
 	store, transactioner, err := initializeStore(cacheManager)

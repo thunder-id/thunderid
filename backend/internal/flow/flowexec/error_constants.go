@@ -23,6 +23,20 @@ var APIErrorFlowRequestJSONDecodeError = apierror.ErrorResponse{
 	},
 }
 
+// APIErrorInvalidSessionData defines the error response for a sessionData entry missing its flow
+// identifier or session handle.
+var APIErrorInvalidSessionData = apierror.ErrorResponse{
+	Code: "FES-1021",
+	Message: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.invalid_session_data",
+		DefaultValue: "Invalid session data",
+	},
+	Description: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.invalid_session_data_description",
+		DefaultValue: "Each session data entry needs a flow identifier and a session handle",
+	},
+}
+
 // ErrorNodeResponse defines the error response for errors received from nodes.
 var ErrorNodeResponse = tidcommon.ServiceError{
 	Code: "FES-1002",
@@ -281,5 +295,20 @@ var ErrorAdministrationPermissionRequired = tidcommon.ServiceError{
 	ErrorDescription: tidcommon.I18nMessage{
 		Key:          "error.flowexecservice.administration_permission_required_description",
 		DefaultValue: "Administrative flows require the system permission",
+	},
+}
+
+// ErrorFlowApplicationNotUsable is returned when the application driving a flow is suspended. It
+// does not say why.
+var ErrorFlowApplicationNotUsable = tidcommon.ServiceError{
+	Code: "FES-1020",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.application_not_usable",
+		DefaultValue: "Flow execution not permitted",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.application_not_usable_description",
+		DefaultValue: "The flow cannot be executed for the requested application",
 	},
 }

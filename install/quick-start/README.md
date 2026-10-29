@@ -27,7 +27,7 @@ Once running, ThunderID is available at:
 | URL | Description |
 |------|-------------|
 | `https://localhost:8090` | ThunderID Server |
-| `https://localhost:8090/console` | ThunderID Console |
+| `https://localhost:8090/console` | ThunderID Admin Console (users, agents, groups, roles) |
 
 > **Admin credentials:** the username is `admin`; the password is randomly generated during setup and printed to the console output of the `thunderid-setup` service. If you ran `docker compose up` in the foreground, look for the "Admin credentials" block in the terminal output. If you ran it detached (`-d`), retrieve it with:
 > ```bash
@@ -75,7 +75,7 @@ The Docker image bakes in default configuration files. You can override them wit
 | File in container | Purpose |
 |---|---|
 | `/opt/thunderid/deployment.yaml` | Backend server — bind address, public URL, Gate client redirect |
-| `/opt/thunderid/apps/console/config.js` | Management Console frontend |
+| `/opt/thunderid/apps/console/config.js` | Admin Console frontend |
 | `/opt/thunderid/apps/gate/config.js` | Gate login app frontend |
 
 ### Step 1: Create Your Configuration Files
@@ -86,7 +86,7 @@ Create the following three files in the same directory as `docker-compose.yml`:
 .
 ├── docker-compose.yml
 ├── deployment.yaml       ← backend configuration
-├── console-config.js     ← ThunderID Console configuration
+├── console-config.js     ← ThunderID Admin Console configuration
 └── gate-config.js        ← Gate login app configuration
 ```
 

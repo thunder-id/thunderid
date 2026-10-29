@@ -38,6 +38,10 @@ type OrganizationUnitServiceInterface interface {
 		handlePath string,
 	) (OrganizationUnit, *tidcommon.ServiceError)
 	IsOrganizationUnitExists(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
+	ResolveOwner(ctx context.Context, ouID, ouHandle string, errs OwnerErrors) (string, *tidcommon.ServiceError)
+	ResolveOwnerForUpdate(
+		ctx context.Context, requestedID, requestedHandle, currentID string, errs OwnerErrors,
+	) (string, *tidcommon.ServiceError)
 	IsOrganizationUnitDeclarative(ctx context.Context, id string) bool
 	IsParent(ctx context.Context, parentID, childID string) (bool, *tidcommon.ServiceError)
 	UpdateOrganizationUnit(
@@ -944,10 +948,9 @@ func (ous *organizationUnitService) GetOrganizationUnitUsers(
 
 	items, totalCount, svcErr := ous.getResourceListWithExistenceCheck(
 		ctx, id, limit, offset, "users",
-		func(ctx context.Context, id string, limit, offset int) (interface{}, error) {
+		func(ctx context.Context, id string, limit, offset int) (interface{}, int, error) {
 			return ous.userResolver.GetUserListByOUID(ctx, id, limit, offset, includeDisplay)
 		},
-		ous.userResolver.GetUserCountByOUID,
 		false, // No composite error mapping for users
 	)
 	if svcErr != nil {
@@ -978,10 +981,12 @@ func (ous *organizationUnitService) GetOrganizationUnitGroups(
 
 	items, totalCount, svcErr := ous.getResourceListWithExistenceCheck(
 		ctx, id, limit, offset, "groups",
-		func(ctx context.Context, id string, limit, offset int) (interface{}, error) {
-			return ous.groupResolver.GetGroupListByOUID(ctx, id, limit, offset)
-		},
-		ous.groupResolver.GetGroupCountByOUID,
+		listThenCount(
+			func(ctx context.Context, id string, limit, offset int) (interface{}, error) {
+				return ous.groupResolver.GetGroupListByOUID(ctx, id, limit, offset)
+			},
+			ous.groupResolver.GetGroupCountByOUID,
+		),
 		false, // No composite error mapping for groups
 	)
 	if svcErr != nil {
@@ -1001,10 +1006,12 @@ func (ous *organizationUnitService) GetOrganizationUnitRoles(
 
 	items, totalCount, svcErr := ous.getResourceListWithExistenceCheck(
 		ctx, id, limit, offset, "roles",
-		func(ctx context.Context, id string, limit, offset int) (interface{}, error) {
-			return ous.roleResolver.GetRoleListByOUID(ctx, id, limit, offset)
-		},
-		ous.roleResolver.GetRoleCountByOUID,
+		listThenCount(
+			func(ctx context.Context, id string, limit, offset int) (interface{}, error) {
+				return ous.roleResolver.GetRoleListByOUID(ctx, id, limit, offset)
+			},
+			ous.roleResolver.GetRoleCountByOUID,
+		),
 		false, // No composite error mapping for roles
 	)
 	if svcErr != nil {
@@ -1032,12 +1039,14 @@ func (ous *organizationUnitService) GetOrganizationUnitChildren(
 
 	items, totalCount, svcErr := ous.getResourceListWithExistenceCheck(
 		ctx, id, limit, offset, "child organization units",
-		func(ctx context.Context, id string, limit, offset int) (interface{}, error) {
-			return ous.ouStore.GetOrganizationUnitChildrenList(ctx, id, limit, offset, f)
-		},
-		func(ctx context.Context, id string) (int, error) {
-			return ous.ouStore.GetOrganizationUnitChildrenCount(ctx, id, f)
-		},
+		listThenCount(
+			func(ctx context.Context, id string, limit, offset int) (interface{}, error) {
+				return ous.ouStore.GetOrganizationUnitChildrenList(ctx, id, limit, offset, f)
+			},
+			func(ctx context.Context, id string) (int, error) {
+				return ous.ouStore.GetOrganizationUnitChildrenCount(ctx, id, f)
+			},
+		),
 		true,
 	)
 	if svcErr != nil {
@@ -1102,10 +1111,9 @@ func (ous *organizationUnitService) GetOrganizationUnitUsersByPath(
 
 	items, totalCount, svcErr := ous.getResourceListWithExistenceCheck(
 		ctx, ou.ID, limit, offset, "users",
-		func(ctx context.Context, id string, limit, offset int) (interface{}, error) {
+		func(ctx context.Context, id string, limit, offset int) (interface{}, int, error) {
 			return ous.userResolver.GetUserListByOUID(ctx, id, limit, offset, includeDisplay)
 		},
-		ous.userResolver.GetUserCountByOUID,
 		false,
 	)
 	if svcErr != nil {
@@ -1153,10 +1161,12 @@ func (ous *organizationUnitService) GetOrganizationUnitGroupsByPath(
 
 	items, totalCount, svcErr := ous.getResourceListWithExistenceCheck(
 		ctx, ou.ID, limit, offset, "groups",
-		func(ctx context.Context, id string, limit, offset int) (interface{}, error) {
-			return ous.groupResolver.GetGroupListByOUID(ctx, id, limit, offset)
-		},
-		ous.groupResolver.GetGroupCountByOUID,
+		listThenCount(
+			func(ctx context.Context, id string, limit, offset int) (interface{}, error) {
+				return ous.groupResolver.GetGroupListByOUID(ctx, id, limit, offset)
+			},
+			ous.groupResolver.GetGroupCountByOUID,
+		),
 		false,
 	)
 	if svcErr != nil {
@@ -1194,10 +1204,12 @@ func (ous *organizationUnitService) GetOrganizationUnitRolesByPath(
 
 	items, totalCount, svcErr := ous.getResourceListWithExistenceCheck(
 		ctx, ou.ID, limit, offset, "roles",
-		func(ctx context.Context, id string, limit, offset int) (interface{}, error) {
-			return ous.roleResolver.GetRoleListByOUID(ctx, id, limit, offset)
-		},
-		ous.roleResolver.GetRoleCountByOUID,
+		listThenCount(
+			func(ctx context.Context, id string, limit, offset int) (interface{}, error) {
+				return ous.roleResolver.GetRoleListByOUID(ctx, id, limit, offset)
+			},
+			ous.roleResolver.GetRoleCountByOUID,
+		),
 		false,
 	)
 	if svcErr != nil {
@@ -1292,6 +1304,69 @@ func (ous *organizationUnitService) validateDefaultFlows(
 	return nil
 }
 
+// ResolveOwner returns the id of the organization unit that owns a resource. An id is used as given, and a handle is
+// resolved to the id of the unit it names; when both are given the id wins. The unit has to exist. Only a lookup that
+// finds no such unit is reported as errs.NotFound, so a failed or refused lookup is not taken for one.
+//
+// A handle is resolved with the runtime context: it comes from an import or a declarative file, which name the owner
+// by handle on behalf of the deployment and not of whoever runs the import.
+func (ous *organizationUnitService) ResolveOwner(
+	ctx context.Context, ouID, ouHandle string, errs OwnerErrors,
+) (string, *tidcommon.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
+	if ouID != "" && ouHandle != "" {
+		logger.Warn(ctx, "Both ouId and ouHandle provided for a resource; ouHandle ignored")
+	}
+
+	if ouID == "" {
+		if ouHandle == "" {
+			return "", &errs.Required
+		}
+		unit, svcErr := ous.GetOrganizationUnitByPath(security.WithRuntimeContext(ctx), ouHandle)
+		if svcErr != nil {
+			if svcErr.Code == ErrorOrganizationUnitNotFound.Code {
+				return "", &errs.NotFound
+			}
+			logger.Error(ctx, "Failed to look up the owner organization unit by handle",
+				log.String("errorCode", svcErr.Code))
+			return "", &tidcommon.InternalServerError
+		}
+		return unit.ID, nil
+	}
+
+	exists, svcErr := ous.IsOrganizationUnitExists(ctx, ouID)
+	if svcErr != nil {
+		logger.Error(ctx, "Failed to look up the owner organization unit", log.String("errorCode", svcErr.Code))
+		return "", &tidcommon.InternalServerError
+	}
+	if !exists {
+		return "", &errs.NotFound
+	}
+	return ouID, nil
+}
+
+// ResolveOwnerForUpdate returns the owner an updated resource has. An owner cannot change once the resource is
+// created, so a request that leaves the owner out keeps the current one, and one that names an owner has to name the
+// one the resource has, by id or by handle.
+func (ous *organizationUnitService) ResolveOwnerForUpdate(
+	ctx context.Context, requestedID, requestedHandle, currentID string, errs OwnerErrors,
+) (string, *tidcommon.ServiceError) {
+	if requestedID == "" && requestedHandle == "" {
+		return currentID, nil
+	}
+	resolved := requestedID
+	if resolved == "" {
+		var svcErr *tidcommon.ServiceError
+		if resolved, svcErr = ous.ResolveOwner(ctx, "", requestedHandle, errs); svcErr != nil {
+			return "", svcErr
+		}
+	}
+	if resolved != currentID {
+		return "", &errs.Changed
+	}
+	return currentID, nil
+}
+
 // validateDefaultFlowID validates that a single default flow ID, if set, exists and matches flowType.
 func (ous *organizationUnitService) validateDefaultFlowID(
 	ctx context.Context, flowID string, flowType providers.FlowType, mismatchErr *tidcommon.ServiceError,
@@ -1340,13 +1415,12 @@ func validatePaginationParams(limit, offset int) *tidcommon.ServiceError {
 	return nil
 }
 
-// getResourceListWithExistenceCheck is a generic function to get resources for an
-// organization unit with existence check.
+// getResourceListWithExistenceCheck is a generic function to get one page of resources for an
+// organization unit with existence check. getPageFunc returns the page and the total across every page.
 // If mapCompositeError is true, it will map ErrResultLimitExceededInCompositeMode to ErrorResultLimitExceeded.
 func (ous *organizationUnitService) getResourceListWithExistenceCheck(
 	ctx context.Context, id string, limit, offset int, resourceType string,
-	getListFunc func(context.Context, string, int, int) (interface{}, error),
-	getCountFunc func(context.Context, string) (int, error),
+	getPageFunc func(context.Context, string, int, int) (interface{}, int, error),
 	mapCompositeError bool,
 ) (interface{}, int, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
@@ -1367,7 +1441,7 @@ func (ous *organizationUnitService) getResourceListWithExistenceCheck(
 		return nil, 0, &ErrorOrganizationUnitNotFound
 	}
 
-	items, err := getListFunc(ctx, id, limit, offset)
+	items, totalCount, err := getPageFunc(ctx, id, limit, offset)
 	if err != nil {
 		// Map composite limit error if requested
 		if mapCompositeError && errors.Is(err, ErrResultLimitExceededInCompositeMode) {
@@ -1378,14 +1452,26 @@ func (ous *organizationUnitService) getResourceListWithExistenceCheck(
 		return nil, 0, &tidcommon.InternalServerError
 	}
 
-	totalCount, err := getCountFunc(ctx, id)
-	if err != nil {
-		logger.Error(ctx, "Failed to get resource count",
-			log.String("resource_type", resourceType), log.Error(err))
-		return nil, 0, &tidcommon.InternalServerError
-	}
-
 	return items, totalCount, nil
+}
+
+// listThenCount adapts a list function and a count function to the page function
+// getResourceListWithExistenceCheck takes.
+func listThenCount(
+	getListFunc func(context.Context, string, int, int) (interface{}, error),
+	getCountFunc func(context.Context, string) (int, error),
+) func(context.Context, string, int, int) (interface{}, int, error) {
+	return func(ctx context.Context, id string, limit, offset int) (interface{}, int, error) {
+		items, err := getListFunc(ctx, id, limit, offset)
+		if err != nil {
+			return nil, 0, err
+		}
+		totalCount, err := getCountFunc(ctx, id)
+		if err != nil {
+			return nil, 0, err
+		}
+		return items, totalCount, nil
+	}
 }
 
 func buildUserListResponse(

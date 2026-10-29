@@ -29,6 +29,7 @@ An SMTP provider holds everything <ProductName /> needs to hand email to an SMTP
 |-------|----------|-------------|
 | `name` | Yes | Display name of the connection. |
 | `description` | No | Free-text description. |
+| `ouId` | Yes, on create | ID of the organization unit that owns the connection. The organization unit must exist. It cannot change afterwards: on update, leave it out or send the current value. See [Organization Unit Ownership](#organization-unit-ownership). |
 | `host` | Yes | Hostname of the SMTP server, such as `smtp.example.com`. |
 | `port` | Yes | Port of the SMTP server, from `1` to `65535`. Use `587` for STARTTLS or `465` for implicit TLS. |
 | `fromAddress` | Yes | Email address used in the **From** header and as the SMTP envelope sender. Must be a valid email address. |
@@ -40,7 +41,7 @@ Mail always leaves with `fromAddress` as the envelope sender, even when you set 
 
 ### Create an SMTP Provider
 
-1. Send a `POST` request to `/connections/email-smtp` with the server details:
+1. Send a `POST` request to `/connections/email-smtp` with the server details. Replace `<organization-unit-id>` with the `id` of the organization unit that owns the provider, which you can read from `GET /organization-units`:
 
     ```bash
     curl -k -X POST https://localhost:8090/connections/email-smtp \
@@ -48,6 +49,7 @@ Mail always leaves with `fromAddress` as the envelope sender, even when you set 
       -H "Content-Type: application/json" \
       -d '{
         "name": "Corp SMTP",
+        "ouId": "<organization-unit-id>",
         "host": "smtp.example.com",
         "port": 587,
         "fromAddress": "noreply@example.com",
@@ -69,6 +71,7 @@ Mail always leaves with `fromAddress` as the envelope sender, even when you set 
     {
       "id": "<email-provider-id>",
       "name": "Corp SMTP",
+      "ouId": "<organization-unit-id>",
       "type": "email-smtp",
       "host": "smtp.example.com",
       "port": 587,
@@ -88,6 +91,14 @@ Mail always leaves with `fromAddress` as the envelope sender, even when you set 
 3. [Select the provider on each email step](#select-the-provider-on-an-email-step) of the flows that send email.
 
 To list the SMTP providers in a deployment, call `GET /connections/email-smtp`.
+
+### Organization Unit Ownership
+
+Every email provider belongs to exactly one organization unit. A `POST` without `ouId` fails with `MNS-1020`, an `ouId` that names no existing organization unit fails with `MNS-1018`, and a `PUT` that names a different organization unit than the current owner fails with `MNS-1019`. All three return `400`.
+
+An organization unit that still owns a provider cannot be deleted.
+
+To see how this applies to every kind of connection, see [Organization Unit Ownership](../../identity-providers/manage-identity-providers#organization-unit-ownership).
 
 ### Transport Security
 
@@ -120,7 +131,7 @@ Credentials must never travel in plaintext, so <ProductName /> rejects a connect
 
 <ProductName /> encrypts the password at rest and never returns it. Responses always mask it as `******`.
 
-To update a connection, send the full connection to `PUT /connections/email-smtp/{id}`. You can leave out `password` to keep the stored one, as long as `host`, `port`, the authentication `type`, and `username` stay the same. If you change any of those, include the password again. Changing the authentication `type`, or setting it to `none`, discards the stored credentials.
+To update a connection, send the full connection to `PUT /connections/email-smtp/{id}`. Leave out `ouId`, or send the one the connection already has. You can leave out `password` to keep the stored one, as long as `host`, `port`, the authentication `type`, and `username` stay the same. If you change any of those, include the password again. Changing the authentication `type`, or setting it to `none`, discards the stored credentials.
 
 ## Select the Provider on an Email Step
 
@@ -154,12 +165,13 @@ For the full executor reference, see [Send Email](../../flows/advanced-configura
 
 ## Declare an Email Provider as a Resource
 
-You can also define an email provider as a declarative resource, so that it is created with the rest of your configuration. Use `resource_type: connection` and `type: email-smtp`, with the same fields as the API request body plus a fixed `id` for flows to reference as `senderId`:
+You can also define an email provider as a declarative resource, so that it is created with the rest of your configuration. Use `resource_type: connection` and `type: email-smtp`, with the same fields as the API request body plus a fixed `id` for flows to reference as `senderId`. The document must name the owning organization unit with `ouId` or `ouHandle`. If you give both, `ouId` wins:
 
 ```yaml
 resource_type: connection
 id: 3f2b6c1e-8d4a-4c1e-9b7a-2d5e6f7a8b90
 name: Corp SMTP
+ouHandle: default
 description: Transactional mail relay
 type: email-smtp
 host: smtp.example.com
@@ -176,7 +188,7 @@ authentication:
 
 Use a template variable for the password to keep the secret out of the file, and supply its value in the environment file you load with the resources. Exports follow the same pattern: <ProductName /> writes each credential of an exported email provider as a template variable instead of its value.
 
-When it loads the resources, <ProductName /> checks a declarative email provider the same way the API does. If the provider is invalid, the server does not start, and the server log explains why.
+When it loads the resources, <ProductName /> checks a declarative email provider the same way the API does. If the provider is invalid, or the document names no organization unit, the server does not start, and the server log explains why. An exported email provider carries `ouId`.
 
 To learn how to load declarative resources, see [Declarative Resources](../../../deployment/configuration#declarative-resources).
 
@@ -191,7 +203,7 @@ You can only create the connection on the upgraded build, and that build does no
 
 1. Note your current values. Then remove the `email` block from `deployment.yaml`, or `configuration.email` from your Helm values.
 2. Upgrade and start <ProductName />. Until you finish step 4, email steps report that no email provider is configured, and no email is sent.
-3. Create an email provider connection from your previous values. The table below maps each old setting to its connection field.
+3. Create an email provider connection from your previous values. The table below maps each old setting to its connection field. The connection also needs an `ouId`, because the old block had no owner.
 4. Set `senderId` to the new connection's `id` on every email step in every flow that sends email, including flows created from built-in templates.
 
 To avoid that gap in email delivery, [declare the provider as a resource](#declare-an-email-provider-as-a-resource) with a fixed `id` before you upgrade, instead of creating it in step 3. If your flows are declarative resources too, set their `senderId` to that `id` before you upgrade, and email keeps working from the first start. Flows stored in the database still need step 4 after the server starts.

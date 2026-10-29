@@ -283,6 +283,15 @@ packages:
       pkgname: magiclinkmock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/authn/openid4vp:
+    config:
+      dir: tests/mocks/authn/openid4vpmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: openid4vpmock
+      filename: "{{.InterfaceName}}_mock.go"
+    interfaces:
+      OpenID4VPServiceInterface:
+
   github.com/thunder-id/thunderid/internal/authn/passkey:
     interfaces:
       PasskeyServiceInterface:
@@ -307,6 +316,15 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: idpmock
       filename: "{{.InterfaceName}}_mock.go"
+
+  github.com/thunder-id/thunderid/internal/connection/authzenpdp:
+    interfaces:
+      AuthZENPDPServiceInterface:
+        config:
+          dir: tests/mocks/connection/authzenpdpmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: authzenpdpmock
+          filename: "{{.InterfaceName}}_mock.go"
 
   github.com/thunder-id/thunderid/internal/connection/httpconnection:
     interfaces:
@@ -562,6 +580,15 @@ packages:
       pkgname: resourcemock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/authzdetail/mgt:
+    interfaces:
+      AuthorizationDetailMgtServiceInterface:
+        config:
+          dir: tests/mocks/authzdetailmgtmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: authzdetailmgtmock
+          filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/serverconfig:
     interfaces:
       ServerConfigService:
@@ -595,6 +622,12 @@ packages:
           dir: tests/mocks/authnprovider/managermock
           structname: '{{.InterfaceName}}Mock'
           pkgname: managermock
+          filename: "{{.InterfaceName}}_mock.go"
+      IdentityGovernanceProvider:
+        config:
+          dir: tests/mocks/identitygovernanceprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: identitygovernanceprovidermock
           filename: "{{.InterfaceName}}_mock.go"
       AuthnProviderInterface:
         config:
@@ -631,6 +664,18 @@ packages:
           dir: tests/mocks/consentprovidermock
           structname: '{{.InterfaceName}}Mock'
           pkgname: consentprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
+      AuthorizationDetailProvider:
+        config:
+          dir: tests/mocks/authzdetailprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: authzdetailprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
+      AuthorizationDetailTypeProvider:
+        config:
+          dir: tests/mocks/authzdetailtypeprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: authzdetailtypeprovidermock
           filename: "{{.InterfaceName}}_mock.go"
       ResourceServerProvider:
         config:

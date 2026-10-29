@@ -32,10 +32,13 @@ paths:
       tags:
         - Applications
       summary: List applications
-      description: Retrieve a list of all applications.
+      description: |
+        Retrieve a list of all applications. An `ouId` filter lists the applications the organization
+        unit owns, followed by the applications shared into it.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
+        - $ref: '#/components/parameters/applicationFilterQueryParam'
       responses:
         "200":
           description: List of applications
@@ -57,6 +60,7 @@ paths:
                     isRegistrationFlowEnabled: true
                     recoveryFlowId: "f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a"
                     isRecoveryFlowEnabled: true
+                    isOwnedByOU: true
                   - id: "660e8400-e29b-41d4-a716-446655440001"
                     name: "Mobile App"
                     description: "Mobile application for customers"
@@ -67,12 +71,21 @@ paths:
                     isRegistrationFlowEnabled: false
                     recoveryFlowId: "f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a"
                     isRecoveryFlowEnabled: false
+                    isOwnedByOU: true
         "400":
           description: Bad request
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                code: "APP-1062"
+                message:
+                  key: "error.applicationservice.invalid_filter_parameter"
+                  defaultValue: "Invalid filter parameter"
+                description:
+                  key: "error.applicationservice.invalid_filter_parameter_description"
+                  defaultValue: "The filter must be a single ouId eq expression with a quoted organization unit ID"
         "500":
           description: Internal server error
           content:
@@ -638,6 +651,16 @@ paths:
                     description:
                       key: "error.applicationservice.invalid_redirect_uri_description"
                       defaultValue: "One or more provided redirect URIs are not valid URIs"
+                shared-application-moved:
+                  summary: Application with sharing policies moved to another organization unit
+                  value:
+                    code: "APP-1061"
+                    message:
+                      key: "error.applicationservice.shared_application_cannot_move"
+                      defaultValue: "Application with sharing policies cannot be moved"
+                    description:
+                      key: "error.applicationservice.shared_application_cannot_move_description"
+                      defaultValue: "The application is shared into other organization units. Delete its sharing policies before moving it to another organization unit"
         "404":
           description: Application not found
           content:
@@ -738,7 +761,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SharingPolicyRequest'
+              $ref: '#/components/schemas/ApplicationSharingPolicyRequest'
             examples:
               allChildUnits:
                 summary: Every organization unit beneath the issuer
@@ -800,7 +823,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SharingPolicy'
+                $ref: '#/components/schemas/ApplicationSharingPolicy'
               example:
                 id: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
                 initiatingOuId: "acme-root"
@@ -811,13 +834,13 @@ paths:
                   mode: all
                   excludedOuIds: ["acme-trial-customers"]
         "400":
-          $ref: '#/components/responses/SharingPolicyCreateBadRequest'
+          $ref: '#/components/responses/ApplicationSharingPolicyCreateBadRequest'
         "404":
           $ref: '#/components/responses/ApplicationNotFound'
         "409":
-          $ref: '#/components/responses/SharingPolicyConflict'
+          $ref: '#/components/responses/ApplicationSharingPolicyConflict'
         "500":
-          $ref: '#/components/responses/SharingServerError'
+          $ref: '#/components/responses/ApplicationSharingServerError'
 
     get:
       tags:
@@ -835,7 +858,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SharingPolicyListResponse'
+                $ref: '#/components/schemas/ApplicationSharingPolicyListResponse'
               example:
                 totalResults: 2
                 startIndex: 1
@@ -870,17 +893,17 @@ paths:
                           reach: unit
                 links: []
         "400":
-          $ref: '#/components/responses/SharingPolicyListBadRequest'
+          $ref: '#/components/responses/ApplicationSharingPolicyListBadRequest'
         "404":
           $ref: '#/components/responses/ApplicationNotFound'
         "500":
-          $ref: '#/components/responses/SharingServerError'
+          $ref: '#/components/responses/ApplicationSharingServerError'
 
 
   /applications/{id}/sharing-policies/{policyId}:
     parameters:
       - $ref: '#/components/parameters/applicationIdPathParam'
-      - $ref: '#/components/parameters/sharingPolicyIdPathParam'
+      - $ref: '#/components/parameters/applicationSharingPolicyIdPathParam'
     get:
       tags:
         - Application Sharing
@@ -891,7 +914,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SharingPolicy'
+                $ref: '#/components/schemas/ApplicationSharingPolicy'
               example:
                 id: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
                 initiatingOuId: "acme-root"
@@ -902,9 +925,9 @@ paths:
                   mode: all
                   excludedOuIds: ["acme-trial-customers"]
         "404":
-          $ref: '#/components/responses/SharingPolicyNotFound'
+          $ref: '#/components/responses/ApplicationSharingPolicyNotFound'
         "500":
-          $ref: '#/components/responses/SharingServerError'
+          $ref: '#/components/responses/ApplicationSharingServerError'
 
     put:
       tags:
@@ -924,7 +947,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SharingPolicyUpdateRequest'
+              $ref: '#/components/schemas/ApplicationSharingPolicyUpdateRequest'
             examples:
               addAnExclusion:
                 summary: Exclude one organization unit from every child unit
@@ -957,7 +980,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SharingPolicy'
+                $ref: '#/components/schemas/ApplicationSharingPolicy'
               example:
                 id: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
                 initiatingOuId: "acme-root"
@@ -968,13 +991,13 @@ paths:
                   mode: all
                   excludedOuIds: ["acme-trial-customers"]
         "400":
-          $ref: '#/components/responses/SharingPolicyUpdateBadRequest'
+          $ref: '#/components/responses/ApplicationSharingPolicyUpdateBadRequest'
         "404":
-          $ref: '#/components/responses/SharingPolicyNotFound'
+          $ref: '#/components/responses/ApplicationSharingPolicyNotFound'
         "409":
-          $ref: '#/components/responses/SharingPolicyConflict'
+          $ref: '#/components/responses/ApplicationSharingPolicyConflict'
         "500":
-          $ref: '#/components/responses/SharingServerError'
+          $ref: '#/components/responses/ApplicationSharingServerError'
 
     delete:
       tags:
@@ -992,11 +1015,11 @@ paths:
           description: |
             Sharing policy deleted, or the application holds no policy under that id.
         "400":
-          $ref: '#/components/responses/SharingPolicyDeleteBadRequest'
+          $ref: '#/components/responses/ApplicationSharingPolicyDeleteBadRequest'
         "404":
           $ref: '#/components/responses/ApplicationNotFound'
         "500":
-          $ref: '#/components/responses/SharingServerError'
+          $ref: '#/components/responses/ApplicationSharingServerError'
 
 
   /applications/{id}/overlay-rules:
@@ -1026,13 +1049,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ResolvedOverlay'
+                $ref: '#/components/schemas/ApplicationResolvedOverlay'
               examples:
                 reached:
                   summary: An organization unit a policy reached
                   value:
                     ouId: "acme-customer-a"
-                    owned: false
+                    isOwnedByOU: false
                     visible: true
                     policyIds: ["0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"]
                     rules: {}
@@ -1040,16 +1063,16 @@ paths:
                   summary: The organization unit that owns the application
                   value:
                     ouId: "acme-root"
-                    owned: true
+                    isOwnedByOU: true
                     visible: true
                     policyIds: []
                     rules: {}
         "400":
-          $ref: '#/components/responses/OverlayRulesBadRequest'
+          $ref: '#/components/responses/ApplicationOverlayRulesBadRequest'
         "404":
-          $ref: '#/components/responses/OverlayNotResolvable'
+          $ref: '#/components/responses/ApplicationOverlayNotResolvable'
         "500":
-          $ref: '#/components/responses/SharingServerError'
+          $ref: '#/components/responses/ApplicationSharingServerError'
 
 
 components:
@@ -1087,7 +1110,20 @@ components:
       schema:
         type: integer
         default: 0
-
+    applicationFilterQueryParam:
+      in: query
+      name: filter
+      required: false
+      description: |
+        Filter applications by organization unit. The only supported expression is
+        `ouId eq "<id>"`, which lists the applications the organization unit owns, followed by the
+        applications shared into it.
+      schema:
+        type: string
+      examples:
+        organization-unit:
+          summary: Applications owned by or shared into an organization unit
+          value: 'ouId eq "456e8400-e29b-41d4-a716-446655440001"'
     applicationIdPathParam:
       in: path
       name: id
@@ -1096,7 +1132,7 @@ components:
       schema:
         type: string
       example: "550e8400-e29b-41d4-a716-446655440000"
-    sharingPolicyIdPathParam:
+    applicationSharingPolicyIdPathParam:
       in: path
       name: policyId
       required: true
@@ -1106,7 +1142,7 @@ components:
       example: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
 
   responses:
-    SharingPolicyCreateBadRequest:
+    ApplicationSharingPolicyCreateBadRequest:
       description: |
         The policy is not one the issuing organization unit may write. The code says which kind of
         mistake it is, and the description says what is wrong with this request in particular.
@@ -1166,7 +1202,7 @@ components:
                   key: "error.applicationservice.deployment_wide_sharing_not_allowed_description"
                   defaultValue: "A policy reaching all organization units or the roots of all other trees can only be created from a declarative resource file or an import"
 
-    SharingPolicyListBadRequest:
+    ApplicationSharingPolicyListBadRequest:
       description: The page the listing asked for is not one it can return.
       content:
         application/json:
@@ -1187,7 +1223,7 @@ components:
                   key: "error.applicationservice.invalid_limit_parameter_description"
                   defaultValue: "The limit parameter must be a positive integer within the maximum page size"
 
-    SharingPolicyUpdateBadRequest:
+    ApplicationSharingPolicyUpdateBadRequest:
       description: |
         The replacement is not one this policy may become. Alongside the mistakes a create can
         make, an edit answers for the reach the policy already has.
@@ -1247,7 +1283,7 @@ components:
                   key: "error.applicationservice.sharing_policy_declared_description"
                   defaultValue: "The sharing policy is declared in a resource file and cannot be changed through the API"
 
-    SharingPolicyDeleteBadRequest:
+    ApplicationSharingPolicyDeleteBadRequest:
       description: |
         The policy exists but is not this endpoint's to remove. A policy that is simply absent
         answers 204, because a delete says what the state should be afterwards.
@@ -1267,7 +1303,7 @@ components:
                   key: "error.applicationservice.sharing_policy_declared_description"
                   defaultValue: "The sharing policy is declared in a resource file and cannot be changed through the API"
 
-    OverlayRulesBadRequest:
+    ApplicationOverlayRulesBadRequest:
       description: The request does not say which organization unit to resolve for.
       content:
         application/json:
@@ -1300,7 +1336,7 @@ components:
               key: "error.applicationservice.application_not_found_description"
               defaultValue: "The requested application could not be found"
 
-    OverlayNotResolvable:
+    ApplicationOverlayNotResolvable:
       description: |
         No such application, or no sharing policy reaches the organization unit, so the application
         is not available there and has no terms to resolve.
@@ -1330,7 +1366,7 @@ components:
                   key: "error.applicationservice.application_not_found_description"
                   defaultValue: "The requested application could not be found"
 
-    SharingPolicyNotFound:
+    ApplicationSharingPolicyNotFound:
       description: No such application, or no such sharing policy on this application
       content:
         application/json:
@@ -1358,7 +1394,7 @@ components:
                   key: "error.applicationservice.sharing_policy_not_found_description"
                   defaultValue: "The application has no sharing policy with the specified id"
 
-    SharingPolicyConflict:
+    ApplicationSharingPolicyConflict:
       description: |
         The organization unit already holds a policy for this application, or the policy moved
         since it was read.
@@ -1388,7 +1424,7 @@ components:
                   key: "error.applicationservice.sharing_policy_version_mismatch_description"
                   defaultValue: "The sharing policy changed since it was read; read it again and retry the edit"
 
-    SharingServerError:
+    ApplicationSharingServerError:
       description: Internal server error
       content:
         application/json:
@@ -1896,10 +1932,18 @@ components:
           example: "spa"
         isReadOnly:
           type: boolean
-          description: Indicates if the application is read-only (declarative/immutable).
+          description: |
+            Indicates if the application is read-only: declared in a resource file, or listed in an
+            organization unit it is shared into.
           example: false
         status:
           $ref: '#/components/schemas/ApplicationAccessStatus'
+        isOwnedByOU:
+          type: boolean
+          readOnly: true
+          description: |
+            Whether the listed organization unit owns the application rather than being shared it.
+            Without an `ouId` filter, every listed application is owned.
 
     ApplicationListResponse:
       type: object
@@ -1941,7 +1985,7 @@ components:
         userConfig:
           allOf:
             - $ref: '#/components/schemas/AccessTokenSubConfig'
-          description: Configuration applied when the access token's subject is an end user.
+          description: Configuration applied when the access token's subject is an end user. For the urn:ietf:params:oauth:grant-type:jwt-bearer grant, whose subject is a user of an external identity provider, only validityPeriod applies.
         clientConfig:
           allOf:
             - $ref: '#/components/schemas/AccessTokenSubConfig'
@@ -2237,19 +2281,15 @@ components:
           type: array
           items:
             type: string
-            enum: ["authorization_code", "client_credentials", "refresh_token", "implicit", "password", "urn:ietf:params:oauth:grant-type:token-exchange", "urn:ietf:params:oauth:grant-type:jwt-bearer"]
+            enum: ["authorization_code", "client_credentials", "refresh_token", "urn:openid:params:grant-type:ciba", "urn:ietf:params:oauth:grant-type:token-exchange", "urn:ietf:params:oauth:grant-type:jwt-bearer"]
           description: >-
-            A list of grant types supported by the OAuth application. Defaults to
-            ["authorization_code"] if not specified. The
-            urn:ietf:params:oauth:grant-type:jwt-bearer grant, used to present an ID-JAG assertion
-            issued by a trusted external IdP (draft-ietf-oauth-identity-assertion-authz-grant),
-            requires a confidential client (tokenEndpointAuthMethod other than "none").
+            A list of grant types supported by the OAuth application. Defaults to ["authorization_code"] if not specified. The urn:ietf:params:oauth:grant-type:jwt-bearer grant, used to present an ID-JAG assertion issued by a trusted external IdP (draft-ietf-oauth-identity-assertion-authz-grant), requires a confidential client (tokenEndpointAuthMethod other than "none").
           example: ["authorization_code", "refresh_token"]
         responseTypes:
           type: array
           items:
             type: string
-            enum: ["code", "token"]
+            enum: ["code"]
           description: A list of response types supported by the OAuth application. Defaults to ["code"] if not specified.
           example: ["code"]
         tokenEndpointAuthMethod:
@@ -2280,18 +2320,19 @@ components:
         includeActClaim:
           type: boolean
           description: >-
-            When true, access tokens this client obtains for a user through the authorization_code
-            or CIBA grant include an implicit on-behalf-of `act` claim identifying the application.
-            Agent clients always include the claim, regardless of this setting.
+            When true, access tokens this client obtains for a user through the authorization_code, CIBA or jwt-bearer grant, or through token exchange without an actor_token, include an implicit on-behalf-of `act` claim identifying the application. Agent clients always include the claim, regardless of this setting.
           example: false
           default: false
         clientIdMetadataDocument:
           type: boolean
           description: >-
-            Whether the application was registered from a Client ID Metadata Document. When true,
-            `clientId` is the Client Identifier URL, the values are those returned by
+            Whether the application was registered from a Client ID Metadata Document. Fixed at creation.
+            When true, `clientId` is the Client Identifier URL, the values are those returned by
             `POST /cimd/preview` and must satisfy the document rules, and `clientSecret` must be omitted.
-            Fixed at creation.
+            Within the document rules, a `private_key_jwt` client may also hold the
+            `urn:ietf:params:oauth:grant-type:token-exchange` and `urn:ietf:params:oauth:grant-type:jwt-bearer`
+            grant types, which an administrator adds and preview never returns. Token exchange requires
+            `token.idJag.enabled` and serves only ID-JAG requests.
           example: false
           default: false
         scopes:
@@ -2372,19 +2413,15 @@ components:
           type: array
           items:
             type: string
-            enum: ["authorization_code", "client_credentials", "refresh_token", "implicit", "password", "urn:ietf:params:oauth:grant-type:token-exchange", "urn:ietf:params:oauth:grant-type:jwt-bearer"]
+            enum: ["authorization_code", "client_credentials", "refresh_token", "urn:openid:params:grant-type:ciba", "urn:ietf:params:oauth:grant-type:token-exchange", "urn:ietf:params:oauth:grant-type:jwt-bearer"]
           description: >-
-            A list of grant types supported by the OAuth application. Defaults to
-            ["authorization_code"] if not specified. The
-            urn:ietf:params:oauth:grant-type:jwt-bearer grant, used to present an ID-JAG assertion
-            issued by a trusted external IdP (draft-ietf-oauth-identity-assertion-authz-grant),
-            requires a confidential client (tokenEndpointAuthMethod other than "none").
+            A list of grant types supported by the OAuth application. Defaults to ["authorization_code"] if not specified. The urn:ietf:params:oauth:grant-type:jwt-bearer grant, used to present an ID-JAG assertion issued by a trusted external IdP (draft-ietf-oauth-identity-assertion-authz-grant), requires a confidential client (tokenEndpointAuthMethod other than "none").
           example: ["authorization_code", "refresh_token"]
         responseTypes:
           type: array
           items:
             type: string
-            enum: ["code", "token"]
+            enum: ["code"]
           description: A list of response types supported by the OAuth application. Defaults to ["code"] if not specified.
           example: ["code"]
         tokenEndpointAuthMethod:
@@ -2415,18 +2452,19 @@ components:
         includeActClaim:
           type: boolean
           description: >-
-            When true, access tokens this client obtains for a user through the authorization_code
-            or CIBA grant include an implicit on-behalf-of `act` claim identifying the application.
-            Agent clients always include the claim, regardless of this setting.
+            When true, access tokens this client obtains for a user through the authorization_code, CIBA or jwt-bearer grant, or through token exchange without an actor_token, include an implicit on-behalf-of `act` claim identifying the application. Agent clients always include the claim, regardless of this setting.
           example: false
           default: false
         clientIdMetadataDocument:
           type: boolean
           description: >-
-            Whether the application was registered from a Client ID Metadata Document. When true,
-            `clientId` is the Client Identifier URL, the values are those returned by
+            Whether the application was registered from a Client ID Metadata Document. Fixed at creation.
+            When true, `clientId` is the Client Identifier URL, the values are those returned by
             `POST /cimd/preview` and must satisfy the document rules, and `clientSecret` must be omitted.
-            Fixed at creation.
+            Within the document rules, a `private_key_jwt` client may also hold the
+            `urn:ietf:params:oauth:grant-type:token-exchange` and `urn:ietf:params:oauth:grant-type:jwt-bearer`
+            grant types, which an administrator adds and preview never returns. Token exchange requires
+            `token.idJag.enabled` and serves only ID-JAG requests.
           example: false
           default: false
         scopes:
@@ -2473,7 +2511,7 @@ components:
             this configured list is used as the effective ACR set.
           example: ["urn:thunder:silver", "urn:thunder:gold"]
 
-    SharingPolicyRequest:
+    ApplicationSharingPolicyRequest:
       type: object
       additionalProperties: false
       description: |
@@ -2495,9 +2533,9 @@ components:
             it and stopped there, and such a policy may state `childUnits` only.
           example: "acme-root"
         childUnits:
-          $ref: '#/components/schemas/ChildUnits'
+          $ref: '#/components/schemas/ApplicationChildUnits'
         otherTreeRoots:
-          $ref: '#/components/schemas/OtherTreeRootsSelected'
+          $ref: '#/components/schemas/ApplicationOtherTreeRootsSelected'
         version:
           type: integer
           description: |
@@ -2505,7 +2543,7 @@ components:
             create.
           example: 1
 
-    SharingPolicyUpdateRequest:
+    ApplicationSharingPolicyUpdateRequest:
       type: object
       additionalProperties: false
       required: [version]
@@ -2524,11 +2562,11 @@ components:
         - required: [otherTreeRoots]
       properties:
         allUnits:
-          $ref: '#/components/schemas/AllUnits'
+          $ref: '#/components/schemas/ApplicationAllUnits'
         childUnits:
-          $ref: '#/components/schemas/ChildUnits'
+          $ref: '#/components/schemas/ApplicationChildUnits'
         otherTreeRoots:
-          $ref: '#/components/schemas/OtherTreeRoots'
+          $ref: '#/components/schemas/ApplicationOtherTreeRoots'
         version:
           type: integer
           description: |
@@ -2536,7 +2574,7 @@ components:
             is refused, so a caller that has not seen the current one cannot overwrite it.
           example: 1
 
-    AllUnits:
+    ApplicationAllUnits:
       type: object
       additionalProperties: false
       description: |
@@ -2557,20 +2595,20 @@ components:
             type: string
           example: ["acme-trial-customers"]
 
-    ChildUnits:
+    ApplicationChildUnits:
       description: |
         The organization units beneath the issuer. Exactly one of the two shapes below, chosen by
         `mode`.
       oneOf:
-        - $ref: '#/components/schemas/ChildUnitsAll'
-        - $ref: '#/components/schemas/ChildUnitsSelected'
+        - $ref: '#/components/schemas/ApplicationChildUnitsAll'
+        - $ref: '#/components/schemas/ApplicationChildUnitsSelected'
       discriminator:
         propertyName: mode
         mapping:
-          all: '#/components/schemas/ChildUnitsAll'
-          selected: '#/components/schemas/ChildUnitsSelected'
+          all: '#/components/schemas/ApplicationChildUnitsAll'
+          selected: '#/components/schemas/ApplicationChildUnitsSelected'
 
-    ChildUnitsAll:
+    ApplicationChildUnitsAll:
       type: object
       additionalProperties: false
       required: [mode]
@@ -2588,7 +2626,7 @@ components:
             type: string
           example: ["acme-trial-customers"]
 
-    ChildUnitsSelected:
+    ApplicationChildUnitsSelected:
       type: object
       additionalProperties: false
       required: [mode, units]
@@ -2604,9 +2642,9 @@ components:
           minItems: 1
           description: The organization units reached. An organization unit is listed only once in a policy.
           items:
-            $ref: '#/components/schemas/ChildUnit'
+            $ref: '#/components/schemas/ApplicationChildUnit'
 
-    ChildUnit:
+    ApplicationChildUnit:
       type: object
       additionalProperties: false
       required: [ouId, reach]
@@ -2624,7 +2662,7 @@ components:
             reaches it and everything below it at any depth.
           example: unit
 
-    OtherTreeRoots:
+    ApplicationOtherTreeRoots:
       description: |
         The root organization units of other trees, as a policy carries them. Every shape a create
         may send, plus the one that only a resource file or an imported document may introduce.
@@ -2632,15 +2670,15 @@ components:
         An edit sends this shape rather than the create's, because a policy that already reaches
         the root of every other tree has to be able to restate that to rewrite its exclusions.
       oneOf:
-        - $ref: '#/components/schemas/OtherTreeRootsSelected'
-        - $ref: '#/components/schemas/OtherTreeRootsAll'
+        - $ref: '#/components/schemas/ApplicationOtherTreeRootsSelected'
+        - $ref: '#/components/schemas/ApplicationOtherTreeRootsAll'
       discriminator:
         propertyName: mode
         mapping:
-          selected: '#/components/schemas/OtherTreeRootsSelected'
-          all: '#/components/schemas/OtherTreeRootsAll'
+          selected: '#/components/schemas/ApplicationOtherTreeRootsSelected'
+          all: '#/components/schemas/ApplicationOtherTreeRootsAll'
 
-    OtherTreeRootsSelected:
+    ApplicationOtherTreeRootsSelected:
       type: object
       additionalProperties: false
       required: [mode, units]
@@ -2660,9 +2698,9 @@ components:
           minItems: 1
           description: The root organization units reached. An organization unit is listed only once in a policy.
           items:
-            $ref: '#/components/schemas/RootUnit'
+            $ref: '#/components/schemas/ApplicationRootUnit'
 
-    OtherTreeRootsAll:
+    ApplicationOtherTreeRootsAll:
       type: object
       additionalProperties: false
       required: [mode]
@@ -2680,7 +2718,7 @@ components:
             type: string
           example: ["partner-root"]
 
-    RootUnit:
+    ApplicationRootUnit:
       type: object
       additionalProperties: false
       required: [ouId]
@@ -2690,11 +2728,11 @@ components:
           description: The root organization unit of another tree.
           example: "partner-root"
 
-    SharingPolicy:
+    ApplicationSharingPolicy:
       type: object
       description: |
         A recorded sharing policy. Its sections come back in the shape a request states them in, so
-        an edit copies them, with `version`, into a `SharingPolicyUpdateRequest`. The other fields
+        an edit copies them, with `version`, into an `ApplicationSharingPolicyUpdateRequest`. The other fields
         are set by the server and are refused in a request body. A section the policy does not state
         is left out.
       properties:
@@ -2724,13 +2762,13 @@ components:
           description: Bumped on every edit, and carried back on the next one.
           example: 1
         allUnits:
-          $ref: '#/components/schemas/AllUnits'
+          $ref: '#/components/schemas/ApplicationAllUnits'
         childUnits:
-          $ref: '#/components/schemas/ChildUnits'
+          $ref: '#/components/schemas/ApplicationChildUnits'
         otherTreeRoots:
-          $ref: '#/components/schemas/OtherTreeRoots'
+          $ref: '#/components/schemas/ApplicationOtherTreeRoots'
 
-    SharingPolicyListResponse:
+    ApplicationSharingPolicyListResponse:
       type: object
       properties:
         totalResults:
@@ -2748,7 +2786,7 @@ components:
         policies:
           type: array
           items:
-            $ref: '#/components/schemas/SharingPolicy'
+            $ref: '#/components/schemas/ApplicationSharingPolicy'
         links:
           type: array
           description: Links to the first, previous, next and last pages, where they exist.
@@ -2768,14 +2806,14 @@ components:
           type: string
           example: "next"
 
-    ResolvedOverlay:
+    ApplicationResolvedOverlay:
       type: object
       description: What one organization unit may do with the application.
       properties:
         ouId:
           type: string
           example: "acme-customer-a"
-        owned:
+        isOwnedByOU:
           type: boolean
           description: Whether the organization unit owns the application rather than being shared it.
         visible:
@@ -2794,9 +2832,9 @@ components:
             The effective rule per field. Always empty for an application, which declares no
             overlay fields.
           additionalProperties:
-            $ref: '#/components/schemas/OverlayRule'
+            $ref: '#/components/schemas/ApplicationOverlayRule'
 
-    OverlayRule:
+    ApplicationOverlayRule:
       type: object
       description: What a reached organization unit may do with one field.
       properties:
@@ -2827,8 +2865,11 @@ components:
           readOnly: true
           enum: [ACTIVE, SUSPENDED]
           description: |
-            `ACTIVE` or `SUSPENDED`. `SUSPENDED` is an administrative hold. Applications are never
-            locked.
+            `ACTIVE` or `SUSPENDED`. Applications are never locked.
+
+            While suspended, the application cannot be used for authorization, token, userinfo,
+            or flow requests, but the record can still be updated. The suspend flow places the
+            suspension and the unsuspend flow removes it, returning the application to `ACTIVE`.
           example: "ACTIVE"
 
     Error:

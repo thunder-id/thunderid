@@ -14,6 +14,7 @@ export const ALLOWED_RESOURCE_TYPES = [
   'translation',
   'connection',
   'organization_unit',
+  'project',
   'user_type',
   'agent_type',
   'resource_server',

@@ -18,6 +18,8 @@ servers:
 tags:
   - name: Roles
     description: Create roles, define their permission scopes, and assign them to users or groups.
+  - name: Role Sharing
+    description: Share a role with other organization units.
 
 security:
   - OAuth2: [system]
@@ -476,6 +478,16 @@ paths:
                     description:
                       key: "error.roleservice.cannot_modify_declarative_role_description"
                       defaultValue: "The role is defined in declarative configuration and cannot be modified"
+                shared-role-moved:
+                  summary: Role with sharing policies moved to another organization unit
+                  value:
+                    code: "ROL-1029"
+                    message:
+                      key: "error.roleservice.shared_role_cannot_move"
+                      defaultValue: "Role with sharing policies cannot be moved"
+                    description:
+                      key: "error.roleservice.shared_role_cannot_move_description"
+                      defaultValue: "The role is shared into other organization units. Delete its sharing policies before moving it to another organization unit"
         "403":
           description: Forbidden
           content:
@@ -930,6 +942,346 @@ paths:
                   key: "error.internal_server_error_description"
                   defaultValue: "An unexpected error occurred while processing the request"
 
+  /roles/{id}/sharing-policies:
+    parameters:
+      - $ref: '#/components/parameters/roleIdPathParam'
+    post:
+      tags:
+        - Role Sharing
+      summary: Create a sharing policy
+      description: |
+        Records one organization unit's decision about which other organization units this role is
+        shared with. Exactly one policy exists per role per initiating organization unit; a second
+        create is refused.
+
+        A role declared in a resource file declares its owner's policy there too, so this
+        endpoint refuses one for it. An organization unit the declared policy shares with can still
+        record its own reshare here, unless roles are configured to load from resource files
+        only: then all of their sharing, reshares included, is declared, and this endpoint refuses
+        every policy.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleSharingPolicyRequest'
+            examples:
+              allChildUnits:
+                summary: Every organization unit beneath the issuer
+                value:
+                  childUnits:
+                    mode: all
+              allChildUnitsWithExclusion:
+                summary: Every organization unit beneath the issuer except one branch
+                value:
+                  childUnits:
+                    mode: all
+                    excludedOuIds: ["acme-trial-customers"]
+              selectedChildUnits:
+                summary: Named children, one at a time
+                value:
+                  childUnits:
+                    mode: selected
+                    units:
+                      - ouId: "acme-customer-a"
+                        reach: unit
+                      - ouId: "acme-customer-b"
+                        reach: unit
+              childAndItsSubtree:
+                summary: One direct child and everything beneath it
+                value:
+                  childUnits:
+                    mode: selected
+                    units:
+                      - ouId: "acme-customer-a"
+                        reach: subtree
+              selectedRoots:
+                summary: Named roots of other trees, owner only
+                value:
+                  otherTreeRoots:
+                    mode: selected
+                    units:
+                      - ouId: "partner-root"
+              childUnitsAndRoots:
+                summary: Child units and roots of other trees together, owner only
+                value:
+                  childUnits:
+                    mode: all
+                  otherTreeRoots:
+                    mode: selected
+                    units:
+                      - ouId: "partner-root"
+              reshare:
+                summary: A reshare issued by a sharee
+                value:
+                  initiatingOuId: "acme-customer-a"
+                  childUnits:
+                    mode: selected
+                    units:
+                      - ouId: "acme-customer-a-eu"
+                        reach: unit
+      responses:
+        "201":
+          description: Sharing policy created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleSharingPolicy'
+              example:
+                id: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+                initiatingOuId: "acme-root"
+                stage: share
+                isReadOnly: false
+                version: 1
+                childUnits:
+                  mode: all
+                  excludedOuIds: ["acme-trial-customers"]
+        "400":
+          $ref: '#/components/responses/RoleSharingPolicyCreateBadRequest'
+        "404":
+          $ref: '#/components/responses/RoleNotFound'
+        "409":
+          $ref: '#/components/responses/RoleSharingPolicyConflict'
+        "500":
+          $ref: '#/components/responses/RoleSharingServerError'
+
+    get:
+      tags:
+        - Role Sharing
+      summary: List sharing policies
+      description: |
+        Returns the role's sharing policies, declared ones included. A policy a resource file
+        declares is listed with `isReadOnly` set to true and cannot be edited or deleted here.
+      parameters:
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/offsetQueryParam'
+      responses:
+        "200":
+          description: Sharing policies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleSharingPolicyListResponse'
+              example:
+                totalResults: 2
+                startIndex: 1
+                count: 2
+                policies:
+                  # The owner's decision: two named customers, each reached and stopped at, which
+                  # leaves each free to carry the role on itself.
+                  - id: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+                    initiatingOuId: "acme-root"
+                    stage: share
+                    isReadOnly: false
+                    version: 2
+                    childUnits:
+                      mode: selected
+                      units:
+                        - ouId: "acme-customer-a"
+                          reach: unit
+                        - ouId: "acme-customer-b"
+                          reach: unit
+                  # One of those customers carrying the role one hop further, which is why
+                  # this one names the policy that reached it.
+                  - id: "0195a2c0-7b41-7c66-8f03-9d1e6a2b4c57"
+                    initiatingOuId: "acme-customer-a"
+                    stage: reshare
+                    parentPolicyId: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+                    isReadOnly: false
+                    version: 1
+                    childUnits:
+                      mode: selected
+                      units:
+                        - ouId: "acme-customer-a-eu"
+                          reach: unit
+                links: []
+        "400":
+          $ref: '#/components/responses/RoleSharingPolicyListBadRequest'
+        "404":
+          $ref: '#/components/responses/RoleNotFound'
+        "500":
+          $ref: '#/components/responses/RoleSharingServerError'
+
+
+  /roles/{id}/sharing-policies/{policyId}:
+    parameters:
+      - $ref: '#/components/parameters/roleIdPathParam'
+      - $ref: '#/components/parameters/roleSharingPolicyIdPathParam'
+    get:
+      tags:
+        - Role Sharing
+      summary: Get a sharing policy
+      responses:
+        "200":
+          description: Sharing policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleSharingPolicy'
+              example:
+                id: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+                initiatingOuId: "acme-root"
+                stage: share
+                isReadOnly: false
+                version: 2
+                childUnits:
+                  mode: all
+                  excludedOuIds: ["acme-trial-customers"]
+        "404":
+          $ref: '#/components/responses/RoleSharingPolicyNotFound'
+        "500":
+          $ref: '#/components/responses/RoleSharingServerError'
+
+    put:
+      tags:
+        - Role Sharing
+      summary: Replace a sharing policy
+      description: |
+        Replaces the policy's sections. `version` must be the policy's current version; a stale one
+        is refused.
+
+        A section reaching a whole group (`mode: all`, or `allUnits`) keeps that reach and can only
+        change its `excludedOuIds`. A section naming units can add or drop them, but cannot become
+        one that reaches a whole group.
+
+        Refused for roles that load from resource files only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleSharingPolicyUpdateRequest'
+            examples:
+              addAnExclusion:
+                summary: Exclude one organization unit from every child unit
+                value:
+                  version: 1
+                  childUnits:
+                    mode: all
+                    excludedOuIds: ["acme-trial-customers"]
+              widenANamedUnit:
+                summary: Carry the role on beneath a named child
+                value:
+                  version: 1
+                  childUnits:
+                    mode: selected
+                    units:
+                      - ouId: "acme-customer-a"
+                        reach: subtree
+              excludeFromAllUnits:
+                summary: Rewrite the exclusions on an imported deployment-wide policy
+                description: |
+                  The section is restated, which is what lets its exclusions move. A create may not
+                  state `allUnits`, and an edit may not introduce it.
+                value:
+                  version: 2
+                  allUnits:
+                    excludedOuIds: ["acme-trial-customers", "partner-sandbox"]
+      responses:
+        "200":
+          description: Sharing policy replaced
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleSharingPolicy'
+              example:
+                id: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+                initiatingOuId: "acme-root"
+                stage: share
+                isReadOnly: false
+                version: 2
+                childUnits:
+                  mode: all
+                  excludedOuIds: ["acme-trial-customers"]
+        "400":
+          $ref: '#/components/responses/RoleSharingPolicyUpdateBadRequest'
+        "404":
+          $ref: '#/components/responses/RoleSharingPolicyNotFound'
+        "409":
+          $ref: '#/components/responses/RoleSharingPolicyConflict'
+        "500":
+          $ref: '#/components/responses/RoleSharingServerError'
+
+    delete:
+      tags:
+        - Role Sharing
+      summary: Delete a sharing policy
+      description: |
+        Removes the policy and the policies its sharees issued beneath it.
+
+        A declared policy cannot be deleted here. Its existence belongs to the resource file that
+        declares it, so it goes away by being removed from that file. Where roles load from
+        resource files only, no policy is deleted here.
+      responses:
+        "204":
+          description: |
+            Sharing policy deleted, or the role holds no policy under that id.
+        "400":
+          $ref: '#/components/responses/RoleSharingPolicyDeleteBadRequest'
+        "404":
+          $ref: '#/components/responses/RoleNotFound'
+        "500":
+          $ref: '#/components/responses/RoleSharingServerError'
+
+
+  /roles/{id}/overlay-rules:
+    parameters:
+      - $ref: '#/components/parameters/roleIdPathParam'
+    get:
+      tags:
+        - Role Sharing
+      summary: Overlay rules for an organization unit
+      description: |
+        Answers for one organization unit, named in the `ouId` query parameter: whether it owns the
+        role, which policies reached it, and whether it may assign the role.
+
+        An organization unit no policy reaches answers `404`, because the role is not
+        available there and so has no terms to resolve.
+      parameters:
+        - in: query
+          name: ouId
+          required: true
+          description: The organization unit to resolve for.
+          schema:
+            type: string
+          example: "acme-customer-a"
+      responses:
+        "200":
+          description: Resolved overlay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleResolvedOverlay'
+              examples:
+                reached:
+                  summary: An organization unit a policy reached
+                  value:
+                    ouId: "acme-customer-a"
+                    isOwnedByOU: false
+                    visible: true
+                    policyIds: ["0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"]
+                    rules:
+                      assignments:
+                        editable: true
+                owner:
+                  summary: The organization unit that owns the role
+                  value:
+                    ouId: "acme-root"
+                    isOwnedByOU: true
+                    visible: true
+                    policyIds: []
+                    rules:
+                      assignments:
+                        editable: true
+        "400":
+          $ref: '#/components/responses/RoleOverlayRulesBadRequest'
+        "404":
+          $ref: '#/components/responses/RoleOverlayNotResolvable'
+        "500":
+          $ref: '#/components/responses/RoleSharingServerError'
+
+
+
 components:
   securitySchemes:
     OAuth2:
@@ -990,6 +1342,341 @@ components:
       description: |
         Optional parameter to include additional information.
         - `display` - Include display names for users and groups. For users, the display value is resolved from the schema-configured display attribute (`systemAttributes.display`). Falls back to the user ID if no display attribute is configured, the configured attribute path does not exist in the user's data, or the attribute value is empty. For groups, the group name is used.
+
+    roleIdPathParam:
+      in: path
+      name: id
+      required: true
+      description: Role ID
+      schema:
+        type: string
+      example: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+    roleSharingPolicyIdPathParam:
+      in: path
+      name: policyId
+      required: true
+      description: Sharing policy ID
+      schema:
+        type: string
+      example: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+
+  responses:
+    RoleSharingPolicyCreateBadRequest:
+      description: |
+        The policy is not one the issuing organization unit may write. The code says which kind of
+        mistake it is, and the description says what is wrong with this request in particular.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            declaredRole:
+              summary: The owner's policy of a role declared in a resource file
+              value:
+                code: "ROL-1013"
+                message:
+                  key: "error.roleservice.cannot_modify_declarative_role"
+                  defaultValue: "Cannot modify declarative role"
+                description:
+                  key: "error.roleservice.cannot_modify_declarative_role_description"
+                  defaultValue: "The role is defined in declarative configuration and cannot be modified"
+            noSection:
+              summary: No section stated
+              value:
+                code: "ROL-1021"
+                message:
+                  key: "error.roleservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed, reaches no organization unit, or states a section with fields its mode does not take: the policy reaches no organization unit"
+            fieldTheModeDoesNotTake:
+              summary: A section carrying a field its mode does not take
+              value:
+                code: "ROL-1021"
+                message:
+                  key: "error.roleservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed, reaches no organization unit, or states a section with fields its mode does not take: childUnits with mode all takes no units"
+            unitNamedTwice:
+              summary: An organization unit named twice, or one the issuer may not name
+              value:
+                code: "ROL-1021"
+                message:
+                  key: "error.roleservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_target_ou_description"
+                  defaultValue: "The target organization unit does not satisfy the policy's constraints: acme-customer-a is named more than once"
+            assignmentsRuleBeyondEditable:
+              summary: An assignments rule leaving editable out or naming members
+              value:
+                code: "ROL-1021"
+                message:
+                  key: "error.roleservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.editable_only_rule_description"
+                  defaultValue: "A rule for this field must state editable and nothing else: assignments"
+            deploymentWideReach:
+              summary: A reach this endpoint may not create
+              value:
+                code: "ROL-1028"
+                message:
+                  key: "error.roleservice.deployment_wide_sharing_not_allowed"
+                  defaultValue: "Deployment-wide sharing is not allowed"
+                description:
+                  key: "error.roleservice.deployment_wide_sharing_not_allowed_description"
+                  defaultValue: "A policy reaching all organization units or the roots of all other trees can only be created from a declarative resource file or an import"
+
+    RoleSharingPolicyListBadRequest:
+      description: The page the listing asked for is not one it can return.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            invalidPage:
+              summary: A limit or offset outside its bounds, or not a number at all
+              description: |
+                A value this endpoint cannot parse and one the sharing framework refuses answer the
+                same way, so a caller sees one error for one mistake.
+              value:
+                code: "ROL-1008"
+                message:
+                  key: "error.roleservice.invalid_limit_parameter"
+                  defaultValue: "Invalid limit parameter"
+                description:
+                  key: "error.roleservice.invalid_limit_parameter_description"
+                  defaultValue: "The limit parameter must be a positive integer"
+
+    RoleSharingPolicyUpdateBadRequest:
+      description: |
+        The replacement is not one this policy may become. Alongside the mistakes a create can
+        make, an edit answers for the reach the policy already has.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            noSection:
+              summary: No section stated
+              value:
+                code: "ROL-1021"
+                message:
+                  key: "error.roleservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed, reaches no organization unit, or states a section with fields its mode does not take: the policy reaches no organization unit"
+            fieldTheModeDoesNotTake:
+              summary: A section carrying a field its mode does not take
+              value:
+                code: "ROL-1021"
+                message:
+                  key: "error.roleservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed, reaches no organization unit, or states a section with fields its mode does not take: childUnits with mode all takes no units"
+            unitNamedTwice:
+              summary: An organization unit named twice, or one the issuer may not name
+              value:
+                code: "ROL-1021"
+                message:
+                  key: "error.roleservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_target_ou_description"
+                  defaultValue: "The target organization unit does not satisfy the policy's constraints: acme-customer-a is named more than once"
+            assignmentsRuleBeyondEditable:
+              summary: An assignments rule leaving editable out or naming members
+              value:
+                code: "ROL-1021"
+                message:
+                  key: "error.roleservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.editable_only_rule_description"
+                  defaultValue: "A rule for this field must state editable and nothing else: assignments"
+            sectionKindChange:
+              summary: An edit that turns a section naming units into one reaching a whole group, or the reverse
+              value:
+                code: "ROL-1021"
+                message:
+                  key: "error.roleservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.scope_family_change_description"
+                  defaultValue: "A section naming organization units individually cannot become one reaching a whole family, or the reverse; delete the policy and issue the one you want instead"
+            declaredPolicy:
+              summary: An edit aimed at a policy a resource file declares
+              value:
+                code: "ROL-1025"
+                message:
+                  key: "error.roleservice.sharing_policy_declared"
+                  defaultValue: "Sharing policy is declared"
+                description:
+                  key: "error.roleservice.sharing_policy_declared_description"
+                  defaultValue: "The sharing policy is declared in a resource file and cannot be changed through the API"
+
+    RoleSharingPolicyDeleteBadRequest:
+      description: |
+        The policy exists but is not this endpoint's to remove. A policy that is simply absent
+        answers 204, because a delete says what the state should be afterwards.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            declaredPolicy:
+              summary: A delete aimed at a policy a resource file declares
+              value:
+                code: "ROL-1025"
+                message:
+                  key: "error.roleservice.sharing_policy_declared"
+                  defaultValue: "Sharing policy is declared"
+                description:
+                  key: "error.roleservice.sharing_policy_declared_description"
+                  defaultValue: "The sharing policy is declared in a resource file and cannot be changed through the API"
+
+    RoleOverlayRulesBadRequest:
+      description: The request does not say which organization unit to resolve for.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            missingOuId:
+              summary: The ouId query parameter is absent or empty
+              value:
+                code: "ROL-1027"
+                message:
+                  key: "error.roleservice.missing_ou_id_parameter"
+                  defaultValue: "Missing required parameter"
+                description:
+                  key: "error.roleservice.missing_ou_id_parameter_description"
+                  defaultValue: "The 'ouId' query parameter is required"
+
+    RoleNotFound:
+      description: No such role
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "ROL-1003"
+            message:
+              key: "error.roleservice.role_not_found"
+              defaultValue: "Role not found"
+            description:
+              key: "error.roleservice.role_not_found_description"
+              defaultValue: "The role with the specified id does not exist"
+
+    RoleOverlayNotResolvable:
+      description: |
+        No such role, or no sharing policy reaches the organization unit, so the role
+        is not available there and has no terms to resolve.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            notShared:
+              summary: An organization unit no policy reaches
+              value:
+                code: "ROL-1026"
+                message:
+                  key: "error.roleservice.role_not_shared_to_ou"
+                  defaultValue: "Role is not shared to the organization unit"
+                description:
+                  key: "error.roleservice.role_not_shared_to_ou_description"
+                  defaultValue: "No sharing policy reaches the specified organization unit, so the role is not available there"
+            noSuchRole:
+              summary: No such role
+              value:
+                code: "ROL-1003"
+                message:
+                  key: "error.roleservice.role_not_found"
+                  defaultValue: "Role not found"
+                description:
+                  key: "error.roleservice.role_not_found_description"
+                  defaultValue: "The role with the specified id does not exist"
+
+    RoleSharingPolicyNotFound:
+      description: No such role, or no such sharing policy on this role
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            roleNotFound:
+              summary: No role with the specified id
+              value:
+                code: "ROL-1003"
+                message:
+                  key: "error.roleservice.role_not_found"
+                  defaultValue: "Role not found"
+                description:
+                  key: "error.roleservice.role_not_found_description"
+                  defaultValue: "The role with the specified id does not exist"
+            policyNotFound:
+              summary: The role holds no policy with the specified id
+              value:
+                code: "ROL-1022"
+                message:
+                  key: "error.roleservice.sharing_policy_not_found"
+                  defaultValue: "Sharing policy not found"
+                description:
+                  key: "error.roleservice.sharing_policy_not_found_description"
+                  defaultValue: "The role has no sharing policy with the specified id"
+
+    RoleSharingPolicyConflict:
+      description: |
+        The organization unit already holds a policy for this role, or the policy moved
+        since it was read.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            alreadyExists:
+              summary: A second policy for the same organization unit
+              value:
+                code: "ROL-1023"
+                message:
+                  key: "error.roleservice.sharing_policy_exists"
+                  defaultValue: "Sharing policy already exists"
+                description:
+                  key: "error.roleservice.sharing_policy_exists_description"
+                  defaultValue: "This organization unit already has a sharing policy for the role; edit it instead"
+            staleVersion:
+              summary: An edit against a stale version
+              value:
+                code: "ROL-1024"
+                message:
+                  key: "error.roleservice.sharing_policy_version_mismatch"
+                  defaultValue: "Sharing policy version mismatch"
+                description:
+                  key: "error.roleservice.sharing_policy_version_mismatch_description"
+                  defaultValue: "The sharing policy changed since it was read; read it again and retry the edit"
+
+    RoleSharingServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "ROL-5000"
+            message:
+              key: "error.internal_server_error"
+              defaultValue: "Internal server error"
+            description:
+              key: "error.internal_server_error_description"
+              defaultValue: "An unexpected error occurred while processing the request"
 
   schemas:
     Assignment:
@@ -1214,6 +1901,370 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Link'
+
+    RoleSharingPolicyRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        One organization unit's decision about this role. A policy states up to two
+        sections through this endpoint, and at least one: `childUnits` for the organization units
+        beneath the issuer, and `otherTreeRoots` for the roots of other trees. Each section either
+        reaches a whole group or names the organization units it reaches, never both.
+
+        A role shared with nobody has no policy at all.
+      anyOf:
+        - required: [childUnits]
+        - required: [otherTreeRoots]
+      properties:
+        initiatingOuId:
+          type: string
+          description: |
+            The organization unit whose decision this is. Omitted means the role's owner. A
+            unit other than the owner may only issue a policy where the role already reached
+            it and stopped there, and such a policy may state `childUnits` only.
+          example: "acme-root"
+        childUnits:
+          $ref: '#/components/schemas/RoleChildUnits'
+        otherTreeRoots:
+          $ref: '#/components/schemas/RoleOtherTreeRootsSelected'
+        version:
+          type: integer
+          description: |
+            The policy version the caller believes it is editing. Required on an edit, ignored on a
+            create.
+          example: 1
+
+    RoleSharingPolicyUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      description: |
+        A replacement for a policy's sections. Whose decision the policy is cannot change, so an
+        edit names no `initiatingOuId`. It differs from a create in what it may state: a
+        policy that already reaches every organization unit, or the root of every other tree, keeps
+        that reach here.
+
+        An edit may not reach wider than the policy already does. A section that reaches a whole
+        group is fixed once the policy exists, so a deployment-wide section can be kept and its
+        exclusions rewritten, but one cannot be introduced by editing a narrower policy into it.
+      anyOf:
+        - required: [allUnits]
+        - required: [childUnits]
+        - required: [otherTreeRoots]
+      properties:
+        allUnits:
+          $ref: '#/components/schemas/RoleAllUnits'
+        childUnits:
+          $ref: '#/components/schemas/RoleChildUnits'
+        otherTreeRoots:
+          $ref: '#/components/schemas/RoleOtherTreeRoots'
+        version:
+          type: integer
+          description: |
+            The policy version the caller believes it is editing. An edit against any other version
+            is refused, so a caller that has not seen the current one cannot overwrite it.
+          example: 1
+
+    RoleAllUnits:
+      type: object
+      additionalProperties: false
+      description: |
+        Every organization unit in the deployment, at any depth, including units created later. It
+        stands alone: a policy that states it states neither `childUnits` nor `otherTreeRoots`.
+
+        A reach not bounded by the issuer's own position in the tree is a deployment decision, so
+        it is written where such decisions are reviewed: a resource file, or a document imported
+        from one. A create through this API may not state it. A policy written that way still
+        reads back through these endpoints, and an edit restates it to rewrite its exclusions.
+      properties:
+        excludedOuIds:
+          type: array
+          description: |
+            Organization units withheld from the section, each taking everything beneath it out of
+            reach as well. Any organization unit may be excluded.
+          items:
+            type: string
+          example: ["acme-trial-customers"]
+        overlayRules:
+          $ref: '#/components/schemas/RoleOverlayRules'
+
+    RoleChildUnits:
+      description: |
+        The organization units beneath the issuer. Exactly one of the two shapes below, chosen by
+        `mode`.
+      oneOf:
+        - $ref: '#/components/schemas/RoleChildUnitsAll'
+        - $ref: '#/components/schemas/RoleChildUnitsSelected'
+      discriminator:
+        propertyName: mode
+        mapping:
+          all: '#/components/schemas/RoleChildUnitsAll'
+          selected: '#/components/schemas/RoleChildUnitsSelected'
+
+    RoleChildUnitsAll:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      description: Everything beneath the issuing organization unit, at any depth, including units created later.
+      properties:
+        mode:
+          type: string
+          enum: [all]
+        excludedOuIds:
+          type: array
+          description: |
+            Organization units withheld from the section, each taking everything beneath it out of
+            reach as well. Only organization units directly beneath the issuer may be excluded.
+          items:
+            type: string
+          example: ["acme-trial-customers"]
+        overlayRules:
+          $ref: '#/components/schemas/RoleOverlayRules'
+
+    RoleChildUnitsSelected:
+      type: object
+      additionalProperties: false
+      required: [mode, units]
+      description: |
+        Named organization units directly beneath the issuer. It takes no `excludedOuIds`: an
+        organization unit is withheld by leaving it out of `units`.
+      properties:
+        mode:
+          type: string
+          enum: [selected]
+        units:
+          type: array
+          minItems: 1
+          description: The organization units reached. An organization unit is listed only once in a policy.
+          items:
+            $ref: '#/components/schemas/RoleChildUnit'
+
+    RoleChildUnit:
+      type: object
+      additionalProperties: false
+      required: [ouId, reach]
+      properties:
+        ouId:
+          type: string
+          description: A direct child of the issuing organization unit.
+          example: "acme-customer-a"
+        reach:
+          type: string
+          enum: [unit, subtree]
+          description: |
+            How far the role carries from the named organization unit. `unit` reaches it and
+            nothing below it, which leaves it free to pass the role on itself. `subtree`
+            reaches it and everything below it at any depth.
+          example: unit
+        overlayRules:
+          $ref: '#/components/schemas/RoleOverlayRules'
+
+    RoleOtherTreeRoots:
+      description: |
+        The root organization units of other trees, as a policy carries them. Every shape a create
+        may send, plus the one that only a resource file or an imported document may introduce.
+
+        An edit sends this shape rather than the create's, because a policy that already reaches
+        the root of every other tree has to be able to restate that to rewrite its exclusions.
+      oneOf:
+        - $ref: '#/components/schemas/RoleOtherTreeRootsSelected'
+        - $ref: '#/components/schemas/RoleOtherTreeRootsAll'
+      discriminator:
+        propertyName: mode
+        mapping:
+          selected: '#/components/schemas/RoleOtherTreeRootsSelected'
+          all: '#/components/schemas/RoleOtherTreeRootsAll'
+
+    RoleOtherTreeRootsSelected:
+      type: object
+      additionalProperties: false
+      required: [mode, units]
+      description: |
+        Named root organization units of other trees, and nothing below them. Owner only. Another
+        tree is reached at its root alone; that root passes the role on within its own tree.
+        The root of the owner's own tree is not another tree and cannot be named.
+
+        When the owner sits below a root, this additionally requires
+        `resource_sharing.allow_child_ou_cross_tree_sharing`.
+      properties:
+        mode:
+          type: string
+          enum: [selected]
+        units:
+          type: array
+          minItems: 1
+          description: The root organization units reached. An organization unit is listed only once in a policy.
+          items:
+            $ref: '#/components/schemas/RoleRootUnit'
+
+    RoleOtherTreeRootsAll:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      description: |
+        The root organization unit of every other tree, including trees created later. Only a
+        resource file or an imported document may introduce it, so a create never sends it.
+      properties:
+        mode:
+          type: string
+          enum: [all]
+        excludedOuIds:
+          type: array
+          description: Root organization units withheld from the section, and with them their trees.
+          items:
+            type: string
+          example: ["partner-root"]
+        overlayRules:
+          $ref: '#/components/schemas/RoleOverlayRules'
+
+    RoleRootUnit:
+      type: object
+      additionalProperties: false
+      required: [ouId]
+      properties:
+        ouId:
+          type: string
+          description: The root organization unit of another tree.
+          example: "partner-root"
+        overlayRules:
+          $ref: '#/components/schemas/RoleOverlayRules'
+
+    RoleOverlayRules:
+      type: object
+      additionalProperties: false
+      description: |
+        The terms the organization units a section reaches hold the role on. A role declares one
+        field, `assignments`: whether those organization units may assign the role to their own
+        users and groups. They may unless a policy says otherwise, so a policy names `assignments`
+        only to turn them off. A reshare cannot turn back on what the policy it came through
+        turned off.
+      properties:
+        assignments:
+          $ref: '#/components/schemas/RoleAssignmentsRule'
+
+    RoleAssignmentsRule:
+      type: object
+      additionalProperties: false
+      required: [editable]
+      properties:
+        editable:
+          type: boolean
+          description: Whether the organization units reached may assign the role.
+          example: false
+
+    RoleSharingPolicy:
+      type: object
+      description: |
+        A recorded sharing policy. Its sections come back in the shape a request states them in, so
+        an edit copies them, with `version`, into a `RoleSharingPolicyUpdateRequest`. The other fields
+        are set by the server and are refused in a request body. A section the policy does not state
+        is left out.
+      properties:
+        id:
+          type: string
+          description: The policy's own identifier.
+          example: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+        initiatingOuId:
+          type: string
+          description: |
+            The organization unit whose decision this policy is. The owning organization unit is
+            not repeated here: it belongs to the role, which this path already names.
+          example: "acme-root"
+        stage:
+          type: string
+          enum: [share, reshare]
+          description: "`share` when the owner issued it, `reshare` when a sharee did."
+        parentPolicyId:
+          type: string
+          description: The policy that made this one's issuer able to see the role. Empty for an owner-issued policy.
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: Indicates if the policy is defined in declarative configuration and cannot be modified.
+        version:
+          type: integer
+          description: Bumped on every edit, and carried back on the next one.
+          example: 1
+        allUnits:
+          $ref: '#/components/schemas/RoleAllUnits'
+        childUnits:
+          $ref: '#/components/schemas/RoleChildUnits'
+        otherTreeRoots:
+          $ref: '#/components/schemas/RoleOtherTreeRoots'
+
+    RoleSharingPolicyListResponse:
+      type: object
+      properties:
+        totalResults:
+          type: integer
+          description: How many policies the role has, not how many this page holds.
+          example: 2
+        startIndex:
+          type: integer
+          description: The one-based position of the first policy in this page.
+          example: 1
+        count:
+          type: integer
+          description: How many policies this page holds.
+          example: 2
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoleSharingPolicy'
+        links:
+          type: array
+          description: Links to the first, previous, next and last pages, where they exist.
+          items:
+            $ref: '#/components/schemas/Link'
+          example:
+            - href: "/roles/550e8400-e29b-41d4-a716-446655440000/sharing-policies?offset=30&limit=30"
+              rel: "next"
+
+    RoleResolvedOverlay:
+      type: object
+      description: What one organization unit may do with the role.
+      properties:
+        ouId:
+          type: string
+          example: "acme-customer-a"
+        isOwnedByOU:
+          type: boolean
+          description: Whether the organization unit owns the role rather than being shared it.
+        visible:
+          type: boolean
+          description: |
+            Whether the role is shared with the organization unit, or owned by it.
+        policyIds:
+          type: array
+          description: Every policy that contributed, so an answer is traceable to its inputs.
+          items:
+            type: string
+        rules:
+          type: object
+          description: |
+            The effective rule per field. A role declares one field, `assignments`, answered
+            whether or not a policy names it.
+          additionalProperties:
+            $ref: '#/components/schemas/RoleOverlayRule'
+
+    RoleOverlayRule:
+      type: object
+      description: What a reached organization unit may do with one field.
+      properties:
+        editable:
+          type: boolean
+        value:
+          type: array
+          items:
+            type: string
+        allowedValues:
+          type: array
+          items:
+            type: string
+        excludedValues:
+          type: array
+          items:
+            type: string
 
     Link:
       type: object

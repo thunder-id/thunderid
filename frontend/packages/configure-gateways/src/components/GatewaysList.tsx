@@ -5,7 +5,7 @@ import {QueryErrorNotice} from '@thunderid/components';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Chip, DataGrid, IconButton, ListingTable, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
-import {Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Network, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -45,14 +45,18 @@ export default function GatewaysList(): JSX.Element {
         flex: 1,
         minWidth: 180,
         renderCell: (params: DataGrid.GridRenderCellParams<Gateway>) => (
-          <Stack direction="row" spacing={1} alignItems="center" sx={{height: '100%'}}>
-            <Typography variant="body2" fontWeight={500}>
-              {params.row.name}
-            </Typography>
-            {params.row.isDefault && (
-              <Chip size="small" color="primary" variant="outlined" label={t('gateways:default', 'Default')} />
-            )}
-          </Stack>
+          <ListingTable.CellIcon
+            icon={<Network size={20} />}
+            primary={
+              <Stack direction="row" spacing={1} alignItems="center">
+                <span>{params.row.name}</span>
+                {params.row.isDefault && (
+                  <Chip size="small" variant="outlined" label={t('gateways:default', 'Default')} />
+                )}
+              </Stack>
+            }
+            sx={{width: '100%'}}
+          />
         ),
       },
       {
@@ -135,8 +139,8 @@ export default function GatewaysList(): JSX.Element {
   return (
     <>
       {error && <QueryErrorNotice error={error} t={tForErrors} variant="inline" onRetry={() => void refetch()} />}
-      <ListingTable.Provider variant="data-grid-card" loading={isLoading}>
-        <ListingTable.Container disablePaper>
+      <ListingTable.Provider variant="data-grid" loading={isLoading}>
+        <ListingTable.Container>
           <ListingTable.DataGrid
             rows={data ?? []}
             columns={columns}

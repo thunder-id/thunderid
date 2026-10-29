@@ -39,25 +39,25 @@ database:
     type: sqlite
     sqlite:
       path: "database/configdb.db"
-      options: "cache=shared"
+      options: "cache=shared&_pragma=foreign_keys(1)"
 
   runtime_transient:
     type: sqlite
     sqlite:
       path: "database/runtime_transient.db"
-      options: "cache=shared"
+      options: "cache=shared&_pragma=foreign_keys(1)"
 
   entity:
     type: sqlite
     sqlite:
       path: "database/entitydb.db"
-      options: "cache=shared"
+      options: "cache=shared&_pragma=foreign_keys(1)"
 
   runtime_persistent:
     type: sqlite
     sqlite:
       path: "database/runtime_persistent.db"
-      options: "cache=shared"
+      options: "cache=shared&_pragma=foreign_keys(1)"
 
 
 flow:
@@ -67,6 +67,9 @@ server_config:
   store: composite
 
 authzen_pdp:
+  store: composite
+
+http_connection:
   store: composite
 
 passkey:

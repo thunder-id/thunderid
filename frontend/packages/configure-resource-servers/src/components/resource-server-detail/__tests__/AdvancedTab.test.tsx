@@ -164,9 +164,43 @@ describe('AdvancedTab', () => {
     expect(screen.getByText('Configuration settings for this MCP server.')).toBeInTheDocument();
     expect(
       screen.getByText(
-        'A unique value that identifies this MCP server. When set as an URI, enables RFC 8707 resource indicator support in OAuth2 authorization requests.',
+        'The URL MCP clients use to reach this server, such as https://mcp.example.com/mcp. MCP clients send it as the resource parameter, and it becomes the token audience.',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('should show the MCP identifier error in place of the hint when the identifier is invalid', () => {
+    renderWithProviders(
+      <AdvancedTab
+        {...engineProps}
+        resourceServer={mockMcpServer}
+        identifier="my-mcp-server"
+        isIdentifierInvalid
+        onIdentifierChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText(/Identifier/i)).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText(/Identifier/i)).toHaveAccessibleDescription(
+      'Enter an http or https URL with no fragment, such as https://mcp.example.com/mcp.',
+    );
+    expect(screen.queryByText(/The URL MCP clients use to reach this server/)).not.toBeInTheDocument();
+  });
+
+  it('should not show an identifier error by default', () => {
+    renderWithProviders(
+      <AdvancedTab
+        {...engineProps}
+        resourceServer={mockMcpServer}
+        identifier="legacy-mcp"
+        onIdentifierChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText(/Identifier/i)).toHaveAttribute('aria-invalid', 'false');
+    expect(
+      screen.queryByText('Enter an http or https URL with no fragment, such as https://mcp.example.com/mcp.'),
+    ).not.toBeInTheDocument();
   });
 
   it('selects an AuthZEN PDP connection as the authorization engine', () => {

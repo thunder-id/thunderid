@@ -94,6 +94,12 @@ type InboundClientServiceInterface interface {
 		*inboundmodel.Certificate, *CertOperationError)
 }
 
+// SharedTypeResolver names the sharing resource type an entity category is shareable under. The entity
+// service implements it from the categories the owning packages register.
+type SharedTypeResolver interface {
+	GetSharedResourceType(category providers.EntityCategory) (sharing.ResourceType, bool)
+}
+
 type inboundClientService struct {
 	store          inboundClientStoreInterface
 	transactioner  providers.Transactioner
@@ -107,7 +113,7 @@ type inboundClientService struct {
 	jweService     jwe.JWEServiceInterface
 	cimdService    cimd.CIMDServiceInterface
 	sharingService sharing.SharingServiceInterface
-	sharedTypes    map[providers.EntityCategory]sharing.ResourceType
+	sharedTypes    SharedTypeResolver
 	logger         *log.Logger
 	// keepsReferences is set on a control plane, which keeps a value reference where a value belongs.
 	keepsReferences bool
@@ -125,7 +131,7 @@ func newInboundClientService(store inboundClientStoreInterface, transactioner pr
 	jweService jwe.JWEServiceInterface,
 	cimdService cimd.CIMDServiceInterface,
 	sharingService sharing.SharingServiceInterface,
-	sharedTypes map[providers.EntityCategory]sharing.ResourceType,
+	sharedTypes SharedTypeResolver,
 ) *inboundClientService {
 	return &inboundClientService{
 		store:          store,
@@ -657,8 +663,11 @@ func (s *inboundClientService) IsClientAccessibleFromOU(
 
 	// A kind of client no resource type is registered for cannot be shared, so it is usable in its
 	// own organization unit alone.
-	rt, shareable := s.sharedTypes[client.EntityCategory]
-	if !shareable || s.sharingService == nil {
+	if s.sharedTypes == nil || s.sharingService == nil {
+		return false, nil
+	}
+	rt, shareable := s.sharedTypes.GetSharedResourceType(client.EntityCategory)
+	if !shareable {
 		return false, nil
 	}
 	accessible, svcErr := s.sharingService.IsVisible(ctx, rt, client.ID, accessingOUID)

@@ -41,6 +41,7 @@ vi.mock('../ManageAssignmentsSection', () => ({
 vi.mock('../AddAssignmentDialog', () => ({
   default: ({
     open,
+    ouId = undefined,
     onClose,
     onAdd,
     initialTab,
@@ -48,6 +49,7 @@ vi.mock('../AddAssignmentDialog', () => ({
   }: {
     open: boolean;
     roleId: string;
+    ouId?: string;
     onClose: () => void;
     onAdd: (assignments: RoleAssignment[]) => void;
     initialTab?: number;
@@ -57,6 +59,7 @@ vi.mock('../AddAssignmentDialog', () => ({
     open ? (
       <div data-testid="add-dialog" role="dialog">
         <span data-testid="initial-tab">{initialTab}</span>
+        <span data-testid="dialog-ou-id">{ouId}</span>
         {error && <div role="alert">{error}</div>}
         <button type="button" onClick={() => onAdd([{id: 'user-3', type: 'user'}])} data-testid="confirm-add">
           Confirm Add
@@ -142,6 +145,15 @@ describe('EditAssignmentsSettings', () => {
       await user.click(screen.getByRole('button', {name: 'Add'}));
 
       expect(screen.getByTestId('add-dialog')).toBeInTheDocument();
+    });
+
+    it("should pass the role's organization unit to the dialog", async () => {
+      const user = userEvent.setup();
+      render(<EditAssignmentsSettings roleId="role-1" ouId="ou-1" />);
+
+      await user.click(screen.getByRole('button', {name: 'Add'}));
+
+      expect(screen.getByTestId('dialog-ou-id')).toHaveTextContent('ou-1');
     });
 
     it('should pass activeAssignmentTab as initialTab to dialog', async () => {

@@ -8,6 +8,7 @@ type FlowDefinition struct {
 	Handle   string           `json:"handle,omitempty"`
 	FlowType string           `json:"flowType"`
 	Nodes    []NodeDefinition `json:"nodes"`
+	OUID     string           `json:"ouId,omitempty"`
 }
 
 type CompleteFlowDefinition struct {
@@ -17,11 +18,13 @@ type CompleteFlowDefinition struct {
 	FlowType      string           `json:"flowType"`
 	ActiveVersion int              `json:"activeVersion"`
 	Nodes         []NodeDefinition `json:"nodes"`
+	OUID          string           `json:"ouId,omitempty"`
 	CreatedAt     string           `json:"createdAt"`
 	UpdatedAt     string           `json:"updatedAt"`
 }
 
 type BasicFlowDefinition struct {
+	OUID          string `json:"ouId,omitempty"`
 	ID            string `json:"id"`
 	FlowType      string `json:"flowType"`
 	Name          string `json:"name"`
@@ -118,7 +121,8 @@ type ActionDefinition struct {
 }
 
 type ExecutorDefinition struct {
-	Name string `json:"name"`
+	Name   string            `json:"name"`
+	Inputs []InputDefinition `json:"inputs,omitempty"`
 }
 
 type ConditionDefinition struct {

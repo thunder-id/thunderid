@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/deployment"
@@ -483,24 +484,59 @@ func (s *sharingStore) DeleteOverlayValuesForOU(
 	return nil
 }
 
-// hydrateAll builds a policy from every row, loading the named units and rules each one has.
+// hydrateAll builds a policy from every row, loading the named units and rules of the whole set in
+// one statement each per batch, rather than two per policy.
 func (s *sharingStore) hydrateAll(
 	ctx context.Context, dbClient provider.DBClientInterface, rows []map[string]interface{},
 ) ([]Policy, error) {
 	out := make([]Policy, 0, len(rows))
+	positions := make(map[string]int, len(rows))
 	for _, row := range rows {
-		p, err := s.hydrate(ctx, dbClient, row)
-		if err != nil {
+		p := policyFromRow(row)
+		if err := decodeSections(&p, row["sections"]); err != nil {
 			return nil, err
 		}
+		positions[p.ID] = len(out)
 		out = append(out, p)
+	}
+
+	ids := make([]string, len(out))
+	for i := range out {
+		ids[i] = out[i].ID
+	}
+	for chunk := range slices.Chunk(ids, hydrateBatchSize) {
+		query, args := buildListUnitsForPoliciesQuery(chunk, s.scope(ctx))
+		unitRows, err := dbClient.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list sharing policy units: %w", err)
+		}
+		for _, row := range unitRows {
+			if i, ok := positions[utils.ConvertInterfaceValueToString(row["policy_id"])]; ok {
+				addUnit(&out[i], row)
+			}
+		}
+
+		query, args = buildListRulesForPoliciesQuery(chunk, s.scope(ctx))
+		ruleRows, err := dbClient.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list overlay rules: %w", err)
+		}
+		for _, row := range ruleRows {
+			i, ok := positions[utils.ConvertInterfaceValueToString(row["policy_id"])]
+			if !ok {
+				continue
+			}
+			rule, err := hydrateRule(row)
+			if err != nil {
+				return nil, err
+			}
+			out[i].Rules = append(out[i].Rules, rule)
+		}
 	}
 	return out, nil
 }
 
-// hydrate builds one policy from its row and loads the named units and rules belonging to it. A
-// unit row for a section the policy row does not state, or for a mode that names none, is left
-// out: the policy row is what says which decisions were made.
+// hydrate builds one policy from its row and loads the named units and rules belonging to it.
 func (s *sharingStore) hydrate(
 	ctx context.Context, dbClient provider.DBClientInterface, row map[string]interface{},
 ) (Policy, error) {
@@ -514,20 +550,7 @@ func (s *sharingStore) hydrate(
 		return Policy{}, fmt.Errorf("failed to list sharing policy units: %w", err)
 	}
 	for _, row := range unitRows {
-		ouID := utils.ConvertInterfaceValueToString(row["ou_id"])
-		switch Section(utils.ConvertInterfaceValueToString(row["section"])) {
-		case SectionChildUnits:
-			if p.ChildUnits != nil && p.ChildUnits.Mode == ChildUnitsSelected {
-				p.ChildUnits.Units = append(p.ChildUnits.Units, ChildUnit{
-					OUID:  ouID,
-					Reach: UnitReach(utils.ConvertInterfaceValueToString(row["reach"])),
-				})
-			}
-		case SectionOtherTreeRoots:
-			if p.OtherTreeRoots != nil && p.OtherTreeRoots.Mode == OtherTreeRootsSelected {
-				p.OtherTreeRoots.Units = append(p.OtherTreeRoots.Units, ouID)
-			}
-		}
+		addUnit(&p, row)
 	}
 
 	ruleRows, err := dbClient.QueryContext(ctx, queryListRules, p.ID, s.scope(ctx))
@@ -542,6 +565,26 @@ func (s *sharingStore) hydrate(
 		p.Rules = append(p.Rules, rule)
 	}
 	return p, nil
+}
+
+// addUnit adds one named unit row to its policy. A unit row for a section the policy row does not
+// state, or for a mode that names none, is left out: the policy row is what says which decisions
+// were made.
+func addUnit(p *Policy, row map[string]interface{}) {
+	ouID := utils.ConvertInterfaceValueToString(row["ou_id"])
+	switch Section(utils.ConvertInterfaceValueToString(row["section"])) {
+	case SectionChildUnits:
+		if p.ChildUnits != nil && p.ChildUnits.Mode == ChildUnitsSelected {
+			p.ChildUnits.Units = append(p.ChildUnits.Units, ChildUnit{
+				OUID:  ouID,
+				Reach: UnitReach(utils.ConvertInterfaceValueToString(row["reach"])),
+			})
+		}
+	case SectionOtherTreeRoots:
+		if p.OtherTreeRoots != nil && p.OtherTreeRoots.Mode == OtherTreeRootsSelected {
+			p.OtherTreeRoots.Units = append(p.OtherTreeRoots.Units, ouID)
+		}
+	}
 }
 
 // hydrateRule rebuilds one rule from its stored documents. Absent and empty come back as they went

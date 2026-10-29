@@ -30,6 +30,9 @@ const (
 	NodeTypePrompt NodeType = "PROMPT"
 	// NodeTypeCall represents a CALL node that invokes another flow
 	NodeTypeCall NodeType = "CALL"
+	// NodeTypeVariables represents a VARIABLES node, which declares the variables of a flow and resolves their values
+	// without showing anything to the user.
+	NodeTypeVariables NodeType = "VARIABLES"
 )
 
 // NodeStatus defines the status of a node in the flow execution.
@@ -134,6 +137,12 @@ const (
 	// NodePropertyOUResolveFrom specifies the strategy for resolving the organization unit.
 	// Supported values: "caller" (use the caller's OU).
 	NodePropertyOUResolveFrom = "resolveFrom"
+	// NodePropertyOUParent names the organization unit the "prompt" strategy selects below. It takes the place of
+	// the default OU set by UserTypeResolver, for flows such as sign-in that have no user type step.
+	NodePropertyOUParent = "parentOuId"
+	// NodePropertyOUDirectChildrenOnly limits the "prompt" strategy to the direct children of the parent OU: the one
+	// named by NodePropertyOUParent or, when the node sets none, the default OU set by UserTypeResolver.
+	NodePropertyOUDirectChildrenOnly = "directChildrenOnly"
 	// NodePropertyAuthMethodMapping maps authentication classes to action refs on login_options PROMPT nodes.
 	NodePropertyAuthMethodMapping = "authMethodMapping"
 	// NodePropertySkipInterceptors indicates whether to skip interceptor execution for the current node.
@@ -142,6 +151,17 @@ const (
 	// checkpoint it guards. The checkpoint id is that join node's id, so the skip and join of one
 	// checkpoint pair by it. Absent/empty means the node is not part of a checkpoint pair.
 	NodePropertyCheckpointRef = "checkpointRef"
+	// NodePropertyConnectionID names the HTTP endpoint connection an extension step calls.
+	NodePropertyConnectionID = "connectionId"
+	// NodePropertyInputKeys names the user inputs an extension step sends.
+	NodePropertyInputKeys = "inputKeys"
+	// NodePropertyRuntimeDataKeys restricts the runtime data an extension step sends.
+	NodePropertyRuntimeDataKeys = "runtimeDataKeys"
+	// NodePropertyResponseKeys restricts the response fields an extension step stores.
+	NodePropertyResponseKeys = "responseKeys"
+	// NodePropertyMaxAttempts bounds the attempts a step accepts in one flow execution, such as OTP
+	// sends or an extension step's FAILED and INCOMPLETE answers.
+	NodePropertyMaxAttempts = "maxAttempts"
 )
 
 // RuntimeData keys.
@@ -156,6 +176,9 @@ const (
 	// pre-processing node produces for the executors that follow. It travels on the engine context's
 	// cross-frame store, so it survives a CALL into another flow.
 	RuntimeKeyRevocationPlan = "revocationPlan"
+	// RuntimeKeyProvenSubject holds the identity whose control was proven in this execution. The
+	// credential setter writes it after a credential write; a node acting on proof reads it here.
+	RuntimeKeyProvenSubject = "provenSubject"
 	// RuntimeKeyClientID holds the OAuth client ID for the current flow execution, if applicable.
 	RuntimeKeyClientID = "clientId"
 	// RuntimeKeyRequestedPermissions holds the space-separated permission scopes requested by the OAuth client.
@@ -317,7 +340,28 @@ const (
 	// RuntimeKeyMappedPermissions holds the JSON-encoded []providers.AuthorizationTarget permission
 	// targets a federated login's authorization mapping (rule-based or direct) resolved.
 	RuntimeKeyMappedPermissions = "mapped_permissions"
+	// RuntimeKeyExtensionAttemptCount holds the number of FAILED and INCOMPLETE answers an extension
+	// step has had in the current flow execution, scoped to the step by ExtensionAttemptCountKey.
+	RuntimeKeyExtensionAttemptCount = "extensionAttemptCount"
 )
+
+// ExtensionDataKeyPrefix starts every runtime-data key an extension step stores from its service's
+// answer, as extension.<nodeId>.<field>, so a returned field never names an engine key, a profile
+// attribute or a credential.
+const ExtensionDataKeyPrefix = "extension."
+
+// Bounds and default of an extension step's maxAttempts property.
+const (
+	extensionMinAttempts     = 1
+	extensionMaxAttempts     = 20
+	extensionDefaultAttempts = 5
+)
+
+// ExtensionAttemptCountKey scopes RuntimeKeyExtensionAttemptCount to an extension step's node ID, so
+// two extension steps in one flow count separately.
+func ExtensionAttemptCountKey(nodeID string) string {
+	return RuntimeKeyExtensionAttemptCount + ":" + nodeID
+}
 
 // SSOCheckpointKey scopes a per-checkpoint SSO control key (RuntimeKeySSOSessionPresent,
 // RuntimeKeySSOSessionSaved) to a checkpoint id, so multiple skip/join checkpoints in one flow keep
@@ -411,4 +455,5 @@ var ValidNodeTypes = map[string]bool{
 	string(NodeTypeTaskExecution): true,
 	string(NodeTypePrompt):        true,
 	string(NodeTypeCall):          true,
+	string(NodeTypeVariables):     true,
 }

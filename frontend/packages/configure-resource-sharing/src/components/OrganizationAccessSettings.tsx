@@ -21,6 +21,10 @@ import type {
   OtherTreesAccess,
 } from '../models/organization-access';
 import {getBlockedNoneReason, type BlockedNoneReason} from '../utils/switchOrganizationAccess';
+import translateOrganizationAccessWording, {
+  organizationAccessWordingKey,
+  type OrganizationAccessWordingKey,
+} from '../utils/translateOrganizationAccessWording';
 
 type OpenPicker = 'childUnits' | 'childUnitExclusions' | 'everyUnitExclusions' | 'trees' | 'everyTreeExclusions';
 
@@ -50,12 +54,6 @@ export interface OrganizationAccessSettingsProps {
    */
   errorNamespace?: string;
   resolveErrorMessage?: QueryErrorMessageResolver;
-  /**
-   * What access to the resource lets a granted unit do. Defaults to signing its users and agents in,
-   * which a resource that units use some other way, such as an application that only requests
-   * tokens, replaces.
-   */
-  description?: string;
 }
 
 const unique = (ids: string[]): string[] => [...new Set(ids)];
@@ -73,7 +71,6 @@ export default function OrganizationAccessSettings({
   hasUnitSettings = false,
   errorNamespace = 'resourceSharing',
   resolveErrorMessage = undefined,
-  description = undefined,
 }: OrganizationAccessSettingsProps): JSX.Element {
   const {t} = useTranslation();
   const [openPicker, setOpenPicker] = useState<OpenPicker | null>(null);
@@ -107,19 +104,22 @@ export default function OrganizationAccessSettings({
   );
   const unitsById = useGetOrganizationUnitsByIds(referencedIds);
   const ownerName = unitsById.get(ownerOuId)?.name ?? ownerOuId;
+  // The sentences that depend on what the resource is come from its own wording namespace, if it has one.
+  const wording = (key: OrganizationAccessWordingKey): string =>
+    translateOrganizationAccessWording(t, access.wordingNamespace, key, {resource: resourceName, owner: ownerName});
 
   const scopeChoices: AccessChoice<OrganizationAccessScope>[] = [
     {
       value: 'owner',
-      title: t('resourceSharing:scope.owner.title', 'Only {{owner}}', {owner: ownerName}),
-      description: t('resourceSharing:scope.owner.description', 'No child unit and no other tree can use it.'),
+      title: t('resourceSharing:scope.owner.title', '{{owner}} only', {owner: ownerName}),
+      description: wording('ownerOnly'),
     },
     {
       value: 'chosen',
-      title: t('resourceSharing:scope.chosen.title', 'Chosen organization units'),
+      title: t('resourceSharing:scope.chosen.title', '{{owner}} and chosen units', {owner: ownerName}),
       description: t(
         'resourceSharing:scope.chosen.description',
-        'Pick child units of {{owner}} and other trees, separately below.',
+        'Choose child units of {{owner}} and other trees below.',
         {owner: ownerName},
       ),
     },
@@ -263,9 +263,9 @@ export default function OrganizationAccessSettings({
         error={access.loadError}
         t={tForErrors}
         variant="block"
-        title={t('resourceSharing:loadError.title', 'Failed to load organization access')}
-        fallbackKey="resourceSharing:loadError.message"
-        fallbackDefaultValue="Something went wrong while loading who can use this resource."
+        title={wording('loadFailedTitle')}
+        fallbackKey={organizationAccessWordingKey(access.wordingNamespace, 'loadFailedMessage')}
+        fallbackDefaultValue={wording('loadFailedMessage')}
         resolveErrorMessage={resolveErrorMessage}
         onRetry={access.reload}
       />
@@ -306,22 +306,14 @@ export default function OrganizationAccessSettings({
     </Stack>
   );
 
+  const heading = wording('title');
+
   return (
     <Stack spacing={3}>
-      <SettingsCard
-        title={t('resourceSharing:who.title', 'Who can use {{resource}}', {resource: resourceName})}
-        description={
-          description ??
-          t(
-            'resourceSharing:who.description',
-            'Users and agents of a granted organization unit can sign in to {{resource}}.',
-            {resource: resourceName},
-          )
-        }
-      >
+      <SettingsCard title={heading} description={wording('description')}>
         <Stack spacing={2.5}>
           <AccessChoiceCards
-            label={t('resourceSharing:who.title', 'Who can use {{resource}}', {resource: resourceName})}
+            label={heading}
             value={scope}
             choices={visibleScopeChoices}
             disabled={locked}
@@ -341,7 +333,7 @@ export default function OrganizationAccessSettings({
             <Alert severity="info">
               {t(
                 'resourceSharing:nothingChosen',
-                'Nothing is granted below yet. Saving like this is the same as "Only {{owner}}".',
+                'Nothing is granted below yet. Saving like this is the same as "{{owner}} only".',
                 {owner: ownerName},
               )}
             </Alert>
@@ -608,6 +600,7 @@ export default function OrganizationAccessSettings({
         resourceName={resourceName}
         unitsById={unitsById}
         hasUnitSettings={hasUnitSettings}
+        wordingNamespace={access.wordingNamespace}
         onCancel={() => setPendingSwitch(null)}
         onConfirm={(accessSwitch) => {
           access.applySwitch(accessSwitch);

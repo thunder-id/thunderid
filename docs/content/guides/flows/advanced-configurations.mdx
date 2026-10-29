@@ -371,6 +371,10 @@ Every flow you deploy must reference only executors that are registered on the s
 | **Attribute Collector** | Collects additional user attributes defined in the user type. | - |
 | **Validate Attribute Uniqueness** | Checks that unique attributes are not already registered. | User Type Resolver must have run |
 | **Set Credentials** | Sets credentials (e.g., password) for an existing user. | - |
+| **Validate and Plan Suspension** | Checks that the administrator may suspend the account, then plans which tokens the revocation nodes withdraw. | Administration flows only |
+| **Suspend Identity** | Suspends the account that Validate and Plan Suspension planned. | Administration flows only. Validate and Plan Suspension must have run. See [Suspend and Restore Accounts](../../account-protection/suspend-and-restore-accounts) |
+| **Unsuspend Identity** | Lifts a suspension. A user is left locked until recovery or an unlock. | Administration flows only |
+| **Unlock Identity** | Clears every lock on a user or agent. In a recovery flow, releases the account whose credential the flow set. | In a recovery flow, Set Credentials must have run |
 | **OpenID4VP Verify** | Initiates an OpenID4VP credential presentation request, returns a QR code and deep link for the user's wallet, and polls until the credential is verified. | OpenID4VP service configured in <ProductName /> |
 | **Authorization** | Evaluates authorization policies for the current user. | - |
 | **User Consent** | Records explicit user consent for defined scopes or terms. | - |
@@ -553,6 +557,17 @@ Sets credentials (e.g., password) for an existing user. Typically used in regist
 - Credential value not provided
 - User not found in the user store
 - Credential update failed
+
+**Account locks in recovery flows:** setting a credential does not release an account lock. In a recovery flow, place an **Unlock Identity** node (`IdentityGovernanceExecutor` in `unlock` mode) right after this executor, as the default recovery flows do. Without it, a locked user who completes recovery stays locked. The node releases only the account whose credential this flow set. If identity governance is off or refuses the release, the step completes and the lock stays. If the release fails on a server error, the step fails and the user can run recovery again.
+
+```json
+{
+  "id": "release_account_locks",
+  "type": "TASK_EXECUTION",
+  "executor": { "name": "IdentityGovernanceExecutor", "mode": "unlock" },
+  "onSuccess": "recovery_complete"
+}
+```
 
 </details>
 
@@ -1481,7 +1496,7 @@ Determines the user type and default OU for the flow. The resolved values are us
 
 Resolves or selects an organizational unit based on a configured strategy. Overwrites the default OU set by User Type Resolver when applicable.
 
-**When to use:** User onboarding flows where the target OU must be determined dynamically based on the caller, administrative selection, or system hierarchy.
+**When to use:** User onboarding and sign-in flows where the target OU must be determined dynamically based on the caller, administrative or user selection, or system hierarchy.
 
 **Prerequisites:** Depends on the resolution strategy (see table below).
 
@@ -1490,6 +1505,8 @@ Resolves or selects an organizational unit based on a configured strategy. Overw
 | Property | UI Label | Required | Default | Behavior |
 |---|---|---|---|---|
 | `resolveFrom` | Resolve From | Yes | - | Strategy for OU resolution: `caller`, `prompt`, or `promptAll` |
+| `parentOuId` | Parent OU ID | Yes, for `prompt` in sign-in flows | - | The OU under which the user selects an OU. Allowed only with `prompt` in sign-in flows, and rejected on save otherwise. In other flow types the default OU set by User Type Resolver is used |
+| `directChildrenOnly` | Limit to direct children | No | `false` | Allowed only with `prompt`, and rejected on save otherwise. Only direct children of the parent OU can be selected, not deeper descendants |
 
 **Resolution Strategies:**
 
@@ -1502,16 +1519,17 @@ Resolves or selects an organizational unit based on a configured strategy. Overw
 - **Failure conditions:** Caller's OU not found in security context
 
 **`prompt` strategy:**
-- Prompts the user to select a child OU if the default OU has children
-- **When to use:** Delegated onboarding where an admin selects which sub-organization to create the user in
-- **Prerequisites:** 
-  - **User Type Resolver must have run first**: resolves `defaultOUID`
+- Prompts the user to select a child OU if the parent OU has children. The parent OU is the node's `parentOuId` or, when the node sets none, the default OU set by User Type Resolver. In sign-in flows there is no default OU, so `parentOuId` is required
+- **When to use:** Delegated onboarding where an admin selects which sub-organization to create the user in, or sign-in flows where the user picks the sub-organization to be placed in, for example when a first-time federated sign-in provisions a new account
+- **Prerequisites:**
+  - **A parent OU**: either the `parentOuId` property, or the default OU (`defaultOUID`) that **User Type Resolver** resolves when it has run first. `parentOuId` is allowed in authentication flows only, where it is required: User Type Resolver does not set a default OU in sign-in flows, so a flow that uses `prompt` without `parentOuId` is rejected when you save it
   - **A Blank View with OU selection input must follow this executor**, to collect the user's OU selection
 - **Setup:**
-  1. Place **User Type Resolver** before this executor in registration flows
+  1. In sign-in flows, set `parentOuId`. In other flows, place **User Type Resolver** before this executor
   2. Add a **Blank View** immediately after this executor with an OU selection component
-  3. This executor will prompt only if the default OU has child OUs. Otherwise, it completes silently
-- **Failure conditions:** Default OU not found; selected OU is not a child of the default
+  3. This executor will prompt only if the parent OU has child OUs. Otherwise, it completes silently
+  4. Turn on **Limit to direct children** (`directChildrenOnly`) to accept only direct children of the parent OU. By default the user fills in `ouId`. To have the user fill in `ouHandle` instead, which is looked up among the parent's direct children, declare a single required `ouHandle` input on this executor. The prompt node in the flow must use the same input
+- **Failure conditions:** Neither `parentOuId` nor a default OU is available, or the parent OU is not found; selected OU is not a child of the parent, or, with `directChildrenOnly`, not a direct child
 
 **`promptAll` strategy:**
 - Shows the full OU tree from root, independent of User Type Resolver
@@ -1525,6 +1543,7 @@ Resolves or selects an organizational unit based on a configured strategy. Overw
 
 **Input Configuration:**
 - `ouId` (required): the user's selected organizational unit. Used for `prompt` and `promptAll` strategies. Default: `ouId`
+- `ouHandle` (optional, alternative to `ouId`): with `prompt` and `directChildrenOnly`, declare it as the single required input in place of `ouId` to have the user enter the OU handle. The handle is looked up among the parent OU's direct children. Declaring it in any other mode is rejected on save
 
 **Example:**
 
@@ -1739,6 +1758,74 @@ Creates a new Organizational Unit. The created OU is available for use by downst
 
 </details>
 
+#### Account Lifecycle
+
+These executors run the suspend, unsuspend, and unlock administration flows, and release an account lock at the end of a recovery flow. See [Suspend and Restore Accounts](../../account-protection/suspend-and-restore-accounts) and [Let Users Recover From a Lock](../../account-protection/configure-account-lockout#let-users-recover-from-a-lock).
+
+<details>
+<summary>Validate and Plan Suspension</summary>
+
+Checks that the administrator may suspend the account, then plans which tokens the revocation nodes withdraw. If this check refuses the operation, no token or session is affected. A later failure can leave revocation or session termination partially completed without placing the suspension.
+
+**When to use:** In a suspend administration flow, after **Validate Permission** and before **Revoke Tokens**, **Revoke Sessions**, and **Suspend Identity**.
+
+**Input Configuration:**
+- `subject` (required): the ID of the user, agent, or application to suspend. When it is missing, the flow asks for it.
+
+**Example:**
+
+```json
+{
+  "id": "pre_suspend",
+  "type": "TASK_EXECUTION",
+  "executor": { "name": "PreSuspendExecutor" },
+  "onSuccess": "revoke_tokens"
+}
+```
+
+**Failure conditions:**
+- The administrator may not suspend the account, targets their own user or agent, or the account does not exist
+- The `operatorNote` input is longer than 100 characters
+
+</details>
+
+<details>
+<summary>Suspend, Unsuspend, and Unlock Identity</summary>
+
+One executor, `IdentityGovernanceExecutor`, applies one lifecycle operation, selected by the node `mode`. The mode has no default, so a node without one fails flow validation.
+
+| Mode | Console label | What it does |
+|---|---|---|
+| `suspend` | **Suspend Identity** | Suspends the account that **Validate and Plan Suspension** planned. On an account that is already suspended it writes nothing, so the original time and note are kept, but the revocation nodes before it still run. |
+| `unsuspend` | **Unsuspend Identity** | Lifts a suspension. A user receives a permanent account-wide lock, even if automatic locking is disabled. An agent keeps any automatic lock still in force. |
+| `unlock` | **Unlock Identity** | Clears all locks and their history, including the lock left after a user is unsuspended. It does not lift a suspension. |
+
+**When to use:** In the administration flows that suspend, unsuspend, or unlock an account. In a recovery flow, use `unlock` right after **Set Credentials**. Flow validation rejects a `suspend` or `unsuspend` node outside an administration flow, and the flow builder offers only `unlock` there.
+
+**Input Configuration:**
+- `subject` (required in administration flows): the ID of the user, agent, or application to unsuspend, or of the user or agent to unlock. The node asks for it when it is missing. In `suspend` mode the account comes from **Validate and Plan Suspension**. In a recovery flow, the account is the one whose credential the flow set, and the input is ignored.
+- `operatorNote` (optional): a note of at most 100 characters recorded with a suspension and returned on management reads. A suspension with a longer note fails. Other modes accept and ignore it.
+
+**Example:**
+
+```json
+{
+  "id": "access_governance",
+  "type": "TASK_EXECUTION",
+  "executor": { "name": "IdentityGovernanceExecutor", "mode": "unsuspend" },
+  "onSuccess": "end"
+}
+```
+
+**Failure conditions:**
+- The administrator may not manage the account, targets their own user or agent, or the account does not exist
+- The operation does not apply, such as unsuspending an account that is not suspended
+- In a recovery flow, no earlier step proved control of the account
+
+An administrative refusal or missing recovery proof fails the flow with `FET-1112`, which does not name the cause. The server logs the cause at debug level. If proof exists but the governance provider refuses the recovery unlock, the step completes without releasing the lock. This also applies when identity governance is disabled. A server error fails the operation.
+
+</details>
+
 #### Notifications
 
 <details>
@@ -1753,7 +1840,7 @@ Sends a transactional email using a configured template. Runs in the background:
 
 **Prerequisites:**
 - `email` (required): the recipient email address must be resolvable before this executor runs. Not a configurable node input. Resolved in priority order: forwarded data from prior executors (e.g., Generate Invite, Magic Link) → user inputs → user store (looked up via `userID`). The executor fails if none of these resolve to a non-empty address.
-- `senderId` (required at runtime): the ID of the email provider the step sends through. There is no deployment-wide default provider. See [Configure an Email Provider](../../notifications/email-providers).
+- `senderId` (required at runtime): the ID of the email provider the step sends through. A flow step does not use the server-wide default sender in [Notification Defaults](../../../deployment/configuration#notification-defaults); each step names its own provider. See [Configure an Email Provider](../../notifications/email-providers).
 
 **Skip delivery:** If `skipDelivery` is set to `true`, the executor returns complete immediately without sending anything. Use this in test environments.
 
@@ -1761,8 +1848,9 @@ Sends a transactional email using a configured template. Runs in the background:
 
 | Property | UI Label | Required | Default | Description |
 |---|---|---|---|---|
-| `senderId` | Not shown | Yes, at runtime | - | ID of the email provider the step sends through. The step fails without it. The executor schema marks it optional only because built-in flows include email steps before any provider exists. Set it through the Flow Management API or a declarative flow file. |
+| `senderId` | Email provider | Yes, at runtime | - | ID of the email provider the step sends through, selected in the node's properties. The step fails without it. The executor schema marks it optional only because built-in flows include email steps before any provider exists. |
 | `emailTemplate` | Email Template | No | `user_invite` | The template scenario to use. If absent or empty, defaults to the user invite template. |
+| `bestEffort` | Not shown | No | `false` | When `true`, a send that fails completes the step instead of failing the flow, and the flow response carries `emailSent` as `"false"`. Server-side failures are logged. Set it through the Flow Management API or a declarative flow file. |
 
 **Input Configuration:** None. The email executor resolves the recipient and template data from runtime context; it has no configurable node input defaults.
 
@@ -1790,6 +1878,8 @@ Sends a transactional email using a configured template. Runs in the background:
 - Recipient email address not resolvable from context or user entity
 - Template rendering error
 - SMTP server unreachable or rejecting the message (server error)
+
+With `bestEffort` set to `true`, none of these fail the step.
 
 </details>
 
@@ -2217,9 +2307,9 @@ When you create or update a flow definition, <ProductName /> validates every TAS
 
 The following rules are enforced for each executor node:
 
-**Mode validation**: If the node specifies an executor `mode`, the server checks that the mode is one of the values the executor supports. For example, `OTPExecutor` supports `"generate"` and `"verify"`; configuring `"mode": "send"` on an `OTPExecutor` node fails validation. When the node omits the `mode` field or the executor does not restrict modes, no check is performed.
+**Mode validation**: If the node specifies an executor `mode`, the server checks that the mode is one of the values the executor supports. For example, `OTPExecutor` supports `"generate"` and `"verify"`; configuring `"mode": "send"` on an `OTPExecutor` node fails validation. When the node omits the `mode` field, the executor's default mode is used; an executor that supports modes but has no default, such as `IdentityGovernanceExecutor`, fails validation. When the executor does not restrict modes, no check is performed.
 
-**Flow type validation**: Some executors are restricted to specific flow types. For example, an executor that is only valid in registration flows will cause a validation error if referenced in an authentication flow definition. When the executor does not restrict flow types, the node is accepted in any flow type.
+**Flow type validation**: Some executors are restricted to specific flow types. For example, an executor that is only valid in registration flows will cause a validation error if referenced in an authentication flow definition. When the executor does not restrict flow types, the node is accepted in any flow type. Some executors restrict a mode further: `IdentityGovernanceExecutor` runs in administration and recovery flows, but accepts `suspend` and `unsuspend` only in administration flows.
 
 **Required properties validation**: Certain executors require specific keys in the node's `properties` map. For example, federated authentication executors require an `idpId` property. If a required property is missing or empty, the server rejects the flow definition with an error identifying the missing property.
 
@@ -2329,13 +2419,14 @@ Interceptors are cross-cutting operations that execute at defined lifecycle poin
 
 ### Declaration
 
-Add an `interceptors` array to the flow definition body when creating or updating a flow:
+Add an `interceptors` array to the flow definition body when creating or updating a flow. A new flow also names its owner in `ouId`, as described in [Organization Unit Ownership](../flow-concepts#organization-unit-ownership):
 
 ```json
 {
   "handle": "my-login-flow",
   "name": "My Login Flow",
   "flowType": "AUTHENTICATION",
+  "ouId": "<organization-unit-id>",
   "interceptors": [
     {
       "name": "CaptchaInterceptor",

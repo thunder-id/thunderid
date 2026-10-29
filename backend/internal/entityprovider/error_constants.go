@@ -17,6 +17,7 @@ const (
 	ErrorCodeNotImplemented         ErrorCode = "EP-0007"
 	ErrorCodeAmbiguousEntity        ErrorCode = "EP-0008"
 	ErrorCodeSchemaValidationFailed ErrorCode = "EP-0009"
+	ErrorCodeSyncRejected           ErrorCode = "EP-0010"
 )
 
 // EntityProviderError represents an error returned by the entity provider.

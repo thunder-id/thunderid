@@ -371,6 +371,7 @@ func (s *FileBasedStoreTestSuite) TestCreate_WithCompleteFlow() {
 		Name:          "Complete Flow",
 		FlowType:      testFlowTypeAuthentication,
 		ActiveVersion: 5,
+		OUID:          "ou-1",
 		Nodes: []providers.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "end", Type: "END"},
@@ -387,8 +388,22 @@ func (s *FileBasedStoreTestSuite) TestCreate_WithCompleteFlow() {
 	assert.Equal(s.T(), "complete-flow", retrieved.Handle)
 	// Note: ActiveVersion should be 1 as CreateFlow sets it
 	assert.Equal(s.T(), 1, retrieved.ActiveVersion)
+	assert.Equal(s.T(), "ou-1", retrieved.OUID)
 }
 
 func TestFileBasedStoreTestSuite(t *testing.T) {
 	suite.Run(t, new(FileBasedStoreTestSuite))
+}
+
+func (s *FileBasedStoreTestSuite) TestListFlows_CarriesTheOrganizationUnit() {
+	flowDef := s.createTestFlow("owned-flow")
+	flowDef.OUID = "ou-1"
+	_, err := s.store.CreateFlow(context.Background(), "flow-001", flowDef)
+	require.NoError(s.T(), err)
+
+	flows, _, err := s.store.ListFlows(context.Background(), 10, 0, "")
+
+	require.NoError(s.T(), err)
+	require.Len(s.T(), flows, 1)
+	assert.Equal(s.T(), "ou-1", flows[0].OUID)
 }

@@ -2153,6 +2153,316 @@ func (suite *RoleAPITestSuite) TestListRolesByOU_Declarative() {
 	}
 }
 
+// The declared role 'decl-shared-role' is owned by decl-m2m-root and shared with children A and B.
+// Child C is not named.
+const (
+	declSharedRoleID = "decl-shared-role"
+	declSharedRootOU = "decl-m2m-root"
+	declSharedChildA = "decl-m2m-child-a"
+	declSharedChildC = "decl-m2m-child-c"
+)
+
+// sharingPolicyPath returns the path of a role's sharing policies, or of one of them.
+func sharingPolicyPath(roleID string, policyID ...string) string {
+	path := rolesBasePath + "/" + roleID + "/sharing-policies"
+	if len(policyID) > 0 {
+		path += "/" + policyID[0]
+	}
+	return path
+}
+
+// decodeBody reads a JSON response body into a map.
+func (suite *RoleAPITestSuite) decodeBody(resp *http.Response) map[string]interface{} {
+	suite.T().Helper()
+	var body map[string]interface{}
+	suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&body))
+	return body
+}
+
+// overlayStatus answers the overlay-rules request for one organization unit.
+func (suite *RoleAPITestSuite) overlayStatus(roleID, ouID string) (int, map[string]interface{}) {
+	suite.T().Helper()
+	resp := suite.doRoleRequest(http.MethodGet, rolesBasePath+"/"+roleID+"/overlay-rules?ouId="+ouID, nil)
+	defer resp.Body.Close()
+	var body map[string]interface{}
+	suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&body))
+	return resp.StatusCode, body
+}
+
+// A role shared through the API reaches the organization units its policy names, and an edit or a
+// delete takes it away from them again.
+func (suite *RoleAPITestSuite) TestSharingPolicy_Lifecycle() {
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "API Shared Role", OUID: declSharedRootOU, Permissions: []ResourcePermissions{}})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	status, body := suite.overlayStatus(role.ID, declSharedChildC)
+	suite.Equal(http.StatusNotFound, status, "the role is not shared yet")
+	suite.Equal("ROL-1026", body["code"])
+
+	resp := suite.doRoleRequest(http.MethodPost, sharingPolicyPath(role.ID), mustMarshal(suite.T(),
+		map[string]interface{}{"childUnits": map[string]interface{}{
+			"mode":  "selected",
+			"units": []map[string]string{{"ouId": declSharedChildC, "reach": "unit"}},
+		}}))
+	suite.Require().Equal(http.StatusCreated, resp.StatusCode)
+	policy := suite.decodeBody(resp)
+	resp.Body.Close()
+	policyID, _ := policy["id"].(string)
+	suite.Require().NotEmpty(policyID)
+	suite.Equal(declSharedRootOU, policy["initiatingOuId"])
+
+	resp = suite.doRoleRequest(http.MethodGet, sharingPolicyPath(role.ID), nil)
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+	list := suite.decodeBody(resp)
+	resp.Body.Close()
+	suite.EqualValues(1, list["totalResults"])
+
+	resp = suite.doRoleRequest(http.MethodGet, sharingPolicyPath(role.ID, policyID), nil)
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+
+	status, body = suite.overlayStatus(role.ID, declSharedChildC)
+	suite.Require().Equal(http.StatusOK, status)
+	suite.Equal(true, body["visible"])
+	suite.Equal(false, body["isOwnedByOU"])
+
+	// Moving the share from child C to child A takes the role away from child C.
+	resp = suite.doRoleRequest(http.MethodPut, sharingPolicyPath(role.ID, policyID), mustMarshal(suite.T(),
+		map[string]interface{}{"version": policy["version"], "childUnits": map[string]interface{}{
+			"mode":  "selected",
+			"units": []map[string]string{{"ouId": declSharedChildA, "reach": "unit"}},
+		}}))
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+	status, _ = suite.overlayStatus(role.ID, declSharedChildC)
+	suite.Equal(http.StatusNotFound, status)
+	status, _ = suite.overlayStatus(role.ID, declSharedChildA)
+	suite.Equal(http.StatusOK, status)
+
+	resp = suite.doRoleRequest(http.MethodDelete, sharingPolicyPath(role.ID, policyID), nil)
+	suite.Equal(http.StatusNoContent, resp.StatusCode)
+	resp.Body.Close()
+
+	status, body = suite.overlayStatus(role.ID, declSharedChildA)
+	suite.Equal(http.StatusNotFound, status)
+	suite.Equal("ROL-1026", body["code"])
+}
+
+// A shared role stays in the organization unit that owns it: its policies were issued against it.
+func (suite *RoleAPITestSuite) TestSharingPolicy_SharedRoleCannotMove() {
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "API Unmovable Shared Role", OUID: declSharedRootOU, Permissions: []ResourcePermissions{}})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	resp := suite.doRoleRequest(http.MethodPost, sharingPolicyPath(role.ID), mustMarshal(suite.T(),
+		map[string]interface{}{"childUnits": map[string]interface{}{"mode": "all"}}))
+	suite.Require().Equal(http.StatusCreated, resp.StatusCode)
+	resp.Body.Close()
+
+	_, err = suite.updateRole(role.ID, UpdateRoleRequest{
+		Name: role.Name, OUID: declSharedChildA, Permissions: []ResourcePermissions{}})
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "ROL-1029")
+
+	_, err = suite.updateRole(role.ID, UpdateRoleRequest{
+		Name: role.Name, Description: "Renamed in place", OUID: declSharedRootOU, Permissions: []ResourcePermissions{}})
+	suite.NoError(err, "a shared role can still be edited where it is")
+}
+
+// Every sharing path answers its own preflight, so a browser can call it with credentials.
+func (suite *RoleAPITestSuite) TestSharingPolicy_PathsAnswerPreflight() {
+	for _, path := range []string{
+		sharingPolicyPath(declSharedRoleID),
+		sharingPolicyPath(declSharedRoleID, "p1"),
+		rolesBasePath + "/" + declSharedRoleID + "/overlay-rules",
+	} {
+		resp := suite.doRoleRequest(http.MethodOptions, path, nil)
+		suite.Equal(http.StatusNoContent, resp.StatusCode, path)
+		resp.Body.Close()
+	}
+}
+
+// A policy reaching beyond the issuer's own place in the tree is left to resource files and imports.
+func (suite *RoleAPITestSuite) TestSharingPolicy_DeploymentWideCreateIsRefused() {
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "API Deployment Wide Role", OUID: declSharedRootOU, Permissions: []ResourcePermissions{}})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	resp := suite.doRoleRequest(http.MethodPost, sharingPolicyPath(role.ID),
+		mustMarshal(suite.T(), map[string]interface{}{"allUnits": map[string]interface{}{}}))
+	defer resp.Body.Close()
+
+	suite.Equal(http.StatusBadRequest, resp.StatusCode)
+	suite.Equal("ROL-1028", decodeErrorCode(suite.T(), resp))
+}
+
+// A role's assignments are open in every organization unit it reaches unless a policy says
+// otherwise, so a policy without an overlay rule answers editable. A policy that sets the rule
+// answers, and reads back, exactly what it set. A field the role does not declare is refused.
+func (suite *RoleAPITestSuite) TestSharingPolicy_AssignmentsAreTemplatedByDefault() {
+	for _, tc := range []struct {
+		name     string
+		rules    map[string]interface{}
+		editable bool
+	}{
+		{"no overlay rule", nil, true},
+		{"assignments editable", map[string]interface{}{"assignments": map[string]bool{"editable": true}}, true},
+		{"assignments not editable", map[string]interface{}{"assignments": map[string]bool{"editable": false}}, false},
+	} {
+		suite.Run(tc.name, func() {
+			role, err := suite.createRole(CreateRoleRequest{
+				Name: "API Templated Role " + tc.name, OUID: declSharedRootOU,
+				Permissions: []ResourcePermissions{}})
+			suite.Require().NoError(err)
+			defer suite.deleteRole(role.ID)
+
+			resp := suite.createAssignmentsPolicy(role.ID, tc.rules)
+			suite.Require().Equal(http.StatusCreated, resp.StatusCode)
+			created := suite.decodeBody(resp)
+			resp.Body.Close()
+			policyID, _ := created["id"].(string)
+			suite.Require().NotEmpty(policyID)
+
+			status, body := suite.overlayStatus(role.ID, declSharedChildC)
+			suite.Require().Equal(http.StatusOK, status)
+			suite.Equal(tc.editable, assignmentsRule(body)["editable"])
+
+			resp = suite.doRoleRequest(http.MethodGet, sharingPolicyPath(role.ID, policyID), nil)
+			suite.Require().Equal(http.StatusOK, resp.StatusCode)
+			policy := suite.decodeBody(resp)
+			resp.Body.Close()
+			childUnits, _ := policy["childUnits"].(map[string]interface{})
+			units, _ := childUnits["units"].([]interface{})
+			suite.Require().Len(units, 1)
+			unit, _ := units[0].(map[string]interface{})
+			if tc.rules == nil {
+				suite.NotContains(unit, "overlayRules", "the default is not written into the policy")
+				return
+			}
+			rules, _ := unit["overlayRules"].(map[string]interface{})
+			suite.Equal(map[string]interface{}{"editable": tc.editable}, rules["assignments"],
+				"the policy reads back the rule as it was set")
+		})
+	}
+
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "API Undeclared Field Role", OUID: declSharedRootOU, Permissions: []ResourcePermissions{}})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+	resp := suite.createAssignmentsPolicy(role.ID,
+		map[string]interface{}{"permissions": map[string]bool{"editable": false}})
+	suite.Equal(http.StatusBadRequest, resp.StatusCode, "a role declares no permissions field")
+	resp.Body.Close()
+}
+
+// A policy only switches a role's assignments on or off, so a rule leaving editable out or naming
+// members is refused rather than stored.
+func (suite *RoleAPITestSuite) TestSharingPolicy_AssignmentsRuleStatesEditableOnly() {
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "API Editable Only Role", OUID: declSharedRootOU, Permissions: []ResourcePermissions{}})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	for name, rule := range map[string]map[string]interface{}{
+		"editable left out": {},
+		"value named":       {"editable": false, "value": []string{"user-1"}},
+		"allowed named":     {"editable": true, "allowedValues": []string{"user-1"}},
+		"excluded named":    {"editable": true, "excludedValues": []string{"user-1"}},
+	} {
+		resp := suite.createAssignmentsPolicy(role.ID, map[string]interface{}{"assignments": rule})
+		suite.Equal(http.StatusBadRequest, resp.StatusCode, name)
+		suite.Equal("ROL-1021", decodeErrorCode(suite.T(), resp), name)
+		resp.Body.Close()
+	}
+
+	resp := suite.doRoleRequest(http.MethodGet, sharingPolicyPath(role.ID), nil)
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+	list := suite.decodeBody(resp)
+	resp.Body.Close()
+	suite.EqualValues(0, list["totalResults"], "no refused rule left a policy behind")
+}
+
+// A role defined in a resource file with a sharing policy but no overlay rule answers its
+// assignments editable in the organization units it reaches.
+func (suite *RoleAPITestSuite) TestSharingPolicy_DeclaredRoleAssignmentsAreTemplatedByDefault() {
+	status, body := suite.overlayStatus(declSharedRoleID, declSharedChildA)
+	suite.Require().Equal(http.StatusOK, status)
+	suite.Equal(true, assignmentsRule(body)["editable"])
+}
+
+// createAssignmentsPolicy shares a role with child C alone, carrying the given overlay rules.
+func (suite *RoleAPITestSuite) createAssignmentsPolicy(roleID string, rules map[string]interface{}) *http.Response {
+	unit := map[string]interface{}{"ouId": declSharedChildC, "reach": "unit"}
+	if rules != nil {
+		unit["overlayRules"] = rules
+	}
+	return suite.doRoleRequest(http.MethodPost, sharingPolicyPath(roleID), mustMarshal(suite.T(),
+		map[string]interface{}{"childUnits": map[string]interface{}{
+			"mode": "selected", "units": []map[string]interface{}{unit},
+		}}))
+}
+
+// assignmentsRule reads the assignments rule out of an overlay-rules answer.
+func assignmentsRule(body map[string]interface{}) map[string]interface{} {
+	rules, _ := body["rules"].(map[string]interface{})
+	rule, _ := rules["assignments"].(map[string]interface{})
+	return rule
+}
+
+// A declared role's own sharing is declared with it, and its declared policy goes away only with
+// the file.
+func (suite *RoleAPITestSuite) TestSharingPolicy_DeclaredRoleSharingIsReadOnly() {
+	resp := suite.doRoleRequest(http.MethodPost, sharingPolicyPath(declSharedRoleID), mustMarshal(suite.T(),
+		map[string]interface{}{"childUnits": map[string]interface{}{"mode": "all"}}))
+	suite.Equal(http.StatusBadRequest, resp.StatusCode)
+	suite.Equal("ROL-1013", decodeErrorCode(suite.T(), resp))
+	resp.Body.Close()
+
+	resp = suite.doRoleRequest(http.MethodGet, sharingPolicyPath(declSharedRoleID), nil)
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+	list := suite.decodeBody(resp)
+	resp.Body.Close()
+	policies, _ := list["policies"].([]interface{})
+	suite.Require().Len(policies, 1)
+	declared, _ := policies[0].(map[string]interface{})
+	suite.Equal(true, declared["isReadOnly"])
+
+	status, _ := suite.overlayStatus(declSharedRoleID, declSharedChildA)
+	suite.Equal(http.StatusOK, status, "the declared policy reaches child A")
+	status, _ = suite.overlayStatus(declSharedRoleID, declSharedChildC)
+	suite.Equal(http.StatusNotFound, status, "child C is not named")
+
+	resp = suite.doRoleRequest(http.MethodDelete, sharingPolicyPath(declSharedRoleID, declared["id"].(string)), nil)
+	suite.Equal(http.StatusBadRequest, resp.StatusCode)
+	suite.Equal("ROL-1025", decodeErrorCode(suite.T(), resp))
+	resp.Body.Close()
+}
+
+// An export writes the role's sharing policies into the document, so it re-imports shared as it was.
+func (suite *RoleAPITestSuite) TestSharingPolicy_ExportCarriesThePolicies() {
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "API Exported Shared Role", OUID: declSharedRootOU, Permissions: []ResourcePermissions{}})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	resp := suite.doRoleRequest(http.MethodPost, sharingPolicyPath(role.ID), mustMarshal(suite.T(),
+		map[string]interface{}{"childUnits": map[string]interface{}{
+			"mode":          "all",
+			"excludedOuIds": []string{declSharedChildC},
+		}}))
+	suite.Require().Equal(http.StatusCreated, resp.StatusCode)
+	resp.Body.Close()
+
+	exported, err := suite.exportRoles([]string{role.ID})
+	suite.Require().NoError(err)
+	suite.Contains(exported, "sharingPolicies:")
+	suite.Contains(exported, declSharedChildC)
+}
+
 // A declarative role cannot be updated through the API.
 func (suite *RoleAPITestSuite) TestUpdateRole_DeclarativeImmutable() {
 	updated, err := suite.updateRole("decl-role-1", UpdateRoleRequest{

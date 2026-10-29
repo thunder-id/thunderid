@@ -5,6 +5,7 @@ package user
 
 import (
 	"context"
+	"slices"
 
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
@@ -31,22 +32,18 @@ func newOUUserResolver(
 	return &ouUserResolverAdapter{entityService: entityService, entityTypeService: entityTypeService}
 }
 
-// GetUserCountByOUID returns the count of users belonging to the given organization unit.
-func (a *ouUserResolverAdapter) GetUserCountByOUID(ctx context.Context, ouID string) (int, error) {
-	return a.entityService.GetEntityListCountByOUIDs(ctx, providers.EntityCategoryUser, []string{ouID}, nil)
-}
-
-// GetUserListByOUID returns a paginated list of users belonging to the given organization unit.
-// When includeDisplay is true, display names are resolved from user attributes using the schema service.
+// GetUserListByOUID returns one page of the users an organization unit owns, followed by the ones shared
+// into it, and the total across every page. When includeDisplay is true, display names are resolved
+// from user attributes using the schema service.
 func (a *ouUserResolverAdapter) GetUserListByOUID(
 	ctx context.Context, ouID string, limit, offset int, includeDisplay bool,
-) ([]oupkg.User, error) {
-	entities, err := a.entityService.GetEntityListByOUIDs(
-		ctx, providers.EntityCategoryUser, []string{ouID}, limit, offset, nil)
+) ([]oupkg.User, int, error) {
+	page, err := a.entityService.GetEntityPageInOU(
+		ctx, providers.EntityCategoryUser, ouID, entity.OUEntityScopeAll, limit, offset, nil)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	users := entitiesToUsers(entities)
+	users := entitiesToUsers(slices.Concat(page.Owned, page.Shared))
 
 	var displayAttrPaths map[string]string
 	if includeDisplay {
@@ -55,13 +52,13 @@ func (a *ouUserResolverAdapter) GetUserListByOUID(
 
 	result := make([]oupkg.User, len(users))
 	for i, u := range users {
-		result[i] = oupkg.User{ID: u.ID, Type: u.Type}
+		result[i] = oupkg.User{ID: u.ID, Type: u.Type, IsOwnedByOU: i < len(page.Owned)}
 		if includeDisplay {
 			result[i].Display = utils.ResolveDisplay(u.ID, u.Type, u.Attributes, displayAttrPaths)
 		}
 	}
 
-	return result, nil
+	return result, page.TotalResults, nil
 }
 
 // GetResourceDependencies implements resourcedependency.Provider. It reports the users that belong
@@ -74,13 +71,14 @@ func (a *ouUserResolverAdapter) GetResourceDependencies(
 		return []resourcedependency.ResourceDependency{}, nil
 	}
 
-	users, err := a.GetUserListByOUID(ctx, id, serverconst.MaxCompositeStoreRecords, 0, false)
+	entities, err := a.entityService.GetEntityListByOUIDs(
+		ctx, providers.EntityCategoryUser, []string{id}, serverconst.MaxCompositeStoreRecords, 0, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	deps := make([]resourcedependency.ResourceDependency, 0, len(users))
-	for _, u := range users {
+	deps := make([]resourcedependency.ResourceDependency, 0, len(entities))
+	for _, u := range entities {
 		deps = append(deps, resourcedependency.ResourceDependency{
 			ResourceType:     resourcedependency.ResourceTypeUser,
 			ID:               u.ID,

@@ -14,7 +14,7 @@ import (
 
 type DisabledAgentMgtProviderTestSuite struct {
 	suite.Suite
-	provider AgentMgtProviderService
+	provider providers.AgentMgtProvider
 }
 
 func (suite *DisabledAgentMgtProviderTestSuite) SetupTest() {
@@ -30,7 +30,7 @@ func TestDisabledAgentMgtProviderTestSuite(t *testing.T) {
 func (suite *DisabledAgentMgtProviderTestSuite) TestCreateAgentIsRejected() {
 	resp, svcErr := suite.provider.CreateAgent(context.Background(), &providers.Agent{
 		Owner: testAgentOwner,
-	}, false)
+	})
 
 	suite.Nil(resp)
 	suite.NotNil(svcErr)

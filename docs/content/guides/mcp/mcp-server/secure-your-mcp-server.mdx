@@ -37,7 +37,7 @@ In the Console:
 
 1. Navigate to **Resource servers** and click **Add resource server**.
 2. On the **Type** step, select **MCP**.
-3. On the **Name** step, enter an **MCP server name** and an **Identifier**. Set the identifier to the MCP server's own URL, for example `https://mcp.example.com`: it becomes the access token audience for [Resource Indicators](../../../protocols/oauth-oidc/resource-indicators) (RFC 8707).
+3. On the **Name** step, enter an **MCP server name** and an **Identifier**. Set the identifier to the MCP server's own URL, for example `https://mcp.example.com/mcp`. It must be an `http` or `https` URL, and it becomes the access token audience for [Resource Indicators](../../../protocols/oauth-oidc/resource-indicators) (RFC 8707).
 4. On the **Permission delimiter** step, choose the character that separates parts of a permission string, for example the default colon (`:`). If your deployment has multiple organization units, select one first, then click **Create MCP server**.
 
 :::note

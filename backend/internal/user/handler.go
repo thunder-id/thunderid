@@ -381,7 +381,7 @@ func (uh *userHandler) HandleSelfUserGetRequest(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, user)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, withoutOperatorNote(user))
 
 	logger.Debug(ctx, "Self user GET response sent", log.MaskedString(log.LoggerKeyUserID, userID))
 }
@@ -419,7 +419,7 @@ func (uh *userHandler) HandleSelfUserPutRequest(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, updatedUser)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, withoutOperatorNote(updatedUser))
 
 	logger.Debug(ctx, "Self user PUT response sent", log.MaskedString(log.LoggerKeyUserID, userID))
 }
@@ -701,6 +701,20 @@ func parseFilterExpression(filterStr string) (map[string]interface{}, error) {
 	}
 }
 
+// withoutOperatorNote returns the user with the operator note cleared from its status.
+func withoutOperatorNote(user *providers.User) *providers.User {
+	if user == nil || user.Status == nil || user.Status.Details == nil || user.Status.Details.OperatorNote == "" {
+		return user
+	}
+	details := *user.Status.Details
+	details.OperatorNote = ""
+	status := *user.Status
+	status.Details = &details
+	stripped := *user
+	stripped.Status = &status
+	return &stripped
+}
+
 // sanitizeFilter performs additional sanitization on parsed filters
 func sanitizeFilter(filters map[string]interface{}) map[string]interface{} {
 	sanitized := make(map[string]interface{})
@@ -718,36 +732,18 @@ func sanitizeFilter(filters map[string]interface{}) map[string]interface{} {
 	return sanitized
 }
 
-// decodeSharingBody reads a policy request body through the strict decoder, which refuses a field
-// the body does not declare: a misspelled excludedOuIds would otherwise read as a section with no
-// exclusions and share the user with the organization unit the caller named to keep it from.
-func decodeSharingBody[T any](ctx context.Context, w http.ResponseWriter, r *http.Request) (*T, bool) {
-	wire, err := sysutils.DecodeJSONBodyStrict[T](r)
-	if err != nil {
-		errResp := apierror.ErrorResponse{
-			Code:        ErrorInvalidRequestFormat.Code,
-			Message:     ErrorInvalidRequestFormat.Error,
-			Description: ErrorInvalidRequestFormat.ErrorDescription,
-		}
-		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
-		return nil, false
-	}
-	return wire, true
-}
-
 // HandleSharingPolicyPostRequest records a sharing policy on a user.
 func (uh *userHandler) HandleSharingPolicyPostRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	wire, ok := decodeSharingBody[sharing.PolicyCreateBody](ctx, w, r)
+	wire, ok := sharing.DecodePolicyBody[sharing.PolicyCreateBody](ctx, w, r, ErrorInvalidRequestFormat)
 	if !ok {
 		return
 	}
 	req := wire.ToPolicyRequest()
 	// A reach not bounded by the issuer's place in the tree is a deployment decision, as for
 	// applications; the framework refuses an edit that would introduce one.
-	if req.AllUnits != nil ||
-		(req.OtherTreeRoots != nil && req.OtherTreeRoots.Mode == sharing.OtherTreeRootsAll) {
+	if req.IsDeploymentWide() {
 		handleError(ctx, w, &ErrorDeploymentWideSharingNotAllowed)
 		return
 	}
@@ -799,7 +795,7 @@ func (uh *userHandler) HandleSharingPolicyGetRequest(w http.ResponseWriter, r *h
 func (uh *userHandler) HandleSharingPolicyPutRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	wire, ok := decodeSharingBody[sharing.PolicyUpdateBody](ctx, w, r)
+	wire, ok := sharing.DecodePolicyBody[sharing.PolicyUpdateBody](ctx, w, r, ErrorInvalidRequestFormat)
 	if !ok {
 		return
 	}

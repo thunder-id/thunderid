@@ -39,7 +39,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
-        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/userFilterParam'
         - $ref: '#/components/parameters/includeQueryParam'
       responses:
         "200":
@@ -66,6 +66,7 @@ paths:
                       contactPreferences:
                         - email
                         - sms
+                    isOwnedByOU: true
                   - id: "039bda67-a80d-4b7b-ac0f-36db85332089"
                     ouId: "456e8400-e29b-41d4-a716-446655440001"
                     type: "customer"
@@ -78,6 +79,7 @@ paths:
                         zip: "94301"
                       contactPreferences:
                         - sms
+                    isOwnedByOU: true
                   - id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
                     ouId: "26eec421-f1bb-4deb-a5d3-9ab6554c2ae6"
                     type: "employee"
@@ -87,6 +89,7 @@ paths:
                       lastname: "Wu"
                       department: "Engineering"
                       email: "alice.wu@company.inc"
+                    isOwnedByOU: true
                 links:
                   - href: "users?offset=3&limit=3"
                     rel: "next"
@@ -464,12 +467,12 @@ paths:
                       key: "error.userservice.attribute_conflict_description"
                       defaultValue: "A user with the same unique attribute value already exists"
                 shared-user-move:
-                  summary: Moving a shared user to another organization unit
+                  summary: Moving a user with sharing policies to another organization unit
                   value:
                     code: "USR-1038"
                     message:
                       key: "error.userservice.shared_user_cannot_move"
-                      defaultValue: "Shared user cannot be moved"
+                      defaultValue: "User with sharing policies cannot be moved"
                     description:
                       key: "error.userservice.shared_user_cannot_move_description"
                       defaultValue: "The user is shared into other organization units. Delete its sharing policies before moving it to another organization unit"
@@ -834,7 +837,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SharingPolicyRequest'
+              $ref: '#/components/schemas/UserSharingPolicyRequest'
             examples:
               allChildUnits:
                 summary: Every organization unit beneath the issuer
@@ -896,7 +899,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SharingPolicy'
+                $ref: '#/components/schemas/UserSharingPolicy'
               example:
                 id: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
                 initiatingOuId: "acme-root"
@@ -907,15 +910,15 @@ paths:
                   mode: all
                   excludedOuIds: ["acme-trial-customers"]
         "400":
-          $ref: '#/components/responses/SharingPolicyCreateBadRequest'
+          $ref: '#/components/responses/UserSharingPolicyCreateBadRequest'
         "404":
           $ref: '#/components/responses/SharingUserNotFound'
         "409":
-          $ref: '#/components/responses/SharingPolicyConflict'
+          $ref: '#/components/responses/UserSharingPolicyConflict'
         "403":
           $ref: '#/components/responses/SharingForbidden'
         "500":
-          $ref: '#/components/responses/SharingServerError'
+          $ref: '#/components/responses/UserSharingServerError'
 
     get:
       tags:
@@ -934,7 +937,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SharingPolicyListResponse'
+                $ref: '#/components/schemas/UserSharingPolicyListResponse'
               example:
                 totalResults: 2
                 startIndex: 1
@@ -968,19 +971,19 @@ paths:
                         - ouId: "acme-customer-a-eu"
                           reach: unit
         "400":
-          $ref: '#/components/responses/SharingPolicyListBadRequest'
+          $ref: '#/components/responses/UserSharingPolicyListBadRequest'
         "404":
           $ref: '#/components/responses/SharingUserNotFound'
         "403":
           $ref: '#/components/responses/SharingForbidden'
         "500":
-          $ref: '#/components/responses/SharingServerError'
+          $ref: '#/components/responses/UserSharingServerError'
 
 
   /users/{id}/sharing-policies/{policyId}:
     parameters:
       - $ref: '#/components/parameters/userIdPathParam'
-      - $ref: '#/components/parameters/sharingPolicyIdPathParam'
+      - $ref: '#/components/parameters/userSharingPolicyIdPathParam'
     get:
       tags:
         - User Sharing
@@ -991,7 +994,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SharingPolicy'
+                $ref: '#/components/schemas/UserSharingPolicy'
               example:
                 id: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
                 initiatingOuId: "acme-root"
@@ -1002,11 +1005,11 @@ paths:
                   mode: all
                   excludedOuIds: ["acme-trial-customers"]
         "404":
-          $ref: '#/components/responses/SharingPolicyNotFound'
+          $ref: '#/components/responses/UserSharingPolicyNotFound'
         "403":
           $ref: '#/components/responses/SharingForbidden'
         "500":
-          $ref: '#/components/responses/SharingServerError'
+          $ref: '#/components/responses/UserSharingServerError'
 
     put:
       tags:
@@ -1032,7 +1035,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SharingPolicyUpdateRequest'
+              $ref: '#/components/schemas/UserSharingPolicyUpdateRequest'
             examples:
               addAnExclusion:
                 summary: Exclude one organization unit from every child unit
@@ -1065,7 +1068,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SharingPolicy'
+                $ref: '#/components/schemas/UserSharingPolicy'
               example:
                 id: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
                 initiatingOuId: "acme-root"
@@ -1076,15 +1079,15 @@ paths:
                   mode: all
                   excludedOuIds: ["acme-trial-customers"]
         "400":
-          $ref: '#/components/responses/SharingPolicyUpdateBadRequest'
+          $ref: '#/components/responses/UserSharingPolicyUpdateBadRequest'
         "404":
-          $ref: '#/components/responses/SharingPolicyNotFound'
+          $ref: '#/components/responses/UserSharingPolicyNotFound'
         "409":
-          $ref: '#/components/responses/SharingPolicyConflict'
+          $ref: '#/components/responses/UserSharingPolicyConflict'
         "403":
           $ref: '#/components/responses/SharingForbidden'
         "500":
-          $ref: '#/components/responses/SharingServerError'
+          $ref: '#/components/responses/UserSharingServerError'
 
     delete:
       tags:
@@ -1101,13 +1104,13 @@ paths:
           description: |
             Sharing policy deleted, or the user holds no policy under that id.
         "400":
-          $ref: '#/components/responses/SharingPolicyDeleteBadRequest'
+          $ref: '#/components/responses/UserSharingPolicyDeleteBadRequest'
         "404":
           $ref: '#/components/responses/SharingUserNotFound'
         "403":
           $ref: '#/components/responses/SharingForbidden'
         "500":
-          $ref: '#/components/responses/SharingServerError'
+          $ref: '#/components/responses/UserSharingServerError'
 
 
   /users/{id}/overlay-rules:
@@ -1116,7 +1119,7 @@ paths:
     get:
       tags:
         - User Sharing
-      summary: Resolve what an organization unit may do with the user
+      summary: Overlay rules for an organization unit
       description: |
         Answers for one organization unit, named in the `ouId` query parameter: whether it owns the
         user, and which policies reached it.
@@ -1137,13 +1140,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ResolvedOverlay'
+                $ref: '#/components/schemas/UserResolvedOverlay'
               examples:
                 reached:
                   summary: An organization unit a policy reached
                   value:
                     ouId: "acme-customer-a"
-                    owned: false
+                    isOwnedByOU: false
                     visible: true
                     policyIds: ["0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"]
                     rules: {}
@@ -1151,24 +1154,27 @@ paths:
                   summary: The organization unit that owns the user
                   value:
                     ouId: "acme-root"
-                    owned: true
+                    isOwnedByOU: true
                     visible: true
                     policyIds: []
                     rules: {}
         "400":
-          $ref: '#/components/responses/OverlayRulesBadRequest'
+          $ref: '#/components/responses/UserOverlayRulesBadRequest'
         "404":
-          $ref: '#/components/responses/OverlayNotResolvable'
+          $ref: '#/components/responses/UserOverlayNotResolvable'
         "403":
           $ref: '#/components/responses/SharingForbidden'
         "500":
-          $ref: '#/components/responses/SharingServerError'
+          $ref: '#/components/responses/UserSharingServerError'
 
   /users/tree/{path}:
     get:
       tags:
         - users-by-path
       summary: List users in organization unit specified by handle path
+      description: |
+        Lists the users the organization unit owns, followed by the users shared into it. Each
+        listed user's `isOwnedByOU` field says which of the two it is.
       parameters:
         - in: path
           name: path
@@ -1185,7 +1191,6 @@ paths:
           example: "engineering/frontend"
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
-        - $ref: '#/components/parameters/filterParam'
         - $ref: '#/components/parameters/includeQueryParam'
       responses:
         "200":
@@ -1200,7 +1205,19 @@ paths:
                 count: 2
                 users:
                   - id: "7a4b1f8e-5c69-4b60-9232-2b0aaf65ef3c"
+                    ouId: "b2c5e8f1-4a7d-4c3e-9f60-1d8a2e5b7c94"
+                    type: "employee"
+                    attributes:
+                      username: "maya.perera"
+                      email: "maya.perera@company.inc"
+                    isOwnedByOU: true
                   - id: "9f1e47d3-0347-4464-9f02-e0bfae02e896"
+                    ouId: "b2c5e8f1-4a7d-4c3e-9f60-1d8a2e5b7c94"
+                    type: "employee"
+                    attributes:
+                      username: "ravi.kumar"
+                      email: "ravi.kumar@company.inc"
+                    isOwnedByOU: false
                 links:
                   - href: "users/tree/engineering/frontend?offset=10&limit=10"
                     rel: "next"
@@ -2465,7 +2482,7 @@ components:
           - display
       description: |
         Optional parameter to include additional display information in the response. The exact fields included depend on the endpoint. See each endpoint's response schema for details on which fields are enriched.
-    filterParam:
+    userFilterParam:
       in: query
       name: filter
       required: false
@@ -2477,9 +2494,14 @@ components:
         - `username eq "john.doe"` - Users with username = "john.doe"'
         - `age eq 25` - Users with age = 25
         - `address.city eq "Mountain View"` - Users with address.city = "Mountain View"
+        - `ouId eq "456e8400-e29b-41d4-a716-446655440001"` - Users the organization unit owns,
+          followed by the users shared into it.
       schema:
         type: string
       examples:
+        organization-unit:
+          summary: Users owned by or shared into an organization unit
+          value: 'ouId eq "456e8400-e29b-41d4-a716-446655440001"'
         simple-string:
           summary: Simple string filter
           value: 'username eq "john.doe"'
@@ -2498,7 +2520,7 @@ components:
         type: string
         format: uuid
       example: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
-    sharingPolicyIdPathParam:
+    userSharingPolicyIdPathParam:
       in: path
       name: policyId
       required: true
@@ -2508,7 +2530,7 @@ components:
       example: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
 
   responses:
-    SharingPolicyCreateBadRequest:
+    UserSharingPolicyCreateBadRequest:
       description: |
         The policy is not one the issuing organization unit may write. The code says which kind of
         mistake it is, and the description says what is wrong with this request in particular.
@@ -2568,7 +2590,7 @@ components:
                   key: "error.userservice.deployment_wide_sharing_not_allowed_description"
                   defaultValue: "A policy reaching all organization units or the roots of all other trees can only be created from a declarative resource file or an import"
 
-    SharingPolicyListBadRequest:
+    UserSharingPolicyListBadRequest:
       description: The page the listing asked for is not one it can return.
       content:
         application/json:
@@ -2589,7 +2611,7 @@ components:
                   key: "error.userservice.invalid_limit_parameter_description"
                   defaultValue: "The limit parameter must be a positive integer"
 
-    SharingPolicyUpdateBadRequest:
+    UserSharingPolicyUpdateBadRequest:
       description: |
         The replacement is not one this policy may become. Alongside the mistakes a create can
         make, an edit answers for the reach the policy already has.
@@ -2649,7 +2671,7 @@ components:
                   key: "error.userservice.sharing_policy_declared_description"
                   defaultValue: "The sharing policy is declared in a resource file and cannot be changed through the API"
 
-    SharingPolicyDeleteBadRequest:
+    UserSharingPolicyDeleteBadRequest:
       description: |
         The policy exists but is not this endpoint's to remove. A policy that is simply absent
         answers 204, because a delete says what the state should be afterwards.
@@ -2669,7 +2691,7 @@ components:
                   key: "error.userservice.sharing_policy_declared_description"
                   defaultValue: "The sharing policy is declared in a resource file and cannot be changed through the API"
 
-    OverlayRulesBadRequest:
+    UserOverlayRulesBadRequest:
       description: The request does not say which organization unit to resolve for.
       content:
         application/json:
@@ -2702,7 +2724,7 @@ components:
               key: "error.userservice.user_not_found_description"
               defaultValue: "The user with the specified id does not exist"
 
-    OverlayNotResolvable:
+    UserOverlayNotResolvable:
       description: |
         No such user, or no sharing policy reaches the organization unit, so the user
         is not available there and has no terms to resolve.
@@ -2732,7 +2754,7 @@ components:
                   key: "error.userservice.user_not_found_description"
                   defaultValue: "The user with the specified id does not exist"
 
-    SharingPolicyNotFound:
+    UserSharingPolicyNotFound:
       description: No such sharing policy on this user
       content:
         application/json:
@@ -2747,7 +2769,7 @@ components:
               key: "error.userservice.sharing_policy_not_found_description"
               defaultValue: "The user has no sharing policy with the specified id"
 
-    SharingPolicyConflict:
+    UserSharingPolicyConflict:
       description: |
         The organization unit already holds a policy for this user, or the policy moved
         since it was read.
@@ -2777,7 +2799,7 @@ components:
                   key: "error.userservice.sharing_policy_version_mismatch_description"
                   defaultValue: "The sharing policy changed since it was read; read it again and retry the edit"
 
-    SharingServerError:
+    UserSharingServerError:
       description: Internal server error
       content:
         application/json:
@@ -2905,8 +2927,27 @@ components:
           type: boolean
           readOnly: true
           description: "Whether the user is declarative and cannot be modified or deleted by clients."
+        isOwnedByOU:
+          type: boolean
+          readOnly: true
+          description: |
+            Whether the listed organization unit owns the user rather than being shared it. Present
+            only in user lists.
         status:
           $ref: '#/components/schemas/UserAccessStatus'
+        lastLoginAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: |
+            When the user last signed in, including session reuse. Set by the server and never
+            accepted on a write.
+
+            Absent until recorded. Recording is off for users unless
+            `accountAccess.user.recordLastLogin` is enabled, and the value can lag the latest
+            sign-in by up to `accountAccess.user.lastLoginResolutionSeconds` (one hour by default).
+            Use it to find inactive accounts, not to audit individual sign-ins.
+          example: "2026-09-09T18:22:04Z"
 
     UserAccessStatus:
       type: object
@@ -2923,15 +2964,27 @@ components:
             `ACTIVE`, `LOCKED` or `SUSPENDED`. When the user is both suspended and locked,
             `SUSPENDED` is reported.
 
-            `SUSPENDED` is an administrative hold. `LOCKED` is an automatic hold after repeated
-            failed authentication attempts, reported under the `accountAccess` policy in force. A
-            lock does not expire when its duration is `0` or it forms at `maxConsecutiveFailures`;
-            other locks expire on their own.
+            `SUSPENDED` is an administrative hold placed by the suspend flow. While suspended, the
+            user cannot authenticate, use existing sessions, get new or refreshed tokens, or recover
+            the account, but the record can still be updated. The unsuspend flow removes the
+            suspension and leaves the user `LOCKED` until self-service recovery or the unlock flow
+            clears the lock.
+
+            `LOCKED` is a hold after repeated failed sign-ins or after a suspension is released.
+            The suspension release lock does not expire, even when automatic locking is disabled.
+            An automatic lock does not expire when its duration is `0` or it forms at
+            `maxConsecutiveFailures`; other automatic locks expire on their own. Self-service
+            recovery with an unlock step or the administration unlock flow clears a lock earlier.
           example: "ACTIVE"
         details:
           type: object
           readOnly: true
-          description: Why the status applies. Absent for `ACTIVE`.
+          description: |
+            Why the status applies and how it is cleared. Absent for `ACTIVE`.
+
+            An authentication refusal states only that the account is locked or suspended. The
+            locked methods, expiry times, and operator note are returned only here, to callers
+            allowed to read the user.
           properties:
             reason:
               type: string
@@ -2939,9 +2992,9 @@ components:
               enum: [FAILED_ATTEMPTS, SUSPENSION_RELEASE_LOCK, ADMINISTRATIVE_SUSPENSION]
               description: |
                 What caused the status. `FAILED_ATTEMPTS` is an automatic lock after repeated failed
-                authentication attempts. `SUSPENSION_RELEASE_LOCK` is the account-wide lock left when
-                a suspension is released, which does not expire. `ADMINISTRATIVE_SUSPENSION` is a
-                suspension placed by an operator.
+                sign-ins. `SUSPENSION_RELEASE_LOCK` is the account-wide lock the unsuspend flow
+                leaves, which does not expire. `ADMINISTRATIVE_SUSPENSION` is a suspension placed by
+                an operator.
 
                 One reason covers every entry in `lockedMethods`. A suspension release lock is never
                 reported together with authentication method locks.
@@ -2954,7 +3007,10 @@ components:
             operatorNote:
               type: string
               readOnly: true
-              description: The note the operator entered when placing the hold. Absent when none was entered.
+              maxLength: 100
+              description: |
+                The note the operator entered when placing the hold. Absent when none was entered.
+                Never included in an authentication refusal or in `/users/me` responses.
               example: "Credential exposure reported by the security team"
             lockedMethods:
               type: array
@@ -2965,7 +3021,7 @@ components:
 
                 With `lockGranularity` set to `authentication_method`, each method locks separately,
                 so several entries can be present, each with its own expiry. An account-wide lock is
-                reported as a single entry with the method `entity`.
+                reported as a single entry with the method `account`.
               items:
                 type: object
                 properties:
@@ -2973,14 +3029,16 @@ components:
                     type: string
                     readOnly: true
                     description: |
-                      The locked authentication method, such as `credential`, or `entity` when every
+                      The locked authentication method, such as `credential`, or `account` when every
                       method is locked.
                     example: "credential"
                   expiresAt:
                     type: string
                     format: date-time
                     readOnly: true
-                    description: When the lock expires. **Absent when it does not expire.**
+                    description: |
+                      When the lock expires. **Absent when it does not expire**: self-service
+                      recovery or the unlock flow clears it.
                     example: "2026-09-08T10:15:00Z"
 
     AccessibleOrganizationUnit:
@@ -3502,7 +3560,7 @@ components:
           additionalProperties:
             $ref: "#/components/schemas/UserType/properties/schema/additionalProperties"
 
-    SharingPolicyRequest:
+    UserSharingPolicyRequest:
       type: object
       additionalProperties: false
       description: |
@@ -3524,9 +3582,9 @@ components:
             it and stopped there, and such a policy may state `childUnits` only.
           example: "acme-root"
         childUnits:
-          $ref: '#/components/schemas/ChildUnits'
+          $ref: '#/components/schemas/UserChildUnits'
         otherTreeRoots:
-          $ref: '#/components/schemas/OtherTreeRootsSelected'
+          $ref: '#/components/schemas/UserOtherTreeRootsSelected'
         version:
           type: integer
           description: |
@@ -3534,7 +3592,7 @@ components:
             create.
           example: 1
 
-    SharingPolicyUpdateRequest:
+    UserSharingPolicyUpdateRequest:
       type: object
       additionalProperties: false
       required: [version]
@@ -3557,11 +3615,11 @@ components:
         - required: [otherTreeRoots]
       properties:
         allUnits:
-          $ref: '#/components/schemas/AllUnits'
+          $ref: '#/components/schemas/UserAllUnits'
         childUnits:
-          $ref: '#/components/schemas/ChildUnits'
+          $ref: '#/components/schemas/UserChildUnits'
         otherTreeRoots:
-          $ref: '#/components/schemas/OtherTreeRoots'
+          $ref: '#/components/schemas/UserOtherTreeRoots'
         version:
           type: integer
           description: |
@@ -3569,7 +3627,7 @@ components:
             is refused, so a caller that has not seen the current one cannot overwrite it.
           example: 1
 
-    AllUnits:
+    UserAllUnits:
       type: object
       additionalProperties: false
       description: |
@@ -3590,20 +3648,20 @@ components:
             type: string
           example: ["acme-trial-customers"]
 
-    ChildUnits:
+    UserChildUnits:
       description: |
         The organization units beneath the issuer. Exactly one of the two shapes below, chosen by
         `mode`.
       oneOf:
-        - $ref: '#/components/schemas/ChildUnitsAll'
-        - $ref: '#/components/schemas/ChildUnitsSelected'
+        - $ref: '#/components/schemas/UserChildUnitsAll'
+        - $ref: '#/components/schemas/UserChildUnitsSelected'
       discriminator:
         propertyName: mode
         mapping:
-          all: '#/components/schemas/ChildUnitsAll'
-          selected: '#/components/schemas/ChildUnitsSelected'
+          all: '#/components/schemas/UserChildUnitsAll'
+          selected: '#/components/schemas/UserChildUnitsSelected'
 
-    ChildUnitsAll:
+    UserChildUnitsAll:
       type: object
       additionalProperties: false
       required: [mode]
@@ -3621,7 +3679,7 @@ components:
             type: string
           example: ["acme-trial-customers"]
 
-    ChildUnitsSelected:
+    UserChildUnitsSelected:
       type: object
       additionalProperties: false
       required: [mode, units]
@@ -3637,9 +3695,9 @@ components:
           minItems: 1
           description: The organization units reached. An organization unit is listed only once in a policy.
           items:
-            $ref: '#/components/schemas/ChildUnit'
+            $ref: '#/components/schemas/UserChildUnit'
 
-    ChildUnit:
+    UserChildUnit:
       type: object
       additionalProperties: false
       required: [ouId, reach]
@@ -3657,7 +3715,7 @@ components:
             reaches it and everything below it at any depth.
           example: unit
 
-    OtherTreeRoots:
+    UserOtherTreeRoots:
       description: |
         The root organization units of other trees, as a policy carries them. Every shape a create
         may send, plus the one that only a resource file or an imported document may introduce.
@@ -3665,15 +3723,15 @@ components:
         An edit sends this shape rather than the create's, because a policy that already reaches
         the root of every other tree has to be able to restate that to rewrite its exclusions.
       oneOf:
-        - $ref: '#/components/schemas/OtherTreeRootsSelected'
-        - $ref: '#/components/schemas/OtherTreeRootsAll'
+        - $ref: '#/components/schemas/UserOtherTreeRootsSelected'
+        - $ref: '#/components/schemas/UserOtherTreeRootsAll'
       discriminator:
         propertyName: mode
         mapping:
-          selected: '#/components/schemas/OtherTreeRootsSelected'
-          all: '#/components/schemas/OtherTreeRootsAll'
+          selected: '#/components/schemas/UserOtherTreeRootsSelected'
+          all: '#/components/schemas/UserOtherTreeRootsAll'
 
-    OtherTreeRootsSelected:
+    UserOtherTreeRootsSelected:
       type: object
       additionalProperties: false
       required: [mode, units]
@@ -3693,9 +3751,9 @@ components:
           minItems: 1
           description: The root organization units reached. An organization unit is listed only once in a policy.
           items:
-            $ref: '#/components/schemas/RootUnit'
+            $ref: '#/components/schemas/UserRootUnit'
 
-    OtherTreeRootsAll:
+    UserOtherTreeRootsAll:
       type: object
       additionalProperties: false
       required: [mode]
@@ -3713,7 +3771,7 @@ components:
             type: string
           example: ["partner-root"]
 
-    RootUnit:
+    UserRootUnit:
       type: object
       additionalProperties: false
       required: [ouId]
@@ -3723,11 +3781,11 @@ components:
           description: The root organization unit of another tree.
           example: "partner-root"
 
-    SharingPolicy:
+    UserSharingPolicy:
       type: object
       description: |
         A recorded sharing policy. Its sections come back in the shape a request states them in, so
-        an edit copies them, with `version`, into a `SharingPolicyUpdateRequest`. The other fields
+        an edit copies them, with `version`, into a `UserSharingPolicyUpdateRequest`. The other fields
         are set by the server and are refused in a request body. A section the policy does not state
         is left out.
       properties:
@@ -3757,13 +3815,13 @@ components:
           description: Bumped on every edit, and carried back on the next one.
           example: 1
         allUnits:
-          $ref: '#/components/schemas/AllUnits'
+          $ref: '#/components/schemas/UserAllUnits'
         childUnits:
-          $ref: '#/components/schemas/ChildUnits'
+          $ref: '#/components/schemas/UserChildUnits'
         otherTreeRoots:
-          $ref: '#/components/schemas/OtherTreeRoots'
+          $ref: '#/components/schemas/UserOtherTreeRoots'
 
-    SharingPolicyListResponse:
+    UserSharingPolicyListResponse:
       type: object
       properties:
         totalResults:
@@ -3781,7 +3839,7 @@ components:
         policies:
           type: array
           items:
-            $ref: '#/components/schemas/SharingPolicy'
+            $ref: '#/components/schemas/UserSharingPolicy'
         links:
           type: array
           description: Links to the first, previous, next and last pages, where they exist.
@@ -3791,14 +3849,14 @@ components:
             - href: "/users/0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10/sharing-policies?offset=30&limit=30"
               rel: "next"
 
-    ResolvedOverlay:
+    UserResolvedOverlay:
       type: object
       description: What one organization unit may do with the user.
       properties:
         ouId:
           type: string
           example: "acme-customer-a"
-        owned:
+        isOwnedByOU:
           type: boolean
           description: Whether the organization unit owns the user rather than being shared it.
         visible:
@@ -3818,9 +3876,9 @@ components:
             organization unit may override, and on what terms. Always empty for now, because a
             user declares no templated fields yet.
           additionalProperties:
-            $ref: '#/components/schemas/OverlayRule'
+            $ref: '#/components/schemas/UserOverlayRule'
 
-    OverlayRule:
+    UserOverlayRule:
       type: object
       description: What a reached organization unit may do with one field.
       properties:

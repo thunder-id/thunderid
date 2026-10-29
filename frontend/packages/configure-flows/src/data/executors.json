@@ -382,10 +382,10 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
-      "header": "Provision User",
-      "label": "Provision User",
-      "description": "Create a user account",
-      "image": "assets/images/icons/user.svg",
+      "header": "Provisioning Executor",
+      "label": "Provisioning",
+      "description": "Create a user or agent",
+      "image": "IdCard",
       "showOnResourcePanel": true
     },
     "data": {
@@ -399,39 +399,6 @@
         "onIncomplete": ""
       },
       "properties": {
-        "mode": "user",
-        "allowCrossOUProvisioning": false,
-        "includeOptional": false,
-        "includeOptionalCredentials": false,
-        "maxPerPrompt": 5,
-        "assignGroup": "",
-        "assignRole": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
-      "header": "Provision Agent",
-      "label": "Provision Agent",
-      "description": "Create an agent identity",
-      "image": "assets/images/icons/robot.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {
-          "name": "ProvisioningExecutor"
-        },
-        "onSuccess": "",
-        "onFailure": "",
-        "onIncomplete": ""
-      },
-      "properties": {
-        "mode": "agent",
         "allowCrossOUProvisioning": false,
         "includeOptional": false,
         "includeOptionalCredentials": false,
@@ -449,7 +416,7 @@
       "header": "Agent Type Resolver",
       "label": "Agent Type",
       "description": "Resolve the agent type whose schema describes the agent being created",
-      "image": "assets/images/icons/user.svg",
+      "image": "Bot",
       "showOnResourcePanel": true
     },
     "data": {
@@ -591,6 +558,32 @@
           "retryCount": 0,
           "retryDelay": 0
         }
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Extension Executor",
+      "label": "Extension",
+      "description": "Call your own service through a service endpoint connection",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "ExtensionExecutor"
+        },
+        "onSuccess": "",
+        "onFailure": "",
+        "onIncomplete": ""
+      },
+      "properties": {
+        "connectionId": ""
       }
     }
   },
@@ -1465,6 +1458,86 @@
       "action": {
         "type": "EXECUTOR",
         "executor": {"name": "ActionDeletionExecutor"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Pre Suspend Executor",
+      "label": "Validate and Plan Suspension",
+      "description": "Check the operator may suspend the target, then plan revocation of what it holds. Place it before the revocation nodes and Suspend Identity",
+      "image": "assets/images/icons/magnifying-glass.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "PreSuspendExecutor"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Identity Governance Executor",
+      "label": "Suspend Identity",
+      "description": "Place a security hold on the identity a Pre Suspend Executor planned, so it cannot authenticate. Switch the operation to Unsuspend to release one",
+      "image": "ShieldBan",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "IdentityGovernanceExecutor", "mode": "suspend"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Identity Governance Executor",
+      "label": "Unsuspend Identity",
+      "description": "Release a security hold. For a user it leaves the account locked until it recovers its credentials or is unlocked",
+      "image": "ShieldCheck",
+      "showOnResourcePanel": false
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "IdentityGovernanceExecutor", "mode": "unsuspend"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Identity Governance Executor",
+      "label": "Unlock Identity",
+      "description": "Clear every automatic lock left by failed authentication attempts. In a recovery flow, place it after the credential is set",
+      "image": "LockKeyholeOpen",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "IdentityGovernanceExecutor", "mode": "unlock"},
         "onSuccess": "",
         "onFailure": ""
       }

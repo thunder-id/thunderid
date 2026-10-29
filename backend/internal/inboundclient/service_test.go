@@ -4143,9 +4143,15 @@ func (s *AccessingOUTestSuite) SetupTest() {
 func (s *AccessingOUTestSuite) check(
 	ctx context.Context, sharingSvc sharing.SharingServiceInterface, category providers.EntityCategory,
 ) (bool, *tidcommon.ServiceError) {
+	// Applications are the only shareable category.
+	sharedTypes := NewSharedTypeResolverMock(s.T())
+	sharedTypes.EXPECT().GetSharedResourceType(mock.Anything).RunAndReturn(
+		func(category providers.EntityCategory) (sharing.ResourceType, bool) {
+			return appSharingType, category == providers.EntityCategoryApp
+		}).Maybe()
 	svc := &inboundClientService{
 		sharingService: sharingSvc,
-		sharedTypes:    map[providers.EntityCategory]sharing.ResourceType{providers.EntityCategoryApp: appSharingType},
+		sharedTypes:    sharedTypes,
 		logger:         log.GetLogger(),
 	}
 	return svc.IsClientAccessibleFromOU(ctx, &providers.OAuthClient{

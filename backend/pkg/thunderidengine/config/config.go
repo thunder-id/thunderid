@@ -8,6 +8,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/url"
 	"strings"
 	"time"
@@ -213,6 +214,55 @@ type ServerConfig struct {
 	Identifier                 string         `yaml:"identifier" json:"identifier"`
 	SecurityConfig             SecurityConfig `yaml:"security"   json:"security"`
 	EnableOUQualifiedEndpoints bool           `yaml:"enable_ou_qualified_endpoints" json:"enable_ou_qualified_endpoints"` //nolint:lll // one tag pair
+	Timeouts                   ServerTimeouts `yaml:"timeouts"   json:"timeouts"`
+}
+
+// The timeouts a server uses for a value that is not positive, the same as default.json ships. Go's
+// HTTP server reads zero or less as no limit, which for the header read would drop the guard against
+// slow clients, so a configuration built without default.json, or a value set to zero or less, falls
+// back to these instead.
+const (
+	defaultReadHeaderTimeout = 10 * time.Second
+	defaultWriteTimeout      = 10 * time.Second
+	defaultIdleTimeout       = 120 * time.Second
+)
+
+// ServerTimeouts bounds how long the HTTP server waits on a connection, in seconds. They apply to
+// every route; a route that needs longer to answer extends its own write deadline from its own key.
+type ServerTimeouts struct {
+	// ReadHeaderSeconds bounds reading a request's headers, which guards against clients that send
+	// them slowly to hold connections open.
+	ReadHeaderSeconds int `yaml:"read_header_seconds" json:"read_header_seconds"`
+	// WriteSeconds bounds a request from the end of its headers until the response is written. A
+	// route known to run longer, such as applying a configuration version or the import that applies
+	// it, extends its own deadline from its own key rather than raising this one for every route.
+	WriteSeconds int `yaml:"write_seconds" json:"write_seconds"`
+	// IdleSeconds bounds how long a kept-alive connection waits for its next request.
+	IdleSeconds int `yaml:"idle_seconds" json:"idle_seconds"`
+}
+
+// ReadHeader is how long the server waits for a request's headers, the default when not positive.
+func (t ServerTimeouts) ReadHeader() time.Duration {
+	return positiveSeconds(t.ReadHeaderSeconds, defaultReadHeaderTimeout)
+}
+
+// Write is how long a request may take to answer after its headers, the default when not positive.
+func (t ServerTimeouts) Write() time.Duration {
+	return positiveSeconds(t.WriteSeconds, defaultWriteTimeout)
+}
+
+// Idle is how long a kept-alive connection waits for its next request, the default when not positive.
+func (t ServerTimeouts) Idle() time.Duration {
+	return positiveSeconds(t.IdleSeconds, defaultIdleTimeout)
+}
+
+// positiveSeconds is seconds as a duration, or fallback when seconds is not positive or too large for a
+// duration, which would otherwise wrap around to a value the server reads as no limit.
+func positiveSeconds(seconds int, fallback time.Duration) time.Duration {
+	if seconds <= 0 || int64(seconds) > int64(math.MaxInt64/time.Second) {
+		return fallback
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 // GateClientConfig holds the client configuration details.
@@ -373,6 +423,30 @@ type OAuthConfig struct {
 
 	TokenRevocation OAuthTokenRevocationConfig `yaml:"token_revocation" json:"token_revocation"`
 	Logout          LogoutConfig               `yaml:"logout" json:"logout"`
+	// AuthorizationDetails holds the RFC 9396 authorization details configuration.
+	AuthorizationDetails AuthorizationDetailsConfig `yaml:"authorization_details" json:"authorization_details"`
+}
+
+// AuthorizationDetailsConfig holds the RFC 9396 authorization details configuration.
+type AuthorizationDetailsConfig struct {
+	// ProcessorTimeout bounds one authorization details processor call, in seconds.
+	ProcessorTimeout int64 `yaml:"processor_timeout" json:"processor_timeout"`
+	// TypeMetadataEnabled serves the type metadata endpoint and advertises it in discovery.
+	TypeMetadataEnabled *bool `yaml:"type_metadata_enabled" json:"type_metadata_enabled"`
+}
+
+// ProcessorTimeoutOrDefault reports the authorization details processor call timeout, five seconds by default.
+func (c AuthorizationDetailsConfig) ProcessorTimeoutOrDefault() time.Duration {
+	if c.ProcessorTimeout <= 0 {
+		return 5 * time.Second
+	}
+	return time.Duration(c.ProcessorTimeout) * time.Second
+}
+
+// IsTypeMetadataEnabled returns whether the type metadata endpoint is served, defaulting to true if unset, as
+// default.json does.
+func (c AuthorizationDetailsConfig) IsTypeMetadataEnabled() bool {
+	return c.TypeMetadataEnabled == nil || *c.TypeMetadataEnabled
 }
 
 // SendServerErrorsToClientEnabled reports whether server errors reach the client, defaulting to

@@ -12,6 +12,7 @@ describe('getFlowSecondPromptComponents', () => {
     name: 'Test Flow',
     handle: 'test-flow',
     flowType: 'AUTHENTICATION',
+    ouId: 'ou-1',
     activeVersion: 1,
     nodes,
     createdAt: '2026-01-01T00:00:00Z',

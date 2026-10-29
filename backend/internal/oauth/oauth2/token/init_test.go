@@ -54,7 +54,7 @@ func (s *TokenRouteRegistrationTestSuite) routes(enabled bool) (bare, scoped str
 
 	mux := http.NewServeMux()
 	registerRoutes(mux, newTokenHandler(NewTokenServiceInterfaceMock(s.T()), nil), nil, nil, nil,
-		discoverySvc, nil, nil, enabled, engineconfig.ClientAssertionConfig{}, 0)
+		discoverySvc, nil, nil, nil, enabled, engineconfig.ClientAssertionConfig{}, 0)
 
 	pattern := func(target string) string {
 		_, p := mux.Handler(httptest.NewRequest(http.MethodPost, target, nil))
@@ -124,7 +124,7 @@ func (s *OUEndpointOrderingTestSuite) post(ouID string) (*httptest.ResponseRecor
 	mux := http.NewServeMux()
 	registerRoutes(mux, newTokenHandler(NewTokenServiceInterfaceMock(s.T()), nil),
 		actorprovider.Initialize(s.inbound, s.entities, s.authn, nil, nil), s.authn, nil,
-		discoverySvc, nil, s.ouService, true, engineconfig.ClientAssertionConfig{}, 0)
+		discoverySvc, nil, s.ouService, nil, true, engineconfig.ClientAssertionConfig{}, 0)
 
 	form := url.Values{}
 	form.Set("client_id", orderingClientID)

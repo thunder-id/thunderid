@@ -66,6 +66,14 @@ export {
 } from './utils/planSharingPolicySave';
 export {default as sharingPolicyToDraft, EMPTY_ORGANIZATION_ACCESS_DRAFT} from './utils/sharingPolicyToDraft';
 export {
+  default as translateOrganizationAccessWording,
+  organizationAccessWordingKey,
+  ORGANIZATION_ACCESS_WORDING_FALLBACKS,
+  type OrganizationAccessTranslateFn,
+  type OrganizationAccessWordingKey,
+  type OrganizationAccessWordingValues,
+} from './utils/translateOrganizationAccessWording';
+export {
   default as switchOrganizationAccess,
   getBlockedNoneReason,
   type BlockedNoneReason,

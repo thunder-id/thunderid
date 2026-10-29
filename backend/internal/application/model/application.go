@@ -193,6 +193,8 @@ type BasicApplicationResponse struct {
 	IsReadOnly                bool            `json:"isReadOnly" jsonschema:"Indicates if the application is read-only (declarative/immutable)."`
 	// Status is the effective access status, derived at read time.
 	Status *providers.ApplicationStatusReport `json:"status,omitempty" jsonschema:"Effective access status. Read-only."`
+	// IsOwnedByOU says whether the listed organization unit owns the application rather than being shared it.
+	IsOwnedByOU *bool `json:"isOwnedByOU,omitempty" jsonschema:"Whether the listed OU owns the application. Read-only."`
 }
 
 // ApplicationListResponse represents the response structure for listing applications.

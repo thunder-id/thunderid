@@ -23,21 +23,25 @@ import (
 )
 
 const (
-	consumptionClientID     = "idjag_consumption_client"
-	consumptionClientSecret = "idjag_consumption_secret"
-	consumptionAppName      = "IDJAGConsumptionTestApp"
-	publicConsClientID      = "idjag_public_cons_client"
-	publicConsAppName       = "IDJAGPublicConsApp"
-	roundtripClientID       = "idjag_roundtrip_client"
-	roundtripClientSecret   = "idjag_roundtrip_secret"
-	roundtripAppName        = "IDJAGRoundtripApp"
-	consumptionTestUser     = "idjag_consumption_user"
-	consumptionTestPassword = "IDJAGConsTest123!"
-	consumptionTestEmail    = "idjag_cons@example.com"
-	consumptionRedirectURI  = "https://localhost:3001"
-	idJagMockOIDCPort       = 8096
-	mockExternalSubject     = "external-idjag-subject"
-	consumptionRSIdentifier = "https://idjag-consumption-rs.example.com"
+	consumptionClientID      = "idjag_consumption_client"
+	consumptionClientSecret  = "idjag_consumption_secret"
+	consumptionAppName       = "IDJAGConsumptionTestApp"
+	publicConsClientID       = "idjag_public_cons_client"
+	publicConsAppName        = "IDJAGPublicConsApp"
+	roundtripClientID        = "idjag_roundtrip_client"
+	roundtripClientSecret    = "idjag_roundtrip_secret"
+	roundtripAppName         = "IDJAGRoundtripApp"
+	cimdRoundtripClientID    = "https://cimd-idjag.example.com/oauth/client-metadata.json"
+	cimdRoundtripRedirectURI = "http://127.0.0.1/callback"
+	cimdRoundtripKeyID       = "cimd-idjag-key"
+	cimdRoundtripAppName     = "IDJAGCIMDRoundtripApp"
+	consumptionTestUser      = "idjag_consumption_user"
+	consumptionTestPassword  = "IDJAGConsTest123!"
+	consumptionTestEmail     = "idjag_cons@example.com"
+	consumptionRedirectURI   = "https://localhost:3001"
+	idJagMockOIDCPort        = 8096
+	mockExternalSubject      = "external-idjag-subject"
+	consumptionRSIdentifier  = "https://idjag-consumption-rs.example.com"
 )
 
 var consumptionAuthFlow = testutils.Flow{
@@ -351,8 +355,8 @@ func (ts *IDJAGConsumptionTestSuite) buildIDJAGAssertion(
 }
 
 // consumeIDJAG sends a JWT bearer grant request to /oauth2/token with the
-// given assertion, authenticating with clientID/clientSecret (or as a public
-// client when clientSecret is empty).
+// given assertion, authenticating with clientID/clientSecret, or by client_id in
+// the body when clientSecret is empty, with any client assertion in extraParams.
 func (ts *IDJAGConsumptionTestSuite) consumeIDJAG(
 	assertion string, extraParams map[string]string, clientID, clientSecret string,
 ) (IDJAGTokenResponse, int, error) {
@@ -404,13 +408,47 @@ func (ts *IDJAGConsumptionTestSuite) consumeIDJAG(
 func (ts *IDJAGConsumptionTestSuite) obtainIDTokenForRoundtrip() string {
 	ts.T().Helper()
 
+	code, verifier := ts.signInForCode(roundtripClientID, consumptionRedirectURI)
+
+	formData := url.Values{}
+	formData.Set("grant_type", "authorization_code")
+	formData.Set("code", code)
+	formData.Set("redirect_uri", consumptionRedirectURI)
+	formData.Set("code_verifier", verifier)
+
+	tokenReq, err := http.NewRequest("POST", testutils.TestServerURL+"/oauth2/token",
+		strings.NewReader(formData.Encode()))
+	ts.Require().NoError(err)
+	tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	tokenReq.Header.Set("Authorization", "Basic "+basicAuth(roundtripClientID, roundtripClientSecret))
+
+	tokenResp, err := testutils.GetRawHTTPClient().Do(tokenReq)
+	ts.Require().NoError(err)
+	defer tokenResp.Body.Close()
+	ts.Require().Equal(http.StatusOK, tokenResp.StatusCode)
+
+	var tokenData map[string]interface{}
+	err = json.NewDecoder(tokenResp.Body).Decode(&tokenData)
+	ts.Require().NoError(err)
+
+	idToken, ok := tokenData["id_token"].(string)
+	ts.Require().True(ok, "Token response should contain id_token")
+	ts.Require().NotEmpty(idToken)
+	return idToken
+}
+
+// signInForCode signs the test user in through the authorization code flow with PKCE for clientID and
+// returns the authorization code and its code verifier.
+func (ts *IDJAGConsumptionTestSuite) signInForCode(clientID, redirectURI string) (string, string) {
+	ts.T().Helper()
+
 	verifier, err := testutils.GenerateCodeVerifier()
 	ts.Require().NoError(err)
 	challenge := testutils.GenerateCodeChallenge(verifier)
 
 	params := url.Values{}
-	params.Set("client_id", roundtripClientID)
-	params.Set("redirect_uri", consumptionRedirectURI)
+	params.Set("client_id", clientID)
+	params.Set("redirect_uri", redirectURI)
 	params.Set("response_type", "code")
 	params.Set("scope", "openid email")
 	params.Set("state", "idjag-roundtrip-state")
@@ -440,32 +478,7 @@ func (ts *IDJAGConsumptionTestSuite) obtainIDTokenForRoundtrip() string {
 	ts.Require().NoError(err)
 	code, err := testutils.ExtractAuthorizationCode(authzResp.RedirectURI)
 	ts.Require().NoError(err)
-
-	formData := url.Values{}
-	formData.Set("grant_type", "authorization_code")
-	formData.Set("code", code)
-	formData.Set("redirect_uri", consumptionRedirectURI)
-	formData.Set("code_verifier", verifier)
-
-	tokenReq, err := http.NewRequest("POST", testutils.TestServerURL+"/oauth2/token",
-		strings.NewReader(formData.Encode()))
-	ts.Require().NoError(err)
-	tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	tokenReq.Header.Set("Authorization", "Basic "+basicAuth(roundtripClientID, roundtripClientSecret))
-
-	tokenResp, err := testutils.GetRawHTTPClient().Do(tokenReq)
-	ts.Require().NoError(err)
-	defer tokenResp.Body.Close()
-	ts.Require().Equal(http.StatusOK, tokenResp.StatusCode)
-
-	var tokenData map[string]interface{}
-	err = json.NewDecoder(tokenResp.Body).Decode(&tokenData)
-	ts.Require().NoError(err)
-
-	idToken, ok := tokenData["id_token"].(string)
-	ts.Require().True(ok, "Token response should contain id_token")
-	ts.Require().NotEmpty(idToken)
-	return idToken
+	return code, verifier
 }
 
 func (ts *IDJAGConsumptionTestSuite) TestIDJAGConsumption_Success() {
@@ -757,6 +770,116 @@ func (ts *IDJAGConsumptionTestSuite) TestIDJAG_FullRoundtrip() {
 	ts.Require().NoError(err)
 	ts.NotEmpty(consClaims.Sub)
 	ts.Equal("https://localhost:8095", consClaims.Additional["idp"])
+	ts.Equal("urn:ietf:params:oauth:grant-type:jwt-bearer", consClaims.Additional["grant_type"])
+}
+
+// TestIDJAG_CIMDConfidentialRoundtrip covers a client registered from a metadata document that
+// authenticates with private_key_jwt: it signs a user in, obtains an ID-JAG for this server, and redeems
+// it, presenting a client assertion on every token request.
+func (ts *IDJAGConsumptionTestSuite) TestIDJAG_CIMDConfidentialRoundtrip() {
+	key, err := testutils.GenerateDPoPKey("ES256")
+	ts.Require().NoError(err)
+	appID := ts.createApp(map[string]any{
+		"name": cimdRoundtripAppName, "description": "ID-JAG roundtrip CIMD app",
+		"ouId": ts.ouID, "type": "mcp", "authFlowId": ts.authFlowID,
+		"isRegistrationFlowEnabled": false,
+		"allowedUserTypes":          []string{"idjag-consumption-person"},
+		"inboundAuthConfig": []map[string]any{{
+			"type": "oauth2",
+			"config": map[string]any{
+				"clientId":                 cimdRoundtripClientID,
+				"clientIdMetadataDocument": true,
+				"redirectUris":             []string{cimdRoundtripRedirectURI},
+				"grantTypes": []string{
+					"authorization_code",
+					"urn:ietf:params:oauth:grant-type:token-exchange",
+					"urn:ietf:params:oauth:grant-type:jwt-bearer",
+				},
+				"responseTypes":           []string{"code"},
+				"tokenEndpointAuthMethod": "private_key_jwt",
+				"pkceRequired":            true,
+				"certificate":             map[string]any{"type": "JWKS", "value": key.JWKS(cimdRoundtripKeyID)},
+				"scopes":                  []string{"openid", "profile", "email"},
+				"token": map[string]any{
+					"idJag": map[string]any{
+						"enabled":          true,
+						"allowedAudiences": []string{testutils.TestServerURL},
+					},
+				},
+			},
+		}},
+	})
+	defer func() {
+		_ = testutils.DeleteApplication(appID)
+	}()
+	clientAuth := func() map[string]string {
+		return map[string]string{
+			"client_assertion_type": testutils.ClientAssertionTypeJWTBearer,
+			"client_assertion": testutils.CreateClientAssertion(testutils.ClientAssertionOptions{
+				Sub: cimdRoundtripClientID, Aud: testutils.TestServerURL, Kid: cimdRoundtripKeyID,
+				Alg: key.Alg, Key: key.Private,
+			}),
+		}
+	}
+	postToken := func(params map[string]string) (int, map[string]any) {
+		formData := url.Values{}
+		formData.Set("client_id", cimdRoundtripClientID)
+		for k, v := range params {
+			formData.Set(k, v)
+		}
+		for k, v := range clientAuth() {
+			formData.Set(k, v)
+		}
+		resp, err := testutils.GetRawHTTPClient().PostForm(testutils.TestServerURL+"/oauth2/token", formData)
+		ts.Require().NoError(err)
+		defer resp.Body.Close()
+		var body map[string]any
+		ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&body))
+		return resp.StatusCode, body
+	}
+
+	code, verifier := ts.signInForCode(cimdRoundtripClientID, cimdRoundtripRedirectURI)
+	status, tokens := postToken(map[string]string{
+		"grant_type": "authorization_code", "code": code, "redirect_uri": cimdRoundtripRedirectURI,
+		"code_verifier": verifier,
+	})
+	ts.Require().Equal(http.StatusOK, status, "code exchange: %v", tokens)
+	idToken, ok := tokens["id_token"].(string)
+	ts.Require().True(ok, "Token response should contain id_token")
+	accessToken, ok := tokens["access_token"].(string)
+	ts.Require().True(ok, "Token response should contain access_token")
+
+	// Token exchange serves a metadata document client only for ID-JAG requests.
+	status, refused := postToken(map[string]string{
+		"grant_type":         "urn:ietf:params:oauth:grant-type:token-exchange",
+		"subject_token":      accessToken,
+		"subject_token_type": "urn:ietf:params:oauth:token-type:access_token",
+	})
+	ts.Equal(http.StatusBadRequest, status, "ordinary token exchange: %v", refused)
+	ts.Equal("unauthorized_client", refused["error"])
+
+	status, exchange := postToken(map[string]string{
+		"grant_type":           "urn:ietf:params:oauth:grant-type:token-exchange",
+		"subject_token":        idToken,
+		"subject_token_type":   "urn:ietf:params:oauth:token-type:id_token",
+		"requested_token_type": "urn:ietf:params:oauth:token-type:id-jag",
+		"audience":             testutils.TestServerURL,
+	})
+	ts.Require().Equal(http.StatusOK, status, "token exchange: %v", exchange)
+	ts.Equal("urn:ietf:params:oauth:token-type:id-jag", exchange["issued_token_type"])
+	idJagToken, ok := exchange["access_token"].(string)
+	ts.Require().True(ok, "Token exchange response should contain the ID-JAG")
+	idJagClaims, err := testutils.DecodeJWT(idJagToken)
+	ts.Require().NoError(err)
+	ts.Equal(cimdRoundtripClientID, idJagClaims.Additional["client_id"])
+
+	consResp, consStatus, err := ts.consumeIDJAG(idJagToken, clientAuth(), cimdRoundtripClientID, "")
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, consStatus, "jwt-bearer: %s", consResp.ErrorDescription)
+	consClaims, err := testutils.DecodeJWT(consResp.AccessToken)
+	ts.Require().NoError(err)
+	ts.Equal(cimdRoundtripClientID, consClaims.Additional["client_id"])
+	ts.Equal(testutils.TestServerURL, consClaims.Additional["idp"])
 	ts.Equal("urn:ietf:params:oauth:grant-type:jwt-bearer", consClaims.Additional["grant_type"])
 }
 

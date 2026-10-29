@@ -49,6 +49,7 @@ func Initialize(
 	// Registered before declarative resources load, because loading seeds the sharing policies those
 	// files declare and the framework refuses a type it does not know.
 	sharingService.RegisterResourceType(newApplicationSharingDeclaration(appService))
+	entityService.RegisterSharedCategory(providers.EntityCategoryApp, ApplicationSharingType)
 
 	if err := entityService.LoadIndexedAttributes(getAppIndexedAttributes()); err != nil {
 		return nil, nil, err

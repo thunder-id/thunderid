@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
-  OAuth2GrantTypes,
   type Application,
   TokenAudienceSelector,
   type TokenAudienceOption,
@@ -14,6 +13,7 @@ import {useEffect, useState, type JSX} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
 import AgentAccessTokenSection from './AgentAccessTokenSection';
 import type {Agent, OAuthAgentConfig} from '../../../models/agent';
+import {hasDelegationGrant} from '../../../utils/isDelegatedAgent';
 
 const AGENT_AUDIENCE = 'agent';
 const USER_AUDIENCE = 'user';
@@ -43,7 +43,7 @@ export default function EditTokensSettings({
   const [userTabHasError, setUserTabHasError] = useState(false);
   const [agentTabHasError, setAgentTabHasError] = useState(false);
 
-  const isUnlocked = oauth2Config?.grantTypes?.includes(OAuth2GrantTypes.AUTHORIZATION_CODE) ?? false;
+  const isUnlocked = hasDelegationGrant(oauth2Config?.grantTypes);
 
   // The user audience is not mounted without Delegated mode, so its last reported error state must
   // not keep blocking the save bar.

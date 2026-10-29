@@ -55,4 +55,22 @@ export interface TrustedIssuer extends TrustedIssuerFormData {
    * @example "8f14e45f-ceea-467e-b0a4-fbc3c7f8b52a"
    */
   id: string;
+  /**
+   * The organization unit the trusted issuer belongs to.
+   * @example "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+   */
+  ouId: string;
+}
+
+/**
+ * Payload for creating a trusted issuer. The owning organization unit is chosen once at creation and cannot be
+ * changed afterwards, so it is part of the create payload only.
+ * @public
+ */
+export interface CreateTrustedIssuerRequest extends TrustedIssuerFormData {
+  /**
+   * The organization unit that will own the trusted issuer.
+   * @example "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+   */
+  ouId: string;
 }

@@ -539,6 +539,39 @@ describe('ImportConfigurationUploadPage', () => {
     );
   });
 
+  it('accepts project documents alongside their root organization units', async () => {
+    const user = userEvent.setup();
+    render(<ImportConfigurationUploadPage />);
+
+    const yamlContent =
+      'resource_type: project\nid: project-1\nrootOuId: ou-1\nhandle: shop\ndisplayName: Shop\n---\n' +
+      'resource_type: organization_unit\nid: ou-1\nhandle: shop\nname: Shop\n';
+    const yamlFile = new File([yamlContent], 'config.yaml', {type: 'text/yaml'});
+    Object.defineProperty(yamlFile, 'text', {value: () => Promise.resolve(yamlContent)});
+
+    await user.upload(document.getElementById('file-upload') as HTMLInputElement, yamlFile);
+    await user.click(screen.getByRole('button', {name: 'Continue'}));
+
+    await waitFor(
+      () => {
+        expect(mockNavigate).toHaveBeenCalledWith(
+          '/welcome/import-configuration/validate',
+          expect.objectContaining({
+            state: expect.objectContaining({parseStats: {successCount: 2, failCount: 0}}) as Record<string, unknown>,
+          }),
+        );
+      },
+      {timeout: 5000},
+    );
+
+    const [, {state}] = mockNavigate.mock.calls[0] as [
+      string,
+      {state: {configData: Record<string, {handle?: string}[]>; parseErrors: unknown[]}},
+    ];
+    expect(state.configData.project[0].handle).toBe('shop');
+    expect(state.parseErrors).toHaveLength(0);
+  });
+
   it('strips unknown resource types and records a parse error for each', async () => {
     const user = userEvent.setup();
     render(<ImportConfigurationUploadPage />);

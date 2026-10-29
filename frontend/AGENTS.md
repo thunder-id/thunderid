@@ -14,6 +14,12 @@ Console management features ship as `@thunderid/configure-*` packages (e.g. `@th
 `frontend/packages/`. Shared building blocks live in packages such as `@thunderid/components`, `@thunderid/hooks`,
 `@thunderid/contexts`, and `@thunderid/i18n`.
 
+The Admin Console's (`apps/admin-console`) pages ship as `@thunderid/manage-*` packages (`manage-users`,
+`manage-groups`, `manage-roles`, `manage-agents`), built on the React SDK's admin components. The two families split by
+runtime: `configure-*` call the native management APIs only, while `manage-*` run destructive and lifecycle operations
+through the server's administration flows (`administrationMode: 'flow'` by default), so grants are revoked and sessions
+end first. Don't add flow handling to a `configure-*` package.
+
 Gate consumes ThunderID's published SDK packages — `@thunderid/react` and `@thunderid/react-router` — from the separate
 [javascript-sdks](https://github.com/thunder-id/javascript-sdks) repository. Clone that repository only to develop or
 debug the SDK itself, or to test against unreleased SDK changes.

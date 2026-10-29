@@ -17,6 +17,8 @@ interface AdvancedTabProps {
   identifier: string;
   authorizationEngine: AuthorizationEngine;
   pdpConnectionId: string;
+  /** Whether the edited identifier fails the MCP rule, which shows the field in an error state. */
+  isIdentifierInvalid?: boolean;
   onIdentifierChange: (value: string) => void;
   onAuthorizationEngineChange: (value: AuthorizationEngine) => void;
   onPDPConnectionChange: (value: string) => void;
@@ -27,6 +29,7 @@ export default function AdvancedTab({
   identifier,
   authorizationEngine,
   pdpConnectionId,
+  isIdentifierInvalid = false,
   onIdentifierChange,
   onAuthorizationEngineChange,
   onPDPConnectionChange,
@@ -71,19 +74,25 @@ export default function AdvancedTab({
             size="small"
             placeholder={
               resourceServer.type === 'MCP'
-                ? t('resourceServers:edit.advanced.identifier.placeholderMcp', 'https://mcp.example.com')
+                ? t('resourceServers:edit.advanced.identifier.placeholderMcp', 'https://mcp.example.com/mcp')
                 : t('resourceServers:edit.advanced.identifier.placeholder', 'https://api.example.com')
             }
+            error={isIdentifierInvalid}
             helperText={
-              resourceServer.type === 'MCP'
+              isIdentifierInvalid
                 ? t(
-                    'resourceServers:edit.advanced.identifier.hintMcp',
-                    'A unique value that identifies this MCP server. When set as an URI, enables RFC 8707 resource indicator support in OAuth2 authorization requests.',
+                    'resourceServers:edit.advanced.identifier.invalidMcp',
+                    'Enter an http or https URL with no fragment, such as https://mcp.example.com/mcp.',
                   )
-                : t(
-                    'resourceServers:edit.advanced.identifier.hint',
-                    'A unique value that identifies this resource server. When set as an URI, enables RFC 8707 resource indicator support in OAuth2 authorization requests.',
-                  )
+                : resourceServer.type === 'MCP'
+                  ? t(
+                      'resourceServers:edit.advanced.identifier.hintMcp',
+                      'The URL MCP clients use to reach this server, such as https://mcp.example.com/mcp. MCP clients send it as the resource parameter, and it becomes the token audience.',
+                    )
+                  : t(
+                      'resourceServers:edit.advanced.identifier.hint',
+                      'A unique value that identifies this resource server. When set as an URI, enables RFC 8707 resource indicator support in OAuth2 authorization requests.',
+                    )
             }
             disabled={resourceServer.isReadOnly}
           />

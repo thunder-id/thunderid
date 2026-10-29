@@ -55,8 +55,8 @@ func (suite *ImportDeletionsSuite) TearDownTest() {
 func (suite *ImportDeletionsSuite) TestADeletionRemovesTheResource() {
 	id := suite.plantTheme("removes")
 
-	result := suite.importWith(importRequest{
-		Deletions: []resourceDeletion{{ResourceType: "theme", ID: id}},
+	result := suite.importWith(testutils.ImportRequest{
+		Deletions: []testutils.ResourceDeletion{{ResourceType: "theme", ID: id}},
 	})
 
 	suite.Require().Len(result.Results, 1)
@@ -74,10 +74,10 @@ func (suite *ImportDeletionsSuite) TestADeletionRemovesTheResource() {
 func (suite *ImportDeletionsSuite) TestDeletingSomethingAbsentSucceeds() {
 	id := suite.plantTheme("absent")
 
-	first := suite.importWith(importRequest{Deletions: []resourceDeletion{{ResourceType: "theme", ID: id}}})
+	first := suite.importWith(testutils.ImportRequest{Deletions: []testutils.ResourceDeletion{{ResourceType: "theme", ID: id}}})
 	suite.Require().Equal("success", first.Results[0].Status)
 
-	second := suite.importWith(importRequest{Deletions: []resourceDeletion{{ResourceType: "theme", ID: id}}})
+	second := suite.importWith(testutils.ImportRequest{Deletions: []testutils.ResourceDeletion{{ResourceType: "theme", ID: id}}})
 	suite.Require().Len(second.Results, 1)
 	suite.Equal("success", second.Results[0].Status,
 		"deleting an already absent resource failed: %s", second.Results[0].Message)
@@ -89,8 +89,8 @@ func (suite *ImportDeletionsSuite) TestDeletingSomethingAbsentSucceeds() {
 func (suite *ImportDeletionsSuite) TestAnUndeletableTypeIsReported() {
 	for _, resourceType := range []string{"translation", "server_config"} {
 		suite.Run(resourceType, func() {
-			result := suite.importWith(importRequest{
-				Deletions: []resourceDeletion{{ResourceType: resourceType, ID: "anything"}},
+			result := suite.importWith(testutils.ImportRequest{
+				Deletions: []testutils.ResourceDeletion{{ResourceType: resourceType, ID: "anything"}},
 			})
 
 			suite.Require().Len(result.Results, 1)
@@ -105,8 +105,8 @@ func (suite *ImportDeletionsSuite) TestAnUndeletableTypeIsReported() {
 
 // A resource type nothing knows about is refused, not guessed at.
 func (suite *ImportDeletionsSuite) TestAnUnknownTypeIsRefused() {
-	result := suite.importWith(importRequest{
-		Deletions: []resourceDeletion{{ResourceType: "not-a-resource-type", ID: "some-id"}},
+	result := suite.importWith(testutils.ImportRequest{
+		Deletions: []testutils.ResourceDeletion{{ResourceType: "not-a-resource-type", ID: "some-id"}},
 	})
 
 	suite.Require().Len(result.Results, 1)
@@ -116,13 +116,13 @@ func (suite *ImportDeletionsSuite) TestAnUnknownTypeIsRefused() {
 
 // A deletion needs both halves to name anything, and saying which is missing beats a generic refusal.
 func (suite *ImportDeletionsSuite) TestADeletionNeedsBothTypeAndID() {
-	for label, deletion := range map[string]resourceDeletion{
+	for label, deletion := range map[string]testutils.ResourceDeletion{
 		"no id":   {ResourceType: "theme"},
 		"no type": {ID: "some-id"},
 		"neither": {},
 	} {
 		suite.Run(label, func() {
-			result := suite.importWith(importRequest{Deletions: []resourceDeletion{deletion}})
+			result := suite.importWith(testutils.ImportRequest{Deletions: []testutils.ResourceDeletion{deletion}})
 
 			suite.Require().Len(result.Results, 1)
 			suite.Equal("failed", result.Results[0].Status)
@@ -135,9 +135,9 @@ func (suite *ImportDeletionsSuite) TestADeletionNeedsBothTypeAndID() {
 func (suite *ImportDeletionsSuite) TestADryRunRemovesNothing() {
 	id := suite.plantTheme("dry-run")
 
-	result := suite.importWith(importRequest{
+	result := suite.importWith(testutils.ImportRequest{
 		DryRun:    true,
-		Deletions: []resourceDeletion{{ResourceType: "theme", ID: id}},
+		Deletions: []testutils.ResourceDeletion{{ResourceType: "theme", ID: id}},
 	})
 
 	suite.Require().Len(result.Results, 1)
@@ -150,8 +150,8 @@ func (suite *ImportDeletionsSuite) TestOneRefusalDoesNotStopTheOthers() {
 	first := suite.plantTheme("batch-one")
 	second := suite.plantTheme("batch-two")
 
-	result := suite.importWith(importRequest{
-		Deletions: []resourceDeletion{
+	result := suite.importWith(testutils.ImportRequest{
+		Deletions: []testutils.ResourceDeletion{
 			{ResourceType: "theme", ID: first},
 			{ResourceType: "translation", ID: "cannot-be-deleted"},
 			{ResourceType: "theme", ID: second},
@@ -171,9 +171,9 @@ func (suite *ImportDeletionsSuite) TestOneRefusalDoesNotStopTheOthers() {
 func (suite *ImportDeletionsSuite) TestDeletionsWithoutContent() {
 	id := suite.plantTheme("no-content")
 
-	result := suite.importWith(importRequest{
+	result := suite.importWith(testutils.ImportRequest{
 		Content:   "",
-		Deletions: []resourceDeletion{{ResourceType: "theme", ID: id}},
+		Deletions: []testutils.ResourceDeletion{{ResourceType: "theme", ID: id}},
 	})
 
 	suite.Equal(0, result.Summary.TotalDocuments, "an empty payload counted as a document")
@@ -186,7 +186,7 @@ func (suite *ImportDeletionsSuite) TestDeletionsWithoutContent() {
 func (suite *ImportDeletionsSuite) TestNeitherContentNorDeletionsIsStillRefused() {
 	id := suite.plantTheme("untouched")
 
-	status, body := suite.importExpectingStatus(importRequest{})
+	status, body := suite.importExpectingStatus(testutils.ImportRequest{})
 
 	suite.Equal(http.StatusBadRequest, status, "an empty request was accepted: %s", body)
 	suite.assertPresent(id, "a request carrying nothing removed a resource")
@@ -216,15 +216,15 @@ func (suite *ImportDeletionsSuite) TestEveryDeletableTypeResolves() {
 		"credential_configuration",
 	}
 
-	deletions := make([]resourceDeletion, 0, len(deletable))
+	deletions := make([]testutils.ResourceDeletion, 0, len(deletable))
 	for _, resourceType := range deletable {
-		deletions = append(deletions, resourceDeletion{
+		deletions = append(deletions, testutils.ResourceDeletion{
 			ResourceType: resourceType,
 			ID:           "00000000-0000-0000-0000-000000000000",
 		})
 	}
 
-	result := suite.importWith(importRequest{Deletions: deletions})
+	result := suite.importWith(testutils.ImportRequest{Deletions: deletions})
 
 	suite.Require().Len(result.Results, len(deletable))
 	for _, outcome := range result.Results {
@@ -245,7 +245,7 @@ func (suite *ImportDeletionsSuite) TestEveryDeletableTypeResolves() {
 // agent creation depends on the default agent type. The refusal is reported with the service's own
 // reason rather than skipped, so a configuration that dropped an agent type does not look reconciled.
 func (suite *ImportDeletionsSuite) TestAnAgentTypeDeletionReportsTheServiceRefusal() {
-	result := suite.importWith(importRequest{Deletions: []resourceDeletion{{
+	result := suite.importWith(testutils.ImportRequest{Deletions: []testutils.ResourceDeletion{{
 		ResourceType: "agent_type",
 		ID:           "00000000-0000-0000-0000-000000000000",
 	}}})
@@ -256,9 +256,9 @@ func (suite *ImportDeletionsSuite) TestAnAgentTypeDeletionReportsTheServiceRefus
 	suite.Equal(1, result.Summary.Failed)
 }
 
-// A connection is held by one of three services, and a deletion reaches whichever holds it: an
-// identity provider, a notification sender, and an AuthZEN PDP connection are each removed by the
-// same resource type.
+// A connection is held by one of four services, and a deletion reaches whichever holds it: an
+// identity provider, a notification sender, an AuthZEN PDP connection and an HTTP endpoint connection
+// are each removed by the same resource type.
 func (suite *ImportDeletionsSuite) TestADeletionRemovesAConnectionFromWhicheverServiceHoldsIt() {
 	suffix := time.Now().UnixNano()
 	planted := map[string]string{
@@ -277,13 +277,17 @@ func (suite *ImportDeletionsSuite) TestADeletionRemovesAConnectionFromWhicheverS
 			"name":     fmt.Sprintf("import-deletions-pdp-%d", suffix),
 			"endpoint": "https://pdp.example.com/access/v1/evaluation",
 		}),
+		"http": suite.plantConnection("http", map[string]interface{}{
+			"name": fmt.Sprintf("import-deletions-http-%d", suffix),
+			"url":  "https://import-deletions.example.com/extension",
+		}),
 	}
 
-	deletions := make([]resourceDeletion, 0, len(planted))
+	deletions := make([]testutils.ResourceDeletion, 0, len(planted))
 	for _, id := range planted {
-		deletions = append(deletions, resourceDeletion{ResourceType: "connection", ID: id})
+		deletions = append(deletions, testutils.ResourceDeletion{ResourceType: "connection", ID: id})
 	}
-	result := suite.importWith(importRequest{Deletions: deletions})
+	result := suite.importWith(testutils.ImportRequest{Deletions: deletions})
 
 	suite.Require().Len(result.Results, len(planted))
 	for _, outcome := range result.Results {
@@ -303,6 +307,9 @@ func (suite *ImportDeletionsSuite) TestADeletionRemovesAConnectionFromWhicheverS
 func (suite *ImportDeletionsSuite) plantConnection(vendor string, body map[string]interface{}) string {
 	suite.T().Helper()
 
+	ouID, ouErr := testutils.DefaultConnectionOUID()
+	suite.Require().NoError(ouErr, "could not resolve the connection organization unit")
+	body["ouId"] = ouID
 	payload, err := json.Marshal(body)
 	suite.Require().NoError(err)
 	req, err := http.NewRequest(http.MethodPost,
@@ -383,7 +390,7 @@ func (suite *ImportDeletionsSuite) plantTheme(suffix string) string {
 }
 
 // importWith posts an import request and returns the response, failing the test if it is not a 200.
-func (suite *ImportDeletionsSuite) importWith(reqBody importRequest) *importResponse {
+func (suite *ImportDeletionsSuite) importWith(reqBody testutils.ImportRequest) *testutils.ImportResponse {
 	suite.T().Helper()
 
 	if reqBody.Options.Target == "" {
@@ -409,14 +416,14 @@ func (suite *ImportDeletionsSuite) importWith(reqBody importRequest) *importResp
 	suite.Require().NoError(err)
 	suite.Require().Equal(http.StatusOK, resp.StatusCode, "import failed: %s", string(body))
 
-	var parsed importResponse
+	var parsed testutils.ImportResponse
 	suite.Require().NoError(json.Unmarshal(body, &parsed))
 	return &parsed
 }
 
 // importExpectingStatus posts an import request and returns the status and body as they came back,
 // for the requests the server is meant to refuse outright rather than report on.
-func (suite *ImportDeletionsSuite) importExpectingStatus(reqBody importRequest) (int, string) {
+func (suite *ImportDeletionsSuite) importExpectingStatus(reqBody testutils.ImportRequest) (int, string) {
 	suite.T().Helper()
 
 	if reqBody.Options.Target == "" {

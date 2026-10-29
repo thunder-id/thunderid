@@ -34,11 +34,17 @@ Controls the <ProductName /> server's network settings and identity.
 | `server.port` | `8090` | Port the server listens on |
 | `server.http_only` | `false` | If `true`, disables HTTPS and uses HTTP only (not recommended for production) |
 | `server.public_url` | _(derived from server hostname, port and protocol)_ | The public URL clients use to reach the server, if it differs from the bind address. Derived when unset. |
+| `server.timeouts.read_header_seconds` | `10` | Seconds the server waits to read a request's headers. Guards against clients that send headers slowly to hold connections open. |
+| `server.timeouts.write_seconds` | `10` | Seconds a request may take from the end of its headers until its response is written. A request still running at that point loses its connection, though the server finishes the work. It applies to every route except those with a timeout of their own, `gateway.apply_timeout_seconds` and `import.timeout_seconds`, so it can stay short. |
+| `server.timeouts.idle_seconds` | `120` | Seconds a kept-alive connection waits for its next request before it is closed. |
 | `server.identifier` | `default-deployment` | Unique identifier for this deployment instance. Every stored resource is scoped by it, so changing it on a server that already holds data hides that data rather than renaming it. |
 | `gateway.max_gateways` | `1` | Guards how many gateways this deployment administers, through the Gateway API (`POST /gateways`) or a gateway declared in a file. A standalone deployment pairs with one; raise it only where something else manages the fleet, or set it to `0` for a deployment that administers none. A registration beyond the number is refused with `409`. This is a guard rather than a guarantee: two registrations arriving at the same moment can leave one more gateway than configured, so do not rely on it as a licensing or security boundary. |
 | `gateway.max_versions` | `3` | How many captured configuration versions this deployment keeps (`POST /configuration-versions`). Capturing one beyond the number removes the oldest, except a version some gateway holds or could be reverted to. Those are kept even when that leaves more versions than the number, so applying and reverting keep working whatever it is. The number is never less than one. |
+| `gateway.auto_apply` | `false` | Whether a control plane applies its latest configuration version to the default gateway each time it captures one after a change, so a write reaches that gateway without a deploy. Off by default, because a control plane that administers several gateways usually keeps applying a version a deliberate step. The apply is refused like any other, for example when the gateway lacks a value the version refers to; the control plane logs it and the next change tries again. |
 | `gateway.allow_private_addresses` | `false` | Whether a gateway may be registered at, and reached on, a loopback, link-local or private address such as `localhost`, `10.0.0.5` or `169.254.169.254`. Off, a base URL naming one is refused with `400` (`GTW-1027`), and a hostname that resolves to one is refused when the gateway is called, so this deployment's calls, which carry the gateway's key, cannot be pointed at something inside its own network. Turn it on for a local or single-host setup whose gateways sit on such addresses. A base URL must be `https` and carry no credentials whatever this is set to. |
 | `gateway.removal_confirmation_threshold` | `5` | How many resources an apply or revert may remove from a gateway without being confirmed. One that would remove more is refused with `409` (`GTW-1030`) unless the request sets `confirmRemovals`; a dry run shows the removals first. A rollback to a much smaller version is the usual case. `0` turns the check off. |
+| `gateway.apply_timeout_seconds` | `300` | Seconds a request to apply a configuration version to a gateway, or to revert one, may take to answer, in place of `server.timeouts.write_seconds`. It covers waiting for an apply already running on that gateway and the gateway's import. Raise it, together with `import.timeout_seconds` on the gateway and any proxy or ingress timeout in front of either, when large applies time out. |
+| `import.timeout_seconds` | `120` | Seconds an import request (`POST /import`) may take to answer, in place of `server.timeouts.write_seconds`. A control plane applies a configuration version to a gateway through this API, so raise it on the gateway when large applies time out. |
 | `gateway.store` | `composite` | Where gateways are read from. `mutable` is the database alone, and gateways declared in files are not read. `declarative` is files alone, and registration through the API is refused. `composite` is both: listings merge the two, registration writes to the database, and a gateway declared in a file cannot be changed or removed through the API, because the file is read again on every start and would undo it. |
 | `notification.template.store` | `composite` | Where notification templates are read from. `mutable` is the database alone, and templates are editable through the Console and API. `declarative` is files alone, and writes through the API are refused with `403`. `composite` is both: file-declared templates are read-only and are merged with editable database templates. |
 
@@ -323,7 +329,7 @@ Stores user profiles and credentials.
 
 ### Runtime-persistent Database
 
-Stores SSO sessions, revoked tokens, and consent records. This database is required. <ProductName /> fails to start when `database.runtime_persistent` is not configured.
+Stores SSO sessions, revoked tokens, consent records, and account access state (suspensions, sign-in locks, failed-attempt counts, and last sign-in times). This database is required. <ProductName /> fails to start when `database.runtime_persistent` is not configured.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -414,6 +420,7 @@ That means you can override only the fields you need. <ProductName /> continues 
 - `EntityTypeByIDCache`
 - `EntityTypeByHandleCache`
 - `FlowGraphCache`
+- `ServerConfigByNameCache`
 
 :::note
 `FlowGraphCache` is always in-memory. It caches process-local flow graph Go objects during flow execution, not shared system-level cache data.
@@ -492,6 +499,8 @@ OAuth 2.0 and OpenID Connect settings.
 | `oauth.client_assertion.max_lifetime` | `300` | Maximum lifetime of a `private_key_jwt` client assertion in seconds. The `exp` claim must not be later than `iat` plus this value, or the current time plus this value when `iat` is absent |
 | `oauth.client_assertion.max_iat_age` | `60` | Maximum age of a `private_key_jwt` client assertion's `iat` claim in seconds. Assertions with an older `iat` are rejected |
 | `oauth.cimd.enabled` | `true` | If `true`, advertises `client_id_metadata_document_supported` in the authorization server metadata, so MCP clients that support Client ID Metadata Documents identify themselves with one. Set it to `false` if MCP clients should register through Dynamic Client Registration instead. It doesn't affect registering clients from a document in the Console. See [Register an MCP Client from Its Metadata Document](../../guides/mcp/mcp-clients/client-id-metadata-document) |
+| `oauth.authorization_details.processor_timeout` | `5` | Timeout of one call to an authorization details type's processor, in seconds. The value must be from 1 to 30 |
+| `oauth.authorization_details.type_metadata_enabled` | `true` | If `true`, serves the authorization details type metadata endpoint and advertises it as `authorization_details_types_endpoint` in the authorization server metadata. `authorization_details_types_supported` is advertised either way |
 | `oauth.allowed_auth_methods` | `["client_secret_basic", "client_secret_post", "private_key_jwt", "none"]` | Client token endpoint authentication methods allowed during client registration |
 | `oauth.allowed_response_types` | `["code"]` | OAuth response types allowed during client registration |
 | `oauth.allowed_grant_types` | `["client_credentials", "authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:token-exchange", "urn:openid:params:grant-type:ciba", "urn:ietf:params:oauth:grant-type:jwt-bearer"]` | OAuth grant types allowed during client registration |
@@ -514,7 +523,7 @@ Authentication and registration flow settings.
 |---------|---------|-------------|
 | `flow.max_version_history` | `10` | Maximum number of flow versions to retain |
 | `flow.auto_infer_registration` | `true` | If `true`, automatically infers registration from authentication flows |
-| `flow.executors` | *(all built-in executors)* | Whitelist of built-in executor names to register at startup. Omit the key or leave the list empty to register every built-in executor. When set, only the listed executors are available; flows that reference other executors fail validation at startup. Unknown names cause startup to fail. Duplicate names are ignored. |
+| `flow.executors` | *(all built-in executors)* | Whitelist of built-in executor names to register at startup. Omit the key or leave the list empty to register every built-in executor. When set, only the listed executors are available; flows that reference other executors fail validation at startup. Unknown names cause startup to fail. Duplicate names are ignored. The system flows built into the server need `ApplicationActionValidator`, `CriteriaRevocationExecutor`, and `SessionRevocationExecutor`; the server does not start without them. |
 
 ### Built-in Executors
 
@@ -533,13 +542,16 @@ flow:
 
 **Register a subset:**
 
-List only the executor names you need. Built-in executors not in the list are excluded:
+List only the executor names you need, together with the three the system flows need. Built-in executors not in the list are excluded:
 
 ```yaml
 flow:
   executors:
     - CredentialsAuthExecutor
     - InviteExecutor
+    - ApplicationActionValidator
+    - CriteriaRevocationExecutor
+    - SessionRevocationExecutor
 ```
 
 For the complete list of built-in executor names and configuration details, see [Executor Details and Configuration](../../guides/flows/advanced-configurations#executor-details-and-configuration).
@@ -713,6 +725,14 @@ Authorization resource settings.
 |---------|---------|-------------|
 | `resource.default_delimiter` | `:` | Default delimiter for resource hierarchies |
 
+## Authorization Details Type Configuration
+
+Settings for the registry of RFC 9396 authorization details types.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `authorization_detail_type.store` | `composite` | Where authorization details types are read from. `mutable` is the database alone. `declarative` is files alone, and registration through the API is refused. `composite` is both: listings merge the two, registration writes to the database, and a type declared in a file is read-only through the API. If unset, `declarative_resources.enabled` decides between `declarative` and `mutable` |
+
 ## Resource Sharing Configuration
 
 Controls whether a resource can reach an organization unit outside the tree that owns it.
@@ -784,9 +804,10 @@ Use these values in any `categories` list to filter which events a subscriber re
 | Value | Description |
 |-------|-------------|
 | `observability.all` | Matches all events regardless of type (default) |
-| `observability.authentication` | Token issuance events |
+| `observability.authentication` | Token issuance and revocation events, back-channel logout delivery, revocation store outages, automatic account locks, and unlocks by a recovery flow |
 | `observability.authorization` | Authorization-related events |
 | `observability.flows` | Authentication and registration flow execution events |
+| `observability.administration` | Suspend, unsuspend, and unlock operations by an administrator, and server configuration writes |
 
 ### Example
 
@@ -851,7 +872,50 @@ Signing keys are configured as an array. Each key has the following properties:
   key_file: "config/certs/signing.key"
 ```
 
-The key type under `crypto.keys` determines the algorithm in `id_token_signing_alg_values_supported` in the OIDC discovery document. RSA keys advertise `RS256`; ECDSA `P-256`, `P-384`, and `P-521` keys advertise `ES256`, `ES384`, and `ES512`; Ed25519 keys advertise `EdDSA`. If multiple keys are configured, all resulting algorithms are included without duplicates.
+The key type under `crypto.keys` determines the algorithm in `id_token_signing_alg_values_supported` in the OIDC discovery document. RSA keys advertise `RS256`; ECDSA `P-256`, `P-384`, and `P-521` keys advertise `ES256`, `ES384`, and `ES512`; Ed25519 keys advertise `EdDSA`; ML-DSA-44, ML-DSA-65, and ML-DSA-87 keys advertise `ML-DSA-44`, `ML-DSA-65`, and `ML-DSA-87`. If multiple keys are configured, all resulting algorithms are included without duplicates.
+
+#### Sign Tokens with ML-DSA
+
+To sign tokens with ML-DSA, add an ML-DSA key pair to `crypto.keys`:
+
+```yaml
+crypto:
+  keys:
+    - id: "default-key"
+      cert_file: "config/certs/signing.cert"
+      key_file: "config/certs/signing.key"
+    - id: "mldsa-key"
+      cert_file: "config/certs/mldsa-signing.cert"
+      key_file: "config/certs/mldsa-signing.key"
+```
+
+Then choose how tokens use the key:
+
+- To sign all tokens with ML-DSA, set [`jwt.preferred_key_id`](#jwt-configuration) to the ML-DSA key ID, for example `mldsa-key`.
+- To let individual clients opt in, keep the existing preferred key. A client selects the ML-DSA algorithm, for example `ML-DSA-65`, with `id_token_signed_response_alg` or `userinfo_signed_response_alg`. Access tokens always use the preferred key. See [Token Formats](../../guides/protocols/oauth-oidc/token-formats) for details.
+
+Clients and resource servers that verify these tokens must support ML-DSA. <ProductName /> publishes ML-DSA public keys at the [JWKS](../../guides/protocols/oauth-oidc/jwks) endpoint as `AKP` keys, as defined in RFC 9964.
+
+#### ML-DSA Key Format
+
+<ProductName /> accepts ML-DSA private keys in the seed-only PKCS#8 format defined in RFC 9881. By default, OpenSSL writes keys that hold both the seed and the expanded key, so set the seed-only output format when you create or convert a key.
+
+To create the key pair for the example above with OpenSSL 3.5 or later, run the following commands in `config/certs`. The second command creates a self-signed certificate for the key.
+
+```bash
+openssl genpkey -algorithm ML-DSA-65 -provparam ml-dsa.output_formats=seed-only -out mldsa-signing.key
+openssl req -new -x509 -key mldsa-signing.key -out mldsa-signing.cert -days 365 -subj "/CN=ML-DSA signing key"
+```
+
+To convert an existing key that holds both the seed and the expanded key, write the seed-only key to a new file:
+
+```bash
+openssl pkey -in mldsa-signing.key -provparam ml-dsa.output_formats=seed-only -out mldsa-signing-seed.key
+```
+
+Then set `key_file` to the new file. The key pair does not change, so the existing certificate and issued tokens stay valid. Keep the original key file until the server runs with the new one.
+
+A key that holds only the expanded key cannot be converted because it does not contain the seed. Generate a new key pair and rotate to it instead.
 
 ## Attribute Cache Configuration
 
@@ -872,6 +936,8 @@ Treat `attribute_cache.encryption.enabled` as a set-once value. It is applied on
 :::warning
 If you are upgrading from an earlier release, remove the `email.smtp` block from `deployment.yaml`, or `configuration.email.smtp` from your Helm values. The server does not start while `deployment.yaml` has an `email` block, and the Helm chart does not render while `configuration.email.smtp.host` is set. To move those settings to an email provider, see [Migrate From `email.smtp`](../../guides/notifications/email-providers#migrate-from-emailsmtp).
 :::
+
+Server-sent email that is not part of a flow, such as the automatic account-lock notice, goes through the default email sender. See [Notification Defaults](#notification-defaults).
 
 ## Notification Configuration
 
@@ -1072,6 +1138,8 @@ Supported flow types are `authFlow`, `registrationFlow`, `userOnboardingFlow`, `
 
 `userDeletionFlow` is resolved differently from the others: it names an administration flow that runs when a user is deleted from the Console, rather than a flow an inbound request starts. Its shipped default revokes the user's tokens and terminates their sessions before the record is removed. Deleting a user through the `DELETE /users/{id}` API removes the record only and does not run this flow. See [Token Revocation](../../guides/protocols/oauth-oidc/token-revocation#user-deletion).
 
+The account lifecycle administration flows have their own types: `userSuspendFlow`, `userUnsuspendFlow`, `userUnlockFlow`, `agentSuspendFlow`, `agentUnsuspendFlow`, `agentUnlockFlow`, `applicationSuspendFlow`, and `applicationUnsuspendFlow`. Like `userDeletionFlow`, each names an administration flow run against an existing identity, not a flow an inbound request starts. See [Customize the Lifecycle Flows](../../guides/account-protection/suspend-and-restore-accounts#customize-the-lifecycle-flows).
+
 **Resolution order:** When an inbound request starts a flow, the effective flow is resolved as follows:
 
 1. Application-level override (the flow ID pinned on the application or agent)
@@ -1111,6 +1179,232 @@ Configure flow defaults in either of these ways:
 Set `defaultHandle` only for flow types that have a corresponding flow in your deployment. The handle is validated when the configuration is written. An unknown handle or a handle belonging to a different flow type is rejected with `SCF-1003`. For optional types (registration, recovery, user-onboarding, sign-out), omit `defaultHandle` to leave the server-level default empty.
 :::
 
+## Notification Defaults
+
+Names the email provider for server-sent email that no flow node sends, such as the automatic account-lock notice. Flow email nodes still select their own provider. The setting is stored in the server-config `notification` section, not in `deployment.yaml`, and is separate from the `notification.otp` settings in [Notification Configuration](#notification-configuration).
+
+| Field | Description |
+|-------|-------------|
+| `defaultEmailSenderId` | The ID of an email provider (an email notification sender). It is resolved each time an email is sent, so an unknown sender, or one that does not send email, fails the delivery rather than the update. An empty value clears it. |
+
+The section has no other field. A runtime update with an unknown field is rejected with `SCF-1003`, and a declarative document with one stops the server at startup.
+
+<ProductName /> ships no default sender. Until one is set, server-sent email is not delivered and the server logs a warning, but the action that triggered it, such as a lock, is unaffected. The value is read each time an email is sent, so a runtime update applies without a restart; a declarative change applies after a restart. To create a provider and find its ID, see [Configure an Email Provider](../../guides/notifications/email-providers).
+
+Set it in either of these ways:
+
+- **Declarative** - create `config/resources/server_configs/notification.yaml`, then restart:
+  ```yaml
+  name: notification
+  value:
+    defaultEmailSenderId: "<email-sender-id>"
+  ```
+- **Runtime** - send the new value to `PUT /server-config/notification`; it is applied immediately:
+  ```http
+  PUT /server-config/notification
+  Authorization: Bearer <admin-access-token>
+  Content-Type: application/json
+
+  { "defaultEmailSenderId": "<email-sender-id>" }
+  ```
+
+:::note
+A declarative sender takes precedence and locks the setting: while `notification.yaml` names a sender, runtime `PUT /server-config/notification` requests are rejected. Remove the declarative value to manage the sender at runtime.
+:::
+
+## Account Access
+
+Controls the automatic account lock for users and agents, the lock email, and whether the last successful sign-in time is recorded. The policy is stored in the server-config `accountAccess` section. Only the `user` and `agent` categories can be configured; applications are never locked automatically, and an `application` block is rejected. For how locks work and how to set the policy in the Console, see [Configure Account Lockout](../../guides/account-protection/configure-account-lockout). Suspension is not configured here; see [Suspend and Restore Accounts](../../guides/account-protection/suspend-and-restore-accounts).
+
+With observability enabled, every lock that forms, and every suspend, unsuspend, and unlock, is published as an event. See [Event Categories](#event-categories).
+
+### Settings
+
+Each category (`user`, `agent`) accepts these fields. All are optional, so a layer states only what it changes.
+
+| Field | Description |
+|-------|-------------|
+| `lockGranularity` | `authentication_method` (default) locks only the sign-in method that failed. `account` counts every lockable failure together and locks every sign-in method. |
+| `recordLastLogin` | When `true`, the time access was last granted is recorded as `lastLoginAt` and returned on user and agent reads. For an agent, a `client_credentials` token also records it. Defaults to `false`. |
+| `lastLoginResolutionSeconds` | Skips the write when the stored value is newer than this many seconds. `0` writes every time. Defaults to `3600`. |
+| `default` | The policy for every sign-in method in the category (see below). |
+| `notifications.onLock.email.enabled` | Whether the lock email is sent. Only the `user` category sends it. See [Lock Email](#lock-email). |
+| `notifications.onLock.email.templates` | The lock email's templates. Set only through the section, not `default.json` or `deployment.yaml`. See [Lock Email](#lock-email). |
+
+A policy has these fields:
+
+| Field | Description |
+|-------|-------------|
+| `enabled` | Turns automatic locking and enforcement of failure-based locks on or off. Disabling it keeps stored lock history and does not release suspensions or post-suspension user locks. An omitted value is inherited; a merged policy without an explicit value is enabled when it sets another policy field. An enabled policy requires `threshold`, `failureWindowSeconds`, and `lockDurationsSeconds`. |
+| `threshold` | Failed attempts that form a lock. Must be at least `1` while the policy is enabled. |
+| `failureWindowSeconds` | A failure more than this long after the previous one restarts the count. `0` never restarts it on time. Required while the policy is enabled. |
+| `lockDurationsSeconds` | The lock duration for each consecutive lock, in seconds. The last value repeats. `0` locks until an administrator unlocks or the user completes account recovery. Must have at least one entry while the policy is enabled. |
+| `lockDecaySeconds` | How long after a lock ends the consecutive lock count resets. `0` never resets it. |
+| `maxConsecutiveFailures` | Consecutive failed attempts after which the lock does not expire. Only a successful sign-in with that method (any method with `account` granularity), a completed recovery, or an unlock resets the count. `0` sets no limit; otherwise it must be at least `threshold`. |
+
+Every seconds value must be a whole number from `0` to `9223372036`.
+
+### Product Defaults
+
+The defaults ship as the `account_access` block of `default.json`, with the keys in snake_case (`lock_granularity`, `lock_durations_seconds`, and so on):
+
+| Category | Threshold | Failure window | Lock durations | Decay | Consecutive failures |
+|----------|-----------|----------------|----------------|-------|----------------------|
+| `user` | `5` | `3600` s | `300`, `900`, `1800`, `3600` s | `86400` s | `50` |
+| `agent` | `5` | `900` s | `60`, `300`, `900` s | `3600` s | `50` |
+
+Both categories default to `authentication_method` granularity, `record_last_login: false`, and `last_login_resolution_seconds: 3600`. The user category sends the lock email by default (`notifications.on_lock.email.enabled: true`). The lock email templates are not part of this block: the bootstrap stores them in the section's runtime value (see [Lock Email](#lock-email)).
+
+Override the block in `deployment.yaml`, which is the base of the section:
+
+```yaml
+account_access:
+  user:
+    default:
+      threshold: 3
+      lock_durations_seconds: [600, 3600]
+```
+
+### Layers and Locking
+
+The effective policy is built from layers. The section is read each time it is needed, so a runtime update applies without a restart; a change to the base or to a declarative file applies after a restart:
+
+1. The base: the `account_access` block from `default.json` and `deployment.yaml`.
+2. A declarative document, when one exists, is laid over the base field by field. It locks the section: runtime writes are rejected until the declarative value is removed.
+3. Otherwise the runtime value is laid over the base field by field.
+
+Within a category, a non-empty `lockDurationsSeconds` replaces the lower one. If the section cannot be read, the base applies.
+
+The node that receives a runtime update applies it immediately. With the default in-memory cache, other nodes keep their cached copy of the section until it expires, after `cache.ttl` (one hour by default). To apply updates on every node sooner, use the Redis cache, or set a shorter `ttl` for `ServerConfigByNameCache` in `cache.properties`. See [Cache Configuration](#cache-configuration).
+
+### Configure the Policy
+
+Set the section in any of these ways:
+
+- **Declarative** - create `config/resources/server_configs/accountAccess.yaml`, then restart. The section uses camelCase keys:
+  ```yaml
+  name: accountAccess
+  value:
+    user:
+      lockGranularity: authentication_method
+      default:
+        threshold: 3
+        failureWindowSeconds: 1800
+        lockDurationsSeconds: [600, 3600]
+      notifications:
+        onLock:
+          email:
+            enabled: true
+            templates:
+              temporary: authentication-method-locked
+              permanent: authentication-method-locked-permanent
+              account:
+                temporary: account-locked
+                permanent: account-locked-permanent
+  ```
+- **Runtime** - send the new value to `PUT /server-config/accountAccess`. It is applied immediately:
+  ```http
+  PUT /server-config/accountAccess
+  Authorization: Bearer <admin-access-token>
+  Content-Type: application/json
+
+  {
+    "user": {
+      "default": {
+        "threshold": 3,
+        "failureWindowSeconds": 1800,
+        "lockDurationsSeconds": [600, 3600]
+      },
+      "notifications": {
+        "onLock": {
+          "email": {
+            "templates": {
+              "temporary": "authentication-method-locked",
+              "permanent": "authentication-method-locked-permanent",
+              "account": {
+                "temporary": "account-locked",
+                "permanent": "account-locked-permanent"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  ```
+A `PUT` replaces the entire runtime layer, so include every runtime value to retain, including lock email templates and sign-in recording settings. Read `GET /server-config/accountAccess` first: `writable` contains the stored runtime layer, and `merged` contains the effective configuration. To clear runtime overrides, send `{}`. The base then applies, with no lock email templates, so no lock email is sent.
+
+:::note
+In a Helm deployment, set the base with the `configuration.accountAccess` chart value, in camelCase. The chart's `values.yaml` carries the product defaults, so override only the keys you need. The API, the Console, and a declarative `server_configs/accountAccess.yaml` mounted with `declarativeResources` (see [Helm Deployment](#helm-deployment)) work as in any other deployment.
+:::
+
+### Validation
+
+An invalid value is rejected with HTTP 400 and `SCF-1003` ("Invalid server configuration value"), and nothing is changed. The section rejects:
+
+- Unknown fields, including a misspelled key, an `application` block, and a lock email recipient setting.
+- A `lockGranularity` other than `authentication_method` or `account`.
+- A lock email template that is not a valid handle, and a `templates.methods` key other than `credential` or `otp`.
+- A negative `threshold` or seconds value, and a seconds value above the maximum.
+- A negative `maxConsecutiveFailures`, or one above `0` and below the policy's `threshold`.
+- An enabled policy, after it is laid over the base, that cannot form a lock: it needs a `threshold` of at least `1`, a `failureWindowSeconds`, and a non-empty `lockDurationsSeconds`. Set `enabled: false` to switch the policy off.
+- Any write while a declarative `accountAccess` document exists.
+
+The same rules check the base on its own at startup. An enabled policy in the `account_access` block of `default.json` and `deployment.yaml` must have its `threshold`, `failure_window_seconds`, and `lock_durations_seconds` without any later layer. An invalid base stops the server from starting.
+
+### Lock Email
+
+The lock email's templates are set in `notifications.onLock.email.templates` of the `user` category. For when the email is sent and which default template each lock uses, see [Email Users When a Lock Forms](../../guides/account-protection/configure-account-lockout#email-users-when-a-lock-forms).
+
+| Field | Template for |
+|-------|--------------|
+| `temporary`, `permanent` | A lock on one sign-in method |
+| `account.temporary`, `account.permanent` | A lock on all sign-in methods |
+| `methods.credential`, `methods.otp` | A lock on that one sign-in method, each with its own `temporary` and `permanent` |
+
+A field you leave out falls back to `temporary` or `permanent`, so a set of templates without `account` sends the one-method email for a lock on all sign-in methods. For example, to keep the default templates and give one-time password locks their own wording:
+
+```json
+{
+  "templates": {
+    "temporary": "authentication-method-locked",
+    "permanent": "authentication-method-locked-permanent",
+    "account": {
+      "temporary": "account-locked",
+      "permanent": "account-locked-permanent"
+    },
+    "methods": {
+      "otp": {"temporary": "otp-locked", "permanent": "otp-locked-permanent"}
+    }
+  }
+}
+```
+
+With this setting, a lock on one-time passwords sends `otp-locked` or `otp-locked-permanent`, a lock on passwords sends `authentication-method-locked` or `authentication-method-locked-permanent`, and a lock on all sign-in methods sends `account-locked` or `account-locked-permanent`. The fragment belongs under `user.notifications.onLock.email`. Create the `otp-locked` templates first.
+
+:::warning
+The default templates live in the section's stored value, not in `default.json` or `deployment.yaml`. A declarative `accountAccess` document or a `PUT` that does not name the templates removes them, and no lock email is sent.
+:::
+
+### Identity Governance Provider
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `identity_governance_provider.type` | `default` | The identity governance provider that the flow engine and OAuth use. Set to `disabled` to turn off its checks and the lifecycle flows. |
+
+With `disabled`:
+
+- The suspend, unsuspend, and unlock flows fail.
+- A recovery flow still completes, but it releases no lock.
+- Sign-in through the default authentication provider and the Direct API still counts failures and enforces locks and suspensions.
+- Only the Direct API authentication endpoints record `lastLoginAt`. Sign-ins through flows and `client_credentials` tokens do not, so leave `recordLastLogin` off for both categories.
+
+:::warning
+When you set the provider to `disabled`, also set `account_access.<category>.default.enabled: false` in `deployment.yaml` for both `user` and `agent`, and keep it off in the `accountAccess` section. Otherwise locks still form, and only their duration can end them.
+:::
+
+A suspension placed before the switch still refuses sign-in, and it cannot be lifted while the provider is disabled, because the unsuspend flow fails. A user unsuspended before the switch also stays locked on every sign-in method, even with automatic locking off, because neither the unlock flow nor recovery can release that lock. Unsuspend and unlock these accounts before you disable the provider.
+
 ## Passkey Configuration
 
 WebAuthn/Passkey settings (typically defined in `deployment.yaml`).
@@ -1138,14 +1432,6 @@ Controls the [Direct API](../../key-concepts/authentication/integration-models#d
 ```yaml
 direct_api:
   enabled: false
-```
-
-To hide the passkey registration endpoints in the Console as well, set `direct_api.enabled` to `false` in the Console `config.js`:
-
-```js
-direct_api: {
-  enabled: false,
-},
 ```
 
 ## Security Configuration

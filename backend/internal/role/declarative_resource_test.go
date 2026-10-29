@@ -10,11 +10,14 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 )
 
 // RoleExporterTestSuite contains tests for the roleExporter.
@@ -22,6 +25,7 @@ type RoleExporterTestSuite struct {
 	suite.Suite
 	mockService           *RoleServiceInterfaceMock
 	mockAssignmentService *RoleAssignmentServiceInterfaceMock
+	mockSharingService    *sharingmock.SharingServiceInterfaceMock
 	exporter              declarativeresource.ResourceExporter
 	ctx                   context.Context
 }
@@ -33,7 +37,11 @@ func TestRoleExporterTestSuite(t *testing.T) {
 func (suite *RoleExporterTestSuite) SetupTest() {
 	suite.mockService = NewRoleServiceInterfaceMock(suite.T())
 	suite.mockAssignmentService = NewRoleAssignmentServiceInterfaceMock(suite.T())
-	suite.exporter = newRoleExporter(suite.mockService, suite.mockAssignmentService)
+	suite.mockSharingService = sharingmock.NewSharingServiceInterfaceMock(suite.T())
+	// A role records no sharing policy unless a test says otherwise.
+	suite.mockSharingService.EXPECT().ExportPolicies(mock.Anything, RoleSharingType, mock.Anything).
+		Return(nil, nil).Maybe()
+	suite.exporter = newRoleExporter(suite.mockService, suite.mockAssignmentService, suite.mockSharingService)
 	suite.ctx = context.Background()
 }
 
@@ -217,6 +225,51 @@ func (suite *RoleExporterTestSuite) TestGetResourceByID_Success() {
 	assert.True(suite.T(), ok)
 	assert.Equal(suite.T(), "role1", role.ID)
 	assert.Len(suite.T(), role.Assignments, 2)
+}
+
+// exportingPolicies rebuilds the exporter around a sharing service that answers the role's policies.
+func (suite *RoleExporterTestSuite) exportingPolicies(
+	policies []sharing.ReplayablePolicy, svcErr *tidcommon.ServiceError) {
+	sharingService := sharingmock.NewSharingServiceInterfaceMock(suite.T())
+	sharingService.EXPECT().ExportPolicies(mock.Anything, RoleSharingType, "role1").Return(policies, svcErr)
+	suite.exporter = newRoleExporter(suite.mockService, suite.mockAssignmentService, sharingService)
+	suite.mockService.On("GetRoleWithPermissions", suite.ctx, "role1").
+		Return(&RoleWithPermissions{ID: "role1", Name: "Admin", OUID: "ou1"}, nil)
+}
+
+// The document carries the role's sharing policies, so it re-imports as a role shared as it was.
+func (suite *RoleExporterTestSuite) TestGetResourceByID_ExportsTheSharingPolicies() {
+	request := sharing.PolicyRequest{
+		ID:         "role1-policy-ou1",
+		ChildUnits: &sharing.ChildUnitsRequest{Mode: sharing.ChildUnitsAll},
+	}
+	suite.exportingPolicies([]sharing.ReplayablePolicy{{InitiatingOUID: "ou1", Request: request}}, nil)
+	suite.mockAssignmentService.On(
+		"GetRoleAssignments", suite.ctx, "role1", serverconst.MaxPageSize, 0, false,
+	).Return(&AssignmentList{Assignments: []RoleAssignmentWithDisplay{}}, nil)
+
+	resource, _, err := suite.exporter.GetResourceByID(suite.ctx, "role1")
+
+	suite.Require().Nil(err)
+	role, ok := resource.(*roleDeclarativeResource)
+	suite.Require().True(ok)
+	suite.Equal([]sharing.PolicyRequest{request}, role.SharingPolicies)
+}
+
+// A failure to read the policies fails the export rather than writing a document that silently
+// shares with nobody, and it is answered in this package's own codes.
+func (suite *RoleExporterTestSuite) TestGetResourceByID_SharingFailureFailsTheExport() {
+	suite.exportingPolicies(nil, &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "SHR-5000"})
+	suite.mockAssignmentService.On(
+		"GetRoleAssignments", suite.ctx, "role1", serverconst.MaxPageSize, 0, false,
+	).Return(&AssignmentList{Assignments: []RoleAssignmentWithDisplay{}}, nil)
+
+	resource, name, err := suite.exporter.GetResourceByID(suite.ctx, "role1")
+
+	suite.Nil(resource)
+	suite.Empty(name)
+	suite.Require().NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 // Test GetResourceByID - error on GetRoleWithPermissions
@@ -456,4 +509,80 @@ ouId: ou1
 	role, ok := result.(*RoleWithPermissionsAndAssignments)
 	assert.True(suite.T(), ok)
 	assert.Equal(suite.T(), "role1", role.ID)
+}
+
+// Sharing
+
+func (suite *RoleExporterTestSuite) TestMakeRoleSharingConfig() {
+	cfg := makeRoleSharingConfig(suite.mockService)
+
+	suite.Equal(RoleSharingType, cfg.ResourceType)
+	suite.Equal("roles", cfg.DirectoryName)
+	suite.NotNil(cfg.Parser)
+}
+
+func (suite *RoleExporterTestSuite) TestRoleSharingParser_DocumentWithoutPolicies() {
+	declared, err := makeRoleSharingParser(suite.mockService)([]byte(`
+id: role1
+name: Support Agent
+ouId: ou-owner
+permissions: []
+`))
+
+	suite.Require().NoError(err)
+	suite.Equal("role1", declared.ResourceID)
+	suite.Empty(declared.Policies)
+}
+
+func (suite *RoleExporterTestSuite) TestRoleSharingParser_ResolvesTheOwnerByHandle() {
+	suite.mockService.EXPECT().ResolveRoleOUHandle(context.Background(),
+		&RoleWithPermissionsAndAssignments{ID: "role1", Name: "Support Agent", OUHandle: "acme"}).
+		RunAndReturn(func(_ context.Context, role *RoleWithPermissionsAndAssignments) *tidcommon.ServiceError {
+			role.OUID = "ou-owner"
+			return nil
+		})
+
+	declared, err := makeRoleSharingParser(suite.mockService)([]byte(`
+id: role1
+name: Support Agent
+ouHandle: acme
+permissions: []
+sharingPolicies:
+  - id: role1-policy-owner
+    childUnits:
+      mode: all
+      excludedOuIds: [ ou-sandbox ]
+`))
+
+	suite.Require().NoError(err)
+	suite.Equal("role1", declared.ResourceID)
+	suite.Equal("Support Agent", declared.ResourceName)
+	suite.Equal("ou-owner", declared.OwningOUID)
+	suite.Require().Len(declared.Policies, 1)
+	policy := declared.Policies[0]
+	suite.Equal("role1-policy-owner", policy.ID)
+	suite.Require().NotNil(policy.ChildUnits)
+	suite.Equal(sharing.ChildUnitsAll, policy.ChildUnits.Mode)
+	suite.Equal([]string{"ou-sandbox"}, policy.ChildUnits.ExcludedOUIDs)
+}
+
+func (suite *RoleExporterTestSuite) TestRoleSharingParser_Errors() {
+	parser := makeRoleSharingParser(suite.mockService)
+
+	_, err := parser([]byte("id: [unterminated"))
+	suite.ErrorContains(err, "failed to parse role YAML")
+
+	suite.mockService.EXPECT().ResolveRoleOUHandle(context.Background(),
+		&RoleWithPermissionsAndAssignments{ID: "role1", Name: "Support Agent", OUHandle: "nowhere"}).
+		Return(&ErrorInvalidRequestFormat)
+	_, err = parser([]byte(`
+id: role1
+name: Support Agent
+ouHandle: nowhere
+permissions: []
+sharingPolicies:
+  - id: role1-policy-owner
+    childUnits: { mode: all }
+`))
+	suite.ErrorContains(err, `organization unit with handle "nowhere" not found`)
 }

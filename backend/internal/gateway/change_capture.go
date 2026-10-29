@@ -31,9 +31,10 @@ const retryDelayMax = time.Minute
 // The list is the set of resource types the export covers, so a resource type that joins the export
 // is added here with it.
 var configurationPaths = []string{
-	"/agent-types", "/agents", "/applications", "/connections", "/design", "/flows", "/groups", "/i18n",
-	"/import", "/openid4vci", "/openid4vp", "/organization-units", "/ou", "/resource-servers", "/roles",
-	"/scim", "/server-config", "/user-types", "/users",
+	"/agent-types", "/agents", "/applications", "/authorization-detail-types", "/connections", "/design",
+	"/flows", "/groups", "/i18n", "/import", "/notification-templates", "/openid4vci", "/openid4vp",
+	"/organization-units", "/ou", "/resource-servers", "/roles", "/scim", "/server-config", "/user-types",
+	"/users",
 }
 
 // ChangeCapture keeps the current version up to date as the configuration changes: a successful
@@ -80,6 +81,7 @@ func (c *ChangeCapture) bind(versions *versionService) {
 		if _, svcErr := versions.capture(ctx, CaptureRequest{Current: true}); svcErr != nil {
 			return fmt.Errorf("%s: %s", svcErr.Code, svcErr.Error.DefaultValue)
 		}
+		versions.applyToDefaultGateway(ctx)
 		return nil
 	}
 }
@@ -287,4 +289,9 @@ func (r *statusRecorder) WriteHeader(status int) {
 func (r *statusRecorder) Write(body []byte) (int, error) {
 	r.wroteHeader = true
 	return r.ResponseWriter.Write(body)
+}
+
+// Unwrap returns the wrapped ResponseWriter, so http.ResponseController reaches the connection.
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
 }

@@ -29,7 +29,7 @@ import (
 // TestTokenBinding_Algorithms — happy path across the supported alg families.
 // Each case yields token_type=DPoP and cnf.jkt = sha256_thumbprint(jwk).
 func (ts *DPoPTestSuite) TestTokenBinding_Algorithms() {
-	for _, alg := range []string{"PS256", "EdDSA"} {
+	for _, alg := range []string{"PS256", "EdDSA", "ML-DSA-44", "ML-DSA-65", "ML-DSA-87"} {
 		ts.Run(alg, func() {
 			key, err := testutils.GenerateDPoPKey(alg)
 			ts.Require().NoError(err)
@@ -137,6 +137,20 @@ func (ts *DPoPTestSuite) TestTokenInvalidProofs_Rejected() {
 			make: func(k *testutils.DPoPKey) (string, error) {
 				return k.CreateProof(http.MethodPost, tokenEndpoint, testutils.DPoPProofOptions{
 					IncludePrivateInJWK: true,
+				})
+			},
+		},
+		{
+			// priv is the ML-DSA (AKP) private key member. It is added to a valid key, so the proof
+			// would pass every other check.
+			name: "JWK leaks private key (priv member)",
+			make: func(k *testutils.DPoPKey) (string, error) {
+				jwk := map[string]any{"priv": "AAAA"}
+				for member, value := range k.JWK {
+					jwk[member] = value
+				}
+				return k.CreateProof(http.MethodPost, tokenEndpoint, testutils.DPoPProofOptions{
+					JWKOverride: jwk,
 				})
 			},
 		},

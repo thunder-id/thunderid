@@ -12,6 +12,7 @@ import type {Application} from '../../../models/application';
 import type {InboundAuthConfig} from '../../../models/inbound-auth';
 import type {AttestationConfig, OAuth2Config} from '../../../models/oauth';
 import {TokenEndpointAuthMethods} from '../../../models/oauth';
+import isSystemConsoleClient from '../../../utils/isSystemConsoleClient';
 import resolveApplicationType, {isDirectTokenGrantSet} from '../../../utils/resolveApplicationType';
 import ClientSecretSuccessDialog from '../../ClientSecretSuccessDialog';
 import CopyableField from '../../common/CopyableField';
@@ -84,8 +85,7 @@ export default function EditCredentialsSettings({
   const [flowSecretDialogOpen, setFlowSecretDialogOpen] = useState(false);
   const [newFlowSecret, setNewFlowSecret] = useState<string>('');
 
-  const systemConsoleClientId = (config?.client?.client_id ?? 'CONSOLE').toUpperCase();
-  const isSystemConsoleClient = oauth2Config?.clientId?.toUpperCase() === systemConsoleClientId;
+  const isConsoleClient = isSystemConsoleClient(oauth2Config?.clientId, config?.client?.client_id);
 
   // App-native (mobile/attestation) clients authenticate via platform attestation rather than a
   // redirect-issued client, so the Application ID is the more meaningful identifier for them.
@@ -247,7 +247,7 @@ export default function EditCredentialsSettings({
                   variant="contained"
                   color="error"
                   onClick={handleSecretRegenerateClick}
-                  disabled={Boolean(application.isReadOnly) || isSystemConsoleClient}
+                  disabled={Boolean(application.isReadOnly) || isConsoleClient}
                   sx={{flex: '0 0 20%'}}
                 >
                   {t('applications:edit.general.sections.dangerZone.regenerateSecret.button', 'Regenerate')}

@@ -522,6 +522,28 @@ func (suite *StringUtilTestSuite) TestHasPrefixFold() {
 	}
 }
 
+func (suite *StringUtilTestSuite) TestContainsFold() {
+	list := []string{"google", "github"}
+	tests := []struct {
+		name     string
+		list     []string
+		v        string
+		expected bool
+	}{
+		{name: "Exact match", list: list, v: "google", expected: true},
+		{name: "Different case", list: list, v: "GitHub", expected: true},
+		{name: "No match", list: list, v: "oidc", expected: false},
+		{name: "Empty list", list: nil, v: "google", expected: false},
+		{name: "Empty value", list: list, v: "", expected: false},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			assert.Equal(suite.T(), tt.expected, ContainsFold(tt.list, tt.v))
+		})
+	}
+}
+
 func (suite *StringUtilTestSuite) TestTrimPrefixFold() {
 	tests := []struct {
 		name     string

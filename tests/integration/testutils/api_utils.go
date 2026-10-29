@@ -271,6 +271,29 @@ func RestoreAgentType(snapshot *AgentTypeSnapshot) error {
 	return nil
 }
 
+var (
+	defaultOUIDMu    sync.Mutex
+	defaultOUIDCache string
+)
+
+// DefaultOUID returns the organization unit that owns the flows the shared helpers create when the caller names
+// none. Every flow needs an owning organization unit, so these helpers use the long-lived bootstrap `default` one,
+// which outlives every suite and never blocks a suite's own organization unit clean-up. The id is looked up once
+// per process.
+func DefaultOUID() (string, error) {
+	defaultOUIDMu.Lock()
+	defer defaultOUIDMu.Unlock()
+	if defaultOUIDCache != "" {
+		return defaultOUIDCache, nil
+	}
+	ouID, err := FindBootstrapOUID()
+	if err != nil {
+		return "", err
+	}
+	defaultOUIDCache = ouID
+	return ouID, nil
+}
+
 // FindBootstrapOUID resolves the long-lived `default` organization unit seeded at bootstrap.
 func FindBootstrapOUID() (string, error) {
 	req, err := http.NewRequest("GET", TestServerURL+"/organization-units?limit=100", nil)
@@ -309,6 +332,29 @@ func FindBootstrapOUID() (string, error) {
 		}
 	}
 	return "", errors.New("bootstrap organization unit with handle 'default' not found")
+}
+
+var (
+	connectionOUIDMu    sync.Mutex
+	connectionOUIDCache string
+)
+
+// DefaultConnectionOUID returns the organization unit that owns the identity-provider connections the shared
+// create helpers (CreateIDP) make when the caller names none. Every identity-provider connection needs an
+// owning organization unit, so these helpers use the long-lived bootstrap `default` one, which outlives every
+// suite and never blocks a suite's own OU cleanup. The id is looked up once per process.
+func DefaultConnectionOUID() (string, error) {
+	connectionOUIDMu.Lock()
+	defer connectionOUIDMu.Unlock()
+	if connectionOUIDCache != "" {
+		return connectionOUIDCache, nil
+	}
+	ouID, err := FindBootstrapOUID()
+	if err != nil {
+		return "", err
+	}
+	connectionOUIDCache = ouID
+	return ouID, nil
 }
 
 var errAgentTypeHandleConflict = errors.New("agent type handle conflict")
@@ -930,6 +976,9 @@ func idpToConnectionBody(idp IDP) map[string]interface{} {
 		"name":        idp.Name,
 		"description": idp.Description,
 	}
+	if idp.OUID != "" {
+		body["ouId"] = idp.OUID
+	}
 	for _, prop := range idp.Properties {
 		switch prop.Name {
 		case "scopes":
@@ -963,6 +1012,9 @@ func connectionBodyToIDP(idpType string, resp map[string]interface{}) *IDP {
 	if desc, ok := resp["description"].(string); ok {
 		idp.Description = desc
 	}
+	if ouID, ok := resp["ouId"].(string); ok {
+		idp.OUID = ouID
+	}
 	for propName, field := range idpPropertyToConnectionField {
 		if value, ok := resp[field].(string); ok && value != "" {
 			idp.Properties = append(idp.Properties, IDPProperty{Name: propName, Value: value})
@@ -995,6 +1047,12 @@ func CreateIDP(idp IDP) (string, error) {
 	vendor, err := idpVendorPath(idp.Type)
 	if err != nil {
 		return "", err
+	}
+
+	if idp.OUID == "" {
+		if idp.OUID, err = DefaultConnectionOUID(); err != nil {
+			return "", fmt.Errorf("failed to resolve the connection organization unit: %w", err)
+		}
 	}
 
 	bodyJSON, err := json.Marshal(idpToConnectionBody(idp))
@@ -2237,6 +2295,13 @@ func deleteURL(url string) error {
 
 // CreateFlow creates a flow via API and returns the flow ID
 func CreateFlow(flowDefinition Flow) (string, error) {
+	if flowDefinition.OUID == "" {
+		ouID, err := DefaultOUID()
+		if err != nil {
+			return "", fmt.Errorf("failed to resolve the flow organization unit: %w", err)
+		}
+		flowDefinition.OUID = ouID
+	}
 	flowJSON, err := json.Marshal(flowDefinition)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal flow definition: %w", err)
@@ -2347,6 +2412,61 @@ func CreateIsolatedAuthFlow(handle string) (string, error) {
 			},
 		},
 	})
+}
+
+// ExtensionAuthFlow returns the smallest login flow with one extension step, placed after the user is
+// authenticated and with no onFailure, so any failure of the step ends the flow:
+//
+//	start -> prompt_credentials -> credentials_auth -> ext_step -> auth_assert -> end
+//
+// A nil properties map leaves the extension step without properties.
+func ExtensionAuthFlow(name, handle string, properties map[string]interface{}) Flow {
+	inputs := []map[string]interface{}{
+		{"ref": "input_username", "identifier": "username", "type": "TEXT_INPUT", "required": true},
+		{"ref": "input_password", "identifier": "password", "type": "PASSWORD_INPUT", "required": true},
+	}
+	extStep := map[string]interface{}{
+		"id":        "ext_step",
+		"type":      "TASK_EXECUTION",
+		"executor":  map[string]interface{}{"name": "ExtensionExecutor"},
+		"onSuccess": "auth_assert",
+	}
+	if properties != nil {
+		extStep["properties"] = properties
+	}
+	return Flow{
+		Name:     name,
+		FlowType: "AUTHENTICATION",
+		Handle:   handle,
+		Nodes: []map[string]interface{}{
+			{"id": "start", "type": "START", "onSuccess": "prompt_credentials"},
+			{
+				"id":   "prompt_credentials",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{
+					{
+						"inputs": inputs,
+						"action": map[string]interface{}{"ref": "action_credentials", "nextNode": "credentials_auth"},
+					},
+				},
+			},
+			{
+				"id":           "credentials_auth",
+				"type":         "TASK_EXECUTION",
+				"executor":     map[string]interface{}{"name": "CredentialsAuthExecutor", "inputs": inputs},
+				"onSuccess":    "ext_step",
+				"onIncomplete": "prompt_credentials",
+			},
+			extStep,
+			{
+				"id":        "auth_assert",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "AuthAssertExecutor"},
+				"onSuccess": "end",
+			},
+			{"id": "end", "type": "END"},
+		},
+	}
 }
 
 // CreateIsolatedRegistrationFlow creates a minimal REGISTRATION flow suitable for tests that need
@@ -2497,6 +2617,9 @@ func senderToConnectionBody(sender NotificationSender) (map[string]interface{}, 
 		"name":        sender.Name,
 		"description": sender.Description,
 	}
+	if sender.OUID != "" {
+		body["ouId"] = sender.OUID
+	}
 	for _, prop := range sender.Properties {
 		if prop.Name == "http_headers" {
 			body["httpHeaders"] = prop.Value
@@ -2515,6 +2638,12 @@ func CreateNotificationSender(sender NotificationSender) (string, error) {
 	vendor, err := senderVendorPath(sender.Provider)
 	if err != nil {
 		return "", err
+	}
+
+	if sender.OUID == "" {
+		if sender.OUID, err = DefaultConnectionOUID(); err != nil {
+			return "", fmt.Errorf("failed to resolve the connection organization unit: %w", err)
+		}
 	}
 
 	body, err := senderToConnectionBody(sender)
@@ -2606,6 +2735,13 @@ func CreateSTARTTLSEmailProvider(name, host string, port int, fromAddress, usern
 
 // createSMTPEmailProvider posts body to /connections/email-smtp and returns the new provider's ID.
 func createSMTPEmailProvider(body map[string]interface{}) (string, error) {
+	if _, ok := body["ouId"]; !ok {
+		ouID, err := DefaultConnectionOUID()
+		if err != nil {
+			return "", fmt.Errorf("failed to resolve the connection organization unit: %w", err)
+		}
+		body["ouId"] = ouID
+	}
 	bodyJSON, err := json.Marshal(body)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal SMTP connection body: %w", err)
@@ -2684,9 +2820,172 @@ func DeleteNotificationSender(senderID string) error {
 	return nil
 }
 
+// CreateAuthZENPDPConnection creates an AuthZEN PDP connection owned by ouID via /connections/authzen-pdp and
+// returns its ID.
+func CreateAuthZENPDPConnection(name, ouID, endpoint string) (string, error) {
+	bodyJSON, err := json.Marshal(map[string]interface{}{"name": name, "ouId": ouID, "endpoint": endpoint})
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal connection body: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", TestServerURL+"/connections/authzen-pdp", bytes.NewReader(bodyJSON))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+	if resp.StatusCode != http.StatusCreated {
+		return "", fmt.Errorf("expected status 201, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(bodyBytes, &created); err != nil || created.ID == "" {
+		return "", fmt.Errorf("response does not contain an id. Response: %s", string(bodyBytes))
+	}
+	return created.ID, nil
+}
+
+// DeleteAuthZENPDPConnection deletes an AuthZEN PDP connection by ID.
+func DeleteAuthZENPDPConnection(id string) error {
+	req, err := http.NewRequest("DELETE", TestServerURL+"/connections/authzen-pdp/"+id, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create delete request: %w", err)
+	}
+
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to delete AuthZEN PDP connection: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		responseBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("expected status 200 or 204, got %d. Response: %s", resp.StatusCode, string(responseBody))
+	}
+	return nil
+}
+
+// CreateHTTPConnection creates an HTTP endpoint connection via /connections/http and returns its ID.
+func CreateHTTPConnection(conn HTTPConnection) (string, error) {
+	bodyJSON, err := json.Marshal(conn)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal HTTP connection: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", TestServerURL+"/connections/http", bytes.NewReader(bodyJSON))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := GetHTTPClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		return "", fmt.Errorf("expected status 201, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var respBody map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &respBody); err != nil {
+		return "", fmt.Errorf("failed to parse response body: %w. Response: %s", err, string(bodyBytes))
+	}
+
+	id, ok := respBody["id"].(string)
+	if !ok {
+		return "", fmt.Errorf("response does not contain id or id is not a string. Response: %s", string(bodyBytes))
+	}
+	return id, nil
+}
+
+// UpdateHTTPConnection replaces an HTTP endpoint connection via PUT /connections/http/{id}.
+func UpdateHTTPConnection(connectionID string, conn HTTPConnection) error {
+	bodyJSON, err := json.Marshal(conn)
+	if err != nil {
+		return fmt.Errorf("failed to marshal HTTP connection: %w", err)
+	}
+
+	req, err := http.NewRequest("PUT", TestServerURL+"/connections/http/"+connectionID, bytes.NewReader(bodyJSON))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := GetHTTPClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		responseBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("expected status 200, got %d. Response: %s", resp.StatusCode, string(responseBody))
+	}
+	return nil
+}
+
+// DeleteHTTPConnection deletes an HTTP endpoint connection via DELETE /connections/http/{id}.
+func DeleteHTTPConnection(connectionID string) error {
+	req, err := http.NewRequest("DELETE", TestServerURL+"/connections/http/"+connectionID, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create delete request: %w", err)
+	}
+
+	client := GetHTTPClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to delete HTTP connection: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		responseBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("expected status 204, got %d. Response: %s", resp.StatusCode, string(responseBody))
+	}
+	return nil
+}
+
 // AuthenticateWithCredential authenticates a user via the credentials endpoint.
 // Returns (true, nil) on success, (false, nil) on auth failure, (false, err) on request error.
 func AuthenticateWithCredential(identifierKey, identifierValue, credentialKey, credentialValue string) (bool, error) {
+	status, body, err := AuthenticateWithCredentialRaw(identifierKey, identifierValue, credentialKey, credentialValue)
+	if err != nil {
+		return false, err
+	}
+	if status == http.StatusOK {
+		return true, nil
+	}
+	if status == http.StatusUnauthorized || status == http.StatusBadRequest {
+		return false, nil
+	}
+	return false, fmt.Errorf("unexpected auth status %d: %s", status, string(body))
+}
+
+// AuthenticateWithCredentialRaw presents one identifier and one credential to the credentials
+// endpoint and returns the HTTP status and the response body, whatever they are.
+func AuthenticateWithCredentialRaw(identifierKey, identifierValue, credentialKey, credentialValue string) (
+	int, []byte, error) {
 	reqBody := map[string]interface{}{
 		"identifiers": map[string]interface{}{
 			identifierKey: identifierValue,
@@ -2698,65 +2997,39 @@ func AuthenticateWithCredential(identifierKey, identifierValue, credentialKey, c
 
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
-		return false, fmt.Errorf("failed to marshal auth request: %w", err)
+		return 0, nil, fmt.Errorf("failed to marshal auth request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", TestServerURL+"/auth/credentials/authenticate", bytes.NewReader(bodyBytes))
+	req, err := http.NewRequest(http.MethodPost, TestServerURL+"/auth/credentials/authenticate",
+		bytes.NewReader(bodyBytes))
 	if err != nil {
-		return false, fmt.Errorf("failed to create auth request: %w", err)
+		return 0, nil, fmt.Errorf("failed to create auth request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := GetHTTPClient()
-	resp, err := client.Do(req)
+	resp, err := GetHTTPClient().Do(req)
 	if err != nil {
-		return false, fmt.Errorf("auth request failed: %w", err)
+		return 0, nil, fmt.Errorf("auth request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusOK {
-		return true, nil
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to read auth response: %w", err)
 	}
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusBadRequest {
-		return false, nil
-	}
-	body, _ := io.ReadAll(resp.Body)
-	return false, fmt.Errorf("unexpected auth status %d: %s", resp.StatusCode, string(body))
+	return resp.StatusCode, body, nil
 }
 
 // ObtainAuthAssertion authenticates a user with a password and returns the auth assertion from the
 // response. Enrolling a credential requires an assertion proving the target user, so suites that
 // bootstrap a passkey through the direct API need the user to hold another credential first.
 func ObtainAuthAssertion(username, password string) (string, error) {
-	reqBody := map[string]interface{}{
-		"identifiers": map[string]interface{}{"username": username},
-		"credentials": map[string]interface{}{"password": password},
-	}
-
-	bodyBytes, err := json.Marshal(reqBody)
+	status, responseBody, err := AuthenticateWithCredentialRaw("username", username, "password", password)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal auth request: %w", err)
+		return "", err
 	}
-
-	req, err := http.NewRequest(http.MethodPost, TestServerURL+"/auth/credentials/authenticate",
-		bytes.NewReader(bodyBytes))
-	if err != nil {
-		return "", fmt.Errorf("failed to create auth request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := GetHTTPClient().Do(req)
-	if err != nil {
-		return "", fmt.Errorf("auth request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read auth response: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected auth status %d: %s", resp.StatusCode, responseBody)
+	if status != http.StatusOK {
+		return "", fmt.Errorf("unexpected auth status %d: %s", status, responseBody)
 	}
 
 	var authResponse AuthenticationResponse
@@ -2972,4 +3245,57 @@ func DeleteResource(resourceServerID, resourceID string) error {
 		return fmt.Errorf("expected status 204, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
 	}
 	return nil
+}
+
+// ExecuteFlowRaw posts one request to /flow/execute and returns the HTTP status and the raw answer,
+// whatever they are. It goes through client when one is given, such as a browser's carrying its
+// cookies, and otherwise through the raw client, since the shared clients treat /flow/execute as
+// public; it sends the bearer token when one is given.
+func ExecuteFlowRaw(client *http.Client, token string, body map[string]interface{}) (int, []byte, error) {
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return 0, nil, err
+	}
+	req, err := http.NewRequest(http.MethodPost, TestServerURL+"/flow/execute", bytes.NewReader(payload))
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if client == nil {
+		client = GetRawHTTPClient()
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, nil, err
+	}
+	return resp.StatusCode, raw, nil
+}
+
+// GetAccessStatus returns the effective access status a management read reports for a governed
+// identity; collection is users, agents or applications. A read without a status is an error, since
+// every governed read carries one, ACTIVE included.
+func GetAccessStatus(collection, entityID string) (*AccessStatus, error) {
+	body, err := getJSON(fmt.Sprintf("%s/%s/%s", TestServerURL, collection, entityID))
+	if err != nil {
+		return nil, err
+	}
+	var read struct {
+		Status *AccessStatus `json:"status"`
+	}
+	if err := json.Unmarshal(body, &read); err != nil {
+		return nil, fmt.Errorf("failed to parse the %s read: %w", collection, err)
+	}
+	if read.Status == nil {
+		return nil, fmt.Errorf("the %s read carries no status: %s", collection, string(body))
+	}
+	return read.Status, nil
 }

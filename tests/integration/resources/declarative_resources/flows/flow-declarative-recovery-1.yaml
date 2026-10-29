@@ -1,5 +1,6 @@
 resource_type: flow
 id: decl-recovery-flow-1
+ouHandle: decl-ou-1
 handle: decl-flow-1
 name: Declarative Test Recovery Flow
 flowType: RECOVERY

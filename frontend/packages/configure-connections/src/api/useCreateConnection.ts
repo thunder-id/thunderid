@@ -6,7 +6,7 @@ import {useConfig, useToast} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import {useTranslation} from 'react-i18next';
 import ConnectionQueryKeys from '../constants/query-keys';
-import type {ConnectionRequest, ConnectionResponse, ConnectionType} from '../models/connection';
+import type {ConnectionResponse, ConnectionType, CreateConnectionRequest} from '../models/connection';
 
 /**
  * Create a connection instance of the given type (POST /connections/{type}).
@@ -16,15 +16,15 @@ import type {ConnectionRequest, ConnectionResponse, ConnectionType} from '../mod
  */
 export default function useCreateConnection(
   type: ConnectionType,
-): UseMutationResult<ConnectionResponse, Error, ConnectionRequest> {
+): UseMutationResult<ConnectionResponse, Error, CreateConnectionRequest> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient: ReturnType<typeof useQueryClient> = useQueryClient();
   const {t} = useTranslation('connections');
   const {showToast} = useToast();
 
-  return useMutation<ConnectionResponse, Error, ConnectionRequest>({
-    mutationFn: async (data: ConnectionRequest): Promise<ConnectionResponse> => {
+  return useMutation<ConnectionResponse, Error, CreateConnectionRequest>({
+    mutationFn: async (data: CreateConnectionRequest): Promise<ConnectionResponse> => {
       const serverUrl: string = getServerUrl();
       const response: {
         data: ConnectionResponse;

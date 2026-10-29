@@ -3,7 +3,18 @@
 
 package cimd
 
-import "time"
+import (
+	"time"
+
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+)
+
+// documentGrantTypes are the grants a CIMD client takes from its document. Any other grant the document
+// rules permit is added by an administrator.
+var documentGrantTypes = []providers.GrantType{
+	providers.GrantTypeAuthorizationCode,
+	providers.GrantTypeRefreshToken,
+}
 
 const (
 	// maxClientIdentifierURLLength bounds a Client Identifier URL.

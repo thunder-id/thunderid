@@ -15,32 +15,29 @@ import (
 type accountAccessSourceInterface interface {
 	// Current returns the effective section, or the deployment configuration when it cannot be read.
 	Current(ctx context.Context) accountAccessValue
-	// setReader sets the server-config service the section is read from.
-	setReader(reader serverconfig.ServerConfigService)
 }
 
 // accountAccessSource reads the accountAccess section on every call, so a write on any node is seen.
-// Without a reader, or when a read fails, the deployment configuration applies.
+// When a read fails, the deployment configuration applies.
 type accountAccessSource struct {
 	base   accountAccessValue
 	reader serverconfig.ServerConfigService
 	logger *log.Logger
 }
 
-// newAccountAccessSource builds the source over the deployment configuration, with no reader yet.
-func newAccountAccessSource(base accountAccessValue) accountAccessSourceInterface {
+// newAccountAccessSource builds the source over the deployment configuration and the server-config
+// service the section is read from.
+func newAccountAccessSource(base accountAccessValue,
+	reader serverconfig.ServerConfigService) accountAccessSourceInterface {
 	return &accountAccessSource{
 		base:   base,
+		reader: reader,
 		logger: log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AccountAccessSource")),
 	}
 }
 
 // Current reads the effective server-config section.
 func (s *accountAccessSource) Current(ctx context.Context) accountAccessValue {
-	if s.reader == nil {
-		return s.base
-	}
-
 	value, svcErr := s.reader.GetMergedConfig(ctx, string(serverconfig.ConfigNameAccountAccess))
 	if svcErr != nil {
 		s.logger.Warn(ctx, "Failed to read the accountAccess server config; using the deployment policy",
@@ -53,11 +50,6 @@ func (s *accountAccessSource) Current(ctx context.Context) accountAccessValue {
 		return s.base
 	}
 	return section
-}
-
-// setReader sets the server-config service the section is read from.
-func (s *accountAccessSource) setReader(reader serverconfig.ServerConfigService) {
-	s.reader = reader
 }
 
 // Config holds the configuration identity governance is initialized with.

@@ -23,8 +23,12 @@ info:
       Can optionally have inputs for executors that need user input references.
     - **CALL**: Invokes another flow by reference. Requires a `flow.ref` pointing to the target
       flow handle and `onSuccess` for the return path.
+    - **VARIABLES**: Declares the flow's variables in `inputs` and resolves them, showing nothing to the user.
     - **END**: Terminal node indicating the end of the flow.
     
+    ## Variables
+    A step can use a variable declared on a `VARIABLES` node as `{{var(identifier)}}` in the string values of its `properties`.
+
     ## Representation Modes
     - **Verbose Mode**: Includes full UI metadata (components, layouts, labels) for visual flow composer and runtime rendering
     - **Non-Verbose Mode**: Contains only logical flow structure without UI metadata
@@ -136,7 +140,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/FlowDefinitionRequest'
+              $ref: '#/components/schemas/FlowDefinitionCreateRequest'
       responses:
         '201':
           description: Flow created successfully
@@ -219,7 +223,8 @@ paths:
       tags:
         - Flow Management
       summary: Update flow
-      description: Updates an existing flow definition by its unique identifier
+      description: |
+        Updates an existing flow definition by its unique identifier
       operationId: updateFlow
       parameters:
         - name: flowId
@@ -233,7 +238,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/FlowDefinitionRequest'
+              $ref: '#/components/schemas/FlowDefinitionUpdateRequest'
       responses:
         '200':
           description: Flow updated successfully
@@ -720,6 +725,7 @@ components:
             handle: "default-flow"
             activeVersion: 2
             isReadOnly: true
+            ouId: "01900000-0000-7000-8000-000000000001"
             createdAt: "2024-01-15T10:20:30Z"
             updatedAt: "2024-02-20T14:25:35Z"
           - id: "2sd4f6g7-h8i9-0j1k-2l3m-4n5o6p7q8r9s"
@@ -728,6 +734,7 @@ components:
             handle: "basic-registration-flow"
             activeVersion: 7
             isReadOnly: false
+            ouId: "01900000-0000-7000-8000-000000000001"
             createdAt: "2024-03-10T09:15:25Z"
             updatedAt: "2024-04-12T11:30:40Z"
           - id: "b12c3d45-6789-4e0f-9abc-def123456789"
@@ -736,6 +743,7 @@ components:
             handle: "google-registration-flow"
             activeVersion: 1
             isReadOnly: false
+            ouId: "01900000-0000-7000-8000-000000000001"
             createdAt: "2024-05-05T08:10:20Z"
             updatedAt: "2024-06-01T12:00:00Z"
         links:
@@ -824,6 +832,7 @@ components:
         - handle
         - activeVersion
         - isReadOnly
+        - ouId
         - createdAt
         - updatedAt
       properties:
@@ -854,6 +863,11 @@ components:
           type: boolean
           description: Whether this flow is immutable (declarative resource — cannot be modified or deleted)
           example: false
+        ouId:
+          type: string
+          description: |
+            ID of the organization unit that owns the flow.
+          example: "01900000-0000-7000-8000-000000000001"
         createdAt:
           type: string
           format: date-time
@@ -863,7 +877,7 @@ components:
           format: date-time
           description: Timestamp when the flow was last modified
 
-    FlowDefinitionRequest:
+    FlowDefinitionUpdateRequest:
       type: object
       required:
         - name
@@ -896,10 +910,18 @@ components:
           items:
             $ref: '#/components/schemas/Node'
           description: List of nodes that define the flow graph
+        ouId:
+          type: string
+          description: |
+            ID of the organization unit that owns the flow. Required on create, and the organization unit has to
+            exist. It cannot change afterwards: an update can leave it out to keep the current owner, or send the id
+            the flow already has.
+          example: "01900000-0000-7000-8000-000000000001"
       example:
         name: Basic Authentication Flow
         handle: default-flow
         flowType: AUTHENTICATION
+        ouId: "01900000-0000-7000-8000-000000000001"
         nodes: &authFlowNodes
           - id: node_000
             type: START
@@ -1094,6 +1116,19 @@ components:
                 x: 1400
                 y: 200
 
+    FlowDefinitionCreateRequest:
+      allOf:
+        - $ref: '#/components/schemas/FlowDefinitionUpdateRequest'
+        - type: object
+          required:
+            - ouId
+      example:
+        name: Basic Authentication Flow
+        handle: default-flow
+        flowType: AUTHENTICATION
+        ouId: "01900000-0000-7000-8000-000000000001"
+        nodes: *authFlowNodes
+
     FlowDefinitionResponse:
       type: object
       required:
@@ -1103,6 +1138,7 @@ components:
         - handle
         - activeVersion
         - isReadOnly
+        - ouId
         - nodes
         - createdAt
         - updatedAt
@@ -1138,6 +1174,11 @@ components:
           type: boolean
           description: Whether this flow is immutable (declarative resource — cannot be modified or deleted)
           example: false
+        ouId:
+          type: string
+          description: |
+            ID of the organization unit that owns the flow.
+          example: "01900000-0000-7000-8000-000000000001"
         nodes:
           type: array
           minItems: 2
@@ -1159,6 +1200,7 @@ components:
         handle: default-flow
         activeVersion: 5
         isReadOnly: false
+        ouId: "01900000-0000-7000-8000-000000000001"
         nodes: *authFlowNodes
         createdAt: "2024-06-15T10:20:30Z"
         updatedAt: "2024-06-20T14:25:35Z"
@@ -1243,6 +1285,7 @@ components:
             - PROMPT
             - TASK_EXECUTION
             - CALL
+            - VARIABLES
             - END
           description: |
             Type of node
@@ -1269,6 +1312,11 @@ components:
           enum:
             - LOGIN_OPTIONS
           example: LOGIN_OPTIONS
+        inputs:
+          type: array
+          description: Only on a `VARIABLES` node. The variables the node declares.
+          items:
+            $ref: '#/components/schemas/VariableDefinition'
         condition:
           description: Optional condition that gates whether this node executes
           allOf:
@@ -1278,7 +1326,7 @@ components:
           additionalProperties: true
           description: |
             Node-level properties for configuration (e.g., senderId for notification executors,
-            idpId for social login executors)
+            idpId for social login executors).
           example:
             senderId: "<SENDER_ID>"
         executor:
@@ -1291,7 +1339,7 @@ components:
             - $ref: '#/components/schemas/FlowReference'
         onSuccess:
           type: string
-          description: Next node ID on successful execution (START, TASK_EXECUTION, and CALL nodes)
+          description: Next node ID on successful execution (START, TASK_EXECUTION, CALL, and VARIABLES nodes)
           example: node_003
         onFailure:
           type: string
@@ -1316,6 +1364,79 @@ components:
             alongside the flow status, intended for lightweight clients that do not process
             the full meta/components payload.
           example: "Registration complete. You may now sign in."
+
+    VariableDefinition:
+      type: object
+      description: One variable of a flow, with a type and a default.
+      required:
+        - identifier
+        - type
+        - defaultValue
+      properties:
+        identifier:
+          type: string
+          description: Name of the variable. Starts with a letter and holds letters, digits and underscores.
+          example: supportEmail
+        type:
+          type: string
+          enum:
+            - TEXT_INPUT
+            - EMAIL_INPUT
+            - PHONE_INPUT
+            - NUMBER_INPUT
+            - DATE_INPUT
+            - BOOLEAN_INPUT
+            - SELECT
+            - CONNECTION_SELECT
+          description: How the value is entered and checked
+        label:
+          type: string
+        description:
+          type: string
+        defaultValue:
+          description: The value the variable has until another is set
+        validation:
+          type: array
+          description: Rules a text, email or phone value has to meet
+          items:
+            type: object
+            required:
+              - type
+              - value
+            properties:
+              type:
+                type: string
+                enum:
+                  - regex
+                  - minLength
+                  - maxLength
+              value: {}
+              message:
+                type: string
+        options:
+          type: array
+          description: For a `SELECT`, the values it can take
+          items: {}
+        min:
+          type: number
+        max:
+          type: number
+        category:
+          type: string
+          enum:
+            - IDENTITY_PROVIDER
+          description: For a `CONNECTION_SELECT`, the kind of connection it takes
+        connectionTypes:
+          type: array
+          description: For a `CONNECTION_SELECT`, limits it to these vendors
+          items:
+            type: string
+      example:
+        identifier: supportEmail
+        type: EMAIL_INPUT
+        label: Support email
+        description: Shown to users who cannot sign in
+        defaultValue: support@example.com
 
     NodeLayout:
       type: object

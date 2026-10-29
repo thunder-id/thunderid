@@ -21,6 +21,15 @@ export default function ConnectionCard({card, onAction}: ConnectionCardProps): J
         <Stack direction="row" alignItems="flex-start" justifyContent="space-between">
           {card.logo}
           {card.comingSoon && <Chip size="small" label={t('card.comingSoon', 'Coming soon')} />}
+          {card.isDefault && (
+            <Chip
+              size="small"
+              color="primary"
+              variant="outlined"
+              label={t('card.default', 'Default')}
+              data-testid="connection-card-default-chip"
+            />
+          )}
         </Stack>
 
         <Stack direction="column" spacing={0.75}>

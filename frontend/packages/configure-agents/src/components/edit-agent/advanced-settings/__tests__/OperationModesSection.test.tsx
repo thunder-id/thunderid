@@ -75,9 +75,10 @@ describe('OperationModesSection', () => {
         within(listbox).getByText('CIBA (Client-Initiated Backchannel Authentication)').closest('li'),
       ).toHaveAttribute('aria-disabled', 'true');
       expect(within(listbox).getByText('refresh_token').closest('li')).toHaveAttribute('aria-disabled', 'true');
+      expect(within(listbox).getByText('Token exchange').closest('li')).toHaveAttribute('aria-disabled', 'true');
     });
 
-    it('unlocks ciba and refresh_token (but keeps authorization_code locked) once Delegated mode is on', async () => {
+    it('unlocks the other delegated grants, and keeps the only delegation grant locked, once Delegated mode is on', async () => {
       const user = userEvent.setup();
       render(<OperationModesSection oauth2Config={delegatedConfig} onOAuth2ConfigChange={vi.fn()} />);
 
@@ -89,6 +90,58 @@ describe('OperationModesSection', () => {
         within(listbox).getByText('CIBA (Client-Initiated Backchannel Authentication)').closest('li'),
       ).not.toHaveAttribute('aria-disabled', 'true');
       expect(within(listbox).getByText('refresh_token').closest('li')).not.toHaveAttribute('aria-disabled', 'true');
+      expect(within(listbox).getByText('Token exchange').closest('li')).not.toHaveAttribute('aria-disabled', 'true');
+    });
+
+    // Delegated mode is any of authorization code, CIBA or token exchange, as on the server.
+    it.each([
+      ['ciba', 'CIBA (Client-Initiated Backchannel Authentication)', 'urn:openid:params:grant-type:ciba'],
+      ['token_exchange', 'Token exchange', 'urn:ietf:params:oauth:grant-type:token-exchange'],
+    ])(
+      'is in Delegated mode with %s alone, which stays locked while it is the only one',
+      async (_name, label, grant) => {
+        const user = userEvent.setup();
+        render(
+          <OperationModesSection
+            oauth2Config={{grantTypes: ['client_credentials', grant], responseTypes: []}}
+            onOAuth2ConfigChange={vi.fn()}
+          />,
+        );
+
+        await user.click(document.getElementById('agent-grant-types')!);
+        const listbox = await screen.findByRole('listbox');
+
+        expect(within(listbox).getByText(label).closest('li')).toHaveAttribute('aria-disabled', 'true');
+        expect(within(listbox).getByText('authorization_code').closest('li')).not.toHaveAttribute(
+          'aria-disabled',
+          'true',
+        );
+      },
+    );
+
+    it('lets one delegation grant go while another is held', async () => {
+      const user = userEvent.setup();
+      render(
+        <OperationModesSection
+          oauth2Config={{
+            grantTypes: ['client_credentials', 'authorization_code', 'urn:openid:params:grant-type:ciba'],
+            responseTypes: ['code'],
+            redirectUris: ['https://example.com/cb'],
+          }}
+          onOAuth2ConfigChange={vi.fn()}
+        />,
+      );
+
+      await user.click(document.getElementById('agent-grant-types')!);
+      const listbox = await screen.findByRole('listbox');
+
+      expect(within(listbox).getByText('authorization_code').closest('li')).not.toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+      expect(
+        within(listbox).getByText('CIBA (Client-Initiated Backchannel Authentication)').closest('li'),
+      ).not.toHaveAttribute('aria-disabled', 'true');
     });
 
     it('locks client_credentials so it cannot be toggled off', async () => {
@@ -104,7 +157,7 @@ describe('OperationModesSection', () => {
     it('toggles token_exchange on when selected', async () => {
       const user = userEvent.setup();
       const onOAuth2ConfigChange = vi.fn();
-      render(<OperationModesSection oauth2Config={autonomousOnlyConfig} onOAuth2ConfigChange={onOAuth2ConfigChange} />);
+      render(<OperationModesSection oauth2Config={delegatedConfig} onOAuth2ConfigChange={onOAuth2ConfigChange} />);
 
       await user.click(document.getElementById('agent-grant-types')!);
       const listbox = await screen.findByRole('listbox');

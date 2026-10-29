@@ -5,7 +5,7 @@ info:
   description: |
     Resource servers in ThunderID define the permission namespace for a protected API or service; resources and actions nested within them form the permission strings used in role assignments.
     Resources can be nested hierarchically, and permissions are derived from the handle-based path structure.
-    Resource Server identifier is optional and if provided, must be unique within the system.
+    Resource Server identifier is required and must be unique within the system. An MCP resource server's identifier must be an http or https URL with no fragment.
     Resource, and Action handles are unique under it's parent and are immutable after creation and used directly for permission derivation.
     Resource parent hierarchy is immutable after creation.
   license:
@@ -191,6 +191,16 @@ paths:
                     description:
                       key: "error.resourceservice.invalid_delimiter_description"
                       defaultValue: "Delimiter must be a single character from: a-z A-Z 0-9 . _ : - /"
+                invalid-mcp-identifier:
+                  summary: MCP server identifier is not an http or https URL
+                  value:
+                    code: "RES-1024"
+                    message:
+                      key: "error.resourceservice.invalid_mcp_identifier"
+                      defaultValue: "Invalid MCP server identifier"
+                    description:
+                      key: "error.resourceservice.invalid_mcp_identifier_description"
+                      defaultValue: "Use an http or https URL with no fragment, such as https://mcp.example.com/mcp"
         "409":
           description: Conflict
           content:
@@ -397,6 +407,16 @@ paths:
                     description:
                       key: "error.resourceservice.cannot_modify_declarative_resource_server_description"
                       defaultValue: "Resource server is defined in declarative configuration and cannot be modified"
+                invalid-mcp-identifier:
+                  summary: MCP server identifier is not an http or https URL
+                  value:
+                    code: "RES-1024"
+                    message:
+                      key: "error.resourceservice.invalid_mcp_identifier"
+                      defaultValue: "Invalid MCP server identifier"
+                    description:
+                      key: "error.resourceservice.invalid_mcp_identifier_description"
+                      defaultValue: "Use an http or https URL with no fragment, such as https://mcp.example.com/mcp"
         "404":
           description: Resource server not found
           content:
@@ -2286,7 +2306,7 @@ components:
           description: Optional description of the resource server
         identifier:
           type: string
-          description: Unique identifier for this resource server. When set to an absolute URI, the resource server is used in RFC 8707 resource indicator flows and the identifier is used as the access token audience claim value.
+          description: Unique identifier for this resource server. When set to an absolute URI, the resource server is used in RFC 8707 resource indicator flows and the identifier is used as the access token audience claim value. An MCP resource server's identifier must be an `http` or `https` URL with no fragment, such as `https://mcp.example.com/mcp`, when it is created or changed.
         type:
           type: string
           enum: [API, MCP, CUSTOM]
@@ -2316,7 +2336,7 @@ components:
           description: Optional description of the resource server
         identifier:
           type: string
-          description: Unique identifier for this resource server. When set to an absolute URI, the resource server is used in RFC 8707 resource indicator flows and clients can use this value in the resource parameter to request audience-restricted access tokens.
+          description: Unique identifier for this resource server. When set to an absolute URI, the resource server is used in RFC 8707 resource indicator flows and clients can use this value in the resource parameter to request audience-restricted access tokens. For an MCP resource server, the identifier must be an `http` or `https` URL with no fragment, such as `https://mcp.example.com/mcp`.
         type:
           type: string
           enum: [API, MCP, CUSTOM]
@@ -2341,7 +2361,7 @@ components:
           description: Optional description of the resource server
         identifier:
           type: string
-          description: Unique identifier for this resource server. When set to an absolute URI, the resource server is used in RFC 8707 resource indicator flows.
+          description: Unique identifier for this resource server. When set to an absolute URI, the resource server is used in RFC 8707 resource indicator flows. When it changes on an MCP resource server, the new value must be an `http` or `https` URL with no fragment, such as `https://mcp.example.com/mcp`.
         ouId:
           type: string
           format: uuid

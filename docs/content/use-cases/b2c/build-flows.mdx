@@ -68,7 +68,7 @@ The registration flow drives [Self Sign-Up](../try-it-out/self-sign-up). It:
 
 ### Create the registration flow
 
-Save the JSON below as `wayfinder-registration-flow.json` and POST it to the flows API:
+Save the JSON below as `wayfinder-registration-flow.json`, replace `<default-ou-id>` with the ID of your default organization unit (look it up via `GET /organization-units`), and POST it to the flows API:
 
 ```bash
 curl -k -X POST https://localhost:8090/flows \
@@ -85,6 +85,7 @@ curl -k -X POST https://localhost:8090/flows \
   "handle": "wayfinder-registration-flow",
   "name": "Wayfinder Registration Flow",
   "flowType": "REGISTRATION",
+  "ouId": "<default-ou-id>",
   "nodes": [
     { "id": "start", "type": "START", "onSuccess": "user_type_resolver" },
     {
@@ -213,6 +214,7 @@ The recovery flow drives [Account Recovery](../try-it-out/account-recovery). It:
 - Sends the recovery email.
 - Verifies the token from the email link.
 - Lands the user on a **Set new password** screen and updates the credential.
+- Releases the account's sign-in locks, so a customer locked out by failed attempts can sign in with the new password.
 
 The recovery flow sends its email through an email provider, so create the provider before the flow. The email node names its template by handle in its `emailTemplate` property; to tailor that email's wording, localization, and branding, see [Customize Notifications](../build-notifications).
 
@@ -220,7 +222,7 @@ The recovery flow sends its email through an email provider, so create the provi
 
 ### Create the email provider
 
-Point the provider at the Wayfinder sample's local SMTP server on `127.0.0.1:2525`. The local server needs neither TLS nor credentials, so set both to `none`:
+Point the provider at the Wayfinder sample's local SMTP server on `127.0.0.1:2525`. The local server needs neither TLS nor credentials, so set both to `none`. Replace `<default-ou-id>` with the ID of your default organization unit (look it up via `GET /organization-units`). Every connection belongs to one organization unit, and it has to be named when the connection is created:
 
 ```bash
 curl -k -X POST https://localhost:8090/connections/email-smtp \
@@ -228,6 +230,7 @@ curl -k -X POST https://localhost:8090/connections/email-smtp \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Wayfinder Mock SMTP",
+    "ouId": "<default-ou-id>",
     "host": "127.0.0.1",
     "port": 2525,
     "fromAddress": "noreply@thunderid.dev",
@@ -240,7 +243,7 @@ Copy the `id` from the response. You use it as `senderId` in the recovery flow b
 
 ### Create the recovery flow
 
-Save the JSON below as `wayfinder-recovery-flow.json`, replace `<email-provider-id>` with the `id` you copied, and POST it to the flows API:
+Save the JSON below as `wayfinder-recovery-flow.json`, replace `<email-provider-id>` with the `id` you copied and `<default-ou-id>` with the ID of your default organization unit (look it up via `GET /organization-units`), and POST it to the flows API:
 
 ```bash
 curl -k -X POST https://localhost:8090/flows \
@@ -257,6 +260,7 @@ curl -k -X POST https://localhost:8090/flows \
   "handle": "wayfinder-recovery-flow",
   "name": "Wayfinder Password Recovery Flow",
   "flowType": "RECOVERY",
+  "ouId": "<default-ou-id>",
   "nodes": [
     { "id": "start", "type": "START", "onSuccess": "prompt_username" },
     {
@@ -358,6 +362,12 @@ curl -k -X POST https://localhost:8090/flows \
       "id": "set_credential",
       "type": "TASK_EXECUTION",
       "executor": { "name": "CredentialSetter" },
+      "onSuccess": "release_account_locks"
+    },
+    {
+      "id": "release_account_locks",
+      "type": "TASK_EXECUTION",
+      "executor": { "name": "IdentityGovernanceExecutor", "mode": "unlock" },
       "onSuccess": "recovery_complete"
     },
     {
@@ -420,8 +430,8 @@ Wayfinder takes the first: the customer already clicked **Sign out**, so there i
 
 ### Create the sign-out flow
 
-Three nodes, and the middle one does the work. Save the JSON below as `wayfinder-signout-flow.json` and POST it to the
-flows API:
+Three nodes, and the middle one does the work. Save the JSON below as `wayfinder-signout-flow.json`, replace
+`<default-ou-id>` with the ID of your default organization unit (look it up via `GET /organization-units`), and POST it to the flows API:
 
 ```bash
 curl -k -X POST https://localhost:8090/flows \
@@ -438,6 +448,7 @@ curl -k -X POST https://localhost:8090/flows \
   "handle": "wayfinder-signout-flow",
   "name": "Wayfinder Sign Out Flow",
   "flowType": "SIGNOUT",
+  "ouId": "<default-ou-id>",
   "nodes": [
     { "id": "start", "type": "START", "onSuccess": "session_signout" },
     {

@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package flowmgt
@@ -24,6 +24,7 @@ const (
 	colName          = "name"
 	colFlowType      = "flow_type"
 	colActiveVersion = "active_version"
+	colOUID          = "ou_id"
 	colNodes         = "nodes"
 	colInterceptors  = "interceptors"
 	colCreatedAt     = "created_at"
@@ -75,10 +76,11 @@ func newFlowStore() (flowStoreInterface, providers.Transactioner, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowStore"))
 	return &flowStore{
 		dbProvider:        dbProvider,
 		maxVersionHistory: getMaxVersionHistory(),
-		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowStore")),
+		logger:            logger,
 	}, transactioner, nil
 }
 
@@ -98,7 +100,8 @@ func (s *flowStore) ListFlows(ctx context.Context, limit, offset int, flowType s
 				return fmt.Errorf("failed to count flows: %w", err)
 			}
 
-			results, err = dbClient.QueryContext(ctx, queryListFlowsWithType, flowType, s.scope(ctx), limit, offset)
+			results, err = dbClient.QueryContext(ctx, queryListFlowsWithType,
+				flowType, s.scope(ctx), limit, offset)
 			if err != nil {
 				return fmt.Errorf("failed to list flows: %w", err)
 			}
@@ -108,7 +111,8 @@ func (s *flowStore) ListFlows(ctx context.Context, limit, offset int, flowType s
 				return fmt.Errorf("failed to count flows: %w", err)
 			}
 
-			results, err = dbClient.QueryContext(ctx, queryListFlows, s.scope(ctx), limit, offset)
+			results, err = dbClient.QueryContext(ctx, queryListFlows,
+				s.scope(ctx), limit, offset)
 			if err != nil {
 				return fmt.Errorf("failed to list flows: %w", err)
 			}
@@ -183,7 +187,7 @@ func (s *flowStore) CreateFlow(ctx context.Context, flowID string, flow *FlowDef
 
 	err = s.withDBClientContext(ctx, func(dbClient provider.DBClientInterface) error {
 		_, err := dbClient.ExecuteContext(ctx, queryCreateFlow, flowID, flow.Handle,
-			flow.Name, flow.FlowType, int64(1), s.scope(ctx))
+			flow.Name, flow.FlowType, int64(1), flow.OUID, s.scope(ctx))
 		if err != nil {
 			return fmt.Errorf("failed to create flow: %w", err)
 		}
@@ -228,7 +232,8 @@ func (s *flowStore) GetFlowByHandle(ctx context.Context, handle string, flowType
 	*providers.CompleteFlowDefinition, error) {
 	var flow *providers.CompleteFlowDefinition
 	err := s.withDBClientContext(ctx, func(dbClient provider.DBClientInterface) error {
-		results, err := dbClient.QueryContext(ctx, queryGetFlowByHandle, handle, string(flowType), s.scope(ctx))
+		results, err := dbClient.QueryContext(ctx, queryGetFlowByHandle,
+			handle, string(flowType), s.scope(ctx))
 		if err != nil {
 			return fmt.Errorf("failed to get flow by handle: %w", err)
 		}
@@ -569,6 +574,11 @@ func (s *flowStore) buildBasicFlowDefinitionFromRow(row map[string]interface{}) 
 		return BasicFlowDefinition{}, err
 	}
 
+	ouID, err := s.getString(row, colOUID)
+	if err != nil {
+		return BasicFlowDefinition{}, err
+	}
+
 	createdAt, err := s.getTimestamp(row, colCreatedAt)
 	if err != nil {
 		return BasicFlowDefinition{}, err
@@ -587,6 +597,7 @@ func (s *flowStore) buildBasicFlowDefinitionFromRow(row map[string]interface{}) 
 		ActiveVersion: int(activeVersion),
 		CreatedAt:     createdAt,
 		UpdatedAt:     updatedAt,
+		OUID:          ouID,
 	}, nil
 }
 
@@ -618,6 +629,11 @@ func (s *flowStore) buildCompleteFlowDefinitionFromRow(row map[string]interface{
 		return nil, err
 	}
 
+	ouID, err := s.getString(row, colOUID)
+	if err != nil {
+		return nil, err
+	}
+
 	createdAt, err := s.getTimestamp(row, colCreatedAt)
 	if err != nil {
 		return nil, err
@@ -641,6 +657,7 @@ func (s *flowStore) buildCompleteFlowDefinitionFromRow(row map[string]interface{
 		ActiveVersion: int(activeVersion),
 		CreatedAt:     createdAt,
 		UpdatedAt:     updatedAt,
+		OUID:          ouID,
 	}
 
 	if err := json.Unmarshal([]byte(nodesJSON), &flow.Nodes); err != nil {

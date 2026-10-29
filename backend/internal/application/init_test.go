@@ -144,6 +144,7 @@ func (suite *InitTestSuite) TestInitialize_WithDeclarativeResourcesDisabled() {
 	mux := http.NewServeMux()
 
 	mockEntityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	mockEntityService.On("RegisterSharedCategory", providers.EntityCategoryApp, ApplicationSharingType).Return().Once()
 	mockEntityService.On("LoadIndexedAttributes", mock.Anything).Return(nil)
 
 	// Execute
@@ -191,6 +192,7 @@ func (suite *InitTestSuite) TestInitialize_WithMCPServer() {
 	}, nil)
 
 	mockEntityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	mockEntityService.On("RegisterSharedCategory", providers.EntityCategoryApp, ApplicationSharingType).Return().Once()
 	mockEntityService.On("LoadIndexedAttributes", mock.Anything).Return(nil)
 
 	// Execute
@@ -622,6 +624,7 @@ func TestInitialize_Standalone(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mockEntityService := entitymock.NewEntityServiceInterfaceMock(t)
+	mockEntityService.On("RegisterSharedCategory", providers.EntityCategoryApp, ApplicationSharingType).Return().Once()
 	mockEntityService.On("LoadIndexedAttributes", mock.Anything).Return(nil)
 
 	// Execute
@@ -674,6 +677,7 @@ func TestInitialize_WithDeclarativeResources_Standalone(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mockEntityService := entitymock.NewEntityServiceInterfaceMock(t)
+	mockEntityService.On("RegisterSharedCategory", providers.EntityCategoryApp, ApplicationSharingType).Return().Once()
 	mockEntityService.On("LoadIndexedAttributes", mock.Anything).Return(nil)
 	mockEntityService.On("LoadDeclarativeResources", mock.Anything).Return(nil)
 	mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
@@ -921,6 +925,7 @@ func (suite *InitTestSuite) declarativeConfig() {
 func (suite *InitTestSuite) TestInitializeReportsAFailureLoadingApplications() {
 	suite.declarativeConfig()
 	mockEntityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	mockEntityService.On("RegisterSharedCategory", providers.EntityCategoryApp, ApplicationSharingType).Return().Once()
 	mockEntityService.On("LoadIndexedAttributes", mock.Anything).Return(nil)
 	mockEntityService.On("LoadDeclarativeResources", mock.Anything).Return(assert.AnError)
 
@@ -937,6 +942,7 @@ func (suite *InitTestSuite) TestInitializeReportsAFailureLoadingApplications() {
 func (suite *InitTestSuite) TestInitializeReportsAFailureLoadingSharingPolicies() {
 	suite.declarativeConfig()
 	mockEntityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	mockEntityService.On("RegisterSharedCategory", providers.EntityCategoryApp, ApplicationSharingType).Return().Once()
 	mockEntityService.On("LoadIndexedAttributes", mock.Anything).Return(nil)
 	mockEntityService.On("LoadDeclarativeResources", mock.Anything).Return(nil)
 	mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())

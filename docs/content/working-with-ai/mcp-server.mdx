@@ -179,7 +179,7 @@ Run `/mcp` to inspect the connected server and its tools. Ask Codex:
 
 > "Use the thunderid-mcp server to list the applications registered in <ProductName />."
 
-Codex calls `thunderid_list_applications` and returns your registered applications. You can then ask it to integrate authentication into your project using the [example prompts](#what-you-can-do) below.
+Codex calls `list_applications` and returns your registered applications. You can then ask it to integrate authentication into your project using the [example prompts](#what-you-can-do) below.
 
 To delete the local server configuration later, run `codex mcp remove thunderid-mcp`.
 
@@ -316,7 +316,7 @@ The Inspector UI opens at `http://localhost:6274`.
 ### Verify the Connection
 
 1. In MCP Inspector, open the **Tools** tab and click **List Tools**.
-2. Select a tool such as `thunderid_list_applications`. Run it.
+2. Select a tool such as `list_applications`. Run it.
 3. The response lists the applications registered in <ProductName />, including the MCP Inspector application you just created.
 
 If the connection fails, see the [Troubleshooting](#troubleshooting) section below.

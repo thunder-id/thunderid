@@ -154,6 +154,16 @@ func TrimPrefixFold(s, prefix string) string {
 	return s
 }
 
+// ContainsFold reports whether list holds v, ignoring case.
+func ContainsFold(list []string, v string) bool {
+	for _, e := range list {
+		if strings.EqualFold(e, v) {
+			return true
+		}
+	}
+	return false
+}
+
 // ConvertToStringSlice converts a slice of custom string types to a slice of strings.
 func ConvertToStringSlice[T ~string](items []T) []string {
 	result := make([]string, len(items))

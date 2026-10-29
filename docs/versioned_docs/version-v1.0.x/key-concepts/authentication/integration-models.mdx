@@ -348,6 +348,8 @@ On a fresh setup, the `setup.sh` / `setup.ps1` script generates a secret, writes
 
 This suits the intended Direct API callers, such as CLI tools, automation scripts, and server-to-server integrations, which can hold a configured secret. Browser and mobile applications, which cannot safely store a static secret, should use the [Redirect-Based](#redirect-based) or [App-Native](#app-native) model instead.
 
+From the 1.0.2 patch release onwards, enrolling a passkey through `/register/passkey/start` also requires the `assertion` from a prior authentication of the same user. See [Passkeys](../passwordless/passkeys#registration-flow).
+
 ```bash
 curl -X POST https://localhost:8090/auth/credentials/authenticate \
   -H 'Content-Type: application/json' \

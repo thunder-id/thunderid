@@ -7,17 +7,18 @@ description: RFC 7009 token revocation in {{ProductName}}, from revoking a singl
 
 # Token Revocation
 
-**Token Revocation** ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)) lets a client tell <ProductName /> that a token should stop working before it expires. <ProductName /> extends this with two broader scopes, so an operational event such as a sign-out or a user deletion can invalidate many tokens at once.
+**Token Revocation** ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)) lets a client tell <ProductName /> that a token should stop working before it expires. <ProductName /> extends this with broader scopes, so an operational event such as a sign-out, a user deletion, or an account suspension can invalidate many tokens at once.
 
-Access tokens are self-contained JWTs, so a resource server that validates them locally has no way to know a token was revoked. <ProductName /> solves this with a denylist that both the authorization server and resource servers consult. The three scopes below differ only in what goes on that list.
+Access tokens are self-contained JWTs, so a resource server that validates them locally has no way to know a token was revoked. <ProductName /> solves this with a denylist that both the authorization server and resource servers consult. The scopes below differ only in what goes on that list.
 
-## The Three Scopes
+## Revocation Scopes
 
 | Scope | What it invalidates | Typical trigger |
 |---|---|---|
 | **Single token** | One token, by its `jti` | A client calls `/oauth2/revoke`; a refresh token is rotated |
 | **Grant** | Every token of one authorization grant, by its `tfid` | Sign-out, refresh-token replay, authorization-code replay |
-| **User** | Every token belonging to one user, by its `sub` | A user is deleted |
+| **Subject** | Every token issued to one user, agent, or application, by its `sub` | A user is deleted; a user, agent, or application is suspended |
+| **Client** | Every token issued through one OAuth client, by its client ID | An application, or an agent with an OAuth client, is suspended |
 
 A token is rejected if **any** of these matches.
 
@@ -84,11 +85,11 @@ Refresh-token replay detection depends on rotation, since a token can only be re
 
 Session **sign-out** revokes the family. Session **expiry** does not: a session that simply times out leaves its tokens valid until they expire on their own.
 
-## User-Scoped Revocation
+## Subject-Scoped Revocation
 
 Some events invalidate tokens that no single client is holding, and that span more than one grant. Deleting a user is the clearest case: their tokens may be spread across several applications and devices, and nobody presents them to be revoked.
 
-For these, <ProductName /> revokes by **subject**: every token issued to that user is rejected, across every application and device, without anyone having to present or enumerate them. Tokens already carry `sub`, so no additional claim is needed.
+For these, <ProductName /> revokes by **subject**: every token issued to that user, agent, or application is rejected, across every application and device, without anyone having to present or enumerate them. Tokens already carry `sub`, so no additional claim is needed.
 
 ### User Deletion
 
@@ -97,6 +98,14 @@ For these, <ProductName /> revokes by **subject**: every token issued to that us
 :::warning
 Deleting a user through the `DELETE /users/{id}` API removes the record only. It does not run the deletion flow, so the user's tokens stay valid until they expire. To revoke tokens as part of deletion, delete from the Console, or run the deletion flow directly from automation.
 :::
+
+### Account Suspension
+
+The suspend flow revokes tokens for the target subject and ends its sessions before placing the suspension. For an application or an agent with an OAuth client, it also revokes tokens issued through that client ID, including user tokens.
+
+The revocation cutoff is the time **Validate and Plan Suspension** runs, plus `jwt.leeway`. Matching tokens issued at or before that cutoff are rejected. Unsuspending does not remove these revocation records. See [Suspend an Account](../../../account-protection/suspend-and-restore-accounts#suspend-an-account) for the administration steps.
+
+An automatic account lock revokes nothing: it refuses new sign-ins only.
 
 ## Where Revocation Is Enforced
 

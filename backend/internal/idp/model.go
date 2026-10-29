@@ -13,6 +13,7 @@ type BasicIDPDTO struct {
 	Name         string
 	Description  string
 	Type         providers.IDPType
+	OUID         string
 	IsReadOnly   bool
 	IDJagEnabled *bool
 }

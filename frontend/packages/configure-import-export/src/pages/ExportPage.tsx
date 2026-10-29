@@ -28,6 +28,7 @@ export default function ExportPage(): JSX.Element {
       themes: ['*'],
       users: ['*'],
       organizationUnits: ['*'],
+      projects: ['*'],
       userTypes: ['*'],
       agentTypes: ['*'],
       translations: ['*'],

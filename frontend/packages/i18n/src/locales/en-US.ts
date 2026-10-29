@@ -10,6 +10,118 @@ const translations = {
   // Common namespace - Shared translations across all applications
   // ============================================================================
   common: {
+    // Account status
+    'accountStatus.active.label': 'Active',
+    'accountStatus.active.hint.user': 'This account can sign in normally.',
+    'accountStatus.active.hint.agent': 'This agent can authenticate normally.',
+    'accountStatus.active.hint.application': 'This application can authenticate normally.',
+    'accountStatus.locked.label': 'Locked',
+    'accountStatus.locked.hint.user':
+      'The account is locked and cannot sign in. The user can complete account recovery, or an administrator can unlock the account.',
+    'accountStatus.locked.hint.agent': 'The agent is locked and cannot authenticate. An administrator can unlock it.',
+    'accountStatus.locked.hint.failedAttempts.user':
+      'The account was locked after too many failed sign-in attempts. It unlocks automatically at the time shown below. Account recovery or an administrator unlock also removes the lock.',
+    'accountStatus.locked.hint.failedAttempts.agent':
+      'The agent was locked after too many failed authentication attempts. It unlocks automatically at the time shown below. An administrator unlock also removes the lock.',
+    'accountStatus.locked.hint.failedAttemptsPermanent.user':
+      'The account was locked after too many failed sign-in attempts. It stays locked until the user completes account recovery or an administrator unlocks it.',
+    'accountStatus.locked.hint.failedAttemptsPermanent.agent':
+      'The agent was locked after too many failed authentication attempts. It stays locked until an administrator unlocks it.',
+    'accountStatus.locked.hint.suspensionReleased.user':
+      'Suspension removed. The account remains locked until the user completes account recovery or an administrator unlocks it.',
+    'accountStatus.locked.title.someMethods.user': 'Sign-in locked for some methods',
+    'accountStatus.locked.title.someMethods.agent': 'Authentication locked for some methods',
+    'accountStatus.locked.hint.someMethods.user':
+      'Some sign-in methods were locked after too many failed attempts. Other sign-in methods are not affected. Each lock below shows when it ends. Account recovery or an administrator unlock removes them.',
+    'accountStatus.locked.hint.someMethods.agent':
+      'Some authentication methods were locked after too many failed attempts. Other authentication methods are not affected. Each lock below shows when it ends. An administrator unlock removes them.',
+    'accountStatus.locked.until': 'Locked until {{expiresAt}}',
+    'accountStatus.locked.method.until': '{{method}}: locked until {{expiresAt}}',
+    'accountStatus.locked.method.untilReleased': '{{method}}: locked until released',
+    'accountStatus.method.credential': 'Password or other stored credential',
+    'accountStatus.method.otp': 'One-time password',
+    'accountStatus.suspended.label': 'Suspended',
+    'accountStatus.suspended.hint.user':
+      'The account is suspended and cannot sign in until an administrator unsuspends it.',
+    'accountStatus.suspended.hint.agent':
+      'The agent is suspended and cannot authenticate until an administrator unsuspends it.',
+    'accountStatus.suspended.hint.application':
+      'The application is suspended and cannot authenticate until an administrator unsuspends it.',
+    'accountStatus.suspended.operatorNote': 'Operator note: {{operatorNote}}',
+
+    // Account lifecycle actions
+    'accountStatus.actions': 'Actions',
+    'accountStatus.error.user': 'The user operation could not be completed.',
+    'accountStatus.error.agent': 'The agent operation could not be completed.',
+    'accountStatus.error.application': 'The application operation could not be completed.',
+    'accountStatus.availabilityError': 'The account actions could not be loaded. Reload the page to try again.',
+    'accountStatus.suspend.action': 'Suspend',
+    'accountStatus.suspend.hint.user': 'Prevent sign-in and revoke existing access.',
+    'accountStatus.suspend.hint.agent': 'Prevent authentication and revoke existing access.',
+    'accountStatus.suspend.hint.application': 'Prevent authentication and revoke existing access.',
+    'accountStatus.suspend.confirmTitle.user': 'Suspend user',
+    'accountStatus.suspend.confirmTitle.agent': 'Suspend agent',
+    'accountStatus.suspend.confirmTitle.application': 'Suspend application',
+    'accountStatus.suspend.confirmBody.user':
+      'The account will no longer be able to sign in. Existing sessions and tokens will be revoked.',
+    'accountStatus.suspend.confirmBody.agent':
+      'The agent will no longer be able to authenticate or obtain new tokens. Existing sessions and tokens will be revoked. You can still update the agent details and credentials while it is suspended.',
+    'accountStatus.suspend.confirmBody.application':
+      'The application will no longer be able to authenticate or obtain new tokens. Existing sessions and tokens will be revoked.',
+    'accountStatus.suspend.operatorNoteLabel': 'Operator note (optional)',
+    'accountStatus.suspend.operatorNoteHelp':
+      'Shown to anyone who can read this record. It is never shown on a sign-in attempt.',
+    'accountStatus.suspend.success.user': 'User suspended',
+    'accountStatus.suspend.success.agent': 'Agent suspended',
+    'accountStatus.suspend.success.application': 'Application suspended',
+    'accountStatus.suspend.emailNotSent.user':
+      'User suspended, but no notification email was sent. Check that the user has an email address and an email provider is configured.',
+    'accountStatus.unlock.action': 'Unlock',
+    'accountStatus.unlock.hint.user': 'Remove all sign-in locks.',
+    'accountStatus.unlock.hint.agent': 'Remove all authentication locks.',
+    'accountStatus.unlock.success.user': 'User unlocked',
+    'accountStatus.unlock.success.agent': 'Agent unlocked',
+    'accountStatus.unlock.emailNotSent.user':
+      'User unlocked, but no notification email was sent. Check that the user has an email address and an email provider is configured.',
+    'accountStatus.unsuspend.action': 'Unsuspend',
+    'accountStatus.unsuspend.hint.user':
+      'Remove the suspension. The account remains locked until the user completes account recovery or an administrator unlocks it.',
+    'accountStatus.unsuspend.hint.agent': 'Remove the suspension.',
+    'accountStatus.unsuspend.hint.application': 'Remove the suspension.',
+    'accountStatus.unsuspend.confirmTitle.user': 'Unsuspend user',
+    'accountStatus.unsuspend.confirmTitle.agent': 'Unsuspend agent',
+    'accountStatus.unsuspend.confirmTitle.application': 'Unsuspend application',
+    'accountStatus.unsuspend.confirmGuidance.user':
+      "Before unsuspending, verify the user's contact information and reset any potentially compromised credentials.",
+    'accountStatus.unsuspend.confirmGuidance.agent':
+      'Before unsuspending, rotate any potentially compromised agent secrets to prevent their reuse.',
+    'accountStatus.unsuspend.confirmGuidance.application':
+      'Before unsuspending, rotate any potentially compromised application secrets to prevent their reuse.',
+    'accountStatus.unsuspend.confirmBody.user':
+      "The user's account will remain locked after unsuspension. To regain access, the user must complete account recovery or an administrator must unlock the account.",
+    'accountStatus.unsuspend.confirmBody.agent':
+      "This action will remove the suspension and restore the agent's access, unless the agent is also locked.",
+    'accountStatus.unsuspend.confirmBody.application':
+      "This action will remove the suspension and restore the application's access.",
+    'accountStatus.unsuspend.success.user': 'User unsuspended',
+    'accountStatus.unsuspend.success.agent': 'Agent unsuspended',
+    'accountStatus.unsuspend.success.application': 'Application unsuspended',
+    'accountStatus.unsuspend.emailNotSent.user':
+      'User unsuspended, but no notification email was sent. Check that the user has an email address and an email provider is configured.',
+    'accountStatus.unsuspendAndUnlock.action': 'Unsuspend and unlock',
+    'accountStatus.unsuspendAndUnlock.hint.user':
+      'Remove the suspension and unlock. The account can sign in right away.',
+    'accountStatus.unsuspendAndUnlock.confirmTitle': 'Unsuspend and unlock user',
+    'accountStatus.unsuspendAndUnlock.confirmGuidance':
+      "Before restoring access, verify the user's contact information and reset any potentially compromised credentials.",
+    'accountStatus.unsuspendAndUnlock.confirmBody':
+      'This action will remove the suspension and unlock the account, allowing the user to sign in again.',
+    'accountStatus.unsuspendAndUnlock.success': 'User unsuspended and unlocked',
+    'accountStatus.unsuspendAndUnlock.emailNotSent':
+      'User unsuspended and unlocked, but a notification email was not sent. Check that the user has an email address and an email provider is configured.',
+    'accountStatus.unsuspendAndUnlock.incomplete':
+      'The suspension was removed, but the unlock failed. Unlock it from the Actions menu.',
+
     // Actions
     'actions.add': 'Add',
     'actions.edit': 'Edit',
@@ -161,6 +273,8 @@ const translations = {
     'errors.FET-1109': 'The action could not be deleted. Please try again.',
     'errors.FET-1110': 'The permissions supplied for this role are not valid. Refresh the page and try again.',
     'errors.FET-1111': 'A required value for this change is missing. Refresh the page and try again.',
+    'errors.FET-1112':
+      'The account operation could not be completed. Check that the account still exists and that the operation applies to its current state.',
     'errors.RVS-1001':
       'This change would revoke access through {{entries}} entries, more than the {{max}} allowed for one change.',
 
@@ -710,6 +824,40 @@ const translations = {
   },
 
   // ============================================================================
+  // Manage namespace - Admin App pages for users, groups, roles and agents
+  // ============================================================================
+  manage: {
+    title: 'Admin',
+    'nav.label': 'Admin Console',
+    'userMenu.signOut': 'Sign out',
+    'organizationUnit.label': 'Organization unit',
+    'organizationUnit.badge': 'OU',
+    'nav.users': 'Users',
+    'nav.groups': 'Groups',
+    'nav.roles': 'Roles',
+    'nav.agents': 'Agents',
+    'actions.add': 'Add',
+    'actions.add.users': 'Add people',
+    'actions.invite.users': 'Invite people',
+    'actions.add.groups': 'New group',
+    'actions.add.roles': 'New role',
+    'actions.add.agents': 'Register agent',
+    'actions.back': 'Back',
+    'actions.close': 'Close',
+    'create.users': 'Add a user',
+    'create.groups': 'Create a group',
+    'create.roles': 'Create a role',
+    'create.agents': 'Register an agent',
+    'users.description': 'Everyone who can sign in through this organization unit.',
+    'groups.description': 'Give roles to many people at once. Members inherit every role on the group.',
+    'roles.description': 'Assign roles to people, groups and agents in this organization unit.',
+    'agents.description': 'AI agents that act for this organization unit.',
+    loading: 'Loading',
+    'empty.title': 'Nothing to manage',
+    'empty.description': 'You do not have permission to manage anything here.',
+  },
+
+  // ============================================================================
   // Users namespace - User management feature translations
   // ============================================================================
   users: {
@@ -737,6 +885,7 @@ const translations = {
     lastLogin: 'Last login',
     'listing.columns.name': 'Name',
     'listing.columns.userId': 'User ID',
+    'listing.columns.status': 'Status',
     'listing.columns.actions': 'Actions',
     noUsers: 'No users found',
     searchUsers: 'Search users...',
@@ -811,11 +960,36 @@ const translations = {
     'errors.USR-1027':
       'This user cannot be deleted because {{dependencies}} depend on it. Remove or reassign them first.',
     'errors.USR-1028': 'Credentials for this user cannot be updated here.',
+    'errors.USR-1029':
+      'This change is not allowed. A unit may have moved, or a unit that passed the user on would lose its own reach. Reopen the access and try again.',
+    'errors.USR-1030': 'This share no longer exists. It may have been removed already.',
+    'errors.USR-1031':
+      'This unit already shares the user, from a change made elsewhere. Reset to load it, then redo your change.',
+    'errors.USR-1032':
+      "Someone else changed this user's sharing while you were editing. Reset to load the latest, then redo your change.",
+    'errors.USR-1033': 'This share is declared in a resource file. Change it there.',
+    'errors.USR-1034': 'The user is not shared into this unit, so the unit cannot share it on.',
+    'errors.USR-1037':
+      'Sharing with every unit or every other organization comes only from a resource file or an import.',
 
     // Read failures
     'listing.error': 'Failed to load users',
     'manageUser.loadError': 'Failed to load user information',
     'manageUser.notFound': 'User not found',
+
+    // Affiliations
+    'manageUser.tabs.affiliations': 'Affiliations',
+    'organizationAccess.title': 'Where {{resource}} is affiliated',
+    'organizationAccess.description':
+      '{{resource}} can sign in and act within the units selected here. What they can do in each unit depends on the roles that unit grants.',
+    'organizationAccess.ownerOnly': "{{resource}} isn't affiliated with any other unit.",
+    'organizationAccess.stopSharingTitle': 'Keep {{resource}} in {{owner}} only?',
+    'organizationAccess.stopSharingIntro': '{{resource}} will be affiliated with {{owner}} only. This clears:',
+    'organizationAccess.stopSharingConfirm': 'Remove affiliations',
+    'organizationAccess.saved': 'Affiliations updated.',
+    'organizationAccess.loadFailedTitle': 'Failed to load affiliations',
+    'organizationAccess.loadFailedMessage': 'Something went wrong while loading the affiliations.',
+    'organizationAccess.save.error': 'Failed to update affiliations. Please try again.',
   },
 
   // ============================================================================
@@ -1131,6 +1305,7 @@ const translations = {
     'listing.columns.name': 'Name',
     'listing.columns.agentId': 'Agent ID',
     'listing.columns.organizationUnit': 'Organization unit',
+    'listing.columns.status': 'Status',
     'listing.columns.actions': 'Actions',
 
     // Onboarding (flow driven)
@@ -1145,6 +1320,15 @@ const translations = {
       'The agent onboarding flow could not be loaded. Check that the server is reachable and try again.',
     'onboarding.errors.stepFailed': 'This step could not be completed. Review the values and try again.',
     'onboarding.selectPlaceholder': 'Select an option',
+    'onboarding.authFlow.loading': 'Loading login flows...',
+    'onboarding.authFlow.error': 'Login flows could not be loaded.',
+    'onboarding.authFlow.empty': 'No login flows are available.',
+    'onboarding.userType.loading': 'Loading user types...',
+    'onboarding.userType.error': 'User types could not be loaded.',
+    'onboarding.userType.empty': 'No user types are available.',
+    'onboarding.user.loading': 'Loading users...',
+    'onboarding.user.error': 'Users could not be loaded.',
+    'onboarding.user.empty': 'No users are available.',
     'onboarding.addAnother': 'Add another agent',
 
     // Add form (native creation, no onboarding flow)
@@ -1159,6 +1343,12 @@ const translations = {
     'addForm.secretIssued.subtitle':
       "Copy the client secret and store it somewhere safe. It won't be shown again; the agent's page can only regenerate it.",
     'addForm.noAgentTypes': 'No agent types are defined yet. Create one before adding an agent.',
+    'addForm.owner': 'Owner',
+    'addForm.ownerDefault': 'Me (default)',
+    'addForm.ownerTruncated': 'Showing the first {{shown}} of {{total}} users.',
+    'addForm.ownersError': 'The users to choose an owner from could not be loaded.',
+    'addForm.ownerHint':
+      'Defaults to you. Choose a user created here if the agent is applied to a gateway, which needs an owner it can find.',
     'addForm.organizationUnit': 'Organization unit',
     'addForm.selectAgentType': 'Select an agent type',
     'addForm.submit': 'Create agent',
@@ -1437,6 +1627,8 @@ const translations = {
     'errors.AGT-1041': 'The provided logo URL is not valid.',
     'errors.AGT-1042':
       'The subject attribute mapping must reference an attribute that is unique, required, and string typed in an allowed agent type.',
+    'errors.AGT-1044':
+      'A delegated agent needs at least one grant type that lets it act for a signed-in user, such as authorization code.',
   },
 
   // ============================================================================
@@ -1611,7 +1803,7 @@ const translations = {
     'errors.OU-1004': 'An organization unit with the same name already exists under the same parent.',
     'errors.OU-1005': 'The selected parent organization unit could not be found.',
     'errors.OU-1006':
-      'This organization unit has child units, users, or groups and cannot be deleted while they exist.',
+      'This organization unit has child units, users, groups, connections, or flows and cannot be deleted while they exist.',
     'errors.OU-1007': 'This parent selection would create a circular dependency in the organization hierarchy.',
     'errors.OU-1008': 'An organization unit with the same handle already exists under the same parent.',
     'errors.OU-1012': 'This organization unit is managed by configuration and cannot be modified or deleted.',
@@ -1672,7 +1864,7 @@ const translations = {
     'noneBlocked.dropsEveryTree': 'Not available. It also removes Every tree, which leaves nothing granted.',
     'noneBlocked.otherIsNone': 'Not available while {{section}} is set to None.',
     'noneBlocked.otherTrees': 'other trees',
-    nothingChosen: 'Nothing is granted below yet. Saving like this is the same as "Only {{owner}}".',
+    nothingChosen: 'Nothing is granted below yet. Saving like this is the same as "{{owner}} only".',
     'picker.alreadyExcluded': 'Already excluded',
     'picker.alreadyGranted': 'Already granted',
     'picker.collapse': 'Hide units under {{name}}',
@@ -1693,12 +1885,12 @@ const translations = {
     'reach.unitHint': "Units below it don't get access.",
     revoke: 'Revoke access for {{name}}',
     'save.success': 'Organization access updated.',
-    'scope.chosen.description': 'Pick child units of {{owner}} and other trees, separately below.',
-    'scope.chosen.title': 'Chosen organization units',
+    'scope.chosen.description': 'Choose child units of {{owner}} and other trees below.',
+    'scope.chosen.title': '{{owner}} and chosen units',
     'scope.everyUnit.description': 'Every unit in every tree, now and later, with optional exceptions.',
     'scope.everyUnit.title': 'Every organization unit',
     'scope.owner.description': 'No child unit and no other tree can use it.',
-    'scope.owner.title': 'Only {{owner}}',
+    'scope.owner.title': '{{owner}} only',
     'switch.cantRestore.everyTree':
       '"Every tree" can only be set in a resource file or by importing. Once you save, it can\'t be chosen again here.',
     'switch.cantRestore.everyUnit':
@@ -2023,6 +2215,7 @@ const translations = {
     'card.configured': 'Configured',
     'card.notConfigured': 'Not configured',
     'card.comingSoon': 'Coming soon',
+    'card.default': 'Default',
     'card.addCustom.title': 'Add custom connection',
     'card.addCustom.description': "Set up a connection that isn't in the catalog.",
 
@@ -2044,6 +2237,10 @@ const translations = {
     'wizard.steps.type': 'Connection type',
     'wizard.steps.name': 'Details',
     'wizard.steps.configure': 'Configure',
+    'wizard.organizationUnit.title': 'Where should this connection belong?',
+    'wizard.organizationUnit.subtitle':
+      "Choose the organization unit that will own this connection. You can't change this once created.",
+    'wizard.organizationUnit.required': 'Organization unit is required',
     'wizard.type.heading': 'What kind of connection do you want to add?',
     'wizard.type.subheading':
       "Custom connections aren't in the vendor catalog. Pick the type of integration you want to wire up.",
@@ -2093,6 +2290,7 @@ const translations = {
 
     // Connection detail / edit page
     'detail.backToConnections': 'Back to connections',
+    'detail.defaultBadgeManaged': 'Managed by server configuration.',
     'detail.loadError.title': 'Failed to load connection',
     'detail.notFound.title': 'Connection not found',
     'detail.notFound.description': 'This connection may have been deleted or the link is incorrect.',
@@ -2105,6 +2303,12 @@ const translations = {
     'detail.quickCopy.description': 'Copy connection identifiers for use in your integration.',
     'detail.connectionId': 'Connection ID',
     'detail.connectionId.hint': 'Unique identifier for this connection.',
+    'detail.organizationUnit.title': 'Organization unit',
+    'detail.organizationUnit.description': 'The organization unit this connection belongs to.',
+    'detail.organizationUnit.handleLabel': 'Handle',
+    'detail.organizationUnit.idLabel': 'ID',
+    'detail.organizationUnit.copyHandle': 'Copy handle',
+    'detail.organizationUnit.copyId': 'Copy organization unit ID',
     'detail.credentials.title': 'Credentials',
     'detail.credentials.description': 'Credentials and endpoints for this connection. Secrets are stored write-only.',
     'detail.configuration.title': 'Connection configuration',
@@ -2122,6 +2326,14 @@ const translations = {
     'detail.authentication.method.none': 'None',
     'detail.outboundAuthentication.description':
       'Credentials ThunderID uses to sign in to this provider. Secrets are stored write-only.',
+    'detail.usages.title': 'Usages',
+    'detail.usages.description':
+      'Resources that use this connection. A connection cannot be deleted while a resource uses it.',
+    'detail.usages.empty': 'No resources use this connection.',
+    'detail.usages.unavailable': 'The resources that use this connection could not be determined.',
+    'detail.usages.loadError': 'Failed to load the resources that use this connection.',
+    'detail.usages.resourceType.flow': 'Flow',
+    'detail.usages.resourceType.other': 'Resource',
     'detail.dangerZone.title': 'Danger zone',
     'detail.dangerZone.description': 'Actions in this section are irreversible. Proceed with caution.',
     'detail.dangerZone.delete.title': 'Delete connection',
@@ -2219,10 +2431,10 @@ const translations = {
     'form.fields.httpEndpointDescription.hint': 'Optional note about what this endpoint does, up to 500 characters.',
     'form.fields.httpEndpointUrl.label': 'Endpoint URL',
     'form.fields.httpEndpointUrl.hint':
-      'The http or https URL ThunderID sends requests to. Setting an authentication method requires https.',
+      'The http or https URL {{productName}} sends requests to. Setting an authentication method requires https.',
     'form.fields.httpEndpointTimeoutMs.label': 'Timeout in milliseconds',
     'form.fields.httpEndpointTimeoutMs.hint':
-      'Maximum time ThunderID waits for a response, from 1 to 20000 milliseconds.',
+      'Maximum time {{productName}} waits for a response, from 1 to 20000 milliseconds.',
     'form.fields.httpEndpointHeaders.label': 'HTTP headers',
     'form.fields.httpEndpointHeaders.hint':
       'Headers sent with every request. Set credentials under Authentication instead.',
@@ -2415,14 +2627,30 @@ const translations = {
     'delete.usages.loading': 'Checking affected resources…',
     'delete.usages.more': '+{{count}} more',
     'delete.blocking.title': 'This connection cannot be deleted until the following resources are updated or removed:',
+    'delete.defaultEmailSender':
+      'This is the default email sender. After you delete it, system-generated emails, such as account lock notifications, are not sent until another sender is set as the default.',
 
     // Toasts
     'create.success': 'Connection created successfully.',
     'create.error': 'Failed to create connection.',
+    'create.setDefaultError': 'Connection created, but it could not be made the default email sender.',
     'update.success': 'Connection updated successfully.',
     'update.error': 'Failed to update connection.',
     'delete.success': 'Connection deleted successfully.',
     'delete.error': 'Failed to delete connection.',
+
+    // Default email sender
+    'setDefault.action': 'Set as default',
+    'setDefault.title': 'Set default email sender',
+    'setDefault.message':
+      '<bold>{{name}}</bold> will be used as the default sender for system-generated emails, such as account lock notifications.',
+    'setDefault.replaces': 'This will replace the current default email sender.',
+    'setDefault.confirm': 'Set as default',
+    'setDefault.setting': 'Setting…',
+    'setDefault.success': '{{name}} is now the default email sender.',
+    'setDefault.error': 'Failed to set the default email sender.',
+    'setDefault.lockedReason': 'The default email sender is fixed by the deployment configuration.',
+    'defaultSender.loadError': 'Failed to load the default email sender.',
 
     // Errors / validation
     'error.duplicateName': 'A connection with this name already exists.',
@@ -2467,6 +2695,15 @@ const translations = {
     'errors.CON-1021':
       'The authentication settings are not valid. Check the method and enter every required credential. After changing the URL origin, enter the password again.',
     'errors.CON-1022': 'Enter a description of at most 500 characters.',
+    'errors.CON-1023': 'The selected organization unit no longer exists. Choose another one and try again.',
+    'errors.CON-1024': "A connection's organization unit can't be changed once it is created.",
+    'errors.CON-1025': 'Choose an organization unit for this connection.',
+    'errors.CON-1026':
+      'This connection is used by one or more resources. Remove it from those resources before deleting it.',
+    'errors.CON-1027': 'The number of service endpoint connections exceeds the maximum allowed in composite mode.',
+    'errors.CON-1028': 'The selected organization unit no longer exists. Choose another one and try again.',
+    'errors.CON-1029': "A connection's organization unit can't be changed once it is created.",
+    'errors.CON-1030': 'Choose an organization unit for this connection.',
     'errors.IDP-1001': 'This identity provider no longer exists. It may have already been deleted.',
     'errors.IDP-1002': 'The identity provider ID is invalid or missing.',
     'errors.IDP-1003': 'The identity provider name is invalid or missing.',
@@ -2481,12 +2718,18 @@ const translations = {
     'errors.IDP-1012': "This identity provider's attribute configuration is invalid.",
     'errors.IDP-1013':
       'This identity provider cannot be deleted because other resources depend on it. Remove or reassign them first.',
+    'errors.IDP-1014': 'The selected organization unit no longer exists. Choose another one and try again.',
+    'errors.IDP-1015': "An identity provider's organization unit can't be changed once it is created.",
+    'errors.IDP-1016': 'Choose an organization unit for this identity provider.',
     'errors.MNS-1001': 'This connection no longer exists. It may have already been deleted.',
     'errors.MNS-1002': 'The connection ID is invalid or missing.',
     'errors.MNS-1004': 'The selected SMS provider is invalid or unsupported.',
     'errors.MNS-1005': 'A connection with this name already exists.',
     'errors.MNS-1016':
       'This connection cannot be deleted because other resources depend on it. Remove or reassign them first.',
+    'errors.MNS-1018': 'The selected organization unit no longer exists. Choose another one and try again.',
+    'errors.MNS-1019': "A connection's organization unit can't be changed once it is created.",
+    'errors.MNS-1020': 'Choose an organization unit for this connection.',
   },
 
   // ============================================================================
@@ -2562,6 +2805,9 @@ const translations = {
     'errors.IDP-1012': "This trusted issuer's attribute configuration is invalid.",
     'errors.IDP-1013':
       'This trusted issuer cannot be deleted because other resources depend on it. Remove or reassign them first.',
+    'errors.IDP-1014': 'The selected organization unit no longer exists. Choose another one and try again.',
+    'errors.IDP-1015': "A trusted issuer's organization unit can't be changed once it is created.",
+    'errors.IDP-1016': 'Choose an organization unit for this trusted issuer.',
   },
 
   // ============================================================================
@@ -2633,6 +2879,20 @@ const translations = {
     allow: 'Allow',
     deny: 'Deny',
     learnMore: 'Learn more',
+    'authorizationDetails.approve': 'Approve',
+    'authorizationDetails.showMore': 'Show more',
+    'authorizationDetails.showLess': 'Show less',
+    'authorizationDetails.moreItems': '+{{count}} more',
+    'authorizationDetails.invalidNumber': 'Enter a number.',
+    'authorizationDetails.numberMax': 'Enter {{value}} or less.',
+    'authorizationDetails.numberMin': 'Enter {{value}} or more.',
+    'authorizationDetails.invalidDate': 'Enter a date.',
+    'authorizationDetails.dateMax': 'Choose {{value}} or earlier.',
+    'authorizationDetails.dateMin': 'Choose {{value}} or later.',
+    'authorizationDetails.removeItem': '{{item}}, remove',
+    'authorizationDetails.addItem': '{{item}}, add',
+    'authorizationDetails.addBackItem': '{{item}}, add back',
+    'authorizationDetails.newItem': '{{label}}, add',
   },
 
   // ============================================================================
@@ -2661,6 +2921,7 @@ const translations = {
     'listing.addApplication': 'Add application',
     'listing.columns.name': 'Name',
     'listing.columns.clientId': 'Client ID',
+    'listing.columns.status': 'Status',
     'listing.columns.actions': 'Actions',
     'listing.columns.template': 'Type',
     'listing.search.placeholder': 'Search ..',
@@ -3140,6 +3401,9 @@ const translations = {
     'edit.advanced.pkce.disabled': 'PKCE is not required. Consider enabling for public clients (SPAs, mobile apps).',
     'edit.advanced.pkce.requiresAuthorizationCode': 'PKCE applies only to the authorization code flow.',
     'edit.advanced.pkce.requiredForPublicClient': 'Always required for public clients.',
+    'edit.advanced.pkce.requiredForMetadataDocument':
+      'Always required for clients registered from a metadata document.',
+    'edit.advanced.publicClient.setByMetadataDocument': "Set by the client's metadata document.",
     'edit.advanced.publicClient.requiresAuthorizationCode':
       'Available only for clients using the authorization code flow.',
     'edit.advanced.publicClient.incompatibleWithClientCredentials': 'Not available for machine-to-machine clients.',
@@ -3153,7 +3417,9 @@ const translations = {
     'edit.advanced.tokenEndpointAuthMethod.hint':
       'Defines how the client authenticates at protected endpoints. Use a confidential method (for example, client_secret_basic, client_secret_post, or private_key_jwt) for confidential clients, and none for public clients.',
     'edit.advanced.tokenEndpointAuthMethod.lockedHint': 'Locked to "none" because the client is public.',
+    'edit.advanced.tokenEndpointAuthMethod.metadataDocumentLockedHint': "Set by the client's metadata document.",
     'edit.advanced.lockedByTemplate': 'Set by template',
+    'edit.advanced.lockedByMetadataDocument': "Set by the client's metadata document",
     'edit.advanced.certificate.intro': 'Configure certificates for client authentication and token encryption.',
     'edit.advanced.certificate.type.none': 'None',
     'edit.advanced.certificate.type.jwks': 'JWKS (inline JSON Web Key Set)',
@@ -3230,8 +3496,9 @@ const translations = {
     'edit.page.tabs.token': 'Token',
     'edit.page.tabs.organizationAccess': 'Organization Access',
     'edit.organizationAccess.save.error': 'Failed to update organization access. Please try again.',
-    'edit.organizationAccess.tokenOnlyDescription':
-      '{{name}} can request tokens for a granted organization unit, to act within that unit.',
+    'organizationAccess.title': 'Where {{resource}} is available',
+    'organizationAccess.description': '{{resource}} can request tokens to act within the units selected here.',
+    'organizationAccess.ownerOnly': "{{resource}} isn't available in any other unit.",
     'edit.page.tabs.advanced': 'Advanced',
     'edit.page.unsavedChanges': 'Unsaved changes',
     'edit.page.validation.missingRedirectUri': 'A redirect URI is required.',
@@ -3577,11 +3844,19 @@ const translations = {
     'edit.advanced.grantTypes.labels.tokenExchange': 'Token exchange',
     'edit.advanced.grantTypes.labels.jwtBearer': 'JWT bearer',
     'edit.advanced.grantTypes.requiredByIdJag': 'Required by identity assertions (ID-JAG)',
+    'edit.advanced.grantTypes.requiredByMetadataDocument': 'Required for a client registered from a metadata document',
+    'edit.advanced.grantTypes.requiresPrivateKeyJwt':
+      'Requires a metadata document that declares private key JWT authentication',
+    'edit.advanced.grantTypes.followsIdJag': 'Turned on and off with identity assertions (ID-JAG)',
+    'edit.advanced.grantTypes.metadataDocumentHint':
+      'Only the grant types a metadata document client can hold are offered. Token exchange and JWT bearer need a document that declares private key JWT authentication, and token exchange comes with identity assertions (ID-JAG).',
     'edit.advanced.idJag.title': 'Identity assertions (ID-JAG)',
     'edit.advanced.idJag.description':
       "Issue signed assertions of the signed-in user's identity that external services accept for token issuance.",
     'edit.advanced.idJag.publicClientGuard':
       'Identity assertions require a confidential client. Turn off public client to enable.',
+    'edit.advanced.idJag.metadataDocumentPublicClientGuard':
+      "Identity assertions require a confidential client. This client's metadata document declares it as a public client.",
     'edit.advanced.idJag.labels.allowedAudiences': 'Allowed audiences',
     'edit.advanced.idJag.allowedAudiences.placeholder': 'Type an audience and press Enter',
     'edit.advanced.idJag.allowedAudiences.error': 'Add at least one audience.',
@@ -3656,10 +3931,14 @@ const translations = {
     'cimd.preview.publishedBy': 'Published by {{host}}',
     'cimd.preview.redirectUris': 'Redirect URIs',
     'cimd.preview.signInType': 'Sign-in type',
+    'cimd.refetch.added': 'Added',
     'cimd.refetch.apply': 'Apply',
     'cimd.refetch.authChanged': 'The sign-in type changes from {{from}} to {{to}}.',
     'cimd.refetch.changed': 'The document has changed. Review the differences before applying them.',
+    'cimd.refetch.idJagTurnedOff':
+      'Identity assertions (ID-JAG) will be turned off because the document no longer declares private key JWT authentication.',
     'cimd.refetch.noChanges': 'The document matches what this application uses.',
+    'cimd.refetch.removed': 'Removed',
     'cimd.refetch.title': 'Re-fetch metadata document',
     'cimd.refetch.unchanged': 'The application is unchanged.',
     'cimd.refetch.updateDetails': 'Also update the name and links from the document',
@@ -3675,10 +3954,12 @@ const translations = {
     'errors.CIMD-1006':
       'Only public clients, and private key JWT clients with exactly one key source, can register from a metadata document.',
     'errors.CIMD-1007': "This document contains a client secret, which a metadata document can't carry safely.",
-    'errors.CIMD-1008': 'This client must use the authorization code grant, and can add only refresh tokens.',
+    'errors.CIMD-1008': 'This document must declare the authorization code grant, and this deployment must allow it.',
     'errors.CIMD-1010': "The request couldn't be read. Please try again.",
     'errors.CIMD-1011': "The document's jwks_uri must be an HTTPS URL on a public address.",
     'errors.CIMD-1013': "The document's inline key set is too large. Publish it at a jwks_uri instead.",
+    'errors.CIMD-1014':
+      "The document's inline key set must hold only public keys. A metadata document is public, so it can't carry private or symmetric keys.",
   },
 
   // ============================================================================
@@ -3763,6 +4044,7 @@ const translations = {
     'configureExport.labels.themes': 'Themes',
     'configureExport.labels.users': 'Users',
     'configureExport.labels.organizationUnits': 'Organization units',
+    'configureExport.labels.projects': 'Projects',
     'configureExport.labels.connections': 'Connections',
     'configureExport.labels.userTypes': 'User types',
     'configureExport.labels.translations': 'Translations',
@@ -3778,6 +4060,7 @@ const translations = {
     'configureExport.fallback.unnamedFlow': 'Unnamed flow',
     'configureExport.fallback.unnamedTheme': 'Unnamed theme',
     'configureExport.fallback.unnamedOrganization': 'Unnamed organization',
+    'configureExport.fallback.unnamedProject': 'Unnamed project',
     'configureExport.fallback.unnamedSchema': 'Unnamed schema',
     'configureExport.fallback.unnamedTranslation': 'Unnamed translation',
     'configureExport.fallback.unnamedLayout': 'Unnamed layout',
@@ -4043,9 +4326,14 @@ const translations = {
     'delete.usages.more': '+{{count}} more',
 
     // Create flow wizard
+    'create.steps.organizationUnit': 'Organization unit',
     'create.steps.type': 'Flow type',
     'create.steps.template': 'Template',
     'create.steps.configure': 'Details',
+    'create.organizationUnit.title': 'Where should this flow belong?',
+    'create.organizationUnit.subtitle':
+      "Choose the organization unit that will own this flow. You can't change this once created.",
+    'create.organizationUnit.required': 'Organization unit is required',
     'create.configure.title': "Let's collect some details about your flow",
     'create.configure.name.label': 'Flow name',
     'create.configure.name.placeholder': 'e.g. Customer sign-in',
@@ -4203,6 +4491,16 @@ const translations = {
       'Must match the mode of the access change validator earlier in the flow. A mismatched pair is refused at runtime.',
     'core.executions.groupExecutor.description': 'Apply the group change named by the trusted revocation plan.',
 
+    // Identity governance executor operations
+    'core.executions.identityGovernance.mode.suspend': 'Suspend',
+    'core.executions.identityGovernance.mode.unsuspend': 'Unsuspend',
+    'core.executions.identityGovernance.mode.unlock': 'Unlock',
+    'core.executions.identityGovernance.mode.label': 'Operation',
+    'core.executions.identityGovernance.mode.placeholder': 'Select an operation',
+    'core.executions.identityGovernance.mode.hint':
+      'Suspend and unlock act on different holds, so releasing one leaves the other in place. Suspend acts on the identity a Pre Suspend Executor planned.',
+    'core.executions.identityGovernance.description': 'Run one lifecycle operation on the identity the flow resolved.',
+
     // Passkey executor modes
     'core.executions.passkey.mode.challenge': 'Challenge',
     'core.executions.passkey.mode.verify': 'Verify',
@@ -4228,6 +4526,12 @@ const translations = {
     'core.executions.ouResolver.resolveFrom.caller': 'Caller',
     'core.executions.ouResolver.resolveFrom.prompt': 'Prompt',
     'core.executions.ouResolver.resolveFrom.promptAll': 'Prompt all',
+    'core.executions.ouResolver.parentOuId.label': 'Parent OU ID',
+    'core.executions.ouResolver.parentOuId.placeholder': 'OU ID',
+    'core.executions.ouResolver.parentOuId.hint': 'Users select an OU below this one.',
+    'core.executions.ouResolver.directChildrenOnly.label': 'Limit to direct children',
+    'core.executions.ouResolver.directChildrenOnly.hint':
+      'Only direct children of the parent OU can be selected. Declare an ouHandle input below to select by handle.',
 
     // Invite executor
     'core.executions.invite.description': 'Configure the invite executor mode.',
@@ -4294,6 +4598,9 @@ const translations = {
 
     // Provisioning executor
     'core.executions.provisioning.description': 'Configure the provisioning executor settings.',
+    'core.executions.provisioning.delegated.label': 'Delegated mode',
+    'core.executions.provisioning.delegated.hint':
+      'When enabled, agents created by this node act on behalf of a signed-in user. A value collected by the flow takes precedence.',
     'core.executions.provisioning.includeOptional.label': 'Allow optional non-credential attributes',
     'core.executions.provisioning.includeOptional.hint':
       'Prompt for optional non-credential attributes during dynamic input collection.',
@@ -4336,17 +4643,6 @@ const translations = {
     'core.executions.userTypeResolver.allowedUserTypes.hint':
       'Comma-separated list of allowed user type handles to filter available types.',
 
-    // Entity category shared by mode-driven executors
-    'core.executions.entityMode.user': 'User',
-    'core.executions.entityMode.agent': 'Agent',
-
-    // Attribute uniqueness validator executor
-    'core.executions.attributeUniquenessValidator.description':
-      'Check the unique attributes of the entity being created against existing records.',
-    'core.executions.attributeUniquenessValidator.mode.label': 'Entity category',
-    'core.executions.attributeUniquenessValidator.mode.hint':
-      'Which kind of entity the uniqueness check runs against. Must match the provisioning node in the same flow.',
-
     // Agent type resolver executor
     'core.executions.agentTypeResolver.description': 'Configure the agent type resolver settings.',
     'core.executions.agentTypeResolver.allowedAgentTypes.label': 'Allowed agent types',
@@ -4385,6 +4681,38 @@ const translations = {
     'core.executions.httpRequest.errorHandling.retryDelay.label': 'Retry delay (ms)',
     'core.executions.httpRequest.errorHandling.retryDelay.placeholder': '0',
     'core.executions.httpRequest.errorHandling.retryDelay.hint': 'Delay between retries in milliseconds (max 5000).',
+
+    // Extension executor
+    'core.executions.extension.nodeIdPlaceholder': '<node ID>',
+    'core.executions.extension.description':
+      'Calls your service through a service endpoint connection and routes the flow on its answer.',
+    'core.executions.extension.connection.label': 'Connection',
+    'core.executions.extension.connection.placeholder': 'Select a service endpoint connection',
+    'core.executions.extension.connection.hint':
+      'The URL, headers, timeout and authentication come from the connection.',
+    'core.executions.extension.connection.noConnections':
+      'No service endpoint connections exist. Create one under Connections, then select it here.',
+    'core.executions.extension.connection.loadError': 'Failed to load service endpoint connections.',
+    'core.executions.extension.connection.dangling': 'This connection no longer exists. Select another connection.',
+    'core.executions.extension.inputKeys.label': 'Inputs to send',
+    'core.executions.extension.inputKeys.placeholder': 'username',
+    'core.executions.extension.inputKeys.hint':
+      'User inputs to send to the service. None are sent by default. Add a password or code only when the service needs it.',
+    'core.executions.extension.runtimeDataKeys.label': 'Runtime data to send',
+    'core.executions.extension.runtimeDataKeys.placeholder': 'extension.risk_check.riskScore',
+    'core.executions.extension.runtimeDataKeys.hint':
+      'Runtime data keys to send: userID, or data an earlier extension stored, named by its full key such as extension.risk_check.riskScore. When empty, only the user ID is sent.',
+    'core.executions.extension.runtimeDataKeys.invalid':
+      'Only userID and keys that start with "extension." can be sent. Remove {{keys}}.',
+    'core.executions.extension.responseKeys.label': 'Stored response fields',
+    'core.executions.extension.responseKeys.placeholder': 'riskScore',
+    'core.executions.extension.responseKeys.hint':
+      'Top-level response fields to store for later steps, stored under {{prefix}}. Later steps refer to a field by its full key, such as {{prefix}}riskScore. When empty, every top-level field except actionStatus, failureReason, failureDescription, redirectUrl and null values is stored.',
+    'core.executions.extension.maxAttempts.label': 'Max attempts',
+    'core.executions.extension.maxAttempts.hint':
+      'How many FAILED or INCOMPLETE answers this step accepts in one flow execution. After that, the step fails without calling the service, and the flow continues at onFailure, or ends if none is set.',
+    'core.executions.extension.contract.hint':
+      'The service must answer with actionStatus SUCCESS, FAILED, INCOMPLETE or ERROR.',
 
     // Executor input configuration
     'core.executions.inputs.title': 'Executor inputs',
@@ -4431,6 +4759,7 @@ const translations = {
     'core.validation.fields.input.idpName': 'Identity provider name is required',
     'core.validation.fields.input.idpId': 'Connection is required',
     'core.validation.fields.input.senderId': 'Notification sender is required',
+    'core.validation.fields.input.connectionId': 'Connection is required',
     'core.validation.fields.input.presentationDefinitionId': 'Presentation definition is required',
     'core.validation.fields.input.label': 'Label is required',
     'core.validation.fields.input.ref': 'Attribute is required',
@@ -4831,6 +5160,9 @@ const translations = {
     'errors.FLM-1025': 'A CALL node references a flow that does not exist.',
     'errors.FLM-1026':
       'This update was rejected because a resource that references this flow would be left in an inconsistent state.',
+    'errors.FLM-1027': 'The organization unit for this flow does not exist.',
+    'errors.FLM-1028': 'The organization unit of a flow cannot be changed once the flow is created.',
+    'errors.FLM-1029': 'A flow needs an organization unit.',
   },
 
   // ============================================================================
@@ -5414,6 +5746,9 @@ const translations = {
     'editor.tokens.labels.context.expiryTime': 'Expiry time',
     'editor.tokens.labels.context.magicLink': 'Magic link',
     'editor.tokens.labels.context.inviteLink': 'Invite link',
+    'editor.tokens.labels.context.lockedAuthenticationMethod': 'Locked sign-in method',
+    'editor.tokens.labels.context.lockDuration': 'Lock duration',
+    'editor.tokens.labels.context.unlockTime': 'Unlock time',
     'editor.validation.emailRequired': 'A subject and body are required.',
     'editor.validation.bodyRequired': 'A body is required.',
     'editor.tokens.noDesign': 'No design tokens match your search.',
@@ -5568,11 +5903,13 @@ const translations = {
     'create.name.namePlaceholder': 'e.g. Payments API',
     'create.name.identifierLabel': 'Identifier',
     'create.name.identifierPlaceholder': 'https://api.example.com',
-    'create.name.identifierPlaceholderMcp': 'https://mcp.example.com',
+    'create.name.identifierPlaceholderMcp': 'https://mcp.example.com/mcp',
     'create.name.identifierHint':
       'A unique identifier for this resource server. When set as an absolute URI, it becomes the token audience for RFC 8707 resource indicators.',
     'create.name.identifierHintMcp':
-      'A unique identifier for this MCP server. When set as an absolute URI, it becomes the token audience for RFC 8707 resource indicators.',
+      'The URL MCP clients use to reach this server, such as https://mcp.example.com/mcp. MCP clients send it as the resource parameter, and it becomes the token audience.',
+    'create.name.identifierInvalidMcp':
+      'Enter an http or https URL with no fragment, such as https://mcp.example.com/mcp.',
     'create.name.makeDefaultLabel': 'Make this the default resource server',
     'create.setDefaultError': 'Resource server created, but it could not be made the default.',
     'create.separator.title': 'Choose your permission delimiter',
@@ -5614,9 +5951,11 @@ const translations = {
     'edit.advanced.identifier.hint':
       'A unique value that identifies this resource server. When set as an URI, enables RFC 8707 resource indicator support in OAuth2 authorization requests.',
     'edit.advanced.identifier.hintMcp':
-      'A unique value that identifies this MCP server. When set as an URI, enables RFC 8707 resource indicator support in OAuth2 authorization requests.',
+      'The URL MCP clients use to reach this server, such as https://mcp.example.com/mcp. MCP clients send it as the resource parameter, and it becomes the token audience.',
+    'edit.advanced.identifier.invalidMcp':
+      'Enter an http or https URL with no fragment, such as https://mcp.example.com/mcp.',
     'edit.advanced.identifier.placeholder': 'https://api.example.com',
-    'edit.advanced.identifier.placeholderMcp': 'https://mcp.example.com',
+    'edit.advanced.identifier.placeholderMcp': 'https://mcp.example.com/mcp',
     'edit.advanced.identifier.saved': 'Identifier saved.',
     'edit.advanced.identifier.saveError': 'Failed to save identifier.',
     'edit.advanced.authorizationEngine.label': 'Authorization engine',
@@ -5683,6 +6022,8 @@ const translations = {
     'errors.RES-1020': 'This action is managed declaratively and cannot be modified.',
     'errors.RES-1021': 'The number of records exceeds the maximum allowed in composite mode.',
     'errors.RES-1023': 'A resource server with the specified ID already exists.',
+    'errors.RES-1024':
+      'An MCP server identifier must be an http or https URL with no fragment, such as https://mcp.example.com/mcp.',
   },
 
   // ============================================================================
@@ -6231,6 +6572,13 @@ const translations = {
     'stage.exploreLabel': 'Explore {{name}}',
     'stage.heldBack': '{{count}} held back, not running',
     'stage.nothingDeployed': 'Nothing deployed yet',
+    'stage.changed_one': '{{count}} value changed since deploy',
+    'stage.changed_other': '{{count}} values changed since deploy',
+    'stage.redeploy': 'Redeploy',
+    'stage.redeployHint': 'Deploy the version {{name}} runs again, so {{values}} take effect.',
+    'stage.redeployNone': 'Nothing to redeploy: no value has changed since {{name}} was deployed.',
+    'stage.changedCheckFailed': 'Could not check whether any value changed since {{name}} was deployed.',
+    'stage.checkAgain': 'Check again',
     'stage.revert': 'Rollback',
     'stage.revertHint': 'Go back one step, to the version {{name}} ran before.',
     'stage.revertNone':
@@ -6301,6 +6649,7 @@ const translations = {
     'page.subtitle': 'Settings that apply across your entire ThunderID deployment.',
     'tabs.ariaLabel': 'Settings sections',
     'tabs.cors': 'CORS',
+    'tabs.accountSecurity': 'Account security',
     'cors.card.title': 'Allowed origins',
     'cors.card.description':
       'Manage which origins are allowed to access your APIs. Each entry is either an exact origin or a regular expression.',
@@ -6329,6 +6678,170 @@ const translations = {
 
     // Backend error code translations (per server-config service error envelope).
     'errors.SCF-1003': 'One or more origins are not valid. Enter a valid URL or regular expression.',
+
+    // Automatic account lock
+    'accountLock.section.title': 'Automatic account lock',
+    'accountLock.section.description':
+      "Temporarily block sign-in after too many failed attempts. Lockouts prevent new sign-ins but don't affect existing sessions or tokens. To revoke existing access, suspend the account.",
+
+    'accountLock.toggle.ariaLabel': 'Automatic lock for {{title}}',
+    'accountLock.user.title': 'Users',
+    'accountLock.user.description': 'Temporarily block sign-in after repeated failed attempts.',
+    'accountLock.agent.title': 'Agents',
+    'accountLock.agent.description':
+      'Temporarily block agent authentication after repeated failed attempts. Client secret authentication is excluded from lockouts.',
+
+    'accountLock.summary.off.user': 'Automatic locking is off. Failed sign-in attempts do not lock users.',
+    'accountLock.summary.off.agent': 'Automatic locking is off. Failed authentication attempts do not lock agents.',
+    'accountLock.summary.trigger.authentication_method.user':
+      'After {{count}} failed attempts with no more than {{window}} between them, the affected sign-in method is locked.',
+    'accountLock.summary.trigger.authentication_method.agent':
+      'After {{count}} failed attempts with no more than {{window}} between them, the affected authentication method is locked.',
+    'accountLock.summary.trigger.account.user':
+      'After {{count}} failed attempts with no more than {{window}} between them, all sign-in methods are locked.',
+    'accountLock.summary.trigger.account.agent':
+      'After {{count}} failed attempts with no more than {{window}} between them, all authentication methods are locked.',
+    'accountLock.summary.triggerNoWindow.authentication_method.user':
+      'After {{count}} failed attempts without a successful sign-in, the affected sign-in method is locked.',
+    'accountLock.summary.triggerNoWindow.authentication_method.agent':
+      'After {{count}} failed attempts without a successful authentication, the affected authentication method is locked.',
+    'accountLock.summary.triggerNoWindow.account.user':
+      'After {{count}} failed attempts without a successful sign-in, all sign-in methods are locked.',
+    'accountLock.summary.triggerNoWindow.account.agent':
+      'After {{count}} failed attempts without a successful authentication, all authentication methods are locked.',
+    'accountLock.summary.duration.single': 'Each lockout lasts {{duration}}.',
+    'accountLock.summary.duration.range':
+      'The first lockout lasts {{from}}, increasing to {{to}} for subsequent lockouts.',
+    'accountLock.summary.duration.permanentOnly.user':
+      'Each lockout lasts until account recovery or administrator intervention.',
+    'accountLock.summary.duration.permanentOnly.agent': 'Each lockout lasts until administrator intervention.',
+    'accountLock.summary.duration.permanentRange.user':
+      'The first lockout lasts {{from}}. Subsequent lockouts last until account recovery or administrator intervention.',
+    'accountLock.summary.duration.permanentRange.agent':
+      'The first lockout lasts {{from}}. Subsequent lockouts last until administrator intervention.',
+    'accountLock.summary.duration.rangeThenPermanent.user':
+      'The first {{count}} lockouts end on their own, starting at {{from}}. Subsequent lockouts last until account recovery or administrator intervention.',
+    'accountLock.summary.duration.rangeThenPermanent.agent':
+      'The first {{count}} lockouts end on their own, starting at {{from}}. Subsequent lockouts last until administrator intervention.',
+    'accountLock.summary.duration.mixed.user':
+      'Some lockouts last until account recovery or administrator intervention, and the others end on their own.',
+    'accountLock.summary.duration.mixed.agent':
+      'Some lockouts last until administrator intervention, and the others end on their own.',
+
+    'accountLock.granularity.label': 'Lockout applies to',
+    'accountLock.granularity.authenticationMethod.user': 'Only the affected sign-in method',
+    'accountLock.granularity.authenticationMethod.agent': 'Only the affected authentication method',
+    'accountLock.granularity.authenticationMethodHint.user': 'Users can still sign in using other methods.',
+    'accountLock.granularity.authenticationMethodHint.agent': 'Agents can still authenticate using other methods.',
+    'accountLock.granularity.account.user': 'All sign-in methods',
+    'accountLock.granularity.account.agent': 'All authentication methods',
+    'accountLock.granularity.accountHint.user':
+      'Prevent users from signing in using any method until the lockout ends.',
+    'accountLock.granularity.accountHint.agent':
+      'Prevent agents from authenticating using any method until the lockout ends.',
+
+    'accountLock.threshold.label': 'Lock after',
+    'accountLock.threshold.ariaLabel': 'Failed attempts before lock',
+    'accountLock.threshold.within': 'failed attempts within',
+    'accountLock.window.ariaLabel': 'Longest gap allowed between failed attempts',
+    'accountLock.window.hint': 'A longer gap between two failed attempts starts the count again.',
+    'accountLock.window.never': 'No time limit',
+
+    'accountLock.advanced.label': 'Advanced settings',
+
+    'accountLock.ladder.label': 'Lockout duration',
+    'accountLock.ladder.hint': 'Each successive lockout uses the next duration in the list.',
+    'accountLock.ladder.hintSingle': 'How long a lockout lasts before it ends on its own.',
+    'accountLock.ladder.position_ordinal_one': '{{count}}st',
+    'accountLock.ladder.position_ordinal_two': '{{count}}nd',
+    'accountLock.ladder.position_ordinal_few': '{{count}}rd',
+    'accountLock.ladder.position_ordinal_other': '{{count}}th',
+    'accountLock.ladder.row': '{{position}} lockout',
+    'accountLock.ladder.rowLast': '{{position}} and later',
+    'accountLock.ladder.add': 'Add duration',
+    'accountLock.ladder.addFirstEscalation': 'Add a longer duration for subsequent lockouts',
+    'accountLock.ladder.remove': 'Remove the {{position}} duration',
+    'accountLock.ladder.untilUnlocked.user': 'Until account recovery or an administrator unlocks',
+    'accountLock.ladder.untilUnlocked.agent': 'Until an administrator unlocks',
+    'accountLock.ladder.end.label': 'After the final duration',
+    'accountLock.ladder.end.repeat': 'Continue using the final duration',
+    'accountLock.ladder.end.repeatHint': 'Apply the same duration to all subsequent lockouts.',
+    'accountLock.ladder.end.untilUnlocked.user': 'Require account recovery or administrator intervention',
+    'accountLock.ladder.end.untilUnlocked.agent': 'Require administrator intervention',
+    'accountLock.ladder.end.untilUnlockedHint.user':
+      'Keep the lockout in place until the user completes account recovery or an administrator unlocks the account.',
+    'accountLock.ladder.end.untilUnlockedHint.agent':
+      'Keep the lockout in place until an administrator unlocks the agent.',
+
+    'accountLock.notify.label': 'Notify user by email',
+    'accountLock.notify.hint':
+      "Send an email to the user's primary email address when a sign-in method is locked. Users without a primary email address won't receive notifications.",
+
+    'accountLock.decay.label': 'Reset lockout progression',
+    'accountLock.decay.hint':
+      'Restart the lockout sequence if no new lockout occurs within this period after the last one ends.',
+    'accountLock.decay.ariaLabel': 'Period without a lockout before the sequence restarts',
+    'accountLock.decay.never': 'Never reset',
+
+    'accountLock.ceiling.label': 'Consecutive failure limit',
+    'accountLock.ceiling.hint.user':
+      'Require account recovery or administrator intervention when the number of consecutive failed sign-in attempts reaches this limit.',
+    'accountLock.ceiling.hint.agent':
+      'Require administrator intervention when the number of consecutive failed authentication attempts reaches this limit.',
+    'accountLock.ceiling.ariaLabel': 'Consecutive failure limit',
+
+    'accountLock.units.label': 'Unit',
+    'accountLock.units.seconds': 'Seconds',
+    'accountLock.units.minutes': 'Minutes',
+    'accountLock.units.hours': 'Hours',
+    'accountLock.units.days': 'Days',
+    'accountLock.units.second': 'Second',
+    'accountLock.units.minute': 'Minute',
+    'accountLock.units.hour': 'Hour',
+    'accountLock.units.day': 'Day',
+    'accountLock.units.short.second': '{{count}} second',
+    'accountLock.units.short.seconds': '{{count}} seconds',
+    'accountLock.units.short.minute': '{{count}} minute',
+    'accountLock.units.short.minutes': '{{count}} minutes',
+    'accountLock.units.short.hour': '{{count}} hour',
+    'accountLock.units.short.hours': '{{count}} hours',
+    'accountLock.units.short.day': '{{count}} day',
+    'accountLock.units.short.days': '{{count}} days',
+
+    'accountLock.validation.threshold': 'Enter how many failed attempts should lock the account.',
+    'accountLock.validation.ladder': 'Add at least one lock duration.',
+    'accountLock.validation.ceiling':
+      'Enter 0 for no limit, or at least the number of failed attempts that locks the account.',
+
+    'accountLock.readOnlyHint':
+      "These settings are read-only because they're managed declaratively. Change them in the declarative configuration.",
+    'accountLock.unsavedChanges': 'You have unsaved changes',
+    'accountLock.reset': 'Reset',
+    'accountLock.save': 'Save changes',
+    'accountLock.saving': 'Saving...',
+    'accountLock.load.error': 'Failed to load the account security settings.',
+    'accountLock.save.success': 'Account security settings updated.',
+    'accountLock.save.error': 'Failed to update the account security settings.',
+    'accountLock.errors.SCF-1003':
+      'One or more account security settings are not valid. Check the values and try again.',
+
+    // Lock and suspension flows
+    'accountSuspension.title': 'Lock and suspension flows',
+    'accountSuspension.description':
+      'Manage the flows that suspend and unsuspend users, agents, and applications, and unlock users and agents. Suspension invalidates existing sessions and tokens and blocks access until it is lifted.',
+    'accountSuspension.purpose.userSuspendFlow': 'Suspend users',
+    'accountSuspension.purpose.userUnsuspendFlow': 'Unsuspend users',
+    'accountSuspension.purpose.userUnlockFlow': 'Unlock users',
+    'accountSuspension.purpose.agentSuspendFlow': 'Suspend agents',
+    'accountSuspension.purpose.agentUnsuspendFlow': 'Unsuspend agents',
+    'accountSuspension.purpose.agentUnlockFlow': 'Unlock agents',
+    'accountSuspension.purpose.applicationSuspendFlow': 'Suspend applications',
+    'accountSuspension.purpose.applicationUnsuspendFlow': 'Unsuspend applications',
+    'accountSuspension.notConfigured': '{{operation}}: Not configured.',
+    'accountSuspension.openFlows': 'Open flows',
+    'accountSuspension.noFlowOperations':
+      'Suspend, unsuspend, and unlock do not run through flows in this console, so there are no flows to manage.',
+    'accountSuspension.load.error': 'Failed to load the account lifecycle flows.',
   },
 } as const;
 

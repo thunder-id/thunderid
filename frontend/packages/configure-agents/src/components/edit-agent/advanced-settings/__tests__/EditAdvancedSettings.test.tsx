@@ -202,7 +202,7 @@ describe('EditAdvancedSettings', () => {
       expect(screen.getByText(/authenticates with its own credentials/i)).toBeInTheDocument();
     });
 
-    it('turns on Delegated mode by adding authorization_code and requiring PKCE', async () => {
+    it('turns on Delegated mode with the default delegated grants and requires PKCE', async () => {
       const user = userEvent.setup();
       render(
         <EditAdvancedSettings
@@ -224,9 +224,55 @@ describe('EditAdvancedSettings', () => {
           expect.objectContaining({
             type: 'oauth2',
             config: expect.objectContaining({
-              grantTypes: expect.arrayContaining(['client_credentials', 'authorization_code']) as string[],
+              grantTypes: ['client_credentials', 'authorization_code', 'refresh_token'],
               pkceRequired: true,
             }) as Record<string, unknown>,
+          }),
+        ]) as AgentInboundAuthConfig[],
+      );
+    });
+
+    it.each([
+      ['CIBA', 'urn:openid:params:grant-type:ciba'],
+      ['token exchange', 'urn:ietf:params:oauth:grant-type:token-exchange'],
+    ])('shows the toggle checked for an agent delegated through %s alone', (_name, grant) => {
+      render(
+        <EditAdvancedSettings
+          agent={mockAgent}
+          editedAgent={{}}
+          oauth2Config={{grantTypes: ['client_credentials', grant], responseTypes: []}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.getByRole('switch', {name: 'Delegated mode'})).toBeChecked();
+    });
+
+    it('turns off Delegated mode for an agent delegated through CIBA and token exchange', async () => {
+      const user = userEvent.setup();
+      const grantTypes = [
+        'client_credentials',
+        'urn:openid:params:grant-type:ciba',
+        'urn:ietf:params:oauth:grant-type:token-exchange',
+        'refresh_token',
+      ];
+      render(
+        <EditAdvancedSettings
+          agent={{...mockAgent, inboundAuthConfig: [{type: 'oauth2', config: {grantTypes, responseTypes: []}}]}}
+          editedAgent={{}}
+          oauth2Config={{grantTypes, responseTypes: []}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      await user.click(screen.getByRole('switch', {name: 'Delegated mode'}));
+
+      expect(mockOnFieldChange).toHaveBeenCalledWith(
+        'inboundAuthConfig',
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: 'oauth2',
+            config: expect.objectContaining({grantTypes: ['client_credentials']}) as Record<string, unknown>,
           }),
         ]) as AgentInboundAuthConfig[],
       );

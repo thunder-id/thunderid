@@ -1,7 +1,7 @@
 # Email Provider Configuration Specification
 
 - **Status:** Draft
-- **Version:** 0.2
+- **Version:** 0.3
 - **Related documents:** [Design discussion #3277](https://github.com/thunder-id/thunderid/discussions/3277), [Feature issue #5415](https://github.com/thunder-id/thunderid/issues/5415), [Feature issue #3276](https://github.com/thunder-id/thunderid/issues/3276)
 
 ## Summary
@@ -10,7 +10,7 @@ ThunderID sends email for account recovery, user invitation, magic link, and ema
 
 This specification replaces that block with an **email provider**, a stored connection managed at runtime through the connections API and the Console, whose credential is encrypted at rest and masked on read. Each email step in a flow names the provider it sends through.
 
-Email providers reuse the notification sender store that already backs SMS providers, and the connections API that already exposes them. One provider type ships, an SMTP server, under the vendor name `email-smtp`. The vendor carries the channel in its name because the protocol alone does not identify the contract, since a carrier gateway that turns email into SMS speaks the same SMTP to a different channel.
+Email providers reuse the notification sender store that already backs SMS providers, and the connections API that already exposes them. Every provider is owned by exactly one organization unit, recorded when it is created. One provider type ships, an SMTP server, under the vendor name `email-smtp`. The vendor carries the channel in its name because the protocol alone does not identify the contract, since a carrier gateway that turns email into SMS speaks the same SMTP to a different channel.
 
 Credentials for an outbound call are modelled separately from the transport that carries them. An outbound authentication package that stays neutral about the transport owns the authentication methods, their fields, and their validation, and serves those descriptors to a console so a method added later renders without a Console change. A binding per transport turns a resolved configuration into whatever that transport needs.
 
@@ -71,6 +71,7 @@ An email provider is a notification sender of type `email` and provider `smtp`, 
 | Stored provider | `smtp`. The vendor name exists for presentation alone. |
 | Category | `email-provider`, alongside `identity-provider` and `sms-provider`. |
 | Supported channel | `email`. Applied as the default on write, and rejected if set to anything else. |
+| Owner | Exactly one organization unit, given as `ouId` when the provider is created. It has to exist and cannot change afterwards. Every notification sender has an owner, so an SMS provider is bound the same way. |
 | Scoping | Every read, update, delete, and usages lookup matches on sender type **and** provider, so an email route cannot reach an SMS sender and a mismatch reports not found. |
 
 The client factory dispatches on the sender type before the provider name, so a provider name can never resolve to a client of the wrong channel. A resolved client is asserted to the channel interface the caller wants, so a sender that is not an email client is refused rather than dispatched to.
@@ -124,6 +125,7 @@ Carrying a stored credential over is conditional on its target being unchanged, 
 
 | Field | Required | Contract |
 |---|---|---|
+| `ouId` | Yes, on create | ID of the organization unit that owns the provider. A create without it is refused with `MNS-1020`, an unknown unit with `MNS-1018`. On update, leaving it out keeps the owner and giving the current one is accepted, while any other is refused with `MNS-1019`. |
 | `host` | Yes | Hostname of the SMTP server. |
 | `port` | Yes | Integer in 1 to 65535. |
 | `fromAddress` | Yes | Bare address used in the `From` header and as the SMTP envelope sender. A form carrying a display name is rejected. |
@@ -208,6 +210,8 @@ A missing or unnamed provider is a configuration problem the flow can surface to
 
 A connection document gains the SMTP fields and a shared `authentication` block carrying the same shape of discriminator and properties that the REST API carries, so a declarative document and an API payload read the same and take the same mapping path.
 
+A document names its owner with `ouId` or `ouHandle`, and one of them is required. The handle is resolved to its id when the document is loaded or imported, and when both are given the id wins, with a warning logged and no check that they agree. A document that names neither is refused: the server fails to load the file at startup, and an import item fails, a dry run included, with `MNS-1020`. An export writes `ouId`, not `ouHandle`.
+
 Each secret field of the authentication block is externalized to a template variable whose path is derived from the method's descriptor rather than hardcoded, which is what keeps a new method from needing a change to the exporter. A field with an empty value is left out rather than exported as a blank variable, matching how an unset vendor secret is treated.
 
 ### Removal of the deployment SMTP configuration
@@ -238,11 +242,11 @@ A block with a host but no username becomes a provider that sends no credentials
 
 One legacy combination has no direct equivalent. A block with `enable_authentication` set to `true` and `enable_start_tls` set to `false` maps to a credential over a plaintext transport, which AC2.4 refuses. Such a deployment resolves it before it creates the provider, either by enabling TLS on the mail server and choosing `starttls` or `implicit`, or by dropping the credential and choosing authentication `none`.
 
-The migration is to create a provider from the existing settings, select it on every flow with an email step, and then remove the block and the Helm values.
+The migration is to create a provider from the existing settings, naming the organization unit that owns it in `ouId` because the removed block had no owner, select it on every flow with an email step, and then remove the block and the Helm values.
 
 ### Data model
 
-No schema change. An email provider is a row in the existing notification sender store, with type `email` and provider `smtp`.
+An email provider is a row in the existing notification sender store, with type `email` and provider `smtp`. The `NOTIFICATION_SENDER` table gains one column, `OU_ID VARCHAR(36) NOT NULL`, which holds the owning organization unit for every sender, SMS providers included. It carries no index.
 
 | Property key | Secret | Contract |
 |---|---|---|
@@ -274,13 +278,13 @@ The supported set is read from the SMTP binding, the same source the sender vali
 | Endpoint | Behavior |
 |---|---|
 | `GET /connections?category=email-provider` | List email provider instances in the flat connection list. |
-| `POST /connections/email-smtp` | Create a provider. |
+| `POST /connections/email-smtp` | Create a provider. The body names its organization unit in `ouId`, and a body without it is refused. |
 | `GET /connections/email-smtp/{id}` | Read a provider with its credentials masked. |
-| `PUT /connections/email-smtp/{id}` | Replace a provider. An omitted credential field keeps the stored value while the method is unchanged. An omitted `authentication` object resolves to `none` and discards the stored credential. |
+| `PUT /connections/email-smtp/{id}` | Replace a provider. `ouId` may be left out, which keeps the owner, or has to equal the current one. An omitted credential field keeps the stored value while the method is unchanged. An omitted `authentication` object resolves to `none` and discards the stored credential. |
 | `DELETE /connections/email-smtp/{id}` | Delete a provider. |
 | `GET /connections/email-smtp/{id}/usages` | List the resources that reference the provider. |
 
-Existing connections API authorization applies. A response always carries a concrete `authentication` object, so a console select always has a value to bind to.
+Existing connections API authorization applies. A response always carries a concrete `authentication` object, so a console select always has a value to bind to. Every provider response and every entry of the flat connection list carries `ouId`.
 
 A flow that references a provider reports its usage as restricting deletion, so the provider cannot be deleted while a flow still sends through it.
 
@@ -291,6 +295,9 @@ A flow that references a provider reports its usage as restricting deletion, so 
 | `CON-1011` | New | The `vendor` parameter does not name a registered connection vendor. |
 | `CON-1012` | New | The payload names an authentication method this deployment does not implement. The error description directs the caller to `GET /connections/meta` for the supported methods. |
 | `MNS-1017` | New | An email dispatch named no provider. |
+| `MNS-1018` | New | The `ouId` given for a notification sender names no existing organization unit. A client error. |
+| `MNS-1019` | New | An update names a different organization unit than the notification sender has. A client error. |
+| `MNS-1020` | New | A notification sender is created, or a declarative document is loaded or imported, with no `ouId` or `ouHandle`. A client error. |
 | `FET-1038` | Reused | An email step ran without a usable provider. The code previously reported that the deployment email service was not configured, and its message changes to name the provider. |
 
 A payload naming an unimplemented method is the caller's mistake and is reported as a client error, distinct from a genuine failure to build a property, which is a server fault. Property validation failures are reported as an invalid request with the specific rule that failed.
@@ -302,6 +309,8 @@ A payload naming an unimplemented method is the caller's mistake and is reported
 The custom connection wizard gains an **Email Provider (SMTP)** card, tagged as a message sender on the email channel, beside the identity provider and SMS gateway cards.
 
 ![Connection type step of the custom connection wizard, with the Email Provider (SMTP) card selected and described as delivering email through your own SMTP server, alongside the OpenID Connect Provider, OAuth 2 Provider, Trusted Token Issuer and SMS gateway cards.](assets/connection-type-listing-step.png)
+
+The wizard creates the provider in the organization unit of the signed-in user, taken from the `ouId` claim of the Console's token, and sends it as `ouId` on create only. It never sends it on update.
 
 The wizard then collects a name for the connection.
 
@@ -329,7 +338,7 @@ A credential field renders as a masked field. It is blanked when the stored valu
 
 #### Editing a provider
 
-A stored provider opens on a General tab carrying its connection identifier for copying, above the same fields the configure step collected. An omitted credential keeps the stored value, as the update endpoint describes.
+A stored provider opens on a General tab carrying its connection identifier for copying and an Organization unit card showing the owner's handle and id, above the same fields the configure step collected. The owner cannot be edited. An omitted credential keeps the stored value, as the update endpoint describes.
 
 ![General tab of a stored email provider named Custom email provider and marked Configured, with a Quick copy panel holding the connection identifier above a Connection details panel carrying the connection name, host and port.](assets/connection-edit-page.png)
 
@@ -368,7 +377,6 @@ This specification does not define the following.
 - Automatic migration of a removed `email.smtp` block.
 - A connect or send test action on a provider.
 - Outbound transport hardening that is not authentication, such as trust store configuration, egress proxying, or SSRF policy.
-- Ownership of providers per organization.
 - Delivery retries, queuing, or bounce handling.
 - Describing anything but authentication through the vendor metadata endpoint.
 
@@ -384,6 +392,10 @@ This specification does not define the following.
 - **AC1.2:** Given a stored provider, when it is listed by category or read by identifier, then it appears as an `email-smtp` connection in the `email-provider` category.
 - **AC1.3:** Given a stored provider, when it is updated or deleted, then the change takes effect on the next dispatch without a restart.
 - **AC1.4:** Given a provider a flow still references, when deletion is attempted, then the referencing resources are reported and the deletion is refused.
+- **AC1.5:** Given a create request with no `ouId`, when it is submitted, then it is refused with `MNS-1020` and nothing is stored.
+- **AC1.6:** Given a create request whose `ouId` names no existing organization unit, when it is submitted, then it is refused with `MNS-1018` and nothing is stored.
+- **AC1.7:** Given a stored provider, when an update names a different organization unit than the one the provider has, then it is refused with `MNS-1019`, and when the update leaves `ouId` out or gives the current one, then it is accepted and the owner is kept.
+- **AC1.8:** Given an organization unit that owns a provider, when its deletion is attempted, then it is refused with `OU-1006`.
 
 ### R2. Credentials protected at rest and in transit
 
@@ -476,8 +488,8 @@ This specification does not define the following.
 
 **Acceptance criteria:**
 
-- **AC9.1:** Given a declarative connection document with SMTP fields and an authentication block, when it is imported, then it takes the same mapping and validation path as the equivalent API payload.
-- **AC9.2:** Given a stored provider, when it is exported, then its SMTP fields and its authentication block are rendered and every populated credential field is externalized to a template variable.
+- **AC9.1:** Given a declarative connection document with SMTP fields and an authentication block, when it is imported, then it takes the same mapping and validation path as the equivalent API payload. A document that names neither `ouId` nor `ouHandle` is refused, and the server fails to load it at startup.
+- **AC9.2:** Given a stored provider, when it is exported, then its SMTP fields, its `ouId`, and its authentication block are rendered and every populated credential field is externalized to a template variable.
 - **AC9.3:** Given a credential field with no value, when the provider is exported, then no variable is emitted for it.
 
 ### R10. Deliberate migration off the deployment configuration
@@ -488,11 +500,11 @@ This specification does not define the following.
 
 - **AC10.1:** Given a deployment still carrying an `email.smtp` block, when it starts, then startup fails naming the unrecognized `email` field, and no implicit provider is created from the block.
 - **AC10.2:** Given a deployment with no provider, when a flow that depends on email runs, then the step reports that no email provider is configured.
-- **AC10.3:** Given the removed block's properties, when they are mapped through the documented migration, then every property has an equivalent provider field, and a block with a host but no username becomes a provider that sends no credentials.
+- **AC10.3:** Given the removed block's properties, when they are mapped through the documented migration, then every property has an equivalent provider field, and a block with a host but no username becomes a provider that sends no credentials. The documented migration also names the organization unit the provider belongs to, because a provider is created with an `ouId`.
 - **AC10.4:** Given a block with `enable_authentication` set to `true` and `enable_start_tls` set to `false`, when it is migrated, then the documentation names the two remedies rather than a provider field, because the combination is refused by AC2.4.
 - **AC10.5:** Given a document that instructed an operator to configure `email.smtp`, when this change ships, then it instructs the operator to create a provider and select it on each email step instead.
 - **AC10.6:** Given the documented migration order, when each step is performed, then it is possible on the build it runs against, and the interval in which email is unavailable is stated rather than implied.
-- **AC10.7:** Given a connection document of type `email-smtp` placed with the declarative resources before an upgrade, when the upgraded build first starts, then the provider exists without an API call.
+- **AC10.7:** Given a connection document of type `email-smtp` that names its organization unit with `ouId` or `ouHandle`, placed with the declarative resources before an upgrade, when the upgraded build first starts, then the provider exists without an API call. A document that names neither is refused and the server fails to start.
 
 ## Change log
 
@@ -500,3 +512,4 @@ This specification does not define the following.
 |---|---|---|
 | 0.1 | 2026-09-19 | Initial specification for email providers as connections, the outbound authentication model, SMTP delivery, provider selection per step, and the removal of the deployment SMTP configuration. |
 | 0.2 | 2026-10-09 | Aligned the credential carry-over, dispatch failure, and vendor metadata behaviour with the implementation. A stored credential carries over on update only while the authentication type, its non-secret fields, and the provider's host and port are unchanged. A dispatch failure other than a missing provider fails the step as a server error. The vendor on `GET /connections/meta` is an optional filter. |
+| 0.3 | 2026-10-26 | Every email provider is owned by exactly one organization unit. `ouId` is required on create and immutable, a declarative document names its owner with `ouId` or `ouHandle`, `NOTIFICATION_SENDER` gains `OU_ID VARCHAR(36) NOT NULL`, and `MNS-1018`, `MNS-1019`, and `MNS-1020` report an unknown, changed, and missing owner. |

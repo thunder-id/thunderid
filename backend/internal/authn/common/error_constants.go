@@ -156,4 +156,32 @@ var (
 			DefaultValue: "The subject in the assertion does not match the authenticated user",
 		},
 	}
+	// ErrorAccountLocked is the error returned when authentication is refused because the account is
+	// locked.
+	ErrorAccountLocked = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AUTHN-1011",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authnservice.account_locked",
+			DefaultValue: "Account locked",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.authnservice.account_locked_description",
+			DefaultValue: "Sign-in is locked. Try again later or contact an administrator.",
+		},
+	}
+	// ErrorAccountSuspended is the error returned when authentication is refused because the account is
+	// suspended.
+	ErrorAccountSuspended = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AUTHN-1012",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authnservice.account_suspended",
+			DefaultValue: "Account suspended",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.authnservice.account_suspended_description",
+			DefaultValue: "This account is suspended. Contact an administrator",
+		},
+	}
 )

@@ -172,6 +172,7 @@ func (suite *ServiceTestSuite) setupTestService() (
 		Maybe().Return(nil)
 	mockSharing.EXPECT().ReplacePoliciesForResource(mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything).Maybe().Return(sharing.PolicyReplay{}, nil)
+	mockSharing.EXPECT().ListPolicies(mock.Anything, mock.Anything, mock.Anything).Maybe().Return(nil, nil)
 	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
 	governance.EXPECT().ReadAccess(mock.Anything, mock.Anything).RunAndReturn(activeReads).Maybe()
 	governance.EXPECT().ReadEntityAccess(mock.Anything, mock.Anything).
@@ -559,13 +560,95 @@ func (suite *ServiceTestSuite) TestGetApplicationList_Success() {
 	mockStore.On("GetInboundClientList", mock.Anything).
 		Return([]inboundmodel.InboundClient{cfg1, cfg2}, nil)
 
-	result, svcErr := service.GetApplicationList(context.Background())
+	result, svcErr := service.GetApplicationList(context.Background(), nil)
 
 	assert.NotNil(suite.T(), result)
 	assert.Nil(suite.T(), svcErr)
 	assert.Equal(suite.T(), 2, result.TotalResults)
 	assert.Equal(suite.T(), 2, result.Count)
 	assert.Len(suite.T(), result.Applications, 2)
+	for _, app := range result.Applications {
+		assert.Equal(suite.T(), new(true), app.IsOwnedByOU, app.ID)
+	}
+}
+
+func (suite *ServiceTestSuite) TestGetApplicationList_InOrganizationUnit() {
+	service, mockStore := suite.setupTestService()
+
+	resetEntityServiceMethod(service, "GetEntityPageInOU").
+		On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryApp, "ou-1", entity.OUEntityScopeAll,
+			serverconst.MaxCompositeStoreRecords, 0, map[string]interface{}(nil)).
+		Return(&entity.OUEntityPage{
+			Owned:        []providers.Entity{{ID: "owned-app", Category: providers.EntityCategoryApp}},
+			Shared:       []providers.Entity{{ID: "shared-app", Category: providers.EntityCategoryApp}},
+			TotalResults: 2,
+		}, nil)
+	mockStore.On("GetInboundClientList", mock.Anything).Return([]inboundmodel.InboundClient{
+		{ID: "owned-app"}, {ID: "shared-app"}, {ID: "other-app"},
+	}, nil)
+
+	result, svcErr := service.GetApplicationList(context.Background(),
+		map[string]interface{}{"ouId": "ou-1"})
+
+	suite.Require().Nil(svcErr)
+	assert.Equal(suite.T(), 2, result.TotalResults)
+	assert.Equal(suite.T(), 2, result.Count)
+	suite.Require().Len(result.Applications, 2)
+	assert.Equal(suite.T(), "owned-app", result.Applications[0].ID)
+	assert.Equal(suite.T(), new(true), result.Applications[0].IsOwnedByOU)
+	assert.False(suite.T(), result.Applications[0].IsReadOnly)
+	assert.Equal(suite.T(), "shared-app", result.Applications[1].ID)
+	assert.Equal(suite.T(), new(false), result.Applications[1].IsOwnedByOU)
+	assert.True(suite.T(), result.Applications[1].IsReadOnly)
+}
+
+func (suite *ServiceTestSuite) TestGetApplicationList_InOrganizationUnitWithNoApplications() {
+	service, _ := suite.setupTestService()
+
+	resetEntityServiceMethod(service, "GetEntityPageInOU").
+		On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryApp, "ou-1", entity.OUEntityScopeAll,
+			mock.Anything, 0, mock.Anything).
+		Return(&entity.OUEntityPage{}, nil)
+
+	result, svcErr := service.GetApplicationList(context.Background(),
+		map[string]interface{}{"ouId": "ou-1"})
+
+	suite.Require().Nil(svcErr)
+	assert.Zero(suite.T(), result.TotalResults)
+	assert.Empty(suite.T(), result.Applications)
+}
+
+func (suite *ServiceTestSuite) TestGetApplicationList_InOrganizationUnitError() {
+	service, _ := suite.setupTestService()
+
+	resetEntityServiceMethod(service, "GetEntityPageInOU").
+		On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryApp, "ou-1", entity.OUEntityScopeAll,
+			mock.Anything, 0, mock.Anything).
+		Return(nil, errors.New("db error"))
+
+	result, svcErr := service.GetApplicationList(context.Background(),
+		map[string]interface{}{"ouId": "ou-1"})
+
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
+}
+
+func (suite *ServiceTestSuite) TestGetApplicationList_InvalidFilter() {
+	service, _ := suite.setupTestService()
+
+	for name, filters := range map[string]map[string]interface{}{
+		"a number":           {"ouId": int64(5)},
+		"an empty ID":        {"ouId": ""},
+		"another attribute":  {"name": "App 1"},
+		"a second attribute": {"ouId": "ou-1", "name": "App 1"},
+	} {
+		suite.Run(name, func() {
+			result, svcErr := service.GetApplicationList(context.Background(), filters)
+
+			assert.Nil(suite.T(), result)
+			assert.Equal(suite.T(), &ErrorInvalidFilter, svcErr)
+		})
+	}
 }
 
 func (suite *ServiceTestSuite) TestGetApplicationList_ListError() {
@@ -580,7 +663,7 @@ func (suite *ServiceTestSuite) TestGetApplicationList_ListError() {
 		mock.AnythingOfType("int"), mock.AnythingOfType("int"), mock.Anything).
 		Return(([]providers.Entity)(nil), epErr)
 
-	result, svcErr := service.GetApplicationList(context.Background())
+	result, svcErr := service.GetApplicationList(context.Background(), nil)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), svcErr)
@@ -603,7 +686,7 @@ func (suite *ServiceTestSuite) TestGetApplicationList_InboundFetchError() {
 	mockStore.On("GetInboundClientList", mock.Anything).
 		Return(([]inboundmodel.InboundClient)(nil), errors.New("db error"))
 
-	result, svcErr := service.GetApplicationList(context.Background())
+	result, svcErr := service.GetApplicationList(context.Background(), nil)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), svcErr)
@@ -4237,7 +4320,7 @@ func (suite *ServiceTestSuite) TestGetApplicationList_CountError() {
 		On("GetEntityListCount", mock.Anything, providers.EntityCategoryApp, mock.Anything).
 		Return(0, errors.New("internal error"))
 
-	result, svcErr := service.GetApplicationList(context.Background())
+	result, svcErr := service.GetApplicationList(context.Background(), nil)
 
 	assert.Nil(suite.T(), result)
 	assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
@@ -4260,7 +4343,7 @@ func (suite *ServiceTestSuite) TestGetApplicationList_EntityWithoutInboundClient
 	mockStore.On("GetInboundClientList", mock.Anything).
 		Return([]inboundmodel.InboundClient{}, nil)
 
-	result, svcErr := service.GetApplicationList(context.Background())
+	result, svcErr := service.GetApplicationList(context.Background(), nil)
 
 	assert.Nil(suite.T(), svcErr)
 	assert.NotNil(suite.T(), result)
@@ -5587,7 +5670,7 @@ func (suite *ServiceTestSuite) TestGetApplicationList_StatusesFollowTheListedApp
 	}).Once()
 	service.governance = governance
 
-	result, svcErr := service.GetApplicationList(context.Background())
+	result, svcErr := service.GetApplicationList(context.Background(), nil)
 
 	suite.Require().Nil(svcErr)
 	suite.Require().Len(result.Applications, 2)
@@ -5652,4 +5735,33 @@ func (suite *ServiceTestSuite) TestCreateApplication_ReportsNoStatus() {
 
 	suite.Require().Nil(svcErr)
 	suite.Nil(result.Status)
+}
+
+// A shared application stays in its organization unit: its policies were issued against that unit.
+func (suite *ServiceTestSuite) TestUpdateApplication_SharedApplicationCannotMove() {
+	service, sharingMock := suite.sharingTestService()
+	sharingMock.EXPECT().ListPolicies(mock.Anything, ApplicationSharingType, testServiceAppID).
+		Return([]sharing.Policy{{ID: "p1"}}, nil).Once()
+
+	result, svcErr := service.UpdateApplication(context.Background(), testServiceAppID,
+		&model.ApplicationDTO{Name: "Test App", OUID: "another-ou"})
+
+	suite.Nil(result)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorSharedApplicationCannotMove.Code, svcErr.Code)
+	mockStore(service).AssertNotCalled(suite.T(), "UpdateInboundClient",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *ServiceTestSuite) TestUpdateApplication_SharingLookupFailureOnMove() {
+	service, sharingMock := suite.sharingTestService()
+	sharingMock.EXPECT().ListPolicies(mock.Anything, ApplicationSharingType, testServiceAppID).
+		Return(nil, &tidcommon.InternalServerError).Once()
+
+	result, svcErr := service.UpdateApplication(context.Background(), testServiceAppID,
+		&model.ApplicationDTO{Name: "Test App", OUID: "another-ou"})
+
+	suite.Nil(result)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }

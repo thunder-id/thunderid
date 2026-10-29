@@ -1,10 +1,10 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
+import {DocumentTitle, FullScreenCreationWizardLayout, QueryErrorNotice} from '@thunderid/components';
 import {useGetAgentType, useGetAgentTypes, type AgentTypeListItem} from '@thunderid/configure-agent-types';
 import {OrganizationUnitTreePicker} from '@thunderid/configure-organization-units';
-import {renderSchemaField} from '@thunderid/configure-users';
+import {renderSchemaField, useGetUsers} from '@thunderid/configure-users';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import {getErrorMessage} from '@thunderid/utils';
 import {
@@ -45,7 +45,8 @@ const AGENT_CREDENTIALS: AgentInboundAuthConfig = {
  * Used when agent creation runs natively, for example on a deployment that holds configuration
  * only and so has no /flow/execute for the onboarding flow to call. It asks for an agent type, an
  * organization unit and what the type's schema holds, the agent's name among it, and posts them to
- * the agents API. OAuth client credentials are issued with the agent unless switched off: the API
+ * the agents API. An owner can be chosen from the users that exist here; without one the API makes the
+ * caller the owner. OAuth client credentials are issued with the agent unless switched off: the API
  * generates the client ID and secret, and the secret is shown once here, since the agent's page
  * can only regenerate it afterwards.
  */
@@ -62,11 +63,18 @@ export default function AgentAddFormPage(): JSX.Element {
   const [description, setDescription] = useState<string>('');
   const [typeId, setTypeId] = useState<string>('');
   const [ouId, setOuId] = useState<string>('');
+  const [ownerId, setOwnerId] = useState<string>('');
   const [issueCredentials, setIssueCredentials] = useState<boolean>(true);
   // The created agent whose secret is being shown; the agent's page opens once the secret is closed.
   const [created, setCreated] = useState<{id: string; clientSecret: string} | null>(null);
   const {data: typeList, isLoading: typesLoading} = useGetAgentTypes({limit: 100, offset: 0});
   const {data: agentType} = useGetAgentType(typeId || undefined);
+  const {
+    data: userList,
+    isLoading: usersLoading,
+    error: usersError,
+    refetch: refetchUsers,
+  } = useGetUsers({limit: 100, offset: 0});
 
   // A previously chosen type's fields are cleared when the type changes, so they are not posted.
   const {
@@ -78,6 +86,15 @@ export default function AgentAddFormPage(): JSX.Element {
 
   const types: AgentTypeListItem[] = typeList?.types ?? [];
   const selectedType: AgentTypeListItem | undefined = types.find((type) => type.id === typeId);
+  const users = userList?.users ?? [];
+  // Two users can share a display name, so the option shows the user's ID as well when they do.
+  const duplicateDisplays = new Set(
+    users.map((user) => user.display).filter((display, index, all) => display && all.indexOf(display) !== index),
+  );
+  const ownerLabel = (user: (typeof users)[number]): string =>
+    user.display && duplicateDisplays.has(user.display) ? `${user.display} (${user.id})` : (user.display ?? user.id);
+  // Only the first page of users is offered, which is said when there are more.
+  const usersTruncated = (userList?.totalResults ?? 0) > users.length;
 
   const tForErrors = useCallback(
     (key: string, options?: Record<string, unknown>): string => t(key.includes(':') ? key : `agents:${key}`, options),
@@ -97,6 +114,7 @@ export default function AgentAddFormPage(): JSX.Element {
     const request: CreateAgentRequest = {
       ouId,
       type: selectedType?.handle ?? '',
+      ...(ownerId ? {owner: ownerId} : {}),
       ...(trimmedDescription ? {description: trimmedDescription} : {}),
       ...(Object.keys(attributes).length > 0 ? {attributes} : {}),
       // The API generates the client ID and secret for an OAuth config that names none, so only how
@@ -210,6 +228,55 @@ export default function AgentAddFormPage(): JSX.Element {
                 />
               </FormControl>
             )}
+
+            <FormControl fullWidth>
+              <FormLabel htmlFor="agent-owner">{t('agents:addForm.owner', 'Owner')}</FormLabel>
+              {usersError ? (
+                // A failed read is shown in place of the picker, not as an empty one: the agent would
+                // otherwise be owned by the caller with nothing said about the owners that did not load.
+                <QueryErrorNotice
+                  variant="inline"
+                  error={usersError}
+                  t={tForErrors}
+                  fallbackKey="agents:addForm.ownersError"
+                  fallbackDefaultValue="The users to choose an owner from could not be loaded."
+                  onRetry={() => {
+                    void refetchUsers();
+                  }}
+                />
+              ) : (
+                <Select
+                  id="agent-owner"
+                  value={ownerId}
+                  displayEmpty
+                  disabled={usersLoading}
+                  onChange={(event) => setOwnerId(String(event.target.value))}
+                >
+                  <MenuItem value="">
+                    <em>{t('agents:addForm.ownerDefault', 'Me (default)')}</em>
+                  </MenuItem>
+                  {users.map((user) => (
+                    <MenuItem key={user.id} value={user.id}>
+                      {ownerLabel(user)}
+                    </MenuItem>
+                  ))}
+                </Select>
+              )}
+              {usersTruncated && (
+                <Typography variant="caption" color="text.secondary">
+                  {t('agents:addForm.ownerTruncated', 'Showing the first {{shown}} of {{total}} users.', {
+                    shown: users.length,
+                    total: userList?.totalResults,
+                  })}
+                </Typography>
+              )}
+              <Typography variant="caption" color="text.secondary">
+                {t(
+                  'agents:addForm.ownerHint',
+                  'Defaults to you. Choose a user created here if the agent is applied to a gateway, which needs an owner it can find.',
+                )}
+              </Typography>
+            </FormControl>
 
             {Object.entries(agentType?.schema ?? {}).map(([fieldName, fieldDef]) =>
               renderSchemaField(fieldName, fieldDef, control, errors, resolveDisplayName),

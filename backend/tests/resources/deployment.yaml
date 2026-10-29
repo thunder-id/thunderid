@@ -21,7 +21,7 @@ database:
     type: sqlite
     sqlite:
       path: "/data/runtime_transient.db"
-      options: "cache=shared"
+      options: "cache=shared&_pragma=foreign_keys(1)"
 
 oauth:
   jwt:

@@ -14,13 +14,17 @@ import (
 // cookieNamePrefix prefixes every per-flow SSO cookie name.
 const cookieNamePrefix = "tid_sso_"
 
-// cookieName derives the per-flow SSO cookie name from the flow ID. Each flow gets its
-// own cookie so sessions from different flows do not clobber each other's handle. The
-// flow ID is hashed so the raw ID is not exposed in the cookie name and the name stays
-// within the cookie-token character set.
-func cookieName(flowID string) string {
+// FlowIdentifier derives the key a flow's SSO handle is carried under, so handles from different flows
+// do not clobber each other. The flow ID is hashed so the raw ID is not exposed and the key stays within
+// the cookie-token character set.
+func FlowIdentifier(flowID string) string {
 	sum := sha256.Sum256([]byte(flowID))
-	return cookieNamePrefix + hex.EncodeToString(sum[:])[:16]
+	return hex.EncodeToString(sum[:])[:16]
+}
+
+// cookieName derives the per-flow SSO cookie name from the flow ID.
+func cookieName(flowID string) string {
+	return cookieNamePrefix + FlowIdentifier(flowID)
 }
 
 // InboundHandleInterface carries the request-scoped SSO handles read from a transport. The source

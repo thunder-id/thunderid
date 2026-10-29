@@ -1,0 +1,876 @@
+openapi: 3.0.3
+info:
+  title: Authorization Detail Type Management API
+  version: "1.0"
+  description: |
+    Authorization detail types in ThunderID register the RFC 9396 `type` values clients may request through the `authorization_details` parameter, each with the JSON Schema its details conform to, the consent summary shown to the user, and an optional processor that authorizes and enriches the details. Types are not bound to a resource server, so a request may ask for any registered type; the access token audience comes from the `resource` parameter, or the default resource server when there is none, as for permission scopes.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://{host}:{port}
+    variables:
+      host:
+        default: "localhost"
+      port:
+        default: "8090"
+
+tags:
+  - name: Authorization Detail Types
+    description: Register RFC 9396 authorization details types that clients request through the authorization_details parameter.
+
+security:
+  - OAuth2: [system]
+
+paths:
+  /authorization-detail-types:
+    get:
+      tags:
+        - Authorization Detail Types
+      summary: List authorization details types
+      description: |
+        Returns the registered RFC 9396 authorization details types, a page at a time, ordered by type value.
+      parameters:
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/offsetQueryParam'
+      responses:
+        "200":
+          description: List of authorization details types
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizationDetailTypeListResponse'
+              example:
+                totalResults: 1
+                startIndex: 1
+                count: 1
+                links: []
+                types:
+                  - id: "01923f5e-7c1a-7b2e-9d4f-3a6b8c0e1f2a"
+                    type: "payment_initiation"
+                    name: "Payment initiation"
+                    description: "Initiate a single payment from the user's account"
+                    version: 1
+                    schema:
+                      $schema: "https://json-schema.org/draft/2020-12/schema"
+                      type: "object"
+                      properties:
+                        instructedAmount:
+                          type: "object"
+                          properties:
+                            currency:
+                              type: "string"
+                            amount:
+                              type: "number"
+                          required: ["currency", "amount"]
+                        creditorName:
+                          type: "string"
+                        debtorAccount:
+                          type: "object"
+                          properties:
+                            iban:
+                              type: "string"
+                              policy:
+                                suppliedBy: "processor"
+                      required: ["instructedAmount", "creditorName"]
+                    consentTemplate: "Pay {{instructedAmount.amount}} {{instructedAmount.currency}} to {{creditorName}}"
+                    processor:
+                      endpoint: "https://api.bank.example/rar/v1/process"
+                      authentication:
+                        type: "bearer"
+                        properties:
+                          token: "******"
+                    reuse: false
+                    isReadOnly: false
+        "400":
+          description: Invalid limit or offset, or too many types to list in composite mode
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid-pagination:
+                  summary: Invalid limit or offset
+                  value:
+                    code: "RAR-1012"
+                    message:
+                      key: "error.authorizationdetailservice.invalid_pagination"
+                      defaultValue: "Invalid pagination parameters"
+                    description:
+                      key: "error.authorizationdetailservice.invalid_pagination_description"
+                      defaultValue: "The limit must be between 1 and 100, and the offset zero or more"
+                result-limit-exceeded:
+                  summary: Result limit exceeded in composite mode
+                  value:
+                    code: "RAR-1017"
+                    message:
+                      key: "error.authorizationdetailservice.result_limit_exceeded_in_composite_mode"
+                      defaultValue: "Result limit exceeded in composite mode"
+                    description:
+                      key: "error.authorizationdetailservice.result_limit_exceeded_in_composite_mode_description"
+                      defaultValue: "The total number of records exceeds the maximum limit in composite mode"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
+    post:
+      tags:
+        - Authorization Detail Types
+      summary: Register an authorization details type
+      description: |
+        Registers an RFC 9396 authorization details type. The new type starts at version 1. Any client can request it through the `authorization_details` parameter. A type is not bound to a resource server: the access token audience comes from the request's `resource` parameter, or the default resource server when there is none, as for permission scopes.
+
+        Validation rules:
+        - `type` is required, at most 512 characters of printable ASCII without spaces, and unique across the deployment.
+        - `name` is required and at most 100 characters.
+        - `schema` is required, at most 64 KiB, and must be a JSON Schema 2020-12 schema that describes an object. `$schema`, when present, must be `https://json-schema.org/draft/2020-12/schema`. Keywords must be well typed and patterns must compile; `$ref` and `$defs` are refused. Limits must be satisfiable: a lower bound cannot exceed its upper bound, lengths and item counts cannot be negative, and `multipleOf` must be greater than 0. A `const` or `enum` on the `type` member must include the registered `type` value.
+        - Property names must not contain a dot, since field paths and consent template placeholders separate names with one.
+        - `consentTemplate` is at most 1000 bytes, and each `{{...}}` in it must be a placeholder naming a property the schema declares, or `type`.
+        - A property's `policy` must use the settings described on the `schema` field, spelled exactly. A policy that is not valid makes the schema invalid. A schema error says what is wrong in its description.
+        - `processor.endpoint` must be an absolute HTTPS URL with a valid host and port and no user information (HTTP is accepted only on a loopback host). A processor call times out after `oauth.authorization_details.processor_timeout` seconds (5 by default, at most 30).
+        - A type without a processor can be requested only with a signed-in user who consents. A `client_credentials` token request for it is refused with `invalid_authorization_details`.
+        - The request body is at most 1 MiB.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthorizationDetailTypeRequest'
+            example:
+              type: "payment_initiation"
+              name: "Payment initiation"
+              description: "Initiate a single payment from the user's account"
+              schema:
+                $schema: "https://json-schema.org/draft/2020-12/schema"
+                type: "object"
+                properties:
+                  instructedAmount:
+                    type: "object"
+                    properties:
+                      currency:
+                        type: "string"
+                      amount:
+                        type: "number"
+                    required: ["currency", "amount"]
+                  creditorName:
+                    type: "string"
+                  debtorAccount:
+                    type: "object"
+                    properties:
+                      iban:
+                        type: "string"
+                        policy:
+                          suppliedBy: "processor"
+                required: ["instructedAmount", "creditorName"]
+              consentTemplate: "Pay {{instructedAmount.amount}} {{instructedAmount.currency}} to {{creditorName}}"
+              processor:
+                endpoint: "https://api.bank.example/rar/v1/process"
+                authentication:
+                  type: "bearer"
+                  properties:
+                    token: "<processor_token>"
+              reuse: true
+      responses:
+        "201":
+          description: Authorization details type created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizationDetailTypeResponse'
+              example:
+                id: "01923f5e-7c1a-7b2e-9d4f-3a6b8c0e1f2a"
+                type: "payment_initiation"
+                name: "Payment initiation"
+                description: "Initiate a single payment from the user's account"
+                version: 1
+                schema:
+                  $schema: "https://json-schema.org/draft/2020-12/schema"
+                  type: "object"
+                  properties:
+                    instructedAmount:
+                      type: "object"
+                      properties:
+                        currency:
+                          type: "string"
+                        amount:
+                          type: "number"
+                      required: ["currency", "amount"]
+                    creditorName:
+                      type: "string"
+                    debtorAccount:
+                      type: "object"
+                      properties:
+                        iban:
+                          type: "string"
+                          policy:
+                            suppliedBy: "processor"
+                  required: ["instructedAmount", "creditorName"]
+                consentTemplate: "Pay {{instructedAmount.amount}} {{instructedAmount.currency}} to {{creditorName}}"
+                processor:
+                  endpoint: "https://api.bank.example/rar/v1/process"
+                  authentication:
+                    type: "bearer"
+                    properties:
+                      token: "******"
+                reuse: true
+                isReadOnly: false
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid-request-format:
+                  summary: Invalid request format
+                  value:
+                    code: "RAR-1001"
+                    message:
+                      key: "error.authorizationdetailservice.invalid_request_format"
+                      defaultValue: "Invalid request format"
+                    description:
+                      key: "error.authorizationdetailservice.invalid_request_format_description"
+                      defaultValue: "The request body is malformed or contains invalid data"
+                invalid-type-value:
+                  summary: Invalid type value
+                  value:
+                    code: "RAR-1004"
+                    message:
+                      key: "error.authorizationdetailservice.invalid_type_value"
+                      defaultValue: "Invalid authorization details type"
+                    description:
+                      key: "error.authorizationdetailservice.invalid_type_value_description"
+                      defaultValue: "The type value is required, must be printable ASCII, and must be at most 512 characters"
+                invalid-name:
+                  summary: Invalid name
+                  value:
+                    code: "RAR-1005"
+                    message:
+                      key: "error.authorizationdetailservice.invalid_name"
+                      defaultValue: "Invalid name"
+                    description:
+                      key: "error.authorizationdetailservice.invalid_name_description"
+                      defaultValue: "The name is required and must be at most 100 characters"
+                invalid-schema:
+                  summary: Invalid schema
+                  value:
+                    code: "RAR-1006"
+                    message:
+                      key: "error.authorizationdetailservice.invalid_schema"
+                      defaultValue: "Invalid schema"
+                    description:
+                      key: "error.authorizationdetailservice.invalid_schema_description"
+                      defaultValue: "The schema is not valid: policy of amount: limit a number with the schema's own minimum and maximum keywords"
+                invalid-consent-template:
+                  summary: Invalid consent template
+                  value:
+                    code: "RAR-1011"
+                    message:
+                      key: "error.authorizationdetailservice.invalid_consent_template"
+                      defaultValue: "Invalid consent template"
+                    description:
+                      key: "error.authorizationdetailservice.invalid_consent_template_description"
+                      defaultValue: "The consent template is not valid: {{payee}} is not a field of the schema"
+                invalid-processor:
+                  summary: Invalid processor
+                  value:
+                    code: "RAR-1007"
+                    message:
+                      key: "error.authorizationdetailservice.invalid_processor"
+                      defaultValue: "Invalid processor"
+                    description:
+                      key: "error.authorizationdetailservice.invalid_processor_description"
+                      defaultValue: "The processor endpoint must be an absolute HTTPS URL; HTTP is accepted only on a loopback host"
+                invalid-processor-authentication:
+                  summary: Invalid processor authentication
+                  value:
+                    code: "RAR-1008"
+                    message:
+                      key: "error.authorizationdetailservice.invalid_processor_authentication"
+                      defaultValue: "Invalid processor authentication"
+                    description:
+                      key: "error.authorizationdetailservice.invalid_processor_authentication_description"
+                      defaultValue: "The processor authentication must be a supported method with its required properties, and is accepted only for a type with a processor"
+                declarative-mode:
+                  summary: Cannot create a type in declarative-only mode
+                  value:
+                    code: "RAR-1014"
+                    message:
+                      key: "error.authorizationdetailservice.cannot_create_type_in_declarative_only_mode"
+                      defaultValue: "Cannot create authorization details type in declarative-only mode"
+                    description:
+                      key: "error.authorizationdetailservice.cannot_create_type_in_declarative_only_mode_description"
+                      defaultValue: "Authorization details type creation is not allowed when running in declarative-only mode. Types must be defined in declarative configuration files"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "RAR-1003"
+                message:
+                  key: "error.authorizationdetailservice.type_conflict"
+                  defaultValue: "Authorization details type conflict"
+                description:
+                  key: "error.authorizationdetailservice.type_conflict_description"
+                  defaultValue: "An authorization details type with the same type value already exists"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
+  /authorization-detail-types/{id}:
+    get:
+      tags:
+        - Authorization Detail Types
+      summary: Get an authorization details type
+      description: Returns a registered authorization details type.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            maxLength: 36
+          description: Authorization details type ID
+      responses:
+        "200":
+          description: Authorization details type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizationDetailTypeResponse'
+              example:
+                id: "01923f5e-7c1a-7b2e-9d4f-3a6b8c0e1f2a"
+                type: "payment_initiation"
+                name: "Payment initiation"
+                version: 2
+                schema:
+                  type: "object"
+                  properties:
+                    creditorName:
+                      type: "string"
+                  required: ["creditorName"]
+                consentTemplate: "Pay {{creditorName}}"
+                reuse: false
+                isReadOnly: false
+        "404":
+          description: Authorization details type not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "RAR-1002"
+                message:
+                  key: "error.authorizationdetailservice.type_not_found"
+                  defaultValue: "Authorization details type not found"
+                description:
+                  key: "error.authorizationdetailservice.type_not_found_description"
+                  defaultValue: "The authorization details type with the specified id does not exist"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
+    put:
+      tags:
+        - Authorization Detail Types
+      summary: Update an authorization details type
+      description: |
+        Replaces the definition of an authorization details type. The `type` value is immutable and must match the registered value. `version` increments when the update changes the schema or the consent template, or adds or removes the processor, since earlier approvals only count for the version they were given on; other changes keep it, and an update that changes nothing is not saved. The same validation rules as registration apply.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            maxLength: 36
+          description: Authorization details type ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthorizationDetailTypeRequest'
+            example:
+              type: "payment_initiation"
+              name: "Payment initiation"
+              schema:
+                type: "object"
+                properties:
+                  creditorName:
+                    type: "string"
+                required: ["creditorName"]
+              consentTemplate: "Pay {{creditorName}}"
+      responses:
+        "200":
+          description: Authorization details type updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizationDetailTypeResponse'
+              example:
+                id: "01923f5e-7c1a-7b2e-9d4f-3a6b8c0e1f2a"
+                type: "payment_initiation"
+                name: "Payment initiation"
+                version: 2
+                schema:
+                  type: "object"
+                  properties:
+                    creditorName:
+                      type: "string"
+                  required: ["creditorName"]
+                consentTemplate: "Pay {{creditorName}}"
+                reuse: false
+                isReadOnly: false
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid-request-format:
+                  summary: Invalid request format
+                  value:
+                    code: "RAR-1001"
+                    message:
+                      key: "error.authorizationdetailservice.invalid_request_format"
+                      defaultValue: "Invalid request format"
+                    description:
+                      key: "error.authorizationdetailservice.invalid_request_format_description"
+                      defaultValue: "The request body is malformed or contains invalid data"
+                invalid-type-value:
+                  summary: Invalid type value
+                  value:
+                    code: "RAR-1004"
+                    message:
+                      key: "error.authorizationdetailservice.invalid_type_value"
+                      defaultValue: "Invalid authorization details type"
+                    description:
+                      key: "error.authorizationdetailservice.invalid_type_value_description"
+                      defaultValue: "The type value is required, must be printable ASCII, and must be at most 512 characters"
+                invalid-name:
+                  summary: Invalid name
+                  value:
+                    code: "RAR-1005"
+                    message:
+                      key: "error.authorizationdetailservice.invalid_name"
+                      defaultValue: "Invalid name"
+                    description:
+                      key: "error.authorizationdetailservice.invalid_name_description"
+                      defaultValue: "The name is required and must be at most 100 characters"
+                invalid-schema:
+                  summary: Invalid schema
+                  value:
+                    code: "RAR-1006"
+                    message:
+                      key: "error.authorizationdetailservice.invalid_schema"
+                      defaultValue: "Invalid schema"
+                    description:
+                      key: "error.authorizationdetailservice.invalid_schema_description"
+                      defaultValue: "The schema is not valid: property name \"a.b\" must be non-empty and contain no dot"
+                invalid-consent-template:
+                  summary: Invalid consent template
+                  value:
+                    code: "RAR-1011"
+                    message:
+                      key: "error.authorizationdetailservice.invalid_consent_template"
+                      defaultValue: "Invalid consent template"
+                    description:
+                      key: "error.authorizationdetailservice.invalid_consent_template_description"
+                      defaultValue: "The consent template is not valid: {{payee}} is not a field of the schema"
+                invalid-processor:
+                  summary: Invalid processor
+                  value:
+                    code: "RAR-1007"
+                    message:
+                      key: "error.authorizationdetailservice.invalid_processor"
+                      defaultValue: "Invalid processor"
+                    description:
+                      key: "error.authorizationdetailservice.invalid_processor_description"
+                      defaultValue: "The processor endpoint must be an absolute HTTPS URL; HTTP is accepted only on a loopback host"
+                invalid-processor-authentication:
+                  summary: Invalid processor authentication
+                  value:
+                    code: "RAR-1008"
+                    message:
+                      key: "error.authorizationdetailservice.invalid_processor_authentication"
+                      defaultValue: "Invalid processor authentication"
+                    description:
+                      key: "error.authorizationdetailservice.invalid_processor_authentication_description"
+                      defaultValue: "The processor authentication must be a supported method with its required properties, and is accepted only for a type with a processor"
+                processor-authentication-required:
+                  summary: Processor credentials not given again for a new endpoint
+                  value:
+                    code: "RAR-1009"
+                    message:
+                      key: "error.authorizationdetailservice.processor_authentication_required"
+                      defaultValue: "Processor authentication required"
+                    description:
+                      key: "error.authorizationdetailservice.processor_authentication_required_description"
+                      defaultValue: "The processor credentials must be given again when its endpoint changes, so they are never sent to an endpoint they were not given for"
+                type-value-immutable:
+                  summary: Type value cannot be changed
+                  value:
+                    code: "RAR-1010"
+                    message:
+                      key: "error.authorizationdetailservice.type_value_immutable"
+                      defaultValue: "Type value cannot be changed"
+                    description:
+                      key: "error.authorizationdetailservice.type_value_immutable_description"
+                      defaultValue: "The type value of a registered authorization details type cannot be changed"
+                immutable-type:
+                  summary: Cannot modify declarative authorization details type
+                  value:
+                    code: "RAR-1013"
+                    message:
+                      key: "error.authorizationdetailservice.cannot_modify_declarative_type"
+                      defaultValue: "Cannot modify declarative authorization details type"
+                    description:
+                      key: "error.authorizationdetailservice.cannot_modify_declarative_type_description"
+                      defaultValue: "The authorization details type is defined in declarative configuration and cannot be modified"
+        "404":
+          description: Authorization details type not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "RAR-1002"
+                message:
+                  key: "error.authorizationdetailservice.type_not_found"
+                  defaultValue: "Authorization details type not found"
+                description:
+                  key: "error.authorizationdetailservice.type_not_found_description"
+                  defaultValue: "The authorization details type with the specified id does not exist"
+        "409":
+          description: The type changed while it was being updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "RAR-1016"
+                message:
+                  key: "error.authorizationdetailservice.type_changed"
+                  defaultValue: "Authorization details type changed"
+                description:
+                  key: "error.authorizationdetailservice.type_changed_description"
+                  defaultValue: "The authorization details type changed while it was being updated; read it again and reapply the change"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
+    delete:
+      tags:
+        - Authorization Detail Types
+      summary: Delete an authorization details type
+      description: |
+        Deletes an authorization details type. Clients can no longer request it, and it is removed from `authorization_details_types_supported` in the authorization server metadata. Deleting a type that does not exist succeeds.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            maxLength: 36
+          description: Authorization details type ID
+      responses:
+        "204":
+          description: Authorization details type deleted, or no type has the ID
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                immutable-type:
+                  summary: Cannot modify declarative authorization details type
+                  value:
+                    code: "RAR-1013"
+                    message:
+                      key: "error.authorizationdetailservice.cannot_modify_declarative_type"
+                      defaultValue: "Cannot modify declarative authorization details type"
+                    description:
+                      key: "error.authorizationdetailservice.cannot_modify_declarative_type_description"
+                      defaultValue: "The authorization details type is defined in declarative configuration and cannot be modified"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://localhost:8090/oauth2/authorize
+          tokenUrl: https://localhost:8090/oauth2/token
+          scopes:
+            system: Access to system management APIs
+        clientCredentials:
+          tokenUrl: https://localhost:8090/oauth2/token
+          scopes:
+            system: Access to system management APIs
+
+  parameters:
+    limitQueryParam:
+      in: query
+      name: limit
+      required: false
+      description: |
+        Maximum number of records to return. Must be between 1 and 100 inclusive.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 30
+    offsetQueryParam:
+      in: query
+      name: offset
+      required: false
+      description: Number of records to skip for pagination
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+  schemas:
+    AuthorizationDetailTypeRequest:
+      type: object
+      required: [type, name, schema]
+      additionalProperties: false
+      description: |
+        Unknown members are refused, here and in `processor`. The read-only members a read returns (`id`, `version` and `isReadOnly`) are accepted and ignored, so a fetched type can be sent back as an update.
+      properties:
+        id:
+          type: string
+          readOnly: true
+          description: Ignored; a create generates the id and an update takes it from the path.
+        version:
+          type: integer
+          readOnly: true
+          description: Ignored; the server sets the version.
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: Ignored; a type declared in a file is read-only.
+        type:
+          type: string
+          maxLength: 512
+          description: RFC 9396 `type` value clients send in `authorization_details`, such as a URI. Printable ASCII without spaces, unique across the deployment, and immutable after creation.
+        name:
+          type: string
+          maxLength: 100
+          description: Display name of the type, shown in the Console
+        description:
+          type: string
+          description: Optional description of the type
+        schema:
+          type: object
+          additionalProperties: true
+          description: |
+            JSON Schema 2020-12 schema that every requested detail of this type must conform to. It must describe an object. `type`, the only member RFC 9396 defines for every detail, is required and accepted as a string when the schema does not declare it. Every other member, the RFC 9396 common fields (`locations`, `actions`, `datatypes`, `privileges`, `identifier`) included, is accepted only when the schema declares it, so a type defines which common fields it uses and any limits on them, such as an `enum` or `pattern` on `locations`. Every object in the schema is closed, so undeclared fields are rejected; `additionalProperties`, `patternProperties` and `unevaluatedProperties` are refused. The schema is a supported subset of JSON Schema 2020-12: `type`, `title`, `description`, `enum` and `const` on every schema, `policy` on properties outside a list's items, `$schema` at the root, `properties` and `required` on objects, `minLength`, `maxLength`, `pattern` and `format` (`date` or `date-time`, checked by the server) on strings, `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum` and `multipleOf` on numbers, and `items` (required), `minItems`, `maxItems` and `uniqueItems` on arrays. Any other keyword is refused, and every property and list item schema constrains its value with `type`, `const` or `enum`. `type` names one of `string`, `number`, `boolean`, `object` or `array`; `integer` and `null` are refused, so a whole number is a `number` with `multipleOf: 1`. A property's `title` labels that field on the consent prompt; a field without one is labeled by its path. A property's `policy` says who supplies the field and how it may change after the request. A property without one is supplied by the client and cannot change. Settings: `suppliedBy` (`client`, the default, or `processor`: the client must not send the field and only the processor sets it); `modification` (`none`, the default, `decrease`, `increase`, `removeItems` or `addItems`, the last for a list whose items take permission away, such as excluded merchants; a list with `removeItems` may be emptied but not left out, since a missing list can read as unrestricted; text and other unordered values cannot change); `modifiableBy` (any of `processor`, `user`, `client`, required with a modification); and `minimum` and `maximum`, limits for a `string` with format `date` or `date-time`, checked on every request and after every change. A `number` is limited with the schema's own `minimum` and `maximum` keywords instead, which are checked at the same points. There is no value type setting: the property's schema decides how values compare. `type: number` compares as a number, exactly, and `string` with format `date` or `date-time` as a date or an instant; nothing else is ordered, so numbers written as text cannot be lowered, raised or limited by a policy. `decrease` and `increase` need one of these. `suppliedBy: processor` cannot be combined with a modification or set on `type`. A type whose fields the processor supplies or may change must have a `processor`. A `required` field the processor supplies is not required in the client's request, only once the processor has answered. A modification by the user is made on the consent prompt and checked before it is granted. Property names must not contain a dot. The client's values are shown on the consent prompt, so limit free text with `maxLength`. A number in a detail with more precision than a 64-bit floating-point number holds, such as `100.0000000000000001`, is refused, since the schema checks numbers at that precision while the token carries them as sent.
+        consentTemplate:
+          type: string
+          maxLength: 1000
+          description: |
+            Summary shown on the consent prompt, at most 1000 bytes. Each `{{path}}` placeholder is replaced with the value at that dot-separated path in the detail, and must name a property the schema declares or `type`.
+        processor:
+          $ref: '#/components/schemas/AuthorizationDetailProcessor'
+        reuse:
+          type: boolean
+          default: false
+          description: |
+            Whether an earlier approval may stand in for the consent prompt. `false`, the default, suits one-off authorizations such as a single payment, which the user approves every time. With `true`, an approval the user gave on the same type version covers a later request that asks for no more.
+
+    AuthorizationDetailTypeResponse:
+      type: object
+      required: [id, type, name, version, schema, reuse, isReadOnly]
+      properties:
+        id:
+          type: string
+          maxLength: 36
+          description: Unique identifier of the type, used in management API paths
+        type:
+          type: string
+          description: RFC 9396 `type` value clients send in `authorization_details`
+        name:
+          type: string
+          description: Display name of the type, shown in the Console
+        description:
+          type: string
+          description: Optional description of the type
+        version:
+          type: integer
+          description: |
+            Version of the type definition. Starts at 1 and increments when an update changes the schema or the consent template, or adds or removes the processor.
+        schema:
+          type: object
+          additionalProperties: true
+          description: JSON Schema 2020-12 schema as registered
+        consentTemplate:
+          type: string
+          description: Summary template shown on the consent prompt
+        processor:
+          $ref: '#/components/schemas/AuthorizationDetailProcessor'
+        reuse:
+          type: boolean
+          description: Whether earlier approvals are reused, always returned. See the request field.
+        isReadOnly:
+          type: boolean
+          description: |
+            Whether the type is defined in declarative configuration. A read-only type cannot be updated or deleted through the API.
+
+    AuthorizationDetailTypeListResponse:
+      type: object
+      required: [totalResults, startIndex, count, types, links]
+      properties:
+        totalResults:
+          type: integer
+          description: Number of registered types
+          example: 1
+        startIndex:
+          type: integer
+          description: Index of the first element of the page, which will be equal to offset + 1
+          example: 1
+        count:
+          type: integer
+          description: Number of elements in the returned page
+          example: 1
+        types:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthorizationDetailTypeResponse'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/Link'
+
+    AuthorizationDetailProcessor:
+      type: object
+      required: [endpoint]
+      description: |
+        Endpoint that authorizes and enriches the details of this type. ThunderID posts every detail served by the same endpoint in one batched call. The call is specified in `api/extensions/authorization-details-processor.yaml`, authenticated with `authentication`; details are batched per endpoint and credential, so a type's credential is never sent with another type's details. Redirects are not followed. Only a `false` decision refuses a detail. A processor that cannot be reached, times out, answers with a status other than 200 (a redirect included) or a body that cannot be decoded, leaves a detail without a decision, answers one twice, or patches a field its policy does not let it change, fails the request; details are never let through unchecked.
+      properties:
+        endpoint:
+          type: string
+          format: uri
+          description: |
+            Absolute HTTPS URL of the processor, with a valid host and port and no user information. HTTP is accepted only on a loopback host.
+        authentication:
+          $ref: '#/components/schemas/OutboundAuthentication'
+      additionalProperties: false
+
+    OutboundAuthentication:
+      type: object
+      description: |
+        How ThunderID authenticates itself to the processor: `none`, `bearer`, `basic` or `api_key`. The `type` selects the method and `properties` carries that method's fields, as for a connection's outbound authentication.
+
+        Credential values are stored encrypted and returned as `"******"`. On update, a masked value or an omitted `authentication` block keeps the stored credential while the endpoint is unchanged; when the endpoint changes, the credential must be given again (`RAR-1009`). Setting `type` to `none` removes authentication.
+      required: [type]
+      properties:
+        type:
+          type: string
+          description: "The authentication method. `none` sends no credentials."
+          example: "bearer"
+        properties:
+          type: object
+          additionalProperties: { type: string }
+          description: "The selected method's field values, keyed by field name."
+          example:
+            token: "<processor_token>"
+
+    Link:
+      type: object
+      properties:
+        href:
+          type: string
+          example: "/authorization-detail-types?offset=20&limit=10"
+        rel:
+          type: string
+          example: "next"
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: "Error code. Codes follow the RAR-XXXX convention."
+          example: "RAR-1002"
+        message:
+          $ref: '#/components/schemas/I18nMessage'
+        description:
+          $ref: '#/components/schemas/I18nMessage'
+
+    I18nMessage:
+      type: object
+      description: Internationalized message with translation key and default value.
+      required:
+        - key
+        - defaultValue
+      properties:
+        key:
+          type: string
+          description: Translation key for fetching localized message.
+        defaultValue:
+          type: string
+          description: Default message in English (fallback).

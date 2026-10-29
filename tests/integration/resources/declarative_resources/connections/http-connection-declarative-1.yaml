@@ -1,0 +1,16 @@
+resource_type: connection
+id: decl-http-connection-1
+ouHandle: decl-ou-1
+name: Declarative HTTP Connection
+description: A declarative HTTP endpoint connection
+type: http
+url: https://decl-http.example.com/extension
+timeoutMs: 3000
+headers:
+  - name: X-Tenant
+    value: decl
+authentication:
+  type: basic
+  properties:
+    username: decl-http-user
+    password: decl-http-connection-secret

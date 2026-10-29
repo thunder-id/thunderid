@@ -389,6 +389,20 @@ var (
 				"declarative resources are loaded",
 		},
 	}
+	// ErrorEditableOnlyRule is returned when a rule for a field taking editable alone names members
+	// or leaves editable out.
+	ErrorEditableOnlyRule = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SHR-1028",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.sharingservice.editable_only_rule",
+			DefaultValue: "Invalid overlay rule",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.sharingservice.editable_only_rule_description",
+			DefaultValue: "A rule for this field must state editable and nothing else",
+		},
+	}
 )
 
 // errPolicyNotFound is the store's own signal that no row carries an id, kept unexported because

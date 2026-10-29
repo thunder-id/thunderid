@@ -763,7 +763,7 @@ func (s *HTTPConnectionHandlerTestSuite) SetupTest() {
 	s.mockHTTP = httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
 	h := newHandler(newService(idpmock.NewIDPServiceInterfaceMock(s.T()),
 		notificationmock.NewNotificationSenderMgtSvcInterfaceMock(s.T()), &testResourceServerLister{},
-		&authZENPDPServiceStub{}, s.mockHTTP))
+		newAuthZENPDPServiceMock(s.T()), s.mockHTTP))
 	s.mux = http.NewServeMux()
 	registerRoutes(s.mux, h)
 }
@@ -774,8 +774,9 @@ func (s *HTTPConnectionHandlerTestSuite) basicConnection() *httpconnection.HTTPC
 			outboundauth.FieldBasicPassword: testHTTPConnectionPassword}})
 	s.Require().NoError(err)
 	return &httpconnection.HTTPConnection{
-		ID: "http-1", Name: "Risk", Description: "Risk engine", URL: "https://risk.example.com/evaluate",
-		TimeoutMS: 5000, Headers: []httpconnection.Header{{Name: "X-Tenant", Value: "acme"}},
+		ID: "http-1", Name: "Risk", Description: "Risk engine", OUID: "ou-1",
+		URL: "https://risk.example.com/evaluate", TimeoutMS: 5000,
+		Headers:        []httpconnection.Header{{Name: "X-Tenant", Value: "acme"}},
 		AuthProperties: auth,
 	}
 }
@@ -805,7 +806,7 @@ func (s *HTTPConnectionHandlerTestSuite) TestCreateMapsAuthenticationAndMasksThe
 
 	s.Equal(http.StatusCreated, rr.Code)
 	s.NotContains(rr.Body.String(), testHTTPConnectionPassword)
-	s.JSONEq(`{"id":"http-1","name":"Risk","description":"Risk engine","type":"http",
+	s.JSONEq(`{"id":"http-1","name":"Risk","description":"Risk engine","ouId":"ou-1","type":"http",
 		"url":"https://risk.example.com/evaluate","timeoutMs":5000,
 		"headers":[{"name":"X-Tenant","value":"acme"}],
 		"authentication":{"type":"basic","properties":{"username":"svc-user","password":"******"}}}`,
@@ -820,7 +821,7 @@ func (s *HTTPConnectionHandlerTestSuite) TestCreateMapsAuthenticationAndMasksThe
 }
 
 func (s *HTTPConnectionHandlerTestSuite) TestOmittedAuthenticationIsNone() {
-	none := &httpconnection.HTTPConnection{ID: "http-1", Name: "Risk", URL: "http://localhost:9000",
+	none := &httpconnection.HTTPConnection{ID: "http-1", Name: "Risk", OUID: "ou-1", URL: "http://localhost:9000",
 		TimeoutMS: 10000}
 	none.AuthProperties, _ = outboundauth.ToProperties(outboundauth.Config{Type: outboundauth.TypeNone})
 	s.mockHTTP.On("CreateHTTPConnection", mock.Anything, mock.MatchedBy(func(c httpconnection.HTTPConnection) bool {
@@ -831,7 +832,7 @@ func (s *HTTPConnectionHandlerTestSuite) TestOmittedAuthenticationIsNone() {
 	rr := s.serve(http.MethodPost, "/connections/http", `{"name":"Risk","url":"http://localhost:9000"}`)
 
 	s.Equal(http.StatusCreated, rr.Code)
-	s.JSONEq(`{"id":"http-1","name":"Risk","type":"http","url":"http://localhost:9000","timeoutMs":10000,
+	s.JSONEq(`{"id":"http-1","name":"Risk","ouId":"ou-1","type":"http","url":"http://localhost:9000","timeoutMs":10000,
 		"headers":[],"authentication":{"type":"none"}}`, rr.Body.String())
 }
 
@@ -908,9 +909,51 @@ func (s *HTTPConnectionHandlerTestSuite) TestUpdateKeepsAnOmittedPassword() {
 }
 
 func (s *HTTPConnectionHandlerTestSuite) TestDelete() {
+	s.mockHTTP.On("GetHTTPConnection", mock.Anything, "http-1").
+		Return(&httpconnection.HTTPConnection{ID: "http-1"}, (*tidcommon.ServiceError)(nil))
 	s.mockHTTP.On("DeleteHTTPConnection", mock.Anything, "http-1").Return((*tidcommon.ServiceError)(nil))
 
 	s.Equal(http.StatusNoContent, s.serve(http.MethodDelete, "/connections/http/http-1", "").Code)
+}
+
+func (s *HTTPConnectionHandlerTestSuite) TestDeleteOfAConnectionInUseIsAConflict() {
+	s.mockHTTP.On("GetHTTPConnection", mock.Anything, "http-1").
+		Return(&httpconnection.HTTPConnection{ID: "http-1"}, (*tidcommon.ServiceError)(nil))
+	s.mockHTTP.On("DeleteHTTPConnection", mock.Anything, "http-1").
+		Return(&httpconnection.ErrorHasBlockingDependencies)
+
+	rr := s.serve(http.MethodDelete, "/connections/http/http-1", "")
+
+	s.Equal(http.StatusConflict, rr.Code)
+	s.Equal(httpconnection.ErrorHasBlockingDependencies.Code, s.errorCode(rr))
+}
+
+func (s *HTTPConnectionHandlerTestSuite) TestUsagesListTheReferencingFlows() {
+	total := 1
+	s.mockHTTP.On("GetHTTPConnectionUsages", mock.Anything, "http-1").
+		Return(&resourcedependency.DependenciesResponse{
+			TotalResults: &total, Count: 1, Summary: map[string]int{resourcedependency.ResourceTypeFlow: 1},
+			Usages: []resourcedependency.ResourceDependency{{
+				ResourceType: resourcedependency.ResourceTypeFlow, ID: "flow-1", DisplayName: "Default sign-in",
+				BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+			}},
+		}, (*tidcommon.ServiceError)(nil))
+
+	rr := s.serve(http.MethodGet, "/connections/http/http-1/usages", "")
+
+	s.Equal(http.StatusOK, rr.Code)
+	s.JSONEq(`{"totalResults":1,"count":1,"summary":{"flow":1},"usages":[{"resourceType":"flow",
+		"id":"flow-1","displayName":"Default sign-in","behaviorOnDelete":"restrict"}]}`, rr.Body.String())
+}
+
+func (s *HTTPConnectionHandlerTestSuite) TestUsagesOfAMissingConnectionIsNotFound() {
+	s.mockHTTP.On("GetHTTPConnectionUsages", mock.Anything, "missing").
+		Return((*resourcedependency.DependenciesResponse)(nil), &httpconnection.ErrorNotFound)
+
+	rr := s.serve(http.MethodGet, "/connections/http/missing/usages", "")
+
+	s.Equal(http.StatusNotFound, rr.Code)
+	s.Equal(httpconnection.ErrorNotFound.Code, s.errorCode(rr))
 }
 
 func (s *HTTPConnectionHandlerTestSuite) TestListReturnsSummaries() {
@@ -929,6 +972,7 @@ func (s *HTTPConnectionHandlerTestSuite) TestServiceErrorsMapToStatus() {
 		want int
 	}{
 		{httpconnection.ErrorAlreadyExists, http.StatusConflict},
+		{httpconnection.ErrorHasBlockingDependencies, http.StatusConflict},
 		{httpconnection.ErrorInvalidName, http.StatusBadRequest},
 		{httpconnection.ErrorInvalidDescription, http.StatusBadRequest},
 		{httpconnection.ErrorInvalidURL, http.StatusBadRequest},
@@ -985,7 +1029,7 @@ func (s *HTTPConnectionHandlerTestSuite) TestConnectionListingFiltersByHTTPCateg
 	var resp connectionListResponse
 	s.Require().NoError(json.NewDecoder(rr.Body).Decode(&resp))
 	s.Equal([]connectionInstance{{ID: "http-1", Name: "Risk", Description: "Risk engine", Type: httpVendorName,
-		Categories: []connectionCategory{categoryHTTP}}}, resp.Connections)
+		OUID: "ou-1", Categories: []connectionCategory{categoryHTTP}}}, resp.Connections)
 }
 
 func (s *HTTPConnectionHandlerTestSuite) TestConnectionListingFailsWhenHTTPConnectionsCannotBeListed() {

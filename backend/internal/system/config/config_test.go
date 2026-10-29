@@ -5,10 +5,12 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -142,6 +144,59 @@ jwt:
 	assert.Equal(suite.T(), "user-issuer", config.JWT.Issuer)             // User override
 	assert.Equal(suite.T(), int64(7200), config.JWT.ValidityPeriod)       // Default value
 	assert.Equal(suite.T(), dummyCryptoKey, config.Crypto.Encryption.Key) // Default value
+}
+
+// The server mode is chosen by the entry point, so a deployment file cannot set it: the YAML loader
+// refuses a key Config does not have.
+func (suite *ConfigTestSuite) TestLoadConfigRejectsAServerModeInTheDeploymentFile() {
+	tempDir := suite.T().TempDir()
+	valid := `
+server:
+  hostname: "user-host"
+  port: 8090
+database:
+  config:
+    type: "sqlite"
+    sqlite:
+      path: "database/configdb.db"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+
+	_, err := LoadConfig(suite.createTempFile(tempDir, "valid*.yaml", valid), "", tempDir)
+	suite.Require().NoError(err, "the file without a mode must load, so the next failure is about the mode")
+
+	_, err = LoadConfig(suite.createTempFile(tempDir, "mode*.yaml", valid+"mode: \"control_plane\"\n"), "", tempDir)
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "mode")
+}
+
+// A mode in default.json is ignored, and the server still runs as a data plane.
+func (suite *ConfigTestSuite) TestLoadConfigIgnoresAServerModeInDefaultJSON() {
+	tempDir := suite.T().TempDir()
+	defaults := `{
+  "server": {"hostname": "default-host", "port": 8080},
+  "mode": "control_plane",
+  "server_mode": "control_plane",
+  "notification": {"otp": {"length": 6, "use_numeric_only": true, "validity_period_seconds": 120}}
+}`
+	user := `
+server:
+  hostname: "user-host"
+  port: 8090
+`
+	cfg, err := LoadConfig(suite.createTempFile(tempDir, "user*.yaml", user),
+		suite.createTempFile(tempDir, "default*.json", defaults), tempDir)
+	suite.Require().NoError(err)
+
+	ResetServerRuntime()
+	suite.T().Cleanup(ResetServerRuntime)
+	suite.Require().NoError(InitializeServerRuntime(tempDir, cfg))
+
+	suite.Equal(ServerModeDataPlane, GetServerMode())
 }
 
 func (suite *ConfigTestSuite) TestLoadConfigWithDefaults_NoDefaults() {
@@ -1914,4 +1969,22 @@ func (suite *ConfigTestSuite) TestDeploymentOverridesAccountAccessDefaults() {
 
 	suite.Equal(3, *base.AccountAccess.User.Default.Threshold)
 	suite.Equal("authentication_method", base.AccountAccess.User.LockGranularity)
+}
+
+// The apply and import timeouts are read in seconds, and an unset one leaves the server's write
+// timeout in place.
+func TestApplyAndImportTimeoutsAreSeconds(t *testing.T) {
+	if got := (GatewayConfig{ApplyTimeoutSeconds: 300}).ApplyTimeout(); got != 300*time.Second {
+		t.Errorf("apply timeout: got %v", got)
+	}
+	if got := (ImportConfig{TimeoutSeconds: 120}).Timeout(); got != 120*time.Second {
+		t.Errorf("import timeout: got %v", got)
+	}
+	if (GatewayConfig{}).ApplyTimeout() != 0 || (ImportConfig{}).Timeout() != 0 {
+		t.Error("an unset timeout should be zero, leaving the server's write timeout in place")
+	}
+	if (GatewayConfig{ApplyTimeoutSeconds: math.MaxInt}).ApplyTimeout() != 0 ||
+		(ImportConfig{TimeoutSeconds: 9223372037}).Timeout() != 0 {
+		t.Error("a timeout too large for a duration should be zero rather than wrap around")
+	}
 }

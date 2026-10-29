@@ -13,6 +13,7 @@ export default function mapConnectionToTrustedIssuer(connection: ConnectionRespo
   return {
     id: connection.id,
     name: connection.name,
+    ouId: connection.ouId,
     issuer: connection.issuer ?? '',
     jwksEndpoint: connection.jwksEndpoint ?? '',
     idJagEnabled: connection.idJagEnabled ?? false,

@@ -7,6 +7,7 @@ import {useThunderID} from '@thunderid/react';
 import {useTranslation} from 'react-i18next';
 import AgentQueryKeys from '../constants/agent-query-keys';
 import type {Agent, AgentInboundAuthConfig} from '../models/agent';
+import isDelegatedAgent from '../utils/isDelegatedAgent';
 
 export interface RegenerateAgentSecretVariables {
   agentId: string;
@@ -75,7 +76,12 @@ export default function useRegenerateAgentSecret(): UseMutationResult<
       const {id: _id, clientId: _clientId, ...rest} = currentAgent;
       void _id;
       void _clientId;
-      const updateRequest = {...rest, inboundAuthConfig: updatedInboundAuth};
+      // The server does not store the delegated flag, so the full update says whether the agent has it.
+      const updateRequest = {
+        ...rest,
+        inboundAuthConfig: updatedInboundAuth,
+        delegated: isDelegatedAgent(updatedInboundAuth),
+      };
 
       const updateResponse: {data: Agent} = await http.request({
         url: `${serverUrl}/agents/${agentId}`,

@@ -362,3 +362,53 @@ describe('BlockAdapter: BOOLEAN_INPUT inside a form block', () => {
     expect(checkbox.checked).toBe(true);
   });
 });
+
+describe('BlockAdapter: blocked approval', () => {
+  const denyAction = {id: 'action_deny', type: 'ACTION', eventType: 'SUBMIT', variant: 'SECONDARY', label: 'Deny'};
+  const allowAction = {id: 'action_allow', type: 'ACTION', eventType: 'SUBMIT', variant: 'PRIMARY', label: 'Allow'};
+  const consentBlock = {id: 'block_003', type: 'BLOCK', components: [allowAction, denyAction]};
+
+  const renderConsentBlock = (approvalBlocked: boolean, onSubmit = vi.fn(), isLoading = false) => {
+    const {container} = renderWithProviders(
+      <BlockAdapter
+        component={consentBlock as EmbeddedFlowComponent}
+        index={0}
+        values={{}}
+        isLoading={isLoading}
+        resolve={(template) => template}
+        onInputChange={noop}
+        onSubmit={onSubmit}
+        approvalBlocked={approvalBlocked}
+      />,
+    );
+    return {form: container.querySelector('form')!, onSubmit};
+  };
+
+  it('disables only the approving action and ignores a form submission while blocked', () => {
+    const {form, onSubmit} = renderConsentBlock(true);
+
+    expect(screen.getByRole<HTMLButtonElement>('button', {name: 'Allow'}).disabled).toBe(true);
+    expect(screen.getByRole<HTMLButtonElement>('button', {name: 'Deny'}).disabled).toBe(false);
+
+    fireEvent.submit(form);
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', {name: 'Deny'}));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({id: 'action_deny'}), {});
+  });
+
+  it('disables every action while loading, whether or not approval is blocked', () => {
+    renderConsentBlock(false, vi.fn(), true);
+
+    expect(screen.getByRole<HTMLButtonElement>('button', {name: 'Allow'}).disabled).toBe(true);
+    expect(screen.getByRole<HTMLButtonElement>('button', {name: 'Deny'}).disabled).toBe(true);
+  });
+
+  it('submits the approving action when not blocked', () => {
+    const {form, onSubmit} = renderConsentBlock(false);
+
+    expect(screen.getByRole<HTMLButtonElement>('button', {name: 'Allow'}).disabled).toBe(false);
+    fireEvent.submit(form);
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({id: 'action_allow'}), {});
+  });
+});

@@ -2,6 +2,7 @@ package cmodels
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sort"
 	"testing"
@@ -251,4 +252,78 @@ func (s *PropertyTestSuite) TestNewProperty_NotSecret() {
 	p, err := NewProperty("n", "plain", false)
 	s.Require().NoError(err)
 	s.Equal("plain", p.value)
+}
+
+func (s *PropertyTestSuite) TestMarshalJSON() {
+	p := Property{name: "client_id", value: "abc123", isSecret: true}
+
+	data, err := json.Marshal(&p)
+	s.Require().NoError(err)
+	s.JSONEq(`{"name":"client_id","value":"abc123","isSecret":true}`, string(data))
+}
+
+// TestMarshalJSON_NonAddressableValue guards against MarshalJSON being defined with a pointer
+// receiver: map values are never addressable in Go's reflect package (unlike slice elements), so
+// json.Marshal on a map keyed by Property would silently fall back to the default (broken)
+// reflection-based encoding if MarshalJSON only satisfied json.Marshaler via *Property.
+func (s *PropertyTestSuite) TestMarshalJSON_NonAddressableValue() {
+	byName := map[string]Property{
+		"client_id": {name: "client_id", value: "abc123", isSecret: false},
+	}
+
+	data, err := json.Marshal(byName)
+	s.Require().NoError(err)
+	s.JSONEq(`{"client_id":{"name":"client_id","value":"abc123","isSecret":false}}`, string(data))
+}
+
+func (s *PropertyTestSuite) TestUnmarshalJSON() {
+	var p Property
+	err := json.Unmarshal([]byte(`{"name":"client_id","value":"abc123","isSecret":true}`), &p)
+	s.Require().NoError(err)
+
+	s.Equal("client_id", p.name)
+	s.Equal("abc123", p.value)
+	s.True(p.isSecret)
+}
+
+func (s *PropertyTestSuite) TestUnmarshalJSON_InvalidJSON() {
+	var p Property
+	err := json.Unmarshal([]byte("{invalid"), &p)
+	s.Error(err)
+}
+
+// TestMarshalJSON_RoundtripThroughSlice guards the redis cache regression: []Property must survive
+// a json.Marshal/Unmarshal round trip unchanged, since redisCache[T] persists cached values that way.
+func (s *PropertyTestSuite) TestMarshalJSON_RoundtripThroughSlice() {
+	original := []Property{
+		{name: "client_id", value: "my-client", isSecret: false},
+		{name: "client_secret", value: "cipher-text", isSecret: true},
+	}
+
+	data, err := json.Marshal(original)
+	s.Require().NoError(err)
+
+	var roundtripped []Property
+	err = json.Unmarshal(data, &roundtripped)
+	s.Require().NoError(err)
+
+	s.Equal(original, roundtripped)
+}
+
+// TestMarshalJSON_DoesNotDecryptSecret ensures the raw (already-encrypted) value is written as-is,
+// never the decrypted plaintext, so a secret property never leaks plaintext into an external cache.
+func (s *PropertyTestSuite) TestMarshalJSON_DoesNotDecryptSecret() {
+	SetConfigCryptoProvider(&fakeConfigCryptoProvider{
+		decryptFn: func(_ []byte) ([]byte, error) {
+			s.Fail("Decrypt should not be called by MarshalJSON")
+			return nil, nil
+		},
+	})
+	defer SetConfigCryptoProvider(nil)
+
+	p := Property{name: "client_secret", value: "cipher-text", isSecret: true}
+
+	data, err := json.Marshal(&p)
+	s.Require().NoError(err)
+	s.JSONEq(`{"name":"client_secret","value":"cipher-text","isSecret":true}`, string(data))
 }

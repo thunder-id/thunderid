@@ -20,11 +20,14 @@ import (
 	appmodel "github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/connection"
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	"github.com/thunder-id/thunderid/internal/group"
+	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/ou"
@@ -59,6 +62,7 @@ type idpAdapter interface {
 		*tidcommon.ServiceError,
 	)
 	DeleteIdentityProvider(ctx context.Context, idpID string) *tidcommon.ServiceError
+	ResolveIdentityProviderOU(ctx context.Context, idp *providers.IDPDTO) *tidcommon.ServiceError
 }
 
 // senderAdapter is the subset of notification.NotificationSenderMgtSvcInterface the importer
@@ -74,6 +78,7 @@ type senderAdapter interface {
 		*tidcommon.ServiceError,
 	)
 	DeleteSender(ctx context.Context, id string) *tidcommon.ServiceError
+	ResolveSenderOU(ctx context.Context, sender *ncommon.NotificationSenderDTO) *tidcommon.ServiceError
 }
 
 // authZENPDPAdapter defines the AuthZEN PDP connection operations required by the importer.
@@ -89,6 +94,21 @@ type authZENPDPAdapter interface {
 		request authzenpdp.ConnectionRequest,
 	) (*authzenpdp.AuthZENPDPConnection, *tidcommon.ServiceError)
 	DeleteAuthZENPDPConnection(ctx context.Context, id string) *tidcommon.ServiceError
+	ResolveConnectionOU(ctx context.Context, connection *authzenpdp.AuthZENPDPConnection) *tidcommon.ServiceError
+}
+
+// httpConnectionAdapter defines the HTTP connection operations required by the importer.
+type httpConnectionAdapter interface {
+	CreateHTTPConnection(ctx context.Context, connection httpconnection.HTTPConnection) (
+		*httpconnection.HTTPConnection, *tidcommon.ServiceError)
+	GetHTTPConnection(ctx context.Context, id string) (*httpconnection.HTTPConnection, *tidcommon.ServiceError)
+	UpdateHTTPConnection(ctx context.Context, existing *httpconnection.HTTPConnection,
+		connection httpconnection.HTTPConnection) (*httpconnection.HTTPConnection, *tidcommon.ServiceError)
+	DeleteHTTPConnection(ctx context.Context, id string) *tidcommon.ServiceError
+	ResolveConnectionOU(ctx context.Context, connection *httpconnection.HTTPConnection) *tidcommon.ServiceError
+	ValidateHTTPConnectionCreate(ctx context.Context, connection *httpconnection.HTTPConnection) *tidcommon.ServiceError
+	ValidateHTTPConnectionUpdate(ctx context.Context, existing *httpconnection.HTTPConnection,
+		connection httpconnection.HTTPConnection) *tidcommon.ServiceError
 }
 
 type flowAdapter interface {
@@ -102,6 +122,7 @@ type flowAdapter interface {
 	UpdateFlow(ctx context.Context, flowID string, flowDef *flowmgt.FlowDefinition) (*providers.CompleteFlowDefinition,
 		*tidcommon.ServiceError)
 	DeleteFlow(ctx context.Context, flowID string) *tidcommon.ServiceError
+	ResolveFlowOU(ctx context.Context, flowDef *flowmgt.FlowDefinition) *tidcommon.ServiceError
 }
 
 type ouAdapter interface {
@@ -118,6 +139,14 @@ type ouAdapter interface {
 		ou.OrganizationUnit,
 		*tidcommon.ServiceError)
 	DeleteOrganizationUnit(ctx context.Context, id string) *tidcommon.ServiceError
+}
+
+// ProjectAdapter imports declared projects. Only the Control Plane serves projects, so the all-in-one
+// server passes none, skips project documents and imports organization units alone.
+type ProjectAdapter interface {
+	ProjectExists(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
+	ImportProject(ctx context.Context, id, rootOUID, handle, displayName, description string, upsert bool) (
+		bool, *tidcommon.ServiceError)
 }
 
 type entityTypeAdapter interface {
@@ -178,6 +207,19 @@ type resourceServerAdapter interface {
 	CreateAction(ctx context.Context, resourceServerID string, resourceID *string, action providers.Action) (
 		*providers.Action, *tidcommon.ServiceError)
 	DeleteResourceServer(ctx context.Context, id string) *tidcommon.ServiceError
+}
+
+type authorizationDetailTypeAdapter interface {
+	CreateAuthorizationDetailType(ctx context.Context, t providers.AuthorizationDetailType) (
+		*providers.AuthorizationDetailType, *tidcommon.ServiceError)
+	GetAuthorizationDetailType(ctx context.Context, id string) (*providers.AuthorizationDetailType,
+		*tidcommon.ServiceError)
+	UpdateAuthorizationDetailType(ctx context.Context, id string, t providers.AuthorizationDetailType) (
+		*providers.AuthorizationDetailType, *tidcommon.ServiceError)
+	GetAuthorizationDetailTypeByValue(ctx context.Context, value string) (*providers.AuthorizationDetailType,
+		*tidcommon.ServiceError)
+	ValidateAuthorizationDetailType(ctx context.Context, t providers.AuthorizationDetailType) *tidcommon.ServiceError
+	DeleteAuthorizationDetailType(ctx context.Context, id string) *tidcommon.ServiceError
 }
 
 type themeAdapter interface {
@@ -243,7 +285,6 @@ type credentialConfigurationAdapter interface {
 }
 
 // notificationTemplateAdapter exposes the service methods needed by the importer.
-// Delete is omitted because templates require both channel and ID, which shared import-delete cannot provide.
 type notificationTemplateAdapter interface {
 	GetTemplateByHandle(ctx context.Context, channel notificationtemplate.ChannelType, handle string) (
 		*notificationtemplate.Template, *tidcommon.ServiceError)
@@ -253,6 +294,7 @@ type notificationTemplateAdapter interface {
 		request notificationtemplate.CreateTemplateRequest) (*notificationtemplate.Template, *tidcommon.ServiceError)
 	UpdateTemplate(ctx context.Context, channel notificationtemplate.ChannelType, id string,
 		request notificationtemplate.UpdateTemplateRequest) (*notificationtemplate.Template, *tidcommon.ServiceError)
+	DeleteTemplate(ctx context.Context, channel notificationtemplate.ChannelType, id string) *tidcommon.ServiceError
 }
 
 // ImportServiceInterface defines runtime resource import and declarative resource deletion operations.
@@ -277,6 +319,7 @@ type importService struct {
 	authZENPDPService              authZENPDPAdapter
 	flowService                    flowAdapter
 	ouService                      ouAdapter
+	projectService                 ProjectAdapter
 	entityTypeService              entityTypeAdapter
 	roleService                    roleAdapter
 	roleAssignmentService          roleAssignmentAdapter
@@ -293,6 +336,8 @@ type importService struct {
 	serverConfigService            serverConfigAdapter
 	gatewayService                 gatewayAdapter
 	notifTemplateService           notificationTemplateAdapter
+	authorizationDetailTypeService authorizationDetailTypeAdapter
+	httpConnectionService          httpConnectionAdapter
 	// references replaces a var: or sec: reference with the value this deployment holds. Nil leaves
 	// references in place, which is what a control plane wants: it keeps configuration as references
 	// and holds no values.
@@ -562,6 +607,8 @@ func (s *importService) importDocument(
 		return s.importFlow(ctx, doc, options, dryRun)
 	case resourceTypeOrganizationUnit:
 		return s.importOrganizationUnit(ctx, doc, options, dryRun)
+	case resourceTypeProject:
+		return s.importProject(ctx, doc, options, dryRun)
 	case resourceTypeEntityType:
 		return s.importEntityType(ctx, doc, options, dryRun)
 	case resourceTypeAgentType:
@@ -572,6 +619,8 @@ func (s *importService) importDocument(
 		return s.importGroup(ctx, doc, options, dryRun)
 	case resourceTypeResourceServer:
 		return s.importResourceServer(ctx, doc, options, dryRun)
+	case resourceTypeAuthorizationDetailType:
+		return s.importAuthorizationDetailType(ctx, doc, options, dryRun)
 	case resourceTypeTheme:
 		return s.importTheme(ctx, doc, options, dryRun)
 	case resourceTypeLayout:
@@ -602,23 +651,13 @@ func (s *importService) importDocument(
 	}
 }
 
-// importConnection imports a "connection" document, dispatching to the identity-provider or
-// notification-sender adapter based on which DTO connection.ParseConnectionFromNode resolves.
+// importConnection imports a "connection" document, dispatching to the adapter of the service that
+// holds the DTO connection.ParseConnectionFromNode resolves. The sharing policies the document
+// carries are replayed once the connection is written.
 func (s *importService) importConnection(
 	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool,
 ) ImportItemOutcome {
-	if authZENPDP, err := connection.ParseAuthZENPDPConnectionFromNode(doc.Node); err != nil {
-		return ImportItemOutcome{
-			ResourceType: resourceTypeConnection,
-			Status:       statusFailed,
-			Code:         ErrorInvalidYAMLContent.Code,
-			Message:      fmt.Sprintf("failed to decode connection document: %v", err),
-		}
-	} else if authZENPDP != nil {
-		return s.importConnectionAuthZENPDP(ctx, authZENPDP, options, dryRun)
-	}
-
-	idpDTO, senderDTO, err := connection.ParseConnectionFromNode(doc.Node)
+	resource, err := connection.ParseConnectionFromNode(doc.Node)
 	if err != nil {
 		return ImportItemOutcome{
 			ResourceType: resourceTypeConnection,
@@ -628,10 +667,55 @@ func (s *importService) importConnection(
 		}
 	}
 
-	if idpDTO != nil {
-		return s.importConnectionIDP(ctx, idpDTO, options, dryRun)
+	switch dto := resource.(type) {
+	case *authzenpdp.AuthZENPDPConnection:
+		outcome := s.importConnectionAuthZENPDP(ctx, dto, options, dryRun)
+		return s.applyConnectionSharing(ctx, doc, outcome, dto.OUID, dryRun)
+	case *httpconnection.HTTPConnection:
+		outcome := s.importConnectionHTTP(ctx, dto, options, dryRun)
+		return s.applyConnectionSharing(ctx, doc, outcome, dto.OUID, dryRun)
+	case *providers.IDPDTO:
+		outcome := s.importConnectionIDP(ctx, dto, options, dryRun)
+		return s.applyConnectionSharing(ctx, doc, outcome, dto.OUID, dryRun)
+	case *ncommon.NotificationSenderDTO:
+		outcome := s.importConnectionSender(ctx, dto, options, dryRun)
+		return s.applyConnectionSharing(ctx, doc, outcome, dto.OUID, dryRun)
+	default:
+		return ImportItemOutcome{
+			ResourceType: resourceTypeConnection,
+			Status:       statusFailed,
+			Code:         ErrorInvalidImportRequest.Code,
+			Message:      "unsupported connection document",
+		}
 	}
-	return s.importConnectionSender(ctx, senderDTO, options, dryRun)
+}
+
+// applyConnectionSharing replays the sharing policies a connection document carries, after the connection
+// itself is written, since a policy names the resource it governs. A refusal on a create undoes it: the
+// caller is told the document failed and gets no id back, so a connection left behind would hold the name
+// a retry needs. The owning organization unit is the one the import resolved on the connection.
+func (s *importService) applyConnectionSharing(
+	ctx context.Context, doc parsedDocument, outcome ImportItemOutcome, owningOUID string, dryRun bool,
+) ImportItemOutcome {
+	if dryRun || outcome.Status != statusSuccess {
+		return outcome
+	}
+	policies, err := connection.ParseConnectionSharingPolicies(doc.Node)
+	if err != nil {
+		return decodeErrorOutcome(resourceTypeConnection, outcome.ResourceID, outcome.ResourceName, err)
+	}
+	refused := s.applySharingPolicies(ctx, connection.ConnectionSharingType, resourceTypeConnection,
+		outcome.ResourceID, outcome.ResourceName, owningOUID, policies, outcome.Operation)
+	if refused == nil {
+		return outcome
+	}
+	if outcome.Operation == operationCreate {
+		if delErr := s.deleteConnection(ctx, outcome.ResourceID); delErr != nil {
+			log.GetLogger().Error(ctx, "Failed to remove a connection whose sharing policies were refused",
+				log.String("connectionID", outcome.ResourceID), log.String("code", delErr.Code))
+		}
+	}
+	return *refused
 }
 
 // importConnectionAuthZENPDP creates or updates an AuthZEN PDP connection from an import document.
@@ -641,6 +725,9 @@ func (s *importService) importConnectionAuthZENPDP(
 	if s.authZENPDPService == nil {
 		return unsupportedAdapterOutcome(resourceTypeConnection, "AuthZEN PDP")
 	}
+	if svcErr := s.authZENPDPService.ResolveConnectionOU(ctx, req); svcErr != nil {
+		return authZENPDPImportServiceError(req, operationCreate, svcErr)
+	}
 	if options.IsUpsertEnabled() && req.ID != "" {
 		existing, svcErr := s.authZENPDPService.GetAuthZENPDP(ctx, req.ID)
 		if svcErr != nil {
@@ -648,6 +735,11 @@ func (s *importService) importConnectionAuthZENPDP(
 		}
 		if existing != nil {
 			if dryRun {
+				// The owner cannot change, so an update that names another one is refused here as the real apply
+				// would refuse it.
+				if existing.OUID != req.OUID {
+					return authZENPDPImportServiceError(req, operationUpdate, &authzenpdp.ErrorOUUpdateNotAllowed)
+				}
 				return successOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate)
 			}
 			if _, svcErr := s.authZENPDPService.UpdateAuthZENPDPConnection(
@@ -668,12 +760,62 @@ func (s *importService) importConnectionAuthZENPDP(
 	return successOutcome(resourceTypeConnection, created.ID, created.Name, operationCreate)
 }
 
+// importConnectionHTTP creates or updates an HTTP connection from an import document. An update keeps
+// a stored secret the document omits under the same rule the connection API applies.
+func (s *importService) importConnectionHTTP(
+	ctx context.Context, req *httpconnection.HTTPConnection, options *ImportOptions, dryRun bool,
+) ImportItemOutcome {
+	if s.httpConnectionService == nil {
+		return unsupportedAdapterOutcome(resourceTypeConnection, "HTTP connection")
+	}
+	if svcErr := s.httpConnectionService.ResolveConnectionOU(ctx, req); svcErr != nil {
+		return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationCreate, svcErr)
+	}
+	if options.IsUpsertEnabled() && req.ID != "" {
+		existing, svcErr := s.httpConnectionService.GetHTTPConnection(ctx, req.ID)
+		if svcErr == nil {
+			if dryRun {
+				svcErr = s.httpConnectionService.ValidateHTTPConnectionUpdate(ctx, existing, *req)
+				return dryRunHTTPConnectionOutcome(req, operationUpdate, svcErr)
+			}
+			updated, svcErr := s.httpConnectionService.UpdateHTTPConnection(ctx, existing, *req)
+			if svcErr != nil {
+				return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate, svcErr)
+			}
+			return successOutcome(resourceTypeConnection, updated.ID, updated.Name, operationUpdate)
+		}
+		if !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate, svcErr)
+		}
+	}
+	if dryRun {
+		return dryRunHTTPConnectionOutcome(req, operationCreate,
+			s.httpConnectionService.ValidateHTTPConnectionCreate(ctx, req))
+	}
+	created, svcErr := s.httpConnectionService.CreateHTTPConnection(ctx, *req)
+	if svcErr != nil {
+		return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationCreate, svcErr)
+	}
+	return successOutcome(resourceTypeConnection, created.ID, created.Name, operationCreate)
+}
+
+// dryRunHTTPConnectionOutcome reports the outcome the service's validation gave the connection.
+func dryRunHTTPConnectionOutcome(req *httpconnection.HTTPConnection, operation string,
+	svcErr *tidcommon.ServiceError) ImportItemOutcome {
+	if svcErr != nil {
+		return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operation, svcErr)
+	}
+	return successOutcome(resourceTypeConnection, req.ID, req.Name, operation)
+}
+
 // authZENPDPConnectionRequest converts an imported connection into the service request shape.
 func authZENPDPConnectionRequest(connection *authzenpdp.AuthZENPDPConnection) authzenpdp.ConnectionRequest {
 	return authzenpdp.ConnectionRequest{
 		ID:                       connection.ID,
 		Name:                     connection.Name,
 		Description:              connection.Description,
+		OUID:                     connection.OUID,
+		OUHandle:                 connection.OUHandle,
 		Endpoint:                 connection.Endpoint,
 		BatchEndpoint:            connection.BatchEndpoint,
 		TimeoutMS:                connection.TimeoutMS,
@@ -709,10 +851,20 @@ func (s *importService) importConnectionIDP(
 		}
 	}
 
+	if svcErr := s.idpService.ResolveIdentityProviderOU(ctx, req); svcErr != nil {
+		return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationCreate, svcErr)
+	}
+
 	if dryRun {
 		if options.IsUpsertEnabled() && req.ID != "" {
-			_, svcErr := s.idpService.GetIdentityProvider(ctx, req.ID)
+			existing, svcErr := s.idpService.GetIdentityProvider(ctx, req.ID)
 			if svcErr == nil {
+				// The owner cannot change, so an update that names another one is refused here as the real apply
+				// would refuse it.
+				if existing != nil && existing.OUID != req.OUID {
+					return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate,
+						&idp.ErrorIDPOUUpdateNotAllowed)
+				}
 				return successOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate)
 			}
 
@@ -783,10 +935,18 @@ func (s *importService) importConnectionSender(
 		}
 	}
 
+	if svcErr := s.senderService.ResolveSenderOU(ctx, req); svcErr != nil {
+		return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationCreate, svcErr)
+	}
+
 	if dryRun {
 		if options.IsUpsertEnabled() && req.ID != "" {
-			_, svcErr := s.senderService.GetSender(ctx, req.ID)
+			existing, svcErr := s.senderService.GetSender(ctx, req.ID)
 			if svcErr == nil {
+				if existing != nil && existing.OUID != req.OUID {
+					return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate,
+						&notification.ErrorSenderOUUpdateNotAllowed)
+				}
 				return successOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate)
 			}
 
@@ -875,12 +1035,24 @@ func (s *importService) importFlow(
 		Name:     req.Name,
 		FlowType: req.FlowType,
 		Nodes:    req.Nodes,
+		OUID:     req.OUID,
+		OUHandle: req.OUHandle,
+	}
+
+	if svcErr := s.flowService.ResolveFlowOU(ctx, flowDef); svcErr != nil {
+		return serviceErrorOutcome(resourceTypeFlow, req.ID, req.Name, operationCreate, svcErr)
 	}
 
 	if dryRun {
 		if options.IsUpsertEnabled() && req.ID != "" {
-			_, svcErr := s.flowService.GetFlow(ctx, req.ID)
+			existing, svcErr := s.flowService.GetFlow(ctx, req.ID)
 			if svcErr == nil {
+				// The owner cannot change, so an update that names another one is refused here as the real apply
+				// would refuse it.
+				if existing != nil && existing.OUID != flowDef.OUID {
+					return serviceErrorOutcome(resourceTypeFlow, req.ID, req.Name, operationUpdate,
+						&flowmgt.ErrorOUUpdateNotAllowed)
+				}
 				return successOutcome(resourceTypeFlow, req.ID, req.Name, operationUpdate)
 			}
 
@@ -890,6 +1062,10 @@ func (s *importService) importFlow(
 
 			existingByHandle, handleErr := s.flowService.GetFlowByHandle(ctx, req.Handle, req.FlowType)
 			if handleErr == nil {
+				if existingByHandle.OUID != flowDef.OUID {
+					return serviceErrorOutcome(resourceTypeFlow, existingByHandle.ID, req.Name, operationUpdate,
+						&flowmgt.ErrorOUUpdateNotAllowed)
+				}
 				return successOutcome(resourceTypeFlow, existingByHandle.ID, req.Name, operationUpdate)
 			}
 
@@ -990,7 +1166,11 @@ var resourceDependencyOrder = []string{
 	// A gateway refers to no other resource and nothing refers to it, so its position is free.
 	// First keeps it out of the way of the ordering that does matter.
 	resourceTypeGateway,
+	resourceTypeAuthorizationDetailType,
 	resourceTypeOrganizationUnit,
+	// After the organization units, so a project links to its root organization unit when the same
+	// import declares it, and before everything that is placed in an organization unit.
+	resourceTypeProject,
 	resourceTypeEntityType,
 	resourceTypeAgentType,
 	resourceTypeConnection,

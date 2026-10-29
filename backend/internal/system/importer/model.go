@@ -8,6 +8,9 @@ import "time"
 const (
 	operationCreate = "create"
 	operationUpdate = "update"
+	// operationSkip reports a document this deployment does not hold, such as a project on a server
+	// that does not serve projects.
+	operationSkip = "skip"
 
 	statusSuccess = "success"
 	statusFailed  = "failed"

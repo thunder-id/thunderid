@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,12 +16,14 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 )
 
 // InitTestSuite contains tests for store initialization.
@@ -628,6 +631,14 @@ func (suite *LoadDeclarativeResourcesTestSuite) TestMatchesAssigneeEmptyAssignme
 	suite.False(matchesAssignee(assignments, "", groupSet))
 }
 
+// sharingForInit returns a sharing service that accepts the role type's registration, which
+// Initialize makes once the store is ready.
+func (suite *InitTestSuite) sharingForInit() *sharingmock.SharingServiceInterfaceMock {
+	sharingService := sharingmock.NewSharingServiceInterfaceMock(suite.T())
+	sharingService.EXPECT().RegisterResourceType(mock.Anything).Maybe()
+	return sharingService
+}
+
 // TestInitialize_DBClientError tests Initialize when DB client retrieval fails
 func (suite *InitTestSuite) TestInitialize_DBClientError() {
 	mockProvider := &providermock.DBProviderInterfaceMock{}
@@ -642,7 +653,7 @@ func (suite *InitTestSuite) TestInitialize_DBClientError() {
 	}()
 
 	mux := http.NewServeMux()
-	_, _, _, _, err := Initialize(mux, nil, nil, nil, nil, nil, nil)
+	_, _, _, _, err := Initialize(mux, nil, nil, nil, nil, nil, nil, suite.sharingForInit())
 
 	suite.Error(err)
 	suite.Equal("mock db client error", err.Error())
@@ -666,7 +677,7 @@ func (suite *InitTestSuite) TestInitialize_TransactionerError() {
 	}()
 
 	mux := http.NewServeMux()
-	_, _, _, _, err := Initialize(mux, nil, nil, nil, nil, nil, nil)
+	_, _, _, _, err := Initialize(mux, nil, nil, nil, nil, nil, nil, suite.sharingForInit())
 
 	suite.Error(err)
 	suite.Equal("mock transactioner error", err.Error())
@@ -697,7 +708,7 @@ func (suite *InitTestSuite) TestInitialize_Success() {
 	}()
 
 	mux := http.NewServeMux()
-	svc, _, _, exporter, err := Initialize(mux, nil, nil, nil, nil, nil, nil)
+	svc, _, _, exporter, err := Initialize(mux, nil, nil, nil, nil, nil, nil, suite.sharingForInit())
 
 	suite.NoError(err)
 	suite.NotNil(svc)
@@ -733,7 +744,7 @@ func (suite *InitTestSuite) TestInitialize_StoreInitError() {
 	}()
 
 	mux := http.NewServeMux()
-	svc, _, _, exporter, err := Initialize(mux, nil, nil, nil, nil, nil, nil)
+	svc, _, _, exporter, err := Initialize(mux, nil, nil, nil, nil, nil, nil, suite.sharingForInit())
 
 	suite.Error(err)
 	if err != nil {
@@ -741,4 +752,89 @@ func (suite *InitTestSuite) TestInitialize_StoreInitError() {
 	}
 	suite.Nil(svc)
 	suite.Nil(exporter)
+}
+
+// writeDeclaredRole puts one role document where a declarative-mode Initialize reads it, and
+// restores the runtime the suite set up when the test ends.
+func (suite *InitTestSuite) writeDeclaredRole(document string) {
+	// The declarative store is shared by the whole process, so a role an earlier test loaded would
+	// be reported as a duplicate.
+	suite.Require().NoError(entity.GetInstance().Clear())
+	config.ResetServerRuntime()
+	testDir := suite.T().TempDir()
+	rolesDir := filepath.Join(testDir, "config", "resources", "roles")
+	suite.Require().NoError(os.MkdirAll(rolesDir, 0750))
+	suite.Require().NoError(os.WriteFile(filepath.Join(rolesDir, "role.yaml"), []byte(document), 0600))
+
+	testConfig := &config.Config{
+		Role:                 config.RoleConfig{Store: string(serverconst.StoreModeDeclarative)},
+		DeclarativeResources: config.DeclarativeResources{Enabled: true},
+	}
+	suite.Require().NoError(config.InitializeServerRuntime(testDir, testConfig))
+	suite.T().Cleanup(func() {
+		suite.NoError(entity.GetInstance().Clear())
+		config.ResetServerRuntime()
+		suite.SetupSuite()
+	})
+}
+
+const declaredSharedRole = `
+id: role1
+name: Support Agent
+ouId: ou-owner
+permissions: []
+sharingPolicies:
+  - id: role1-policy-owner
+    childUnits:
+      mode: all
+`
+
+// A declared role's policies are loaded through the sharing framework.
+func (suite *InitTestSuite) TestInitialize_DeclaredRoleSharing() {
+	suite.writeDeclaredRole(declaredSharedRole)
+
+	sharingService := sharingmock.NewSharingServiceInterfaceMock(suite.T())
+	sharingService.EXPECT().RegisterResourceType(mock.Anything).Once()
+	sharingService.EXPECT().LoadDeclarativeResources(mock.Anything, mock.MatchedBy(
+		func(cfg sharing.DeclarativeLoaderConfig) bool {
+			return cfg.ResourceType == RoleSharingType && cfg.DirectoryName == "roles"
+		})).Return(nil).Once()
+
+	svc, _, _, _, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, sharingService)
+
+	suite.NoError(err)
+	suite.NotNil(svc)
+}
+
+func (suite *InitTestSuite) TestInitialize_DeclaredSharingPolicyRefused() {
+	suite.writeDeclaredRole(declaredSharedRole)
+
+	sharingService := sharingmock.NewSharingServiceInterfaceMock(suite.T())
+	sharingService.EXPECT().RegisterResourceType(mock.Anything).Once()
+	sharingService.EXPECT().LoadDeclarativeResources(mock.Anything, mock.Anything).
+		Return(errors.New("policy refused")).Once()
+
+	svc, _, _, _, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, sharingService)
+
+	suite.ErrorContains(err, "policy refused")
+	suite.Nil(svc)
+}
+
+// Every sharing path answers its own preflight, so a browser can call it with credentials.
+func (suite *InitTestSuite) TestRegisterRoutes_SharingPathsAnswerPreflight() {
+	mux := http.NewServeMux()
+	registerRoutes(mux, newRoleHandler(nil, nil))
+
+	for _, path := range []string{
+		"/roles/role1/sharing-policies",
+		"/roles/role1/sharing-policies/p1",
+		"/roles/role1/overlay-rules",
+	} {
+		suite.Run(path, func() {
+			w := httptest.NewRecorder()
+			mux.ServeHTTP(w, httptest.NewRequest(http.MethodOptions, path, nil))
+
+			suite.Equal(http.StatusNoContent, w.Code)
+		})
+	}
 }

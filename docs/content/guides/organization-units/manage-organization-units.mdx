@@ -296,7 +296,15 @@ curl -kL "https://localhost:8090/organization-units/{id}/users?include=display" 
   -H 'Authorization: Bearer <access-token>'
 ```
 
-The response includes pagination fields (`totalResults`, `startIndex`, `count`) and a `users` array. Each user entry contains an `id` and `type`, and optionally a `display` name when `include=display` is requested.
+The response includes pagination fields (`totalResults`, `startIndex`, `count`) and a `users` array. The array lists the users the OU owns first, followed by the users [shared with it](../../key-concepts/resource-sharing.mdx). Each user entry contains an `id`, a `type`, and an `isOwnedByOU` field that is `true` for a user the OU owns and `false` for a shared user. It also contains a `display` name when `include=display` is requested.
+
+To get the same users as full user objects, filter the users API on the OU ID. If you can't list users in that OU, this request returns an empty list instead of an error:
+
+```bash
+curl -kL -G "https://localhost:8090/users" \
+  --data-urlencode 'filter=ouId eq "{id}"' \
+  -H 'Authorization: Bearer <access-token>'
+```
 
 ## List Groups in an Organization Unit
 
@@ -316,13 +324,21 @@ curl -kL "https://localhost:8090/organization-units/tree/{path}/groups" \
 
 The response includes pagination fields and a `groups` array. Each group entry contains an `id` and `name`.
 
+To get the same groups as full group entries, filter the groups API on the OU ID:
+
+```bash
+curl -kL -G "https://localhost:8090/groups" \
+  --data-urlencode 'filter=ouId eq "{id}"' \
+  -H 'Authorization: Bearer <access-token>'
+```
+
 ## Delete an Organization Unit
 
 1. Open the OU from the **Organization units** list.
 2. Click **Delete** and confirm.
 
 :::warning
-Deletion fails if the OU still contains users, groups, user types, agent types, or child OUs. Delete or reassign all contained resources before deleting the OU.
+Deletion fails if the OU still contains users, groups, user types, agent types, connections, flows, or child OUs. Delete or reassign all contained resources before deleting the OU.
 :::
 
 To delete an OU using the API by its ID:
@@ -344,3 +360,4 @@ curl -kL -X DELETE "https://localhost:8090/organization-units/tree/{path}" \
 - [User Types](../../users/user-types) - User types are scoped to an organization unit
 - [Users](../../users/manage-users) - Each user belongs to an organization unit
 - [Groups](../../users/manage-groups) - Each group belongs to an organization unit
+- [Connections](../../identity-providers/manage-identity-providers#organization-unit-ownership) - Each connection belongs to an organization unit

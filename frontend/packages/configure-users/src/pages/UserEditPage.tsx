@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+  AccessStatusBanner,
+  AccountStatusAction,
   DocumentTitle,
   PageLoadingAnimation,
   QueryErrorNotice,
@@ -10,8 +12,10 @@ import {
   UnsavedChangesBar,
   getInitials,
 } from '@thunderid/components';
+import {useOrganizationAccess} from '@thunderid/configure-resource-sharing';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
+import {useThunderID} from '@thunderid/react';
 import type {User} from '@thunderid/types';
 import {isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -43,9 +47,11 @@ import useUpdateUser from '../api/useUpdateUser';
 import AttributesSummarySection from '../components/edit-user/AttributesSummarySection';
 import CredentialsTabPanel, {type CredentialFieldInfo} from '../components/edit-user/CredentialsTabPanel';
 import EditUserAttributes from '../components/edit-user/EditUserAttributes';
+import EditOrganizationAccessSettings from '../components/edit-user/organization-access/EditOrganizationAccessSettings';
 import QuickCopySection from '../components/edit-user/QuickCopySection';
 import UserDeleteDialog from '../components/UserDeleteDialog';
 import UserConstants from '../constants/user-constants';
+import UserQueryKeys from '../constants/user-query-keys';
 import useUserRoutes from '../hooks/useUserRoutes';
 import {dropNonConformingOptionalAttributes} from '../utils/dropNonConformingAttributes';
 import getUserErrorMessage from '../utils/getUserErrorMessage';
@@ -95,6 +101,12 @@ export default function UserEditPage() {
 
   const {data: user, isLoading: isUserLoading, error: userError, refetch} = useGetUser(userId);
   const updateUserMutation = useUpdateUser();
+  const {user: signedInUser} = useThunderID() as {user?: Record<string, unknown> | null};
+  // The server refuses every lifecycle operation on the operator's own account.
+  const isSignedInUser = Boolean(userId && (signedInUser?.['sub'] === userId || signedInUser?.['id'] === userId));
+  const handleStatusChanged = useCallback((): void => {
+    void refetch();
+  }, [refetch]);
 
   // Get all schemas to find the schema ID from the schema handle
   const {
@@ -156,6 +168,14 @@ export default function UserEditPage() {
     setActiveTab(newValue);
   };
 
+  // Held here rather than in its tab, because inactive tabs unmount and the draft must survive them.
+  const organizationAccess = useOrganizationAccess({
+    resourcePath: `users/${userId}`,
+    enabled: Boolean(userId),
+    // The tab's sentences say what access means for a user (affiliation): `users:organizationAccess.*`.
+    wordingNamespace: 'users',
+  });
+
   // useMutation returns a fresh object every render, so depending on the mutation itself gave
   // this callback a new identity every render, which looped consumers that stage from an effect.
   const {isError: isUpdateUserError, reset: resetUpdateUser} = updateUserMutation;
@@ -171,8 +191,19 @@ export default function UserEditPage() {
     [isUpdateUserError, resetUpdateUser],
   );
 
+  const hasUserChanges = useMemo(
+    () => Object.entries(editedUser).some(([key, value]) => !isEqualIgnoringEmpty(value, user?.[key as keyof User])),
+    [editedUser, user],
+  );
+  const hasChanges = hasUserChanges || organizationAccess.hasChanges;
+
+  // One flag over the whole save (user update, refetch, then access save), so the bar's Save and Reset
+  // stay disabled between the steps. The ref also drops a second click before the re-render lands.
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+
   const handleSave = useCallback(async () => {
-    if (!userId || !user?.ouId || !user.type) return;
+    if (submittingRef.current || !userId || !user?.ouId || !user.type) return;
 
     // Drop stale optional attribute values so an untouched mismatch doesn't block the update.
     const attributes = dropNonConformingOptionalAttributes(
@@ -180,27 +211,44 @@ export default function UserEditPage() {
       userTypeDetails?.schema,
     );
 
+    // The user is saved first, so a refused access change leaves the user's own changes saved and
+    // only the access draft waiting to be retried.
+    submittingRef.current = true;
+    setIsSubmitting(true);
     try {
-      await updateUserMutation.mutateAsync({
-        userId,
-        data: {
-          ouId: user.ouId,
-          type: user.type,
-          attributes,
-        },
-      });
-      setEditedUser({});
-      await refetch();
-      setAttributesResetKey((key) => key + 1);
+      if (hasUserChanges) {
+        await updateUserMutation.mutateAsync({
+          userId,
+          data: {
+            ouId: user.ouId,
+            type: user.type,
+            attributes,
+          },
+        });
+        setEditedUser({});
+        await refetch();
+        setAttributesResetKey((key) => key + 1);
+      }
+      if (organizationAccess.hasChanges) {
+        await organizationAccess.save();
+      }
     } catch (err) {
       logger.error('Failed to update user', {error: err});
+    } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
     }
-  }, [user, userId, editedUser, userTypeDetails, updateUserMutation, refetch, logger]);
-
-  const hasChanges = useMemo(
-    () => Object.entries(editedUser).some(([key, value]) => !isEqualIgnoringEmpty(value, user?.[key as keyof User])),
-    [editedUser, user],
-  );
+  }, [
+    user,
+    userId,
+    editedUser,
+    hasUserChanges,
+    userTypeDetails,
+    updateUserMutation,
+    organizationAccess,
+    refetch,
+    logger,
+  ]);
 
   const handleBack = async () => {
     await navigate(routes.list());
@@ -409,6 +457,12 @@ export default function UserEditPage() {
     });
   }
 
+  tabs.push({
+    key: 'affiliations',
+    label: t('users:manageUser.tabs.affiliations', 'Affiliations'),
+    render: () => <EditOrganizationAccessSettings user={user} access={organizationAccess} />,
+  });
+
   if (!user.isReadOnly) {
     tabs.push({
       key: 'advanced',
@@ -437,6 +491,9 @@ export default function UserEditPage() {
     });
   }
 
+  const tForUserErrors = (key: string, options?: Record<string, unknown>): string =>
+    t(key.includes(':') ? key : `users:${key}`, options);
+
   const safeActiveTab = activeTab >= tabs.length ? 0 : activeTab;
 
   return (
@@ -447,6 +504,7 @@ export default function UserEditPage() {
           {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
         </Alert>
       )}
+      <AccessStatusBanner status={user.status} sx={{mb: 2}} />
       {/* Header */}
       <PageTitle>
         <PageTitle.BackButton component={<Link to={routes.list()} />}>
@@ -467,6 +525,18 @@ export default function UserEditPage() {
             <Chip label={matchedSchema?.displayName ?? user.type} size="small" sx={{px: 0.5}} />
           </Stack>
         </PageTitle.SubHeader>
+        {/* Read-only records too: the flows change only runtime state. */}
+        {!isSignedInUser && (
+          <PageTitle.Actions>
+            <AccountStatusAction
+              category="user"
+              subject={user.id}
+              status={user.status}
+              listQueryKey={[UserQueryKeys.USERS]}
+              onChanged={handleStatusChanged}
+            />
+          </PageTitle.Actions>
+        )}
       </PageTitle>
 
       {/* Tabs */}
@@ -496,28 +566,40 @@ export default function UserEditPage() {
         onSuccess={handleDeleteSuccess}
       />
 
-      {hasChanges && (
+      {/* Kept up until the whole save finishes: an attributes save clears the staged edit before the
+          refetch, so `hasChanges` alone would drop the bar while the form still shows the old values. */}
+      {(hasChanges || isSubmitting) && (
         <UnsavedChangesBar
           message={t('users:manageUser.unsavedChanges', 'You have unsaved changes')}
           resetLabel={t('users:manageUser.reset', 'Reset')}
           saveLabel={t('users:manageUser.save', 'Save')}
           savingLabel={t('users:manageUser.saving', 'Saving…')}
-          isSaving={updateUserMutation.isPending}
+          isSaving={isSubmitting || updateUserMutation.isPending || organizationAccess.isSaving}
+          resetDisabled={isSubmitting || updateUserMutation.isPending || organizationAccess.isSaving}
           saveDisabled={user.isReadOnly === true}
           error={
-            updateUserMutation.error
+            (updateUserMutation.error
               ? getUserErrorMessage(
                   updateUserMutation.error,
-                  (key, options) => t(key.includes(':') ? key : `users:${key}`, options),
+                  tForUserErrors,
                   'update.error',
                   'Failed to update user. Please try again.',
                 )
-              : undefined
+              : undefined) ??
+            (organizationAccess.saveError
+              ? getUserErrorMessage(
+                  organizationAccess.saveError,
+                  tForUserErrors,
+                  'organizationAccess.save.error',
+                  'Failed to update affiliations. Please try again.',
+                )
+              : undefined)
           }
           onReset={() => {
             updateUserMutation.reset();
             setEditedUser({});
             setAttributesResetKey((key) => key + 1);
+            organizationAccess.reset();
           }}
           onSave={() => {
             void handleSave();

@@ -1,10 +1,10 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {fireEvent, render, screen, waitFor} from '@thunderid/test-utils';
+import {fireEvent, render, screen, waitFor, within} from '@thunderid/test-utils';
 import {type ReactNode, useEffect} from 'react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import type {OutboundAuthMethod} from '../../models/connection';
+import type {ConnectionUsagesResponse, NotificationConfigResponse, OutboundAuthMethod} from '../../models/connection';
 import ConnectionDetailPage from '../ConnectionDetailPage';
 
 const updateMock = vi.fn().mockResolvedValue({});
@@ -148,6 +148,8 @@ const USERNAME_FIELD_ID = 'connection-field-authentication.properties.username';
 const mockParams: {type: string; id: string} = {type: 'google', id: 'g1'};
 const mockConn: {data: Record<string, unknown>} = {data: CONNECTION};
 const mockMeta: {methods: OutboundAuthMethod[]; isError: boolean} = {methods: [], isError: false};
+const NO_USAGES: ConnectionUsagesResponse = {totalResults: 0, count: 0, summary: {}, usages: []};
+const mockUsages: {data: ConnectionUsagesResponse} = {data: NO_USAGES};
 
 const SMTP_METHODS: OutboundAuthMethod[] = [
   {type: 'none', displayName: 'None'},
@@ -250,7 +252,24 @@ vi.mock('../../api/useUpdateConnection', () => ({
 }));
 vi.mock('../../api/useDeleteConnection', () => ({default: () => ({mutate: deleteMock, isPending: false})}));
 vi.mock('../../api/useGetConnectionUsages', () => ({
-  default: () => ({data: {totalResults: 0, count: 0, summary: {}, usages: []}, isLoading: false}),
+  default: () => ({data: mockUsages.data, isLoading: false, error: null, refetch: vi.fn()}),
+}));
+const mockNotificationConfig: {data: NotificationConfigResponse | undefined; isLoading: boolean; error: Error | null} =
+  {
+    data: {readOnly: {}, writable: {}, merged: {}},
+    isLoading: false,
+    error: null,
+  };
+vi.mock('../../api/useGetNotificationConfig', () => ({default: () => mockNotificationConfig}));
+const mockEmailProviders: {data: {id: string}[] | undefined} = {data: []};
+vi.mock('../../api/useEmailProviders', () => ({default: () => mockEmailProviders}));
+const setDefaultSenderMock = vi.fn();
+vi.mock('../../api/useSetDefaultEmailSender', () => ({
+  default: () => ({mutate: setDefaultSenderMock, isPending: false}),
+}));
+
+vi.mock('../../components/OrganizationUnitSection', () => ({
+  default: ({ouId}: {ouId: string}) => <section aria-label="Organization unit" data-ou-id={ouId} />,
 }));
 
 vi.mock('../../components/ConnectionForm', () => ({
@@ -443,6 +462,7 @@ describe('ConnectionDetailPage', () => {
     updateMutationState.isError = false;
     mockMeta.methods = [];
     mockMeta.isError = false;
+    mockUsages.data = NO_USAGES;
   });
 
   it('renders the general tab with quick-copy and the credentials form', () => {
@@ -451,6 +471,31 @@ describe('ConnectionDetailPage', () => {
     expect(screen.getByDisplayValue('g1')).toBeInTheDocument();
     expect(screen.getByText('Unique identifier for this connection.')).toBeInTheDocument();
     expect(screen.getByTestId('stub-connection-form')).toBeInTheDocument();
+  });
+
+  it('shows the Organization unit card for the connection owner', () => {
+    mockConn.data = {...CONNECTION, ouId: 'ou-1'};
+    render(<ConnectionDetailPage />);
+    expect(screen.getByRole('region', {name: 'Organization unit'})).toHaveAttribute('data-ou-id', 'ou-1');
+  });
+
+  it.each([
+    ['google', CONNECTION],
+    ['oidc', OIDC_CONNECTION],
+    ['twilio', TWILIO_CONNECTION],
+    ['authzen-pdp', AUTHZEN_PDP_CONNECTION],
+    ['http', HTTP_CONNECTION],
+  ])('shows the Organization unit card for a %s connection', (type, connection) => {
+    mockParams.type = type;
+    mockParams.id = connection.id;
+    mockConn.data = {...connection, ouId: 'ou-9'};
+    render(<ConnectionDetailPage />);
+    expect(screen.getByRole('region', {name: 'Organization unit'})).toHaveAttribute('data-ou-id', 'ou-9');
+  });
+
+  it('omits the Organization unit card when the response carries no owner', () => {
+    render(<ConnectionDetailPage />);
+    expect(screen.queryByRole('region', {name: 'Organization unit'})).not.toBeInTheDocument();
   });
 
   it('sets the browser tab title to the connection name', async () => {
@@ -1283,5 +1328,186 @@ describe('ConnectionDetailPage', () => {
         ),
       ).toBeInTheDocument();
     });
+
+    it('lists the flows that use the connection in the Usages section', () => {
+      mockUsages.data = {
+        totalResults: 2,
+        count: 2,
+        summary: {flow: 2},
+        usages: [
+          {resourceType: 'flow', id: 'f1', displayName: 'Default sign-in', behaviorOnDelete: 'restrict'},
+          {resourceType: 'flow', id: 'f2', displayName: 'Step-up', behaviorOnDelete: 'restrict'},
+        ],
+      };
+      render(<ConnectionDetailPage />);
+
+      const usages = screen.getByRole('region', {name: 'Usages'});
+      expect(usages).toHaveTextContent('Default sign-in');
+      expect(usages).toHaveTextContent('Step-up');
+      expect(usages).toHaveTextContent('Flow');
+    });
+
+    it('says no resources use the connection when it has no usages', () => {
+      render(<ConnectionDetailPage />);
+
+      expect(screen.getByRole('region', {name: 'Usages'})).toHaveTextContent('No resources use this connection.');
+    });
+
+    it('shows the localized message when the server refuses to delete a connection in use', () => {
+      deleteMock.mockImplementationOnce((_id: string, opts: {onSuccess: () => void; onError?: (e: unknown) => void}) =>
+        opts.onError?.({response: {status: 409, data: {code: 'CON-1026'}}}),
+      );
+      render(<ConnectionDetailPage />);
+
+      fireEvent.click(screen.getByTestId('connection-tab-advanced'));
+      fireEvent.click(screen.getByTestId('connection-delete-button'));
+      fireEvent.click(screen.getByTestId('connection-delete-confirm'));
+
+      expect(
+        screen.getByText(
+          'This connection is used by one or more resources. Remove it from those resources before deleting it.',
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('does not show a Usages section for connections that do not list usages', () => {
+    render(<ConnectionDetailPage />);
+
+    expect(screen.queryByRole('region', {name: 'Usages'})).not.toBeInTheDocument();
+  });
+});
+
+describe('ConnectionDetailPage default email sender', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockParams.type = 'email-smtp';
+    mockParams.id = 'sm1';
+    mockConn.data = smtpConnection({username: 'mailer', password: '******'});
+    mockMeta.methods = SMTP_METHODS;
+    mockMeta.isError = false;
+    mockNotificationConfig.data = {readOnly: {}, writable: {}, merged: {}};
+    mockNotificationConfig.isLoading = false;
+    mockNotificationConfig.error = null;
+    mockEmailProviders.data = [{id: 'sm1'}, {id: 'sm9'}];
+  });
+
+  it('offers to set an email sender that is not the default', () => {
+    render(<ConnectionDetailPage />);
+    expect(screen.queryByText('Default')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', {name: 'Set as default'}));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', {name: 'Set as default'}));
+
+    expect(setDefaultSenderMock).toHaveBeenCalledWith({defaultEmailSenderId: 'sm1'}, expect.any(Object));
+    expect(within(dialog).queryByText('This will replace the current default email sender.')).not.toBeInTheDocument();
+  });
+
+  it('says the dialog replaces the current default when another sender holds it', () => {
+    mockNotificationConfig.data = {
+      readOnly: {},
+      writable: {defaultEmailSenderId: 'sm9'},
+      merged: {defaultEmailSenderId: 'sm9'},
+    };
+    render(<ConnectionDetailPage />);
+
+    fireEvent.click(screen.getByRole('button', {name: 'Set as default'}));
+    expect(
+      within(screen.getByRole('dialog')).getByText('This will replace the current default email sender.'),
+    ).toBeInTheDocument();
+  });
+
+  // The section keeps a deleted sender's ID, which is no default to replace.
+  it('does not say the dialog replaces a default whose sender no longer exists', () => {
+    mockNotificationConfig.data = {
+      readOnly: {},
+      writable: {defaultEmailSenderId: 'deleted'},
+      merged: {defaultEmailSenderId: 'deleted'},
+    };
+    render(<ConnectionDetailPage />);
+
+    fireEvent.click(screen.getByRole('button', {name: 'Set as default'}));
+    expect(
+      within(screen.getByRole('dialog')).queryByText('This will replace the current default email sender.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('marks the default sender and hides the action', () => {
+    mockNotificationConfig.data = {
+      readOnly: {},
+      writable: {defaultEmailSenderId: 'sm1'},
+      merged: {defaultEmailSenderId: 'sm1'},
+    };
+    render(<ConnectionDetailPage />);
+    expect(screen.getByText('Default')).toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Set as default'})).not.toBeInTheDocument();
+  });
+
+  // A declarative default rejects every write, so no other sender may set it.
+  it('disables the action with the reason when the deployment configuration fixes the default', async () => {
+    mockNotificationConfig.data = {
+      readOnly: {defaultEmailSenderId: 'other'},
+      writable: {},
+      merged: {defaultEmailSenderId: 'other'},
+    };
+    render(<ConnectionDetailPage />);
+    expect(screen.queryByText('Default')).not.toBeInTheDocument();
+    const action = screen.getByRole('button', {name: 'Set as default'});
+    expect(action).toBeDisabled();
+
+    fireEvent.mouseOver(action.parentElement!);
+    expect(
+      await screen.findByText('The default email sender is fixed by the deployment configuration.'),
+    ).toBeInTheDocument();
+  });
+
+  it('hides the action until the notification section loads', () => {
+    mockNotificationConfig.data = undefined;
+    mockNotificationConfig.isLoading = true;
+    render(<ConnectionDetailPage />);
+    expect(screen.queryByRole('button', {name: 'Set as default'})).not.toBeInTheDocument();
+  });
+
+  it('reports a notification section that fails to load and hides the action', () => {
+    mockNotificationConfig.data = undefined;
+    mockNotificationConfig.error = new Error('boom');
+    render(<ConnectionDetailPage />);
+    expect(screen.getByText('Failed to load the default email sender.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Set as default'})).not.toBeInTheDocument();
+  });
+
+  it('does not offer the action on a connection that is not an email sender', () => {
+    mockParams.type = 'google';
+    mockParams.id = 'g1';
+    mockConn.data = CONNECTION;
+    mockMeta.methods = [];
+    mockNotificationConfig.data = {
+      readOnly: {},
+      writable: {defaultEmailSenderId: 'g1'},
+      merged: {defaultEmailSenderId: 'g1'},
+    };
+    render(<ConnectionDetailPage />);
+    expect(screen.queryByRole('button', {name: 'Set as default'})).not.toBeInTheDocument();
+    expect(screen.queryByText('Default')).not.toBeInTheDocument();
+  });
+
+  it('warns before deleting the default sender', () => {
+    mockNotificationConfig.data = {
+      readOnly: {},
+      writable: {defaultEmailSenderId: 'sm1'},
+      merged: {defaultEmailSenderId: 'sm1'},
+    };
+    render(<ConnectionDetailPage />);
+    fireEvent.click(screen.getByTestId('connection-tab-advanced'));
+    fireEvent.click(screen.getByTestId('connection-delete-button'));
+    expect(screen.getByTestId('connection-delete-default-sender-warning')).toBeInTheDocument();
+  });
+
+  it('does not warn before deleting a sender that is not the default', () => {
+    render(<ConnectionDetailPage />);
+    fireEvent.click(screen.getByTestId('connection-tab-advanced'));
+    fireEvent.click(screen.getByTestId('connection-delete-button'));
+    expect(screen.queryByTestId('connection-delete-default-sender-warning')).not.toBeInTheDocument();
   });
 });

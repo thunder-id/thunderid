@@ -122,12 +122,14 @@ vi.mock('@thunderid/configure-design', async (importOriginal) => ({
   ),
 }));
 
-vi.mock('@thunderid/react', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@thunderid/react')>()),
-  useGetApplications: () => ({
+vi.mock('../../../api/useGetApplications', () => ({
+  default: () => ({
     data: {applications: mockApplications},
   }),
-  useGetApplication: (applicationId: string) => ({
+}));
+
+vi.mock('../../../api/useGetApplication', () => ({
+  default: (applicationId: string) => ({
     data: applicationId
       ? {id: applicationId, name: 'My App', themeId: 'theme-1', logoUrl: 'https://myapp.example/logo.png'}
       : undefined,

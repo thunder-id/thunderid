@@ -880,9 +880,10 @@ components:
             | `resource_server` | `resources` (top level), `actions`, and for each resource `resources/{resourceId}`, `resources/{resourceId}/resources` (its children) and `resources/{resourceId}/actions` |
             | `translation` | `ns/{namespace}` for each namespace |
 
-            A version names a resource server's resources `{resourceServerId}_{handle}`, since an
-            export does not carry the ids this deployment gave them. Server-level actions are not
-            exported, so `actions` is empty.
+            A version names a resource server's resources `{resourceServerId}{delimiter}{path}`, the
+            actions of a resource `{resourceServerId}{delimiter}{path}{delimiter}{handle}`, and the
+            actions of the resource server itself `{resourceServerId}{delimiter}{handle}`, since an
+            export does not carry the ids this deployment gave them.
     SkippedResource:
       type: object
       required: [resourceType, code, reason]

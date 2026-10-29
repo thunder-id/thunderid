@@ -183,8 +183,15 @@ func (ts *ControlPlaneTestSuite) TestADeclarativeNotificationSectionCanNameADecl
 	snapshot := filepath.Join(dir, "deployment.yaml")
 	ts.Require().NoError(os.WriteFile(snapshot, deployment, 0o600))
 	resourcesPath := filepath.Join(dir, "resources.yaml")
-	ts.Require().NoError(os.WriteFile(resourcesPath, []byte(`resource_type: connection
+	ts.Require().NoError(os.WriteFile(resourcesPath, []byte(`resource_type: organization_unit
+id: cp-declarative-ou
+handle: cp-declarative-ou
+name: Control Plane Declarative OU
+description: Owns the declarative sender
+---
+resource_type: connection
 id: `+senderID+`
+ouHandle: cp-declarative-ou
 type: email-smtp
 name: Control Plane Declarative Email Sender
 host: localhost
@@ -404,6 +411,64 @@ func (ts *ControlPlaneTestSuite) TestAnImportedResourceServerKeepsItsIdentifierR
 	ts.Contains(exported.Resources, "identifier: "+reference, "the export named the identifier again")
 }
 
+// An MCP resource server imported into a Control Plane keeps its identifier as the reference it was
+// exported with, though an MCP identifier written as a value must be an http or https URL. A secret
+// reference is still refused there.
+func (ts *ControlPlaneTestSuite) TestAnImportedMCPResourceServerKeepsItsIdentifierReference() {
+	name := unique("CP Reference MCP")
+	var created struct {
+		ID string `json:"id"`
+	}
+	status, raw := ts.call(http.MethodPost, "/resource-servers", map[string]any{
+		"name":       name,
+		"identifier": "https://" + unique("cp-reference-mcp") + ".example.com/mcp",
+		"type":       "MCP",
+		"ouId":       ts.ouID,
+	}, &created)
+	ts.Require().Equal(http.StatusCreated, status, string(raw))
+	rsID := created.ID
+	ts.T().Cleanup(func() { _ = testutils.DeleteResourceServer(rsID) })
+
+	var exported struct {
+		Resources string `json:"resources"`
+	}
+	status, raw = ts.call(http.MethodPost, "/export", map[string]any{"resourceServers": []string{rsID}}, &exported)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	reference := "var:" + variableName("RESOURCE_SERVER", name, "IDENTIFIER")
+	ts.Require().Contains(exported.Resources, "identifier: "+reference)
+
+	ts.Require().NoError(testutils.DeleteResourceServer(rsID))
+	var imported importOutcome
+	status, raw = ts.call(http.MethodPost, "/import", map[string]any{
+		"content": exported.Resources,
+		"options": map[string]any{"target": "runtime", "continueOnError": true},
+	}, &imported)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.Require().Equal(0, imported.Summary.Failed, string(raw))
+	ts.Require().Equal(1, imported.Summary.Imported, string(raw))
+
+	var server struct {
+		Identifier string `json:"identifier"`
+		Type       string `json:"type"`
+	}
+	status, raw = ts.call(http.MethodGet, "/resource-servers/"+rsID, nil, &server)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.Equal(reference, server.Identifier)
+	ts.Equal("MCP", server.Type)
+
+	var failure struct {
+		Code string `json:"code"`
+	}
+	status, raw = ts.call(http.MethodPut, "/resource-servers/"+rsID, map[string]any{
+		"name":       name,
+		"identifier": "sec:" + variableName("RESOURCE_SERVER", name, "IDENTIFIER"),
+		"ouId":       ts.ouID,
+	}, nil)
+	ts.Require().Equal(http.StatusBadRequest, status, string(raw))
+	ts.Require().NoError(json.Unmarshal(raw, &failure), string(raw))
+	ts.Equal("RES-1024", failure.Code)
+}
+
 // A Control Plane runs no executor, so a flow is validated against the static executor catalog:
 // a known executor is accepted and an unknown one refused.
 func (ts *ControlPlaneTestSuite) TestFlowsAreValidatedAgainstTheExecutorCatalog() {
@@ -413,6 +478,7 @@ func (ts *ControlPlaneTestSuite) TestFlowsAreValidatedAgainstTheExecutorCatalog(
 
 	status, raw := ts.call(http.MethodPost, "/flows", map[string]any{
 		"name":     "Unknown executor flow",
+		"ouId":     ts.ouID,
 		"flowType": "AUTHENTICATION",
 		"handle":   unique("cp-unknown-executor"),
 		"nodes": []map[string]any{

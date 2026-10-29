@@ -222,7 +222,7 @@ func (s *UtilsTestSuite) TestIsLockLive() {
 func (s *UtilsTestSuite) TestLockableMethods() {
 	s.True(isLockable(providers.AuthenticationMethodCredential))
 	s.True(isLockable(providers.AuthenticationMethodOTP))
-	s.True(isLockable(AuthenticationMethodEntity))
+	s.True(isLockable(AuthenticationMethodAccount))
 	s.False(isLockable(providers.AuthenticationMethodSystemCredential),
 		"a client secret is never counted, whatever the category's configuration")
 
@@ -270,7 +270,7 @@ func (s *UtilsTestSuite) TestGranularityDefaultsToAuthenticationMethod() {
 	s.Equal(granularityAuthenticationMethod, parseGranularity(""))
 	s.Equal(granularityAuthenticationMethod, parseGranularity("nonsense"))
 	s.Equal(granularityAuthenticationMethod, parseGranularity(granularityAuthenticationMethod))
-	s.Equal(granularityEntity, parseGranularity(granularityEntity))
+	s.Equal(granularityAccount, parseGranularity(granularityAccount))
 }
 
 // A zero duration is kept as the permanent lock rather than dropped.
@@ -288,16 +288,16 @@ func (s *UtilsTestSuite) TestTheZeroValueEnforcesEveryLock() {
 	}
 }
 
-// Under entity granularity, entries under authentication methods are not enforced.
-func (s *UtilsTestSuite) TestEntityGranularityUnenforcesEveryMethodMethod() {
+// Under account granularity, entries under authentication methods are not enforced.
+func (s *UtilsTestSuite) TestAccountGranularityUnenforcesEveryMethodMethod() {
 	cfg := testAccountAccessConfig()
-	cfg.User.LockGranularity = new(granularityEntity)
+	cfg.User.LockGranularity = new(granularityAccount)
 
 	enforcement := lockEnforcementFor(cfg, providers.EntityCategoryUser)
 
 	s.False(enforcement.enforces(providers.AuthenticationMethodCredential))
 	s.False(enforcement.enforces(providers.AuthenticationMethodOTP))
-	s.True(enforcement.enforces(AuthenticationMethodEntity), "the entity entry is always enforced")
+	s.True(enforcement.enforces(AuthenticationMethodAccount), "the account entry is always enforced")
 }
 
 // A method whose policy is switched off no longer enforces its recorded lock.
@@ -309,15 +309,15 @@ func (s *UtilsTestSuite) TestADisabledMethodPolicyIsNotEnforced() {
 
 	s.False(enforcement.enforces(providers.AuthenticationMethodOTP))
 	s.True(enforcement.enforces(providers.AuthenticationMethodCredential))
-	s.True(enforcement.enforces(AuthenticationMethodEntity))
+	s.True(enforcement.enforces(AuthenticationMethodAccount))
 }
 
-// With locking off for a category, no failure lock is enforced, the entity entry included.
+// With locking off for a category, no failure lock is enforced, the account entry included.
 func (s *UtilsTestSuite) TestADisabledCategoryEnforcesNoFailureLock() {
 	enforcement := lockEnforcementFor(testAccountAccessConfig(), providers.EntityCategoryAgent)
 
 	s.False(enforcement.enforces(providers.AuthenticationMethodCredential))
-	s.False(enforcement.enforces(AuthenticationMethodEntity))
+	s.False(enforcement.enforces(AuthenticationMethodAccount))
 }
 
 // newTestLockEnforcement returns an enforcement that skips the given methods.
@@ -328,7 +328,7 @@ func newTestLockEnforcement(unenforced map[providers.AuthenticationMethod]struct
 func allMethods() map[providers.AuthenticationMethod]struct{} {
 	methods := make(map[providers.AuthenticationMethod]struct{})
 	for _, method := range AllAuthenticationMethods {
-		if method != AuthenticationMethodEntity {
+		if method != AuthenticationMethodAccount {
 			methods[method] = struct{}{}
 		}
 	}
@@ -349,7 +349,7 @@ func (s *UtilsTestSuite) TestEffectiveStatusPrecedence() {
 	putLockEntry(&lapsed, testMethod, LockEntry{UnlockAt: s.at(-time.Second)})
 
 	postSuspension := AccessState{}
-	putLockEntry(&postSuspension, AuthenticationMethodEntity,
+	putLockEntry(&postSuspension, AuthenticationMethodAccount,
 		LockEntry{UnlockAt: permanentUnlockAt, Reason: lockReasonPostSuspension})
 
 	cases := []struct {
@@ -390,7 +390,7 @@ func (s *UtilsTestSuite) TestStatusDetailsDescribeTheHold() {
 		UnlockAt: s.at(5 * time.Minute)})
 
 	postSuspension := AccessState{}
-	putLockEntry(&postSuspension, AuthenticationMethodEntity,
+	putLockEntry(&postSuspension, AuthenticationMethodAccount,
 		LockEntry{UnlockAt: permanentUnlockAt, Reason: lockReasonPostSuspension})
 
 	suspended := AccessState{Suspend: &SuspendState{
@@ -425,7 +425,7 @@ func (s *UtilsTestSuite) TestStatusDetailsDescribeTheHold() {
 		{"the post-suspension hold reports no expiry", providers.EntityStateActive, postSuspension,
 			providers.AccessStatusLocked, &providers.AccessStatusDetails{
 				Reason:        providers.AccessHoldReasonSuspensionReleaseLock,
-				LockedMethods: []providers.AccessLockedMethod{{Method: string(AuthenticationMethodEntity)}},
+				LockedMethods: []providers.AccessLockedMethod{{Method: string(AuthenticationMethodAccount)}},
 			}},
 		{"a suspension carries when it was placed and why", providers.EntityStateSuspended, suspended,
 			providers.AccessStatusSuspended, suspension},
@@ -477,16 +477,16 @@ func (s *UtilsTestSuite) TestEveryLiveAuthenticationMethodLockIsReported() {
 	}, report.Details.LockedMethods)
 }
 
-// The entity-wide entry reports as the single entity method, not as a list of methods.
-func (s *UtilsTestSuite) TestTheEntityEntryReportsAsOneMethod() {
+// The account-wide entry reports as the single account method, not as a list of methods.
+func (s *UtilsTestSuite) TestTheAccountEntryReportsAsOneMethod() {
 	doc := AccessState{}
-	putLockEntry(&doc, AuthenticationMethodEntity, LockEntry{LockCount: 1, UnlockAt: s.at(30 * time.Minute)})
+	putLockEntry(&doc, AuthenticationMethodAccount, LockEntry{LockCount: 1, UnlockAt: s.at(30 * time.Minute)})
 	putLockEntry(&doc, providers.AuthenticationMethodOTP, LockEntry{LockCount: 1, UnlockAt: s.at(5 * time.Minute)})
 
 	report := reportFor(providers.EntityStateActive, doc, s.now, lockEnforcement{})
 	s.Require().NotNil(report.Details)
 	s.Equal([]providers.AccessLockedMethod{
-		{Method: string(AuthenticationMethodEntity), ExpiresAt: s.at(30 * time.Minute)},
+		{Method: string(AuthenticationMethodAccount), ExpiresAt: s.at(30 * time.Minute)},
 	}, report.Details.LockedMethods)
 }
 
@@ -541,8 +541,8 @@ func (s *UtilsTestSuite) TestOnlyTheUnenforcedMethodIsDropped() {
 
 // The post-suspension hold is reported regardless of enforcement, since it is enforced regardless of
 // the lockout setting.
-func (s *UtilsTestSuite) TestAnEntityWideHoldIsReportedEvenWhenNoMethodMethodIs() {
-	doc := AccessState{Lock: LockState{Entity: &LockEntry{
+func (s *UtilsTestSuite) TestAnAccountWideHoldIsReportedEvenWhenNoMethodMethodIs() {
+	doc := AccessState{Lock: LockState{Account: &LockEntry{
 		UnlockAt: permanentUnlockAt, Reason: lockReasonPostSuspension,
 	}}}
 
@@ -552,12 +552,12 @@ func (s *UtilsTestSuite) TestAnEntityWideHoldIsReportedEvenWhenNoMethodMethodIs(
 	s.Equal(providers.AccessHoldReasonSuspensionReleaseLock, report.Details.Reason)
 }
 
-// An entity-wide failure lock follows enforcement, as the check does.
-func (s *UtilsTestSuite) TestAnUnenforcedEntityWideFailureLockIsNotReported() {
-	doc := AccessState{Lock: LockState{Entity: &LockEntry{LockCount: 3, UnlockAt: permanentUnlockAt}}}
+// An account-wide failure lock follows enforcement, as the check does.
+func (s *UtilsTestSuite) TestAnUnenforcedAccountWideFailureLockIsNotReported() {
+	doc := AccessState{Lock: LockState{Account: &LockEntry{LockCount: 3, UnlockAt: permanentUnlockAt}}}
 
 	report := reportFor(providers.EntityStateActive, doc, s.now, newTestLockEnforcement(
-		map[providers.AuthenticationMethod]struct{}{AuthenticationMethodEntity: {}}))
+		map[providers.AuthenticationMethod]struct{}{AuthenticationMethodAccount: {}}))
 
 	s.Equal(providers.AccessStatusActive, report.Value)
 }
@@ -618,8 +618,8 @@ func (s *UtilsTestSuite) TestMergeAccountAccessCategoryOverlaysEachField() {
 		edit     func(want *accountAccessCategory)
 	}{
 		"nothing stated": {accountAccessCategory{}, func(*accountAccessCategory) {}},
-		"lockGranularity": {accountAccessCategory{LockGranularity: new(granularityEntity)},
-			func(want *accountAccessCategory) { want.LockGranularity = new(granularityEntity) }},
+		"lockGranularity": {accountAccessCategory{LockGranularity: new(granularityAccount)},
+			func(want *accountAccessCategory) { want.LockGranularity = new(granularityAccount) }},
 		"recordLastLogin": {accountAccessCategory{RecordLastLogin: new(true)},
 			func(want *accountAccessCategory) { want.RecordLastLogin = new(true) }},
 		"lastLoginResolutionSeconds": {accountAccessCategory{LastLoginResolutionSeconds: new(60)},
@@ -761,7 +761,7 @@ func (s *UtilsTestSuite) TestAnEmptyCategoryConvertsToNil() {
 
 func (s *UtilsTestSuite) TestTheDeploymentConfigurationConverts() {
 	value := accountAccessValueFrom(sysconfig.AccountAccessConfig{User: sysconfig.CategoryAccessConfig{
-		LockGranularity: "entity",
+		LockGranularity: "account",
 		RecordLastLogin: new(true),
 		Default: sysconfig.LockPolicyConfig{Threshold: new(5), LockDurationsSeconds: []int{60},
 			MaxConsecutiveFailures: new(50)},
@@ -771,7 +771,7 @@ func (s *UtilsTestSuite) TestTheDeploymentConfigurationConverts() {
 	}})
 
 	s.Require().NotNil(value.User)
-	s.Equal(granularityEntity, *value.User.LockGranularity)
+	s.Equal(granularityAccount, *value.User.LockGranularity)
 	s.True(*value.User.RecordLastLogin)
 	s.Equal(5, *value.User.Default.Threshold)
 	s.Equal([]int{60}, value.User.Default.LockDurationsSeconds)
@@ -821,19 +821,19 @@ func testLockTemplates() *accountAccessLockEmail {
 }
 
 // A lock that expires renders its expiring template with the method, its duration and its unlock time
-// in UTC. The entity-wide lock names no method.
+// in UTC. The account-wide lock names no method.
 func (s *UtilsTestSuite) TestATemporaryLockFillsItsFacts() {
 	for method, want := range map[providers.AuthenticationMethod]struct{ handle, method string }{
 		providers.AuthenticationMethodCredential: {"authentication-method-locked", "credential"},
 		providers.AuthenticationMethodOTP:        {"authentication-method-locked", "otp"},
-		AuthenticationMethodEntity:               {"account-locked", ""},
+		AuthenticationMethodAccount:              {"account-locked", ""},
 	} {
 		handle, data := lockTemplateFor(testLockTemplates(), method, testLockEpisode())
 		s.Equal(want.handle, handle, "method %s", method)
 		s.Equal(map[string]string{
-			templateKeyAuthenticationMethod: want.method,
-			templateKeyLockDuration:         "5 minutes",
-			templateKeyUnlockTime:           "2026-10-08 10:05",
+			templateKeyLockedAuthenticationMethod: want.method,
+			templateKeyLockDuration:               "5 minutes",
+			templateKeyUnlockTime:                 "2026-10-08 10:05",
 		}, data, "method %s", method)
 	}
 
@@ -865,7 +865,7 @@ func (s *UtilsTestSuite) TestAPermanentLockRendersItsOwnTemplate() {
 		for method, want := range map[providers.AuthenticationMethod]string{
 			providers.AuthenticationMethodCredential: "authentication-method-locked-permanent",
 			providers.AuthenticationMethodOTP:        "authentication-method-locked-permanent",
-			AuthenticationMethodEntity:               "account-locked-permanent",
+			AuthenticationMethodAccount:              "account-locked-permanent",
 		} {
 			handle, data := lockTemplateFor(testLockTemplates(), method, episode)
 
@@ -877,7 +877,7 @@ func (s *UtilsTestSuite) TestAPermanentLockRendersItsOwnTemplate() {
 
 	email := testLockTemplates()
 	email.Templates.Account.Permanent = ""
-	handle, _ := lockTemplateFor(email, AuthenticationMethodEntity, LockEpisode{UnlockAt: permanentUnlockAt})
+	handle, _ := lockTemplateFor(email, AuthenticationMethodAccount, LockEpisode{UnlockAt: permanentUnlockAt})
 	s.Equal("authentication-method-locked-permanent", handle, "an omitted account override keeps the default")
 }
 
@@ -889,7 +889,7 @@ func (s *UtilsTestSuite) TestAMethodOverrideReplacesTheDefaults() {
 
 	handle, data := lockTemplateFor(email, providers.AuthenticationMethodOTP, testLockEpisode())
 	s.Equal("otp-locked", handle)
-	s.Equal("otp", data[templateKeyAuthenticationMethod])
+	s.Equal("otp", data[templateKeyLockedAuthenticationMethod])
 
 	handle, _ = lockTemplateFor(email, providers.AuthenticationMethodOTP, LockEpisode{UnlockAt: permanentUnlockAt})
 	s.Equal("otp-locked-permanent", handle)
@@ -943,10 +943,10 @@ func (s *UtilsTestSuite) TestAccessReadHoldsOnEitherSuspensionStore() {
 	s.Empty(column.Status.Details.Since)
 }
 
-// The entity-wide entry is not read as a method named "entity".
-func (s *UtilsTestSuite) TestAccessReadReportsTheEntityHoldAsLocked() {
+// The account-wide entry is not read as a method named "account".
+func (s *UtilsTestSuite) TestAccessReadReportsTheAccountHoldAsLocked() {
 	read := s.readOf(providers.EntityStateActive,
-		`{"accessState":{"lock":{"entity":{"unlockAt":"9999-12-31T23:59:59Z","reason":"POST_SUSPENDED"}}}}`)
+		`{"accessState":{"lock":{"account":{"unlockAt":"9999-12-31T23:59:59Z","reason":"POST_SUSPENDED"}}}}`)
 	s.Equal(providers.AccessStatusLocked, read.Status.Value)
 }
 

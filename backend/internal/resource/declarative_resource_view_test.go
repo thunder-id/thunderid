@@ -27,6 +27,9 @@ func exportedResourceServerDocument(t *testing.T) *yaml.Node {
 		ID: "rs-1", Name: "Orders API", Description: "var:RESOURCE_SERVER_ORDERS_DESCRIPTION",
 		Identifier: "https://orders.example.com", Type: providers.ResourceServerTypeCustom, OUID: "ou-1",
 		AuthorizationEngine: providers.AuthorizationEngineConfig{Type: providers.AuthorizationEngineTypeRBAC},
+		Actions: []providers.Action{
+			{Name: "Read All", Handle: "read_all", Description: "Read everything"},
+		},
 		Resources: []providers.Resource{
 			{Name: "Orders", Handle: "orders", Actions: []providers.Action{
 				{Name: "Read", Handle: "read"},
@@ -132,11 +135,28 @@ func TestViewResourcePartsShowsTheActionsOfAResource(t *testing.T) {
 	assert.Equal(t, []ActionResponse{}, list.Actions)
 }
 
-// An export carries no actions at the resource server level, so they show as an empty list.
+// The actions of the resource server itself are shown all on one page, each named by the id a version
+// gives it and with its handle as its permission.
+func TestViewResourcePartsShowsTheResourceServerActions(t *testing.T) {
+	assert.Equal(t, &ActionListResponse{
+		TotalResults: 1, StartIndex: 1, Count: 1,
+		Actions: []ActionResponse{
+			{ID: "rs-1:read_all", Name: "Read All", Handle: "read_all", Description: "Read everything",
+				Permission: "read_all"},
+		},
+		Links: []LinkResponse{},
+	}, viewResourceServerParts(t)["actions"])
+}
+
+// A resource server without actions of its own shows them as an empty list.
 func TestViewResourcePartsShowsNoResourceServerActions(t *testing.T) {
+	parts, err := newResourceServerExporterForTest(nil).ViewResourceParts(context.Background(),
+		viewDocument(t, "resource_type: resource_server\nid: rs-1\nresources:\n  - { name: Orders, handle: orders }"))
+
+	require.NoError(t, err)
 	assert.Equal(t, &ActionListResponse{
 		StartIndex: 1, Actions: []ActionResponse{}, Links: []LinkResponse{},
-	}, viewResourceServerParts(t)["actions"])
+	}, parts["actions"])
 }
 
 // A document that is not a resource server is refused, and so is one whose resources do not resolve.

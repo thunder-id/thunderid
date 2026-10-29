@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -854,4 +855,220 @@ func (suite *RoleHandlerTestSuite) TestHandleError_ClientAndServerErrors() {
 		suite.NoError(err)
 		suite.Equal(tidcommon.InternalServerError.Code, resp.Code)
 	})
+}
+
+func sharingRequest(method, target string, body interface{}, pathValues map[string]string) *http.Request {
+	var raw []byte
+	if body != nil {
+		raw, _ = json.Marshal(body)
+	}
+	req := httptest.NewRequest(method, target, bytes.NewReader(raw))
+	for k, v := range pathValues {
+		req.SetPathValue(k, v)
+	}
+	return req
+}
+
+// The status separates the kinds of refusal a sharing call produces: a malformed request, a policy
+// or an organization unit that is not there, and a conflict with state the caller has not seen.
+func (suite *RoleHandlerTestSuite) TestSharingErrorsCarryTheirOwnStatus() {
+	for _, tc := range []struct {
+		name       string
+		svcErr     *tidcommon.ServiceError
+		wantStatus int
+	}{
+		{"a policy the unit may not write", &ErrorInvalidSharingPolicy, http.StatusBadRequest},
+		{"no such policy", &ErrorSharingPolicyNotFound, http.StatusNotFound},
+		{"a second policy for one unit", &ErrorSharingPolicyExists, http.StatusConflict},
+		{"a stale version", &ErrorSharingPolicyVersionMismatch, http.StatusConflict},
+		{"a shared role moved", &ErrorSharedRoleCannotMove, http.StatusBadRequest},
+		{"a declared policy", &ErrorSharingPolicyDeclared, http.StatusBadRequest},
+		{"an unshared organization unit", &ErrorRoleNotSharedToOU, http.StatusNotFound},
+		{"a framework failure", &tidcommon.InternalServerError, http.StatusInternalServerError},
+	} {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.mockService.EXPECT().GetSharingPolicy(mock.Anything, "role1", "p1").
+				Return(sharing.Policy{}, tc.svcErr)
+
+			w := httptest.NewRecorder()
+			suite.handler.HandleSharingPolicyGetRequest(w, sharingRequest(http.MethodGet,
+				"/roles/role1/sharing-policies/p1", nil, map[string]string{"id": "role1", "policyId": "p1"}))
+
+			suite.Equal(tc.wantStatus, w.Code)
+			var body map[string]interface{}
+			suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &body))
+			suite.Equal(tc.svcErr.Code, body["code"])
+		})
+	}
+}
+
+// A create answers 201 with the recorded policy, and names the issuer the body gives.
+func (suite *RoleHandlerTestSuite) TestSharingPolicyPostAnswersCreated() {
+	var recorded sharing.PolicyRequest
+	suite.mockService.EXPECT().CreateSharingPolicy(mock.Anything, "role1", mock.Anything).
+		Run(func(_ context.Context, _ string, req sharing.PolicyRequest) { recorded = req }).
+		Return(sharing.Policy{ID: "p1", Version: 1,
+			ChildUnits: &sharing.ChildUnits{Mode: sharing.ChildUnitsAll}}, nil)
+
+	w := httptest.NewRecorder()
+	suite.handler.HandleSharingPolicyPostRequest(w, sharingRequest(http.MethodPost, "/roles/role1/sharing-policies",
+		map[string]interface{}{
+			"initiatingOuId": "ou-owner",
+			"childUnits": map[string]interface{}{
+				"mode": "selected",
+				"units": []map[string]interface{}{{"ouId": "ou-child", "reach": "subtree",
+					"overlayRules": map[string]interface{}{"assignments": map[string]bool{"editable": false}}}}},
+		},
+		map[string]string{"id": "role1"}))
+
+	suite.Require().Equal(http.StatusCreated, w.Code, "body: %s", w.Body.String())
+	var body map[string]interface{}
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &body))
+	suite.Equal("p1", body["id"])
+
+	suite.Equal("ou-owner", recorded.InitiatingOUID)
+	suite.Require().NotNil(recorded.ChildUnits)
+	suite.Equal(sharing.ChildUnitsSelected, recorded.ChildUnits.Mode)
+	suite.Require().Len(recorded.ChildUnits.Units, 1)
+	suite.Equal(sharing.ReachSubtree, recorded.ChildUnits.Units[0].Reach)
+	suite.Equal(map[string]sharing.OverlayRule{"assignments": {Editable: false}},
+		recorded.ChildUnits.Units[0].OverlayRules, "a policy may turn the role's assignments off")
+}
+
+// A field name the body gets wrong is refused rather than dropped, so a misspelled exclusion does
+// not share the role with the organization unit the caller named to keep it from.
+func (suite *RoleHandlerTestSuite) TestSharingPolicyPostRefusesAnUnknownField() {
+	for _, tc := range []struct {
+		name string
+		body map[string]interface{}
+	}{
+		{"a misspelled exclusion", map[string]interface{}{"childUnits": map[string]interface{}{
+			"mode": "all", "excludeOuIds": []string{"ou-trial"}}}},
+		{"a policy id", map[string]interface{}{"id": "caller-chosen",
+			"childUnits": map[string]string{"mode": "all"}}},
+	} {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+
+			w := httptest.NewRecorder()
+			suite.handler.HandleSharingPolicyPostRequest(w, sharingRequest(http.MethodPost,
+				"/roles/role1/sharing-policies", tc.body, map[string]string{"id": "role1"}))
+
+			// The service mock records no call: the body never gets that far.
+			suite.Equal(http.StatusBadRequest, w.Code, "body: %s", w.Body.String())
+		})
+	}
+}
+
+// This API leaves a deployment-wide reach to resource files and imports.
+func (suite *RoleHandlerTestSuite) TestSharingPolicyPostRefusesADeploymentWideReach() {
+	for _, tc := range []struct {
+		name string
+		body map[string]interface{}
+	}{
+		{"all units", map[string]interface{}{"allUnits": map[string]interface{}{}}},
+		{"every other tree's root", map[string]interface{}{"otherTreeRoots": map[string]string{"mode": "all"}}},
+	} {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+
+			w := httptest.NewRecorder()
+			suite.handler.HandleSharingPolicyPostRequest(w, sharingRequest(http.MethodPost,
+				"/roles/role1/sharing-policies", tc.body, map[string]string{"id": "role1"}))
+
+			suite.Require().Equal(http.StatusBadRequest, w.Code, "body: %s", w.Body.String())
+			var body map[string]interface{}
+			suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &body))
+			suite.Equal(ErrorDeploymentWideSharingNotAllowed.Code, body["code"])
+		})
+	}
+}
+
+// An edit cannot change whose decision a policy is, so a PUT naming an issuer is refused.
+func (suite *RoleHandlerTestSuite) TestSharingPolicyPutRefusesAnIssuer() {
+	w := httptest.NewRecorder()
+	suite.handler.HandleSharingPolicyPutRequest(w, sharingRequest(http.MethodPut, "/roles/role1/sharing-policies/p1",
+		map[string]interface{}{"version": 1, "initiatingOuId": "another-ou",
+			"childUnits": map[string]string{"mode": "all"}},
+		map[string]string{"id": "role1", "policyId": "p1"}))
+
+	suite.Require().Equal(http.StatusBadRequest, w.Code, "body: %s", w.Body.String())
+	var body map[string]interface{}
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &body))
+	suite.Equal(ErrorInvalidRequestFormat.Code, body["code"])
+}
+
+// An edit may restate a deployment-wide section to move its exclusions.
+func (suite *RoleHandlerTestSuite) TestSharingPolicyPutPassesADeploymentWideSection() {
+	var recorded sharing.PolicyRequest
+	suite.mockService.EXPECT().UpdateSharingPolicy(mock.Anything, "role1", "p1", mock.Anything).
+		Run(func(_ context.Context, _, _ string, req sharing.PolicyRequest) { recorded = req }).
+		Return(sharing.Policy{ID: "p1", Version: 3}, nil)
+
+	w := httptest.NewRecorder()
+	suite.handler.HandleSharingPolicyPutRequest(w, sharingRequest(http.MethodPut, "/roles/role1/sharing-policies/p1",
+		map[string]interface{}{"version": 2,
+			"allUnits": map[string]interface{}{"excludedOuIds": []string{"ou-trial"}}},
+		map[string]string{"id": "role1", "policyId": "p1"}))
+
+	suite.Require().Equal(http.StatusOK, w.Code, "body: %s", w.Body.String())
+	suite.Equal(2, recorded.Version)
+	suite.Require().NotNil(recorded.AllUnits)
+	suite.Equal([]string{"ou-trial"}, recorded.AllUnits.ExcludedOUIDs)
+}
+
+func (suite *RoleHandlerTestSuite) TestSharingPolicyDeleteAnswersNoContent() {
+	suite.mockService.EXPECT().DeleteSharingPolicy(mock.Anything, "role1", "p1").Return(nil)
+
+	w := httptest.NewRecorder()
+	suite.handler.HandleSharingPolicyDeleteRequest(w, sharingRequest(http.MethodDelete,
+		"/roles/role1/sharing-policies/p1", nil, map[string]string{"id": "role1", "policyId": "p1"}))
+
+	suite.Equal(http.StatusNoContent, w.Code)
+	suite.Empty(w.Body.String())
+}
+
+// A listing pages the role's own policies and links within the role's own path.
+func (suite *RoleHandlerTestSuite) TestSharingPolicyListShapesThePage() {
+	suite.mockService.EXPECT().ListSharingPolicies(mock.Anything, "role1", 1, 0).
+		Return(sharing.PolicyList{TotalResults: 2, StartIndex: 1, Count: 1,
+			Policies: []sharing.Policy{{ID: "p1"}}}, nil)
+
+	w := httptest.NewRecorder()
+	suite.handler.HandleSharingPolicyListRequest(w, sharingRequest(http.MethodGet,
+		"/roles/role1/sharing-policies?limit=1", nil, map[string]string{"id": "role1"}))
+
+	suite.Require().Equal(http.StatusOK, w.Code)
+	var body sharing.PolicyListResponse
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &body))
+	suite.Equal(2, body.TotalResults)
+	suite.Require().Len(body.Policies, 1)
+	suite.Require().NotEmpty(body.Links)
+	suite.Contains(body.Links[0].Href, "/roles/role1/sharing-policies")
+}
+
+func (suite *RoleHandlerTestSuite) TestSharingPolicyListRefusesABadLimit() {
+	w := httptest.NewRecorder()
+	suite.handler.HandleSharingPolicyListRequest(w, sharingRequest(http.MethodGet,
+		"/roles/role1/sharing-policies?limit=many", nil, map[string]string{"id": "role1"}))
+
+	suite.Equal(http.StatusBadRequest, w.Code)
+}
+
+// The organization unit to resolve for travels as a query parameter.
+func (suite *RoleHandlerTestSuite) TestOverlayRulesReadsTheUnitFromTheQuery() {
+	suite.mockService.EXPECT().ResolveSharingOverlay(mock.Anything, "role1", "ou-child").
+		Return(sharing.ResolvedOverlay{OUID: "ou-child", Visible: true}, nil)
+
+	w := httptest.NewRecorder()
+	suite.handler.HandleOverlayRuleGetRequest(w, sharingRequest(http.MethodGet,
+		"/roles/role1/overlay-rules?ouId=ou-child", nil, map[string]string{"id": "role1"}))
+
+	suite.Require().Equal(http.StatusOK, w.Code)
+	var body map[string]interface{}
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &body))
+	suite.Equal("ou-child", body["ouId"])
+	suite.Equal(true, body["visible"])
+	suite.NotNil(body["rules"], "an absent rule set is an empty object, not null")
 }

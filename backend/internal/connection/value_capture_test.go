@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/idp"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
@@ -16,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/export"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/connection/httpconnectionmock"
 )
 
 // recordingCapturer records every resource handed to it.
@@ -141,7 +143,7 @@ func (s *ServiceTestSuite) TestACapturedSecretIsNamedAsTheExportNamesIt() {
 		Return(s.twilioSender("the-token"), (*tidcommon.ServiceError)(nil))
 	s.mockIDP.On("GetIdentityProvider", mock.Anything, "tw-1").
 		Return((*providers.IDPDTO)(nil), &idp.ErrorIDPNotFound)
-	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil)
+	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil, nil)
 	values := export.Initialize(http.NewServeMux(), []declarativeresource.ResourceExporter{exporter},
 		export.ValueReferences)
 
@@ -156,4 +158,65 @@ func (s *ServiceTestSuite) TestACapturedSecretIsNamedAsTheExportNamesIt() {
 	s.Equal(map[string]string{"CONNECTION_MY_SENDER_AUTH_TOKEN": "the-token"}, secrets)
 	s.Require().Len(exported.Files, 1)
 	s.Contains(exported.Files[0].Content, "sec:CONNECTION_MY_SENDER_AUTH_TOKEN")
+}
+
+const storedHTTPConnectionID = "http-1"
+
+// An HTTP connection is captured on create and on update, with each secret named as its export
+// names it; an update that keeps the stored password captures it again under the new name.
+func (s *ServiceTestSuite) TestHTTPWritesCaptureTheConnectionAsTheExportNamesIt() {
+	mockHTTP := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, newAuthZENPDPServiceMock(s.T()), mockHTTP)
+	capturer := &recordingCapturer{}
+	s.svc.valueCapturer = capturer
+	values := export.Initialize(http.NewServeMux(),
+		[]declarativeresource.ResourceExporter{newConnectionExporter(s.mockIDP, s.mockNotif, nil, mockHTTP)},
+		export.ValueReferences)
+	var stored *httpconnection.HTTPConnection
+	write := func(connection httpconnection.HTTPConnection) *httpconnection.HTTPConnection {
+		connection.ID = storedHTTPConnectionID
+		stored = &connection
+		return stored
+	}
+	mockHTTP.On("CreateHTTPConnection", mock.Anything, mock.Anything).Return(
+		func(_ context.Context, connection httpconnection.HTTPConnection) *httpconnection.HTTPConnection {
+			return write(connection)
+		}, func(context.Context, httpconnection.HTTPConnection) *tidcommon.ServiceError { return nil })
+	mockHTTP.On("GetHTTPConnection", mock.Anything, storedHTTPConnectionID).Return(
+		func(context.Context, string) *httpconnection.HTTPConnection { return stored },
+		func(context.Context, string) *tidcommon.ServiceError { return nil })
+	mockHTTP.On("UpdateHTTPConnection", mock.Anything, storedHTTPConnectionID, mock.Anything).Return(
+		func(_ context.Context, _ string, connection httpconnection.HTTPConnection) *httpconnection.HTTPConnection {
+			return write(connection)
+		}, func(context.Context, string, httpconnection.HTTPConnection) *tidcommon.ServiceError { return nil })
+
+	created, err := httpToDTO(httpConnectionRequest{Name: "Risk Engine", URL: storedHTTPURL,
+		Authentication: basicAuthRequest("svc-user", "the-password")})
+	s.Require().NoError(err)
+	_, svcErr := s.svc.createHTTP(context.Background(), *created)
+	s.Require().Nil(svcErr)
+	renamed, err := httpUpdateToDTO(httpConnectionRequest{Name: "Fraud Engine", URL: storedHTTPURL,
+		Authentication: basicAuthRequest("svc-user", "")})
+	s.Require().NoError(err)
+	_, svcErr = s.svc.updateHTTP(context.Background(), storedHTTPConnectionID, *renamed)
+	s.Require().Nil(svcErr)
+
+	s.Require().Len(capturer.resources, 2)
+	for i, want := range []map[string]string{
+		{"CONNECTION_RISK_ENGINE_PASSWORD": "the-password"},
+		{"CONNECTION_FRAUD_ENGINE_PASSWORD": "the-password"},
+	} {
+		_, secrets, err := values.PlaceholderValues(context.Background(), capturer.resourceTypes[i],
+			capturer.resources[i])
+		s.Require().NoError(err)
+		s.Equal(want, secrets)
+	}
+}
+
+func (s *ServiceTestSuite) TestInitializeHandsTheHTTPConnectionWriter() {
+	_, _, synced, err := Initialize(http.NewServeMux(), nil, s.mockIDP, s.mockNotif, &testResourceServerLister{},
+		newAuthZENPDPServiceMock(s.T()), newHTTPConnectionServiceMock(s.T()), nil,
+		newSharingServiceMock(s.T()))
+	s.Require().NoError(err)
+	s.IsType(&httpConnectionWriter{}, synced)
 }

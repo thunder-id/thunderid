@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -186,4 +187,25 @@ func (suite *AccessLogTestSuite) TestLoggingResponseWriter() {
 
 	// Verify the actual content was written to the underlying ResponseWriter
 	assert.Equal(suite.T(), "test content more", rec.Body.String())
+}
+
+// The access log's writer lets a route reach the connection, so a route that extends its write
+// deadline still can behind it. The handler only has to outlast the server's 100 ms, which a slow
+// machine makes it do all the more; the extension is an hour, so no pause can reach it.
+func (suite *AccessLogTestSuite) TestAccessLogHandler_LetsARouteExtendItsWriteDeadline() {
+	handler := AccessLogHandler(GetLogger(), nil, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		suite.Require().NoError(http.NewResponseController(w).SetWriteDeadline(time.Now().Add(time.Hour)))
+		time.Sleep(300 * time.Millisecond)
+		_, _ = w.Write([]byte("done"))
+	}))
+	server := httptest.NewUnstartedServer(handler)
+	server.Config.WriteTimeout = 100 * time.Millisecond
+	server.Start()
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL)
+
+	suite.Require().NoError(err)
+	suite.Equal(http.StatusOK, resp.StatusCode)
+	suite.Require().NoError(resp.Body.Close())
 }

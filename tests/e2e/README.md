@@ -1,6 +1,8 @@
-# ThunderID Console E2E Tests
+# ThunderID Data Plane E2E Tests
 
-End-to-end automation test suite for the Console, built with [Playwright](https://playwright.dev/).
+End-to-end automation test suite for the Data Plane, built with [Playwright](https://playwright.dev/). It runs against the quickstart pack (a Control Plane, the Data Plane it manages, and auth-dp) and drives the Data Plane at `https://localhost:8090`: its Admin Console (users, agents, groups, roles), and the business applications that sign in through it (the React SDK sample, the Wayfinder sample).
+
+Applications, connections, flows, user types and settings are authored on the Control Plane or through the API, so the Console pages for them are not part of this suite; the API and component tests cover them.
 
 ## 📋 Overview
 
@@ -46,16 +48,16 @@ From the repository root, build the product if you haven't already:
 make build
 ```
 
-This produces the server distribution and sample app packages under `target/dist/`.
+This produces the quickstart pack and the sample app packages under `target/dist/`.
 
 ### Start the Server
 
-Extract the server distribution, run setup (which bootstraps default resources and registers sample app OAuth clients), then start the server:
+Extract the quickstart pack, run setup (which bootstraps all three deployments and the Service Desk Admin account the suite signs in with), then start it:
 
 ```bash
 mkdir -p tests/e2e/server
-unzip "target/dist/thunderid-*.zip" -d tests/e2e/server
-cd tests/e2e/server && ./setup.sh
+unzip "target/dist/thunderid-quickstart-*.zip" -d tests/e2e/server
+cd tests/e2e/server/thunderid-quickstart-* && SERVICE_DESK_USERNAME=admin SERVICE_DESK_PASSWORD=admin ./setup.sh
 ./start.sh &
 ```
 

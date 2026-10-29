@@ -26,7 +26,8 @@ tags:
     description: Discover available connection types and configure their instances.
   - name: Connection Metadata
     description: Describe the configurable options of each connection vendor.
-
+  - name: Connection Sharing
+    description: Record which organization units may use a connection, and resolve what one organization unit may do with it.
 security:
   - OAuth2: [system]
 
@@ -63,15 +64,18 @@ paths:
                 connections:
                   - id: "a1b2c3d4-0000-0000-0000-000000000001"
                     name: "My Google"
+                    ouId: "01900000-0000-7000-8000-000000000001"
                     type: "google"
                     categories: ["identity-provider"]
                   - id: "a1b2c3d4-0000-0000-0000-000000000002"
                     name: "Corp OIDC"
                     description: "Corporate login"
+                    ouId: "01900000-0000-7000-8000-000000000001"
                     type: "oidc"
                     categories: ["identity-provider"]
                   - id: "a1b2c3d4-0000-0000-0000-000000000003"
                     name: "Twilio SMS"
+                    ouId: "01900000-0000-7000-8000-000000000001"
                     type: "twilio"
                     categories: ["sms-provider"]
                 links: []
@@ -174,6 +178,7 @@ paths:
       summary: List configured HTTP endpoint connections
       responses:
         "200": { $ref: '#/components/responses/HTTPConnectionInstanceList' }
+        "400": { $ref: '#/components/responses/HTTPConnectionListBadRequest' }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "403": { $ref: '#/components/responses/Forbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
@@ -187,6 +192,7 @@ paths:
             schema: { $ref: '#/components/schemas/HTTPConnectionCreateRequest' }
             example:
               name: "Risk Engine"
+              ouId: "01900000-0000-7000-8000-000000000001"
               url: "https://risk.example.com/evaluate"
       responses:
         "201":
@@ -220,11 +226,13 @@ paths:
       tags: [Connections]
       summary: Update an HTTP endpoint connection
       description: |
-        Replaces the connection. A credential omitted from `authentication.properties` keeps its
-        stored value only while the authentication `type`, its non-secret properties (such as the
+        Replaces the connection. An omitted `basic` password or `bearer` token keeps its stored
+        value only while the authentication `type`, its non-secret properties (such as the
         username) and the URL origin (scheme, host and port, with default ports normalized) are
         unchanged. Otherwise the credential is discarded and must be supplied again, so a
-        connection cannot be pointed at another server with its stored password.
+        connection cannot be pointed at another server with its stored password. Each `api_key`
+        header is sent on its own: a header sent as `"******"` keeps its stored value under the
+        same rule, and a header left out is removed.
       requestBody:
         required: true
         content:
@@ -245,8 +253,25 @@ paths:
     delete:
       tags: [Connections]
       summary: Delete an HTTP endpoint connection
+      description: |
+        Refused while other resources use the connection, and while its usages cannot be determined.
+        Deleting a connection that does not exist succeeds.
       responses:
         "204": { description: Connection deleted }
+        "400": { $ref: '#/components/responses/HTTPConnectionDeleteBadRequest' }
+        "409": { $ref: '#/components/responses/HTTPConnectionDependencyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/http/{id}/usages:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get HTTP endpoint connection usages
+      description: Returns the resources that use this HTTP endpoint connection.
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionUsages' }
         "404": { $ref: '#/components/responses/HTTPConnectionNotFound' }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "403": { $ref: '#/components/responses/Forbidden' }
@@ -1121,6 +1146,926 @@ paths:
         "403": { $ref: '#/components/responses/Forbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
 
+  /connections/google/{id}/sharing-policies:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    post:
+      tags: [Connection Sharing]
+      summary: Create a sharing policy for a Google connection
+      description: Records one organization unit's decision about which other organization units may use this connection.
+      requestBody:
+        $ref: '#/components/requestBodies/ConnectionSharingPolicyCreate'
+      responses:
+        "201": { $ref: '#/components/responses/ConnectionSharingPolicyCreated' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyCreateBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/ConnectionSharingPolicyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    get:
+      tags: [Connection Sharing]
+      summary: List sharing policies of a Google connection
+      description: Returns the connection's sharing policies, declared ones included.
+      parameters:
+        - { $ref: '#/components/parameters/limitQueryParam' }
+        - { $ref: '#/components/parameters/offsetQueryParam' }
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyList' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyListBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/google/{id}/sharing-policies/{policyId}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+      - { $ref: '#/components/parameters/connectionSharingPolicyIdPathParam' }
+    get:
+      tags: [Connection Sharing]
+      summary: Get a sharing policy of a Google connection
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyReturned' }
+        "404": { $ref: '#/components/responses/ConnectionSharingPolicyNotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connection Sharing]
+      summary: Replace a sharing policy of a Google connection
+      description: Replaces the policy's sections.
+      requestBody:
+        $ref: '#/components/requestBodies/ConnectionSharingPolicyUpdate'
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyReturned' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyUpdateBadRequest' }
+        "404": { $ref: '#/components/responses/ConnectionSharingPolicyNotFound' }
+        "409": { $ref: '#/components/responses/ConnectionSharingPolicyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connection Sharing]
+      summary: Delete a sharing policy of a Google connection
+      description: Removes the policy and the policies its sharees issued.
+      responses:
+        "204": { description: Sharing policy deleted, or the connection holds no policy under that id }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyDeleteBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/google/{id}/overlay-rules:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connection Sharing]
+      summary: Overlay rules of a Google connection for an organization unit
+      description: Resolves what one organization unit may do with the connection.
+      parameters:
+        - in: query
+          name: ouId
+          required: true
+          description: The organization unit to resolve for.
+          schema:
+            type: string
+          example: "acme-customer-a"
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionOverlayRules' }
+        "400": { $ref: '#/components/responses/ConnectionOverlayRulesBadRequest' }
+        "404": { $ref: '#/components/responses/ConnectionOverlayNotResolvable' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/github/{id}/sharing-policies:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    post:
+      tags: [Connection Sharing]
+      summary: Create a sharing policy for a GitHub connection
+      description: Records one organization unit's decision about which other organization units may use this connection.
+      requestBody:
+        $ref: '#/components/requestBodies/ConnectionSharingPolicyCreate'
+      responses:
+        "201": { $ref: '#/components/responses/ConnectionSharingPolicyCreated' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyCreateBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/ConnectionSharingPolicyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    get:
+      tags: [Connection Sharing]
+      summary: List sharing policies of a GitHub connection
+      description: Returns the connection's sharing policies, declared ones included.
+      parameters:
+        - { $ref: '#/components/parameters/limitQueryParam' }
+        - { $ref: '#/components/parameters/offsetQueryParam' }
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyList' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyListBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/github/{id}/sharing-policies/{policyId}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+      - { $ref: '#/components/parameters/connectionSharingPolicyIdPathParam' }
+    get:
+      tags: [Connection Sharing]
+      summary: Get a sharing policy of a GitHub connection
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyReturned' }
+        "404": { $ref: '#/components/responses/ConnectionSharingPolicyNotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connection Sharing]
+      summary: Replace a sharing policy of a GitHub connection
+      description: Replaces the policy's sections.
+      requestBody:
+        $ref: '#/components/requestBodies/ConnectionSharingPolicyUpdate'
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyReturned' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyUpdateBadRequest' }
+        "404": { $ref: '#/components/responses/ConnectionSharingPolicyNotFound' }
+        "409": { $ref: '#/components/responses/ConnectionSharingPolicyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connection Sharing]
+      summary: Delete a sharing policy of a GitHub connection
+      description: Removes the policy and the policies its sharees issued.
+      responses:
+        "204": { description: Sharing policy deleted, or the connection holds no policy under that id }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyDeleteBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/github/{id}/overlay-rules:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connection Sharing]
+      summary: Overlay rules of a GitHub connection for an organization unit
+      description: Resolves what one organization unit may do with the connection.
+      parameters:
+        - in: query
+          name: ouId
+          required: true
+          description: The organization unit to resolve for.
+          schema:
+            type: string
+          example: "acme-customer-a"
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionOverlayRules' }
+        "400": { $ref: '#/components/responses/ConnectionOverlayRulesBadRequest' }
+        "404": { $ref: '#/components/responses/ConnectionOverlayNotResolvable' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/oidc/{id}/sharing-policies:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    post:
+      tags: [Connection Sharing]
+      summary: Create a sharing policy for an OIDC connection
+      description: Records one organization unit's decision about which other organization units may use this connection.
+      requestBody:
+        $ref: '#/components/requestBodies/ConnectionSharingPolicyCreate'
+      responses:
+        "201": { $ref: '#/components/responses/ConnectionSharingPolicyCreated' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyCreateBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/ConnectionSharingPolicyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    get:
+      tags: [Connection Sharing]
+      summary: List sharing policies of an OIDC connection
+      description: Returns the connection's sharing policies, declared ones included.
+      parameters:
+        - { $ref: '#/components/parameters/limitQueryParam' }
+        - { $ref: '#/components/parameters/offsetQueryParam' }
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyList' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyListBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/oidc/{id}/sharing-policies/{policyId}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+      - { $ref: '#/components/parameters/connectionSharingPolicyIdPathParam' }
+    get:
+      tags: [Connection Sharing]
+      summary: Get a sharing policy of an OIDC connection
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyReturned' }
+        "404": { $ref: '#/components/responses/ConnectionSharingPolicyNotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connection Sharing]
+      summary: Replace a sharing policy of an OIDC connection
+      description: Replaces the policy's sections.
+      requestBody:
+        $ref: '#/components/requestBodies/ConnectionSharingPolicyUpdate'
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyReturned' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyUpdateBadRequest' }
+        "404": { $ref: '#/components/responses/ConnectionSharingPolicyNotFound' }
+        "409": { $ref: '#/components/responses/ConnectionSharingPolicyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connection Sharing]
+      summary: Delete a sharing policy of an OIDC connection
+      description: Removes the policy and the policies its sharees issued.
+      responses:
+        "204": { description: Sharing policy deleted, or the connection holds no policy under that id }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyDeleteBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/oidc/{id}/overlay-rules:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connection Sharing]
+      summary: Overlay rules of an OIDC connection for an organization unit
+      description: Resolves what one organization unit may do with the connection.
+      parameters:
+        - in: query
+          name: ouId
+          required: true
+          description: The organization unit to resolve for.
+          schema:
+            type: string
+          example: "acme-customer-a"
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionOverlayRules' }
+        "400": { $ref: '#/components/responses/ConnectionOverlayRulesBadRequest' }
+        "404": { $ref: '#/components/responses/ConnectionOverlayNotResolvable' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/oauth/{id}/sharing-policies:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    post:
+      tags: [Connection Sharing]
+      summary: Create a sharing policy for an OAuth connection
+      description: Records one organization unit's decision about which other organization units may use this connection.
+      requestBody:
+        $ref: '#/components/requestBodies/ConnectionSharingPolicyCreate'
+      responses:
+        "201": { $ref: '#/components/responses/ConnectionSharingPolicyCreated' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyCreateBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/ConnectionSharingPolicyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    get:
+      tags: [Connection Sharing]
+      summary: List sharing policies of an OAuth connection
+      description: Returns the connection's sharing policies, declared ones included.
+      parameters:
+        - { $ref: '#/components/parameters/limitQueryParam' }
+        - { $ref: '#/components/parameters/offsetQueryParam' }
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyList' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyListBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/oauth/{id}/sharing-policies/{policyId}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+      - { $ref: '#/components/parameters/connectionSharingPolicyIdPathParam' }
+    get:
+      tags: [Connection Sharing]
+      summary: Get a sharing policy of an OAuth connection
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyReturned' }
+        "404": { $ref: '#/components/responses/ConnectionSharingPolicyNotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connection Sharing]
+      summary: Replace a sharing policy of an OAuth connection
+      description: Replaces the policy's sections.
+      requestBody:
+        $ref: '#/components/requestBodies/ConnectionSharingPolicyUpdate'
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyReturned' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyUpdateBadRequest' }
+        "404": { $ref: '#/components/responses/ConnectionSharingPolicyNotFound' }
+        "409": { $ref: '#/components/responses/ConnectionSharingPolicyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connection Sharing]
+      summary: Delete a sharing policy of an OAuth connection
+      description: Removes the policy and the policies its sharees issued.
+      responses:
+        "204": { description: Sharing policy deleted, or the connection holds no policy under that id }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyDeleteBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/oauth/{id}/overlay-rules:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connection Sharing]
+      summary: Overlay rules of an OAuth connection for an organization unit
+      description: Resolves what one organization unit may do with the connection.
+      parameters:
+        - in: query
+          name: ouId
+          required: true
+          description: The organization unit to resolve for.
+          schema:
+            type: string
+          example: "acme-customer-a"
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionOverlayRules' }
+        "400": { $ref: '#/components/responses/ConnectionOverlayRulesBadRequest' }
+        "404": { $ref: '#/components/responses/ConnectionOverlayNotResolvable' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/twilio/{id}/sharing-policies:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    post:
+      tags: [Connection Sharing]
+      summary: Create a sharing policy for a Twilio connection
+      description: Records one organization unit's decision about which other organization units may use this connection.
+      requestBody:
+        $ref: '#/components/requestBodies/ConnectionSharingPolicyCreate'
+      responses:
+        "201": { $ref: '#/components/responses/ConnectionSharingPolicyCreated' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyCreateBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/ConnectionSharingPolicyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    get:
+      tags: [Connection Sharing]
+      summary: List sharing policies of a Twilio connection
+      description: Returns the connection's sharing policies, declared ones included.
+      parameters:
+        - { $ref: '#/components/parameters/limitQueryParam' }
+        - { $ref: '#/components/parameters/offsetQueryParam' }
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyList' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyListBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/twilio/{id}/sharing-policies/{policyId}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+      - { $ref: '#/components/parameters/connectionSharingPolicyIdPathParam' }
+    get:
+      tags: [Connection Sharing]
+      summary: Get a sharing policy of a Twilio connection
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyReturned' }
+        "404": { $ref: '#/components/responses/ConnectionSharingPolicyNotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connection Sharing]
+      summary: Replace a sharing policy of a Twilio connection
+      description: Replaces the policy's sections.
+      requestBody:
+        $ref: '#/components/requestBodies/ConnectionSharingPolicyUpdate'
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyReturned' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyUpdateBadRequest' }
+        "404": { $ref: '#/components/responses/ConnectionSharingPolicyNotFound' }
+        "409": { $ref: '#/components/responses/ConnectionSharingPolicyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connection Sharing]
+      summary: Delete a sharing policy of a Twilio connection
+      description: Removes the policy and the policies its sharees issued.
+      responses:
+        "204": { description: Sharing policy deleted, or the connection holds no policy under that id }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyDeleteBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/twilio/{id}/overlay-rules:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connection Sharing]
+      summary: Overlay rules of a Twilio connection for an organization unit
+      description: Resolves what one organization unit may do with the connection.
+      parameters:
+        - in: query
+          name: ouId
+          required: true
+          description: The organization unit to resolve for.
+          schema:
+            type: string
+          example: "acme-customer-a"
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionOverlayRules' }
+        "400": { $ref: '#/components/responses/ConnectionOverlayRulesBadRequest' }
+        "404": { $ref: '#/components/responses/ConnectionOverlayNotResolvable' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/vonage/{id}/sharing-policies:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    post:
+      tags: [Connection Sharing]
+      summary: Create a sharing policy for a Vonage connection
+      description: Records one organization unit's decision about which other organization units may use this connection.
+      requestBody:
+        $ref: '#/components/requestBodies/ConnectionSharingPolicyCreate'
+      responses:
+        "201": { $ref: '#/components/responses/ConnectionSharingPolicyCreated' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyCreateBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/ConnectionSharingPolicyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    get:
+      tags: [Connection Sharing]
+      summary: List sharing policies of a Vonage connection
+      description: Returns the connection's sharing policies, declared ones included.
+      parameters:
+        - { $ref: '#/components/parameters/limitQueryParam' }
+        - { $ref: '#/components/parameters/offsetQueryParam' }
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyList' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyListBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/vonage/{id}/sharing-policies/{policyId}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+      - { $ref: '#/components/parameters/connectionSharingPolicyIdPathParam' }
+    get:
+      tags: [Connection Sharing]
+      summary: Get a sharing policy of a Vonage connection
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyReturned' }
+        "404": { $ref: '#/components/responses/ConnectionSharingPolicyNotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connection Sharing]
+      summary: Replace a sharing policy of a Vonage connection
+      description: Replaces the policy's sections.
+      requestBody:
+        $ref: '#/components/requestBodies/ConnectionSharingPolicyUpdate'
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyReturned' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyUpdateBadRequest' }
+        "404": { $ref: '#/components/responses/ConnectionSharingPolicyNotFound' }
+        "409": { $ref: '#/components/responses/ConnectionSharingPolicyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connection Sharing]
+      summary: Delete a sharing policy of a Vonage connection
+      description: Removes the policy and the policies its sharees issued.
+      responses:
+        "204": { description: Sharing policy deleted, or the connection holds no policy under that id }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyDeleteBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/vonage/{id}/overlay-rules:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connection Sharing]
+      summary: Overlay rules of a Vonage connection for an organization unit
+      description: Resolves what one organization unit may do with the connection.
+      parameters:
+        - in: query
+          name: ouId
+          required: true
+          description: The organization unit to resolve for.
+          schema:
+            type: string
+          example: "acme-customer-a"
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionOverlayRules' }
+        "400": { $ref: '#/components/responses/ConnectionOverlayRulesBadRequest' }
+        "404": { $ref: '#/components/responses/ConnectionOverlayNotResolvable' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/sms-gateway/{id}/sharing-policies:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    post:
+      tags: [Connection Sharing]
+      summary: Create a sharing policy for an SMS gateway connection
+      description: Records one organization unit's decision about which other organization units may use this connection.
+      requestBody:
+        $ref: '#/components/requestBodies/ConnectionSharingPolicyCreate'
+      responses:
+        "201": { $ref: '#/components/responses/ConnectionSharingPolicyCreated' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyCreateBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/ConnectionSharingPolicyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    get:
+      tags: [Connection Sharing]
+      summary: List sharing policies of an SMS gateway connection
+      description: Returns the connection's sharing policies, declared ones included.
+      parameters:
+        - { $ref: '#/components/parameters/limitQueryParam' }
+        - { $ref: '#/components/parameters/offsetQueryParam' }
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyList' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyListBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/sms-gateway/{id}/sharing-policies/{policyId}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+      - { $ref: '#/components/parameters/connectionSharingPolicyIdPathParam' }
+    get:
+      tags: [Connection Sharing]
+      summary: Get a sharing policy of an SMS gateway connection
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyReturned' }
+        "404": { $ref: '#/components/responses/ConnectionSharingPolicyNotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connection Sharing]
+      summary: Replace a sharing policy of an SMS gateway connection
+      description: Replaces the policy's sections.
+      requestBody:
+        $ref: '#/components/requestBodies/ConnectionSharingPolicyUpdate'
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyReturned' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyUpdateBadRequest' }
+        "404": { $ref: '#/components/responses/ConnectionSharingPolicyNotFound' }
+        "409": { $ref: '#/components/responses/ConnectionSharingPolicyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connection Sharing]
+      summary: Delete a sharing policy of an SMS gateway connection
+      description: Removes the policy and the policies its sharees issued.
+      responses:
+        "204": { description: Sharing policy deleted, or the connection holds no policy under that id }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyDeleteBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/sms-gateway/{id}/overlay-rules:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connection Sharing]
+      summary: Overlay rules of an SMS gateway connection for an organization unit
+      description: Resolves what one organization unit may do with the connection.
+      parameters:
+        - in: query
+          name: ouId
+          required: true
+          description: The organization unit to resolve for.
+          schema:
+            type: string
+          example: "acme-customer-a"
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionOverlayRules' }
+        "400": { $ref: '#/components/responses/ConnectionOverlayRulesBadRequest' }
+        "404": { $ref: '#/components/responses/ConnectionOverlayNotResolvable' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/email-smtp/{id}/sharing-policies:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    post:
+      tags: [Connection Sharing]
+      summary: Create a sharing policy for an SMTP connection
+      description: Records one organization unit's decision about which other organization units may use this connection.
+      requestBody:
+        $ref: '#/components/requestBodies/ConnectionSharingPolicyCreate'
+      responses:
+        "201": { $ref: '#/components/responses/ConnectionSharingPolicyCreated' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyCreateBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/ConnectionSharingPolicyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    get:
+      tags: [Connection Sharing]
+      summary: List sharing policies of an SMTP connection
+      description: Returns the connection's sharing policies, declared ones included.
+      parameters:
+        - { $ref: '#/components/parameters/limitQueryParam' }
+        - { $ref: '#/components/parameters/offsetQueryParam' }
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyList' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyListBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/email-smtp/{id}/sharing-policies/{policyId}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+      - { $ref: '#/components/parameters/connectionSharingPolicyIdPathParam' }
+    get:
+      tags: [Connection Sharing]
+      summary: Get a sharing policy of an SMTP connection
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyReturned' }
+        "404": { $ref: '#/components/responses/ConnectionSharingPolicyNotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connection Sharing]
+      summary: Replace a sharing policy of an SMTP connection
+      description: Replaces the policy's sections.
+      requestBody:
+        $ref: '#/components/requestBodies/ConnectionSharingPolicyUpdate'
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyReturned' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyUpdateBadRequest' }
+        "404": { $ref: '#/components/responses/ConnectionSharingPolicyNotFound' }
+        "409": { $ref: '#/components/responses/ConnectionSharingPolicyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connection Sharing]
+      summary: Delete a sharing policy of an SMTP connection
+      description: Removes the policy and the policies its sharees issued.
+      responses:
+        "204": { description: Sharing policy deleted, or the connection holds no policy under that id }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyDeleteBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/email-smtp/{id}/overlay-rules:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connection Sharing]
+      summary: Overlay rules of an SMTP connection for an organization unit
+      description: Resolves what one organization unit may do with the connection.
+      parameters:
+        - in: query
+          name: ouId
+          required: true
+          description: The organization unit to resolve for.
+          schema:
+            type: string
+          example: "acme-customer-a"
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionOverlayRules' }
+        "400": { $ref: '#/components/responses/ConnectionOverlayRulesBadRequest' }
+        "404": { $ref: '#/components/responses/ConnectionOverlayNotResolvable' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/authzen-pdp/{id}/sharing-policies:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    post:
+      tags: [Connection Sharing]
+      summary: Create a sharing policy for an AuthZEN PDP connection
+      description: Records one organization unit's decision about which other organization units may use this connection.
+      requestBody:
+        $ref: '#/components/requestBodies/ConnectionSharingPolicyCreate'
+      responses:
+        "201": { $ref: '#/components/responses/ConnectionSharingPolicyCreated' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyCreateBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/ConnectionSharingPolicyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    get:
+      tags: [Connection Sharing]
+      summary: List sharing policies of an AuthZEN PDP connection
+      description: Returns the connection's sharing policies, declared ones included.
+      parameters:
+        - { $ref: '#/components/parameters/limitQueryParam' }
+        - { $ref: '#/components/parameters/offsetQueryParam' }
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyList' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyListBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/authzen-pdp/{id}/sharing-policies/{policyId}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+      - { $ref: '#/components/parameters/connectionSharingPolicyIdPathParam' }
+    get:
+      tags: [Connection Sharing]
+      summary: Get a sharing policy of an AuthZEN PDP connection
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyReturned' }
+        "404": { $ref: '#/components/responses/ConnectionSharingPolicyNotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connection Sharing]
+      summary: Replace a sharing policy of an AuthZEN PDP connection
+      description: Replaces the policy's sections.
+      requestBody:
+        $ref: '#/components/requestBodies/ConnectionSharingPolicyUpdate'
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyReturned' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyUpdateBadRequest' }
+        "404": { $ref: '#/components/responses/ConnectionSharingPolicyNotFound' }
+        "409": { $ref: '#/components/responses/ConnectionSharingPolicyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connection Sharing]
+      summary: Delete a sharing policy of an AuthZEN PDP connection
+      description: Removes the policy and the policies its sharees issued.
+      responses:
+        "204": { description: Sharing policy deleted, or the connection holds no policy under that id }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyDeleteBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/authzen-pdp/{id}/overlay-rules:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connection Sharing]
+      summary: Overlay rules of an AuthZEN PDP connection for an organization unit
+      description: Resolves what one organization unit may do with the connection.
+      parameters:
+        - in: query
+          name: ouId
+          required: true
+          description: The organization unit to resolve for.
+          schema:
+            type: string
+          example: "acme-customer-a"
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionOverlayRules' }
+        "400": { $ref: '#/components/responses/ConnectionOverlayRulesBadRequest' }
+        "404": { $ref: '#/components/responses/ConnectionOverlayNotResolvable' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/http/{id}/sharing-policies:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    post:
+      tags: [Connection Sharing]
+      summary: Create a sharing policy for an HTTP connection
+      description: Records one organization unit's decision about which other organization units may use this connection.
+      requestBody:
+        $ref: '#/components/requestBodies/ConnectionSharingPolicyCreate'
+      responses:
+        "201": { $ref: '#/components/responses/ConnectionSharingPolicyCreated' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyCreateBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/ConnectionSharingPolicyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    get:
+      tags: [Connection Sharing]
+      summary: List sharing policies of an HTTP connection
+      description: Returns the connection's sharing policies, declared ones included.
+      parameters:
+        - { $ref: '#/components/parameters/limitQueryParam' }
+        - { $ref: '#/components/parameters/offsetQueryParam' }
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyList' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyListBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/http/{id}/sharing-policies/{policyId}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+      - { $ref: '#/components/parameters/connectionSharingPolicyIdPathParam' }
+    get:
+      tags: [Connection Sharing]
+      summary: Get a sharing policy of an HTTP connection
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyReturned' }
+        "404": { $ref: '#/components/responses/ConnectionSharingPolicyNotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connection Sharing]
+      summary: Replace a sharing policy of an HTTP connection
+      description: Replaces the policy's sections.
+      requestBody:
+        $ref: '#/components/requestBodies/ConnectionSharingPolicyUpdate'
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionSharingPolicyReturned' }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyUpdateBadRequest' }
+        "404": { $ref: '#/components/responses/ConnectionSharingPolicyNotFound' }
+        "409": { $ref: '#/components/responses/ConnectionSharingPolicyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connection Sharing]
+      summary: Delete a sharing policy of an HTTP connection
+      description: Removes the policy and the policies its sharees issued.
+      responses:
+        "204": { description: Sharing policy deleted, or the connection holds no policy under that id }
+        "400": { $ref: '#/components/responses/ConnectionSharingPolicyDeleteBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/http/{id}/overlay-rules:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connection Sharing]
+      summary: Overlay rules of an HTTP connection for an organization unit
+      description: Resolves what one organization unit may do with the connection.
+      parameters:
+        - in: query
+          name: ouId
+          required: true
+          description: The organization unit to resolve for.
+          schema:
+            type: string
+          example: "acme-customer-a"
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionOverlayRules' }
+        "400": { $ref: '#/components/responses/ConnectionOverlayRulesBadRequest' }
+        "404": { $ref: '#/components/responses/ConnectionOverlayNotResolvable' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
 components:
   securitySchemes:
     OAuth2:
@@ -1166,7 +2111,431 @@ components:
         minimum: 0
         default: 0
 
+    connectionSharingPolicyIdPathParam:
+      in: path
+      name: policyId
+      required: true
+      description: Sharing policy ID
+      schema:
+        type: string
+      example: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+
+  requestBodies:
+    ConnectionSharingPolicyCreate:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConnectionSharingPolicyRequest'
+          examples:
+            allChildUnits:
+              summary: Every organization unit beneath the issuer
+              value:
+                childUnits:
+                  mode: all
+            allChildUnitsWithExclusion:
+              summary: Every organization unit beneath the issuer except one branch
+              value:
+                childUnits:
+                  mode: all
+                  excludedOuIds: ["acme-trial-customers"]
+            selectedChildUnits:
+              summary: Named children, one at a time
+              value:
+                childUnits:
+                  mode: selected
+                  units:
+                    - ouId: "acme-customer-a"
+                      reach: unit
+                    - ouId: "acme-customer-b"
+                      reach: unit
+            childAndItsSubtree:
+              summary: One direct child and everything beneath it
+              value:
+                childUnits:
+                  mode: selected
+                  units:
+                    - ouId: "acme-customer-a"
+                      reach: subtree
+            selectedRoots:
+              summary: Named roots of other trees, owner only
+              value:
+                otherTreeRoots:
+                  mode: selected
+                  units:
+                    - ouId: "partner-root"
+            reshare:
+              summary: A reshare issued by a sharee
+              value:
+                initiatingOuId: "acme-customer-a"
+                childUnits:
+                  mode: selected
+                  units:
+                    - ouId: "acme-customer-a-eu"
+                      reach: unit
+    ConnectionSharingPolicyUpdate:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConnectionSharingPolicyUpdateRequest'
+          examples:
+            addAnExclusion:
+              summary: Exclude one organization unit from every child unit
+              value:
+                version: 1
+                childUnits:
+                  mode: all
+                  excludedOuIds: ["acme-trial-customers"]
+            widenANamedUnit:
+              summary: Carry the connection on beneath a named child
+              value:
+                version: 1
+                childUnits:
+                  mode: selected
+                  units:
+                    - ouId: "acme-customer-a"
+                      reach: subtree
+
   responses:
+    ConnectionSharingPolicyCreated:
+      description: Sharing policy created
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConnectionSharingPolicy'
+          example:
+            id: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+            initiatingOuId: "acme-root"
+            stage: share
+            isReadOnly: false
+            version: 1
+            childUnits:
+              mode: all
+              excludedOuIds: ["acme-trial-customers"]
+    ConnectionSharingPolicyReturned:
+      description: Sharing policy
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConnectionSharingPolicy'
+          example:
+            id: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+            initiatingOuId: "acme-root"
+            stage: share
+            isReadOnly: false
+            version: 1
+            childUnits:
+              mode: all
+              excludedOuIds: ["acme-trial-customers"]
+    ConnectionSharingPolicyList:
+      description: Sharing policies
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConnectionSharingPolicyListResponse'
+          example:
+            totalResults: 2
+            startIndex: 1
+            count: 2
+            policies:
+              # The owner's decision: two named customers, each reached and stopped at, which
+              # leaves each free to carry the connection on itself.
+              - id: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+                initiatingOuId: "acme-root"
+                stage: share
+                isReadOnly: false
+                version: 2
+                childUnits:
+                  mode: selected
+                  units:
+                    - ouId: "acme-customer-a"
+                      reach: unit
+                    - ouId: "acme-customer-b"
+                      reach: unit
+              # One of those customers carrying the connection one hop further, which is why
+              # this one names the policy that reached it.
+              - id: "0195a2c0-7b41-7c66-8f03-9d1e6a2b4c57"
+                initiatingOuId: "acme-customer-a"
+                stage: reshare
+                parentPolicyId: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+                isReadOnly: false
+                version: 1
+                childUnits:
+                  mode: selected
+                  units:
+                    - ouId: "acme-customer-a-eu"
+                      reach: unit
+            links: []
+    ConnectionOverlayRules:
+      description: Resolved overlay
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConnectionResolvedOverlay'
+          examples:
+            reached:
+              summary: An organization unit a policy reached
+              value:
+                ouId: "acme-customer-a"
+                isOwnedByOU: false
+                visible: true
+                policyIds: ["0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"]
+                rules: {}
+            owner:
+              summary: The organization unit that owns the connection
+              value:
+                ouId: "acme-root"
+                isOwnedByOU: true
+                visible: true
+                policyIds: []
+                rules: {}
+
+    ConnectionSharingPolicyCreateBadRequest:
+      description: The policy is not one the issuing organization unit may write.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            noSection:
+              summary: No section stated
+              value:
+                code: "CON-1031"
+                message:
+                  key: "error.connectionservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed, reaches no organization unit, or states a section with fields its mode does not take: the policy reaches no organization unit"
+            fieldTheModeDoesNotTake:
+              summary: A section carrying a field its mode does not take
+              value:
+                code: "CON-1031"
+                message:
+                  key: "error.connectionservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed, reaches no organization unit, or states a section with fields its mode does not take: childUnits with mode all takes no units"
+            unitNamedTwice:
+              summary: An organization unit named twice, or one the issuer may not name
+              value:
+                code: "CON-1031"
+                message:
+                  key: "error.connectionservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_target_ou_description"
+                  defaultValue: "The target organization unit does not satisfy the policy's constraints: acme-customer-a is named more than once"
+            deploymentWideReach:
+              summary: A reach this endpoint may not create
+              value:
+                code: "CON-1038"
+                message:
+                  key: "error.connectionservice.deployment_wide_sharing_not_allowed"
+                  defaultValue: "Deployment-wide sharing is not allowed"
+                description:
+                  key: "error.connectionservice.deployment_wide_sharing_not_allowed_description"
+                  defaultValue: "A policy reaching all organization units or the roots of all other trees can only be created from a declarative resource file or an import"
+
+    ConnectionSharingPolicyListBadRequest:
+      description: The page the listing asked for is not one it can return.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            invalidPage:
+              summary: A limit or offset outside its bounds, or not a number at all
+              description: A limit or offset outside its bounds, or not a number.
+              value:
+                code: "CON-1002"
+                message:
+                  key: "error.connectionservice.invalid_limit_parameter"
+                  defaultValue: "Invalid limit parameter"
+                description:
+                  key: "error.connectionservice.invalid_limit_parameter_description"
+                  defaultValue: "The limit parameter must be a positive integer"
+
+    ConnectionSharingPolicyUpdateBadRequest:
+      description: The replacement is not one this policy may become.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            noSection:
+              summary: No section stated
+              value:
+                code: "CON-1031"
+                message:
+                  key: "error.connectionservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed, reaches no organization unit, or states a section with fields its mode does not take: the policy reaches no organization unit"
+            fieldTheModeDoesNotTake:
+              summary: A section carrying a field its mode does not take
+              value:
+                code: "CON-1031"
+                message:
+                  key: "error.connectionservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed, reaches no organization unit, or states a section with fields its mode does not take: childUnits with mode all takes no units"
+            unitNamedTwice:
+              summary: An organization unit named twice, or one the issuer may not name
+              value:
+                code: "CON-1031"
+                message:
+                  key: "error.connectionservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_target_ou_description"
+                  defaultValue: "The target organization unit does not satisfy the policy's constraints: acme-customer-a is named more than once"
+            sectionKindChange:
+              summary: An edit that turns a section naming units into one reaching a whole group, or the reverse
+              value:
+                code: "CON-1031"
+                message:
+                  key: "error.connectionservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.scope_family_change_description"
+                  defaultValue: "A section naming organization units individually cannot become one reaching a whole family, or the reverse; delete the policy and issue the one you want instead"
+            declaredPolicy:
+              summary: An edit aimed at a policy a resource file declares
+              value:
+                code: "CON-1035"
+                message:
+                  key: "error.connectionservice.sharing_policy_declared"
+                  defaultValue: "Sharing policy is declared"
+                description:
+                  key: "error.connectionservice.sharing_policy_declared_description"
+                  defaultValue: "The sharing policy is declared in a resource file and cannot be changed through the API"
+
+    ConnectionSharingPolicyDeleteBadRequest:
+      description: The policy exists but is not this endpoint's to remove.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            declaredPolicy:
+              summary: A delete aimed at a policy a resource file declares
+              value:
+                code: "CON-1035"
+                message:
+                  key: "error.connectionservice.sharing_policy_declared"
+                  defaultValue: "Sharing policy is declared"
+                description:
+                  key: "error.connectionservice.sharing_policy_declared_description"
+                  defaultValue: "The sharing policy is declared in a resource file and cannot be changed through the API"
+
+    ConnectionOverlayRulesBadRequest:
+      description: The request does not say which organization unit to resolve for.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            missingOuId:
+              summary: The ouId query parameter is absent or empty
+              value:
+                code: "CON-1037"
+                message:
+                  key: "error.connectionservice.missing_ou_id_parameter"
+                  defaultValue: "Missing required parameter"
+                description:
+                  key: "error.connectionservice.missing_ou_id_parameter_description"
+                  defaultValue: "The 'ouId' query parameter is required"
+
+    ConnectionOverlayNotResolvable:
+      description: No such connection, or no policy reaches the organization unit.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            notShared:
+              summary: An organization unit no policy reaches
+              value:
+                code: "CON-1036"
+                message:
+                  key: "error.connectionservice.connection_not_shared_to_ou"
+                  defaultValue: "Connection is not shared to the organization unit"
+                description:
+                  key: "error.connectionservice.connection_not_shared_to_ou_description"
+                  defaultValue: "No sharing policy reaches the specified organization unit, so the connection is not available there"
+            noSuchConnection:
+              summary: No such connection
+              value:
+                code: "CON-1004"
+                message:
+                  key: "error.connectionservice.connection_not_found"
+                  defaultValue: "Connection not found"
+                description:
+                  key: "error.connectionservice.connection_not_found_description"
+                  defaultValue: "No connection exists for the supplied identifier"
+
+    ConnectionSharingPolicyNotFound:
+      description: No such connection, or no such sharing policy on this connection
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            connectionNotFound:
+              summary: No connection with the specified id
+              value:
+                code: "CON-1004"
+                message:
+                  key: "error.connectionservice.connection_not_found"
+                  defaultValue: "Connection not found"
+                description:
+                  key: "error.connectionservice.connection_not_found_description"
+                  defaultValue: "No connection exists for the supplied identifier"
+            policyNotFound:
+              summary: The connection holds no policy with the specified id
+              value:
+                code: "CON-1032"
+                message:
+                  key: "error.connectionservice.sharing_policy_not_found"
+                  defaultValue: "Sharing policy not found"
+                description:
+                  key: "error.connectionservice.sharing_policy_not_found_description"
+                  defaultValue: "The connection has no sharing policy with the specified id"
+
+    ConnectionSharingPolicyConflict:
+      description: The organization unit already holds a policy for this connection, or the policy is stale.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            alreadyExists:
+              summary: A second policy for the same organization unit
+              value:
+                code: "CON-1033"
+                message:
+                  key: "error.connectionservice.sharing_policy_exists"
+                  defaultValue: "Sharing policy already exists"
+                description:
+                  key: "error.connectionservice.sharing_policy_exists_description"
+                  defaultValue: "This organization unit already has a sharing policy for the connection; edit it instead"
+            staleVersion:
+              summary: An edit against a stale version
+              value:
+                code: "CON-1034"
+                message:
+                  key: "error.connectionservice.sharing_policy_version_mismatch"
+                  defaultValue: "Sharing policy version mismatch"
+                description:
+                  key: "error.connectionservice.sharing_policy_version_mismatch_description"
+                  defaultValue: "The sharing policy changed since it was read; read it again and retry the edit"
+
     InstanceList:
       description: Configured connection instances
       content:
@@ -1359,6 +2728,52 @@ components:
                 description:
                   key: "error.connectionservice.invalid_authentication_type_description"
                   defaultValue: "The authentication type must name a method this deployment supports"
+            declarative-create:
+              summary: Create refused while HTTP connections are declarative (POST)
+              value:
+                code: "DCR-1001"
+                message:
+                  key: "error.declarative_resource.create_operation_not_allowed"
+                  defaultValue: "Declarative resource create operation is not allowed"
+                description:
+                  key: "error.declarative_resource.create_operation_not_allowed_description"
+                  defaultValue: "Creating declarative resources is not permitted"
+            declarative-update:
+              summary: Update of a declarative connection (PUT)
+              value:
+                code: "DCR-1002"
+                message:
+                  key: "error.declarative_resource.update_operation_not_allowed"
+                  defaultValue: "Declarative resource update operation is not allowed"
+                description:
+                  key: "error.declarative_resource.update_operation_not_allowed_description"
+                  defaultValue: "Updating declarative resources is not permitted"
+    HTTPConnectionDeleteBadRequest:
+      description: The HTTP endpoint connection is declarative and cannot be deleted
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: "DCR-1003"
+            message:
+              key: "error.declarative_resource.delete_operation_not_allowed"
+              defaultValue: "Declarative resource delete operation is not allowed"
+            description:
+              key: "error.declarative_resource.delete_operation_not_allowed_description"
+              defaultValue: "Deleting declarative resources is not permitted"
+    HTTPConnectionListBadRequest:
+      description: The HTTP endpoint connections exceed the composite-mode record limit
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: "CON-1027"
+            message:
+              key: "error.connectionservice.http_connection_result_limit_exceeded"
+              defaultValue: "Result limit exceeded in composite mode"
+            description:
+              key: "error.connectionservice.http_connection_result_limit_exceeded_description"
+              defaultValue: "The total number of HTTP connections exceeds the maximum limit in composite mode"
     HTTPConnectionConflict:
       description: An HTTP endpoint connection with the same name already exists
       content:
@@ -1385,6 +2800,19 @@ components:
             description:
               key: "error.connectionservice.http_connection_not_found_description"
               defaultValue: "No HTTP connection exists for the supplied identifier"
+    HTTPConnectionDependencyConflict:
+      description: The HTTP endpoint connection cannot be deleted because other resources use it
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: "CON-1026"
+            message:
+              key: "error.connectionservice.http_connection_has_blocking_dependencies"
+              defaultValue: "HTTP connection cannot be deleted"
+            description:
+              key: "error.connectionservice.http_connection_has_blocking_dependencies_description"
+              defaultValue: "The HTTP connection cannot be deleted because 1 flow(s) depend on it. Remove or reassign them first."
     ConnectionDependencyConflict:
       description: The connection cannot be deleted because it is still in use
       content:
@@ -1414,6 +2842,22 @@ components:
                 description:
                   key: "error.idpservice.invalid_request_format_description"
                   defaultValue: "The request body is malformed or contains invalid data"
+            organization-unit-required:
+              summary: No organization unit given on create
+              description: >-
+                Every connection is created in an organization unit. The code depends on the kind of connection:
+                `IDP-1016` for an identity provider, `MNS-1020` for an SMS or email connection, `CON-1025` for an
+                AuthZEN PDP connection and `CON-1030` for an HTTP connection. An organization unit that does not
+                exist is `IDP-1014`, `MNS-1018`, `CON-1023` or `CON-1028`, and an attempt to change it on update is
+                `IDP-1015`, `MNS-1019`, `CON-1024` or `CON-1029`.
+              value:
+                code: "CON-1025"
+                message:
+                  key: "error.connectionservice.connection_ou_required"
+                  defaultValue: "Organization unit required"
+                description:
+                  key: "error.connectionservice.connection_ou_required_description"
+                  defaultValue: "A connection needs an organization unit. Give its ouId in the request"
     NotFound:
       description: Connection not found
       content:
@@ -1504,11 +2948,16 @@ components:
 
     ConnectionInstance:
       type: object
-      required: [id, name, type, categories]
+      required: [id, name, ouId, type, categories]
       properties:
         id: { type: string, format: uuid }
         name: { type: string, example: "My Google" }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection. Every kind of connection has one.
+          example: "01900000-0000-7000-8000-000000000001"
         type:
           type: string
           description: >-
@@ -1605,6 +3054,13 @@ components:
       properties:
         name: { type: string, example: "My Google" }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection. Required when the connection is created (IDP-1016), and
+            the organization unit has to exist (IDP-1014). It cannot be changed afterwards: on an update, leave it out
+            to keep the owner, or give the one the connection has (IDP-1015).
+          example: "01900000-0000-7000-8000-000000000001"
         clientId: { type: string }
         clientSecret: { type: string, description: "Write-only. Omit to keep the stored value on update." }
         redirectUri: { type: string }
@@ -1618,13 +3074,19 @@ components:
       allOf:
         - $ref: '#/components/schemas/GoogleConnectionUpdateRequest'
         - type: object
-          required: [clientSecret]
+          required: [ouId, clientSecret]
     GoogleConnectionResponse:
       type: object
+      required: [ouId]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection.
+          example: "01900000-0000-7000-8000-000000000001"
         type: { type: string, example: "google" }
         clientId: { type: string }
         clientSecret: { type: string, description: "Masked as \"******\".", example: "******" }
@@ -1642,6 +3104,13 @@ components:
       properties:
         name: { type: string, example: "My GitHub" }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection. Required when the connection is created (IDP-1016), and
+            the organization unit has to exist (IDP-1014). It cannot be changed afterwards: on an update, leave it out
+            to keep the owner, or give the one the connection has (IDP-1015).
+          example: "01900000-0000-7000-8000-000000000001"
         clientId: { type: string }
         clientSecret: { type: string, description: "Write-only. Omit to keep the stored value on update." }
         redirectUri: { type: string }
@@ -1652,13 +3121,19 @@ components:
       allOf:
         - $ref: '#/components/schemas/GitHubConnectionUpdateRequest'
         - type: object
-          required: [clientSecret]
+          required: [ouId, clientSecret]
     GitHubConnectionResponse:
       type: object
+      required: [ouId]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection.
+          example: "01900000-0000-7000-8000-000000000001"
         type: { type: string, example: "github" }
         clientId: { type: string }
         clientSecret: { type: string, example: "******" }
@@ -1673,6 +3148,13 @@ components:
       properties:
         name: { type: string }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection. Required when the connection is created (IDP-1016), and
+            the organization unit has to exist (IDP-1014). It cannot be changed afterwards: on an update, leave it out
+            to keep the owner, or give the one the connection has (IDP-1015).
+          example: "01900000-0000-7000-8000-000000000001"
         clientId: { type: string }
         clientSecret: { type: string, description: "Write-only. Omit to keep the stored value on update." }
         redirectUri: { type: string }
@@ -1691,13 +3173,19 @@ components:
       allOf:
         - $ref: '#/components/schemas/OIDCConnectionUpdateRequest'
         - type: object
-          required: [clientSecret]
+          required: [ouId, clientSecret]
     OIDCConnectionResponse:
       type: object
+      required: [ouId]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection.
+          example: "01900000-0000-7000-8000-000000000001"
         type: { type: string, example: "oidc" }
         clientId: { type: string }
         clientSecret: { type: string, example: "******" }
@@ -1725,6 +3213,13 @@ components:
       properties:
         name: { type: string }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection. Required when the connection is created (IDP-1016), and
+            the organization unit has to exist (IDP-1014). It cannot be changed afterwards: on an update, leave it out
+            to keep the owner, or give the one the connection has (IDP-1015).
+          example: "01900000-0000-7000-8000-000000000001"
         clientId: { type: string }
         clientSecret: { type: string, description: "Write-only. Omit to keep the stored value on update." }
         redirectUri: { type: string }
@@ -1738,13 +3233,19 @@ components:
       allOf:
         - $ref: '#/components/schemas/OAuthConnectionUpdateRequest'
         - type: object
-          required: [clientSecret]
+          required: [ouId, clientSecret]
     OAuthConnectionResponse:
       type: object
+      required: [ouId]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection.
+          example: "01900000-0000-7000-8000-000000000001"
         type: { type: string, example: "oauth" }
         clientId: { type: string }
         clientSecret: { type: string, example: "******" }
@@ -1769,6 +3270,13 @@ components:
       properties:
         name: { type: string, example: "Travel Booking PDP" }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection. Required when the connection is created, and the
+            organization unit has to exist. It cannot be changed afterwards: on an update, leave it out to keep the
+            owner, or give the one the connection has.
+          example: "01900000-0000-7000-8000-000000000001"
         endpoint:
           type: string
           format: uri
@@ -1795,13 +3303,21 @@ components:
           type: array
           items: { $ref: '#/components/schemas/AuthZENPDPSubjectAttributeMapping' }
     AuthZENPDPConnectionCreateRequest:
-      $ref: '#/components/schemas/AuthZENPDPConnectionUpdateRequest'
+      allOf:
+        - $ref: '#/components/schemas/AuthZENPDPConnectionUpdateRequest'
+        - type: object
+          required: [ouId]
     AuthZENPDPConnectionResponse:
       allOf:
         - type: object
-          required: [id, type]
+          required: [id, ouId, type]
           properties:
             id: { type: string, format: uuid }
+            ouId:
+              type: string
+              description: >-
+                ID of the organization unit that owns the connection.
+              example: "01900000-0000-7000-8000-000000000001"
             type: { type: string, enum: [authzen-pdp] }
             authentication:
               $ref: '#/components/schemas/OutboundAuthentication'
@@ -1837,6 +3353,13 @@ components:
           description: Unique per deployment.
           example: "Risk Engine"
         description: { type: string, maxLength: 500 }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection. Required when the connection is created, and the
+            organization unit has to exist. It cannot be changed afterwards: on an update, leave it out to keep the
+            owner, or give the one the connection has.
+          example: "01900000-0000-7000-8000-000000000001"
         url:
           type: string
           format: uri
@@ -1889,14 +3412,22 @@ components:
             properties:
               X-Tenant-Key: "<tenant_key>"
     HTTPConnectionCreateRequest:
-      $ref: '#/components/schemas/HTTPConnectionUpdateRequest'
+      allOf:
+        - $ref: '#/components/schemas/HTTPConnectionUpdateRequest'
+        - type: object
+          required: [ouId]
     HTTPConnectionResponse:
       type: object
-      required: [id, name, type, url, timeoutMs, headers, authentication]
+      required: [ouId, id, name, type, url, timeoutMs, headers, authentication]
       properties:
         id: { type: string, format: uuid }
         name: { type: string, example: "Risk Engine" }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection.
+          example: "01900000-0000-7000-8000-000000000001"
         type: { type: string, enum: [http] }
         url: { type: string, example: "https://risk.example.com/evaluate" }
         timeoutMs: { type: integer, example: 10000 }
@@ -1907,6 +3438,7 @@ components:
       example:
         id: "0199d1f4-6a1e-7c3b-9f2a-1b2c3d4e5f60"
         name: "Risk Engine"
+        ouId: "01900000-0000-7000-8000-000000000001"
         type: "http"
         url: "https://risk.example.com/evaluate"
         timeoutMs: 5000
@@ -1930,6 +3462,13 @@ components:
       properties:
         name: { type: string, example: "My Twilio" }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection. Required when the connection is created, and the
+            organization unit has to exist. It cannot be changed afterwards: on an update, leave it out to keep the
+            owner, or give the one the connection has.
+          example: "01900000-0000-7000-8000-000000000001"
         accountSid: { type: string, description: "Twilio Account SID (AC followed by 32 hex characters).", example: "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }
         authToken: { type: string, description: "Write-only. Omit to keep the stored value on update." }
         senderId: { type: string, description: "Sender phone number or alphanumeric sender ID.", example: "+15005550006" }
@@ -1937,13 +3476,19 @@ components:
       allOf:
         - $ref: '#/components/schemas/TwilioConnectionUpdateRequest'
         - type: object
-          required: [authToken]
+          required: [ouId, authToken]
     TwilioConnectionResponse:
       type: object
+      required: [ouId]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection.
+          example: "01900000-0000-7000-8000-000000000001"
         type: { type: string, example: "twilio" }
         accountSid: { type: string }
         authToken: { type: string, description: "Masked as \"******\".", example: "******" }
@@ -1955,6 +3500,13 @@ components:
       properties:
         name: { type: string, example: "My Vonage" }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection. Required when the connection is created, and the
+            organization unit has to exist. It cannot be changed afterwards: on an update, leave it out to keep the
+            owner, or give the one the connection has.
+          example: "01900000-0000-7000-8000-000000000001"
         apiKey: { type: string, description: "Vonage API key." }
         apiSecret: { type: string, description: "Write-only. Omit to keep the stored value on update." }
         senderId: { type: string, description: "Sender phone number or alphanumeric sender ID.", example: "ThunderID" }
@@ -1962,13 +3514,19 @@ components:
       allOf:
         - $ref: '#/components/schemas/VonageConnectionUpdateRequest'
         - type: object
-          required: [apiSecret]
+          required: [ouId, apiSecret]
     VonageConnectionResponse:
       type: object
+      required: [ouId]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection.
+          example: "01900000-0000-7000-8000-000000000001"
         type: { type: string, example: "vonage" }
         apiKey: { type: string }
         apiSecret: { type: string, description: "Masked as \"******\".", example: "******" }
@@ -1980,6 +3538,13 @@ components:
       properties:
         name: { type: string, example: "Prod SMS Gateway" }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection. Required when the connection is created, and the
+            organization unit has to exist. It cannot be changed afterwards: on an update, leave it out to keep the
+            owner, or give the one the connection has.
+          example: "01900000-0000-7000-8000-000000000001"
         url: { type: string, description: "The HTTP endpoint to call to send an SMS.", example: "https://sms.example.com/send" }
         httpMethod: { type: string, enum: [GET, POST], example: "POST" }
         httpHeaders:
@@ -1998,13 +3563,22 @@ components:
             their existing behavior and cannot use a header name also set by authentication.
         contentType: { type: string, enum: [JSON, FORM], example: "JSON" }
     SMSGatewayConnectionCreateRequest:
-      $ref: '#/components/schemas/SMSGatewayConnectionUpdateRequest'
+      allOf:
+        - $ref: '#/components/schemas/SMSGatewayConnectionUpdateRequest'
+        - type: object
+          required: [ouId]
     SMSGatewayConnectionResponse:
       type: object
+      required: [ouId]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection.
+          example: "01900000-0000-7000-8000-000000000001"
         type: { type: string, example: "sms-gateway" }
         url: { type: string }
         httpMethod: { type: string }
@@ -2022,6 +3596,13 @@ components:
       properties:
         name: { type: string, example: "Corp SMTP" }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection. Required when the connection is created, and the
+            organization unit has to exist. It cannot be changed afterwards: on an update, leave it out to keep the
+            owner, or give the one the connection has.
+          example: "01900000-0000-7000-8000-000000000001"
         host: { type: string, description: "Hostname of the SMTP server.", example: "smtp.example.com" }
         port: { type: integer, minimum: 1, maximum: 65535, example: 587 }
         fromAddress: { type: string, format: email, description: "Address used in the From header and the SMTP envelope.", example: "noreply@example.com" }
@@ -2051,13 +3632,22 @@ components:
             Call `GET /connections/meta?vendor=email-smtp` for the methods this deployment supports
             and the fields each one takes.
     SMTPConnectionCreateRequest:
-      $ref: '#/components/schemas/SMTPConnectionUpdateRequest'
+      allOf:
+        - $ref: '#/components/schemas/SMTPConnectionUpdateRequest'
+        - type: object
+          required: [ouId]
     SMTPConnectionResponse:
       type: object
+      required: [ouId]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection.
+          example: "01900000-0000-7000-8000-000000000001"
         type: { type: string, example: "email-smtp" }
         host: { type: string }
         port: { type: integer, example: 587 }
@@ -2076,7 +3666,8 @@ components:
 
         Credential values are stored encrypted and returned as `"******"`. On update, a masked
         value retains the matching stored credential while the connection target is unchanged.
-        For `api_key`, `properties` contains HTTP header names and values. Omitting a header
+        For `api_key`, `properties` contains HTTP header names and values; a header name cannot
+        contain a dot. Omitting a header
         from a supplied `api_key` block deletes it. Omitting the whole `authentication` block
         keeps the existing configuration. Setting `type` to `none` removes authentication.
       required: [type]
@@ -2296,7 +3887,9 @@ components:
             How the claim's value(s) are interpreted. Defaults to "string" (a single scalar value)
             when omitted. "array", or "string" combined with delimiter, is multi-valued and requires
             the includes/not_includes operators; every other combination is single-valued and
-            requires a different operator.
+            requires a different operator. "number" values are compared exactly when they have at
+            most 1024 characters and an exponent within ±400; beyond that they are compared as
+            64-bit floating-point numbers.
           enum: [string, number, boolean, array]
           default: "string"
           example: "array"
@@ -2413,6 +4006,276 @@ components:
           description: >
             Resource server id claim values are validated against. Required when targetType is
             "permission"; not allowed otherwise.
+
+    ConnectionSharingPolicyRequest:
+      type: object
+      additionalProperties: false
+      description: One organization unit's decision about this connection.
+      anyOf:
+        - required: [childUnits]
+        - required: [otherTreeRoots]
+      properties:
+        initiatingOuId:
+          type: string
+          description: The organization unit whose decision this is.
+          example: "acme-root"
+        childUnits:
+          $ref: '#/components/schemas/ConnectionChildUnits'
+        otherTreeRoots:
+          $ref: '#/components/schemas/ConnectionOtherTreeRootsSelected'
+        version:
+          type: integer
+          description: The policy version the caller believes it is editing.
+          example: 1
+
+    ConnectionSharingPolicyUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      description: A replacement for a policy's sections.
+      anyOf:
+        - required: [allUnits]
+        - required: [childUnits]
+        - required: [otherTreeRoots]
+      properties:
+        allUnits:
+          $ref: '#/components/schemas/ConnectionAllUnits'
+        childUnits:
+          $ref: '#/components/schemas/ConnectionChildUnits'
+        otherTreeRoots:
+          $ref: '#/components/schemas/ConnectionOtherTreeRoots'
+        version:
+          type: integer
+          description: The policy version the caller believes it is editing.
+          example: 1
+
+    ConnectionAllUnits:
+      type: object
+      additionalProperties: false
+      description: Every organization unit in the deployment, at any depth, including units created later.
+      properties:
+        excludedOuIds:
+          type: array
+          description: Organization units withheld from the section, each taking everything beneath it out of reach as well.
+          items:
+            type: string
+          example: ["acme-trial-customers"]
+
+    ConnectionChildUnits:
+      description: The organization units beneath the issuer.
+      oneOf:
+        - $ref: '#/components/schemas/ConnectionChildUnitsAll'
+        - $ref: '#/components/schemas/ConnectionChildUnitsSelected'
+      discriminator:
+        propertyName: mode
+        mapping:
+          all: '#/components/schemas/ConnectionChildUnitsAll'
+          selected: '#/components/schemas/ConnectionChildUnitsSelected'
+
+    ConnectionChildUnitsAll:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      description: Everything beneath the issuing organization unit, at any depth, including units created later.
+      properties:
+        mode:
+          type: string
+          enum: [all]
+        excludedOuIds:
+          type: array
+          description: Organization units withheld from the section, each taking everything beneath it out of reach as well.
+          items:
+            type: string
+          example: ["acme-trial-customers"]
+
+    ConnectionChildUnitsSelected:
+      type: object
+      additionalProperties: false
+      required: [mode, units]
+      description: Named organization units directly beneath the issuer.
+      properties:
+        mode:
+          type: string
+          enum: [selected]
+        units:
+          type: array
+          minItems: 1
+          description: The organization units reached.
+          items:
+            $ref: '#/components/schemas/ConnectionChildUnit'
+
+    ConnectionChildUnit:
+      type: object
+      additionalProperties: false
+      required: [ouId, reach]
+      properties:
+        ouId:
+          type: string
+          description: A direct child of the issuing organization unit.
+          example: "acme-customer-a"
+        reach:
+          type: string
+          enum: [unit, subtree]
+          description: How far the connection carries from the named organization unit.
+          example: unit
+
+    ConnectionOtherTreeRoots:
+      description: The root organization units of other trees, as a policy carries them.
+      oneOf:
+        - $ref: '#/components/schemas/ConnectionOtherTreeRootsSelected'
+        - $ref: '#/components/schemas/ConnectionOtherTreeRootsAll'
+      discriminator:
+        propertyName: mode
+        mapping:
+          selected: '#/components/schemas/ConnectionOtherTreeRootsSelected'
+          all: '#/components/schemas/ConnectionOtherTreeRootsAll'
+
+    ConnectionOtherTreeRootsSelected:
+      type: object
+      additionalProperties: false
+      required: [mode, units]
+      description: Named root organization units of other trees, and nothing below them.
+      properties:
+        mode:
+          type: string
+          enum: [selected]
+        units:
+          type: array
+          minItems: 1
+          description: The root organization units reached.
+          items:
+            $ref: '#/components/schemas/ConnectionRootUnit'
+
+    ConnectionOtherTreeRootsAll:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      description: The root organization unit of every other tree, including trees created later.
+      properties:
+        mode:
+          type: string
+          enum: [all]
+        excludedOuIds:
+          type: array
+          description: Root organization units withheld from the section, and with them their trees.
+          items:
+            type: string
+          example: ["partner-root"]
+
+    ConnectionRootUnit:
+      type: object
+      additionalProperties: false
+      required: [ouId]
+      properties:
+        ouId:
+          type: string
+          description: The root organization unit of another tree.
+          example: "partner-root"
+
+    ConnectionSharingPolicy:
+      type: object
+      description: A recorded sharing policy.
+      properties:
+        id:
+          type: string
+          description: The policy's own identifier.
+          example: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+        initiatingOuId:
+          type: string
+          description: The organization unit whose decision this policy is.
+          example: "acme-root"
+        stage:
+          type: string
+          enum: [share, reshare]
+          description: "`share` when the owner issued it, `reshare` when a sharee did."
+        parentPolicyId:
+          type: string
+          description: The policy that made this one's issuer able to see the connection.
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: Indicates if the policy is defined in declarative configuration and cannot be modified.
+        version:
+          type: integer
+          description: Bumped on every edit, and carried back on the next one.
+          example: 1
+        allUnits:
+          $ref: '#/components/schemas/ConnectionAllUnits'
+        childUnits:
+          $ref: '#/components/schemas/ConnectionChildUnits'
+        otherTreeRoots:
+          $ref: '#/components/schemas/ConnectionOtherTreeRoots'
+
+    ConnectionSharingPolicyListResponse:
+      type: object
+      properties:
+        totalResults:
+          type: integer
+          description: How many policies the connection has, not how many this page holds.
+          example: 2
+        startIndex:
+          type: integer
+          description: The one-based position of the first policy in this page.
+          example: 1
+        count:
+          type: integer
+          description: How many policies this page holds.
+          example: 2
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectionSharingPolicy'
+        links:
+          type: array
+          description: Links to the first, previous, next and last pages, where they exist.
+          items:
+            $ref: '#/components/schemas/Link'
+          example:
+            - href: "/connections/google/550e8400-e29b-41d4-a716-446655440000/sharing-policies?offset=30&limit=30"
+              rel: "next"
+
+    ConnectionResolvedOverlay:
+      type: object
+      description: What one organization unit may do with the connection.
+      properties:
+        ouId:
+          type: string
+          example: "acme-customer-a"
+        isOwnedByOU:
+          type: boolean
+          description: Whether the organization unit owns the connection rather than being shared it.
+        visible:
+          type: boolean
+          description: Whether the organization unit can see the connection at all.
+        policyIds:
+          type: array
+          description: Every policy that contributed, so an answer is traceable to its inputs.
+          items:
+            type: string
+        rules:
+          type: object
+          description: The effective rule per field.
+          additionalProperties:
+            $ref: '#/components/schemas/ConnectionOverlayRule'
+
+    ConnectionOverlayRule:
+      type: object
+      description: What a reached organization unit may do with one field.
+      properties:
+        editable:
+          type: boolean
+        value:
+          type: array
+          items:
+            type: string
+        allowedValues:
+          type: array
+          items:
+            type: string
+        excludedValues:
+          type: array
+          items:
+            type: string
 
     Error:
       type: object

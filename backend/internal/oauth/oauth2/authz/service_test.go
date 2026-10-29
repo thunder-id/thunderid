@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package authz
@@ -36,6 +36,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/flowexecmock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/jtimock"
@@ -2758,4 +2759,61 @@ func (suite *AuthorizeServiceTestSuite) TestCreateAuthorizationCode_NoSessionIDW
 	assert.NoError(suite.T(), err)
 	assert.Empty(suite.T(), code.SessionID)
 	assert.NotEmpty(suite.T(), code.TokenFamilyID, "the tfid fallback is unaffected")
+}
+
+// An application under an administrative hold is refused at the browser funnel. The error is shown
+// on the server rather than sent to the redirect_uri (RFC 6749), and is not a server_error.
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_HeldApplication() {
+	app := suite.testApp()
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	governance.EXPECT().EvaluateAccess(mock.Anything, app.ID, providers.AccessPlaneApplication,
+		providers.AuthenticationMethod("")).Return(providers.AccessDecision{
+		Reason: providers.AccessRefusalReasonSuspended}, nil)
+
+	svc := suite.newService()
+	svc.governance = governance
+
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), suite.testMsg())
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), authErr)
+	assert.False(suite.T(), authErr.SendErrorToClient,
+		"a held application's rejection must never be redirected to its own callback")
+	assert.Empty(suite.T(), authErr.ClientRedirectURI)
+	assert.Equal(suite.T(), oauth2const.ErrorUnauthorizedClient, authErr.Code)
+	assert.Contains(suite.T(), authErr.Message, "currently unavailable")
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_GovernanceFaultIsAServerError() {
+	app := suite.testApp()
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	governance.EXPECT().EvaluateAccess(mock.Anything, app.ID, providers.AccessPlaneApplication,
+		providers.AuthenticationMethod("")).Return(providers.AccessDecision{}, &tidcommon.InternalServerError)
+
+	svc := suite.newService()
+	svc.governance = governance
+
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), suite.testMsg())
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), authErr)
+	assert.Equal(suite.T(), oauth2const.ErrorServerError, authErr.Code)
+	assert.False(suite.T(), authErr.SendErrorToClient)
+}
+
+// An unregistered client id is reported as a bad request rather than as a server fault, which is
+// what it always was.
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_UnknownClientIsNotAServerError() {
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").
+		Return(nil, nil)
+
+	svc := suite.newService()
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), suite.testMsg())
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), authErr)
+	assert.Equal(suite.T(), oauth2const.ErrorInvalidRequest, authErr.Code)
+	assert.False(suite.T(), authErr.SendErrorToClient)
 }

@@ -287,14 +287,16 @@ attributes: *entry
 	assert.Equal(t, []string{"clientSecret", "oauth[].clientSecret"}, misplaced.Fields)
 }
 
-// A field named with a trailing ".*" admits any key of that mapping and nothing deeper.
+// A field named with a trailing ".*" admits any key of that mapping and nothing deeper, except a
+// field excluded with a leading "!".
 func TestFieldAllowed(t *testing.T) {
-	fields := []string{"clientSecret", "credentials.*", "oauth[].clientSecret"}
+	fields := []string{"clientSecret", "credentials.*", "!credentials.username", "oauth[].clientSecret"}
 
 	for path, want := range map[string]bool{
 		"clientSecret":                true,
 		"credentials.password":        true,
 		"credentials.pin":             true,
+		"credentials.username":        false,
 		"credentials":                 false,
 		"credentials.a.b":             false,
 		"oauth[].clientSecret":        true,

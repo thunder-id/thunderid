@@ -352,13 +352,16 @@ func (s *FileBasedResourceStoreTestSuite) TestGetActionListAndCounts_WithData() 
 		Name:      "Data Server",
 		OUID:      "ou1",
 		Delimiter: ":",
+		Actions: []providers.Action{
+			{Name: "Read All", Handle: "read_all", Permission: "read_all", Kind: providers.ActionKindTool},
+		},
 		Resources: []providers.Resource{
 			{
 				Name:       "Root",
 				Handle:     "root",
 				Permission: "root",
 				Actions: []providers.Action{
-					{Name: "Read", Handle: "read"},
+					{Name: "Read", Handle: "read", Permission: "root:read", Kind: providers.ActionKindTool},
 				},
 			},
 			{
@@ -380,15 +383,40 @@ func (s *FileBasedResourceStoreTestSuite) TestGetActionListAndCounts_WithData() 
 	rootID := declarativeResourceID(rs, rs.Resources[0].Permission)
 	rootActionID := declarativeActionID(rs, rs.Resources[0].Permission, rs.Resources[0].Actions[0].Handle)
 
-	action, err := s.store.GetAction(s.ctx, rootActionID, "rs-data", nil)
+	action, err := s.store.GetAction(s.ctx, rootActionID, "rs-data", &rootID)
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), rootActionID, action.ID)
+	assert.Equal(s.T(), providers.Action{
+		ID: rootActionID, Name: "Read", Handle: "read", Permission: "root:read", Kind: providers.ActionKindTool,
+	}, action)
+
+	// A nil resource ID selects the actions of the resource server itself, so a resource's action is
+	// not found there.
+	_, err = s.store.GetAction(s.ctx, rootActionID, "rs-data", nil)
+	assert.ErrorIs(s.T(), err, errActionNotFound)
+
+	action, err = s.store.GetAction(s.ctx, "rs-data:read_all", "rs-data", nil)
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), providers.Action{
+		ID: "rs-data:read_all", Name: "Read All", Handle: "read_all", Permission: "read_all",
+		Kind: providers.ActionKindTool,
+	}, action)
+
+	_, err = s.store.GetAction(s.ctx, "rs-data:read_all", "rs-data", &rootID)
+	assert.ErrorIs(s.T(), err, errActionNotFound, "An action of the resource server is not found under a resource")
+
+	missingID := "rs-data:missing"
+	_, err = s.store.GetAction(s.ctx, rootActionID, "rs-data", &missingID)
+	assert.ErrorIs(s.T(), err, errActionNotFound, "An action is not found under a resource that does not exist")
 
 	childID := declarativeResourceID(rs, rs.Resources[1].Permission)
 
-	// A nil resource ID selects resource server level actions, of which there are none because
-	// declarative resource servers declare actions only under resources.
 	actions, err := s.store.GetActionList(s.ctx, "rs-data", nil, "", 10, 0)
+	assert.NoError(s.T(), err)
+	assert.Len(s.T(), actions, 1)
+	assert.Equal(s.T(), "rs-data:read_all", actions[0].ID)
+	assert.Equal(s.T(), "read_all", actions[0].Permission)
+
+	actions, err = s.store.GetActionList(s.ctx, "rs-data", &missingID, "", 10, 0)
 	assert.NoError(s.T(), err)
 	assert.Empty(s.T(), actions)
 
@@ -404,7 +432,7 @@ func (s *FileBasedResourceStoreTestSuite) TestGetActionListAndCounts_WithData() 
 
 	count, err := s.store.GetActionListCount(s.ctx, "rs-data", nil, "")
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), 0, count)
+	assert.Equal(s.T(), 1, count)
 
 	count, err = s.store.GetActionListCount(s.ctx, "rs-data", &rootID, "")
 	assert.NoError(s.T(), err)
@@ -498,7 +526,7 @@ resources:
 	_, err = s.store.GetAction(s.ctx, actionA, rs.ID, &orgB)
 	assert.ErrorIs(s.T(), err, errActionNotFound, "An action is not found under another resource")
 
-	_, err = s.store.GetAction(s.ctx, actionA, "other-rs", nil)
+	_, err = s.store.GetAction(s.ctx, actionA, "other-rs", &orgA)
 	assert.ErrorIs(s.T(), err, errActionNotFound, "An action is not found under another resource server")
 }
 
@@ -571,6 +599,9 @@ func (s *FileBasedResourceStoreTestSuite) TestCheckActionHandleExists_WithData()
 		Name:      "Data Server",
 		OUID:      "ou1",
 		Delimiter: ":",
+		Actions: []providers.Action{
+			{Name: "Read All", Handle: "read_all", Permission: "read_all"},
+		},
 		Resources: []providers.Resource{
 			{
 				Name:       "Root",
@@ -586,9 +617,26 @@ func (s *FileBasedResourceStoreTestSuite) TestCheckActionHandleExists_WithData()
 	err := fileStore.Create("rs-data", rs)
 	assert.NoError(s.T(), err)
 
-	exists, err := s.store.CheckActionHandleExists(s.ctx, "rs-data", nil, "read")
-	assert.NoError(s.T(), err)
-	assert.True(s.T(), exists)
+	rootID := declarativeResourceID(rs, "root")
+	missingID := "rs-data:missing"
+	for _, tc := range []struct {
+		name   string
+		resID  *string
+		handle string
+		exists bool
+	}{
+		{"resource server level handle", nil, "read_all", true},
+		{"resource handle at the resource server level", nil, "read", false},
+		{"resource handle", &rootID, "read", true},
+		{"resource server level handle under a resource", &rootID, "read_all", false},
+		{"handle under a missing resource", &missingID, "read", false},
+	} {
+		s.Run(tc.name, func() {
+			exists, err := s.store.CheckActionHandleExists(s.ctx, "rs-data", tc.resID, tc.handle)
+			assert.NoError(s.T(), err)
+			assert.Equal(s.T(), tc.exists, exists)
+		})
+	}
 }
 
 func (s *FileBasedResourceStoreTestSuite) TestCheckResourceHandleExists_AlwaysFalse() {
@@ -730,4 +778,44 @@ func (s *FileBasedResourceStoreTestSuite) TestCheckResourceServerIdentifierExist
 	exists, err = s.store.CheckResourceServerIdentifierExists(s.ctx, "non-existent")
 	assert.NoError(s.T(), err)
 	assert.False(s.T(), exists)
+}
+
+// TestServerActionsFromALoadedFile verifies that the actions a declarative file declares on the
+// resource server itself are served at the resource server level, filtered by kind, counted as
+// dependencies and accepted as permissions.
+func (s *FileBasedResourceStoreTestSuite) TestServerActionsFromALoadedFile() {
+	fileStore, ok := s.store.(*fileBasedResourceStore)
+	s.Require().True(ok)
+
+	rs, err := parseToResourceServer([]byte(`
+id: rs-mcp
+name: MCP Server
+identifier: https://mcp.example.com
+ouId: ou1
+type: MCP
+actions:
+  - { name: Search, handle: search }
+  - { name: Docs, handle: docs, kind: resource }
+`))
+	s.Require().NoError(err)
+	s.Require().NoError(ProcessResourceServer(rs))
+	assert.NoError(s.T(), fileStore.Create(rs.ID, rs))
+
+	tools, err := s.store.GetActionList(s.ctx, rs.ID, nil, providers.ActionKindTool, 10, 0)
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), []providers.Action{{
+		ID: "rs-mcp:search", Name: "Search", Handle: "search", Permission: "search", Kind: providers.ActionKindTool,
+	}}, tools)
+
+	count, err := s.store.GetActionListCount(s.ctx, rs.ID, nil, providers.ActionKindResource)
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), 1, count)
+
+	hasDeps, err := s.store.CheckResourceServerHasDependencies(s.ctx, rs.ID)
+	assert.NoError(s.T(), err)
+	assert.True(s.T(), hasDeps, "Actions of the resource server are dependencies, as in the database store")
+
+	invalid, err := s.store.ValidatePermissions(s.ctx, rs.ID, []string{"search", "docs", "unknown"})
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), []string{"unknown"}, invalid)
 }

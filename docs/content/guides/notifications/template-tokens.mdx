@@ -31,17 +31,36 @@ In an HTML email body, <ProductName /> HTML-escapes each `{{ctx(...)}}` value be
 
 ### Available values
 
-The runtime supplies these `{{ctx(...)}}` values:
+Each value is supplied only to the messages listed with it. A template that references a value its message does not supply fails to send.
+
+**Messages sent from a flow:**
 
 | Token | Value |
 | :--- | :--- |
 | `{{ctx(appName)}}` | Name of the application the flow is running for. |
+
+**One-time passcode and magic link messages:**
+
+| Token | Value |
+| :--- | :--- |
 | `{{ctx(otpCode)}}` | The one-time passcode. |
-| `{{ctx(expiryTime)}}` | How long the code or link stays valid. Arrives already formatted for display, as a string such as `5 minutes` or `1 hour`. |
 | `{{ctx(magicLink)}}` | The magic-link sign-in URL. |
+| `{{ctx(expiryTime)}}` | How long the code or link stays valid. Arrives already formatted for display, as a string such as `5 minutes` or `1 hour`. |
+
+**Invitation, recovery, and CIBA messages:**
+
+| Token | Value |
+| :--- | :--- |
 | `{{ctx(inviteLink)}}` | The invitation or recovery link. |
 | `{{ctx(bindingMessage)}}` | The CIBA binding message shown for approval. |
 
+**The email sent when an account locks.** It is not sent from a flow, so only these values are available. See [Email Users When a Lock Forms](../../account-protection/configure-account-lockout#email-users-when-a-lock-forms).
+
+| Token | Value |
+| :--- | :--- |
+| `{{ctx(lockedAuthenticationMethod)}}` | The sign-in method that locked, `credential` or `otp`. Empty for a lock on every sign-in method. |
+| `{{ctx(lockDuration)}}` | How long the lock lasts, such as `5 minutes`. Empty for a lock that does not expire. |
+| `{{ctx(unlockTime)}}` | When the lock lifts, in UTC, such as `2026-10-26 10:05`. Empty for a lock that does not expire. |
 
 ## Design Tokens
 

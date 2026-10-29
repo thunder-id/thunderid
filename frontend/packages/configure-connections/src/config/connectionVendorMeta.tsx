@@ -147,6 +147,7 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
     categories: ['custom'],
     presentation: 'custom',
     reentersCredentialsOnOriginChange: true,
+    showsUsages: true,
     generalSettingsCardCopy: 'configuration',
   },
 ];

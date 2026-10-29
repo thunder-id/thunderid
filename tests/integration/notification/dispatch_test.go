@@ -120,6 +120,7 @@ func (ts *DispatchTestSuite) createSender(name string, extra map[string]interfac
 	body := map[string]interface{}{
 		"name":        name,
 		"description": "Sender for notification dispatch testing",
+		"ouId":        ts.ouID,
 		"url":         ts.mockServer.GetSendSMSURL(),
 	}
 	for key, value := range extra {
@@ -449,6 +450,7 @@ func (ts *DispatchTestSuite) tryCreateSender(name string, extra map[string]inter
 	body := map[string]interface{}{
 		"name":        name,
 		"description": "Sender for notification dispatch testing",
+		"ouId":        ts.ouID,
 		"url":         ts.mockServer.GetSendSMSURL(),
 	}
 	for key, value := range extra {

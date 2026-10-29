@@ -36,6 +36,15 @@ func GetExternalClaim(runtimeData map[string]string, name string) (string, bool)
 	return GetExternalIdentity(runtimeData).Claim(name)
 }
 
+// resolveVariables returns a copy of value with every {{var(name)}} placeholder replaced by the value of the flow
+// variable it names, read from the runtime data of the context. A value that names no variable is returned as it is.
+func resolveVariables(value interface{}, ctx *providers.NodeContext) interface{} {
+	if ctx == nil || len(ctx.RuntimeData) == 0 || len(References(value)) == 0 {
+		return value
+	}
+	return resolve(value, ctx.RuntimeData)
+}
+
 // placeholderPattern matches {{ctx(key)}} with optional whitespace.
 // TODO: Extend to support {{user(key)}}, {{env(key)}}, etc.
 var placeholderPattern = regexp.MustCompile(`{{\s*ctx\(\s*(\w+)\s*\)\s*}}`)
@@ -43,6 +52,10 @@ var placeholderPattern = regexp.MustCompile(`{{\s*ctx\(\s*(\w+)\s*\)\s*}}`)
 // requestPlaceholderPattern matches {{request(<selector>)}} with optional whitespace, capturing the
 // raw selector so it can be parsed into an optional source, a type (header/query) and a name.
 var requestPlaceholderPattern = regexp.MustCompile(`{{\s*request\(\s*([^)]*?)\s*\)\s*}}`)
+
+// variablePlaceholderPattern matches {{var(id)}}, with optional whitespace, and captures the id. It is written like
+// the other placeholders of a node's properties, {{ctx(key)}} and {{request(selector)}}.
+var variablePlaceholderPattern = regexp.MustCompile(`\{\{\s*var\(\s*([A-Za-z][A-Za-z0-9_]*)\s*\)\s*\}\}`)
 
 // Request selector source tokens used in {{request(...)}} placeholders. requestSourceInit refers
 // to the flow-initiation request and requestSourceCurrent to the current flow step request. When the

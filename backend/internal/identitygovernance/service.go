@@ -9,7 +9,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/thunder-id/thunderid/internal/serverconfig"
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
@@ -45,7 +44,7 @@ type IdentityGovernanceServiceInterface interface {
 	IsSuspended(ctx context.Context, entityID string) (bool, *tidcommon.ServiceError)
 
 	// AdmitSignIn admits a completed sign-in at the session plane and, when admitted, clears an expired
-	// entity-wide entry.
+	// account-wide entry.
 	AdmitSignIn(ctx context.Context, entityID string) (providers.AccessDecision, *tidcommon.ServiceError)
 
 	// Unlock releases every automatic lock in every method and resets the escalation.
@@ -57,10 +56,10 @@ type IdentityGovernanceServiceInterface interface {
 	Suspend(ctx context.Context, entityID, operatorNote string) *tidcommon.ServiceError
 
 	// ValidateSuspend runs Suspend's checks without writing.
-	ValidateSuspend(ctx context.Context, entityID string) *tidcommon.ServiceError
+	ValidateSuspend(ctx context.Context, entityID, operatorNote string) *tidcommon.ServiceError
 
-	// Unsuspend releases the hold. A user is left under a permanent entity-wide lock; an agent or an
-	// application becomes active.
+	// Unsuspend releases the hold. A user is left under a permanent account-wide lock; an agent keeps
+	// any automatic lock still in force, and an application becomes active.
 	Unsuspend(ctx context.Context, entityID string) *tidcommon.ServiceError
 
 	// RecordLogin stamps when access was last granted, if enabled for the entity's category.
@@ -72,11 +71,6 @@ type IdentityGovernanceServiceInterface interface {
 	// ReadAccess derives what management reads report for each entity, in order: the effective status
 	// and the last login time. Each category's lockout policy is resolved once per call.
 	ReadAccess(ctx context.Context, entities []providers.Entity) []AccessRead
-
-	// SetServerConfigService injects the server-config service the accountAccess section and the lock
-	// email's default sender are read from. It is built after governance, since it takes the section
-	// handler Initialize returns.
-	SetServerConfigService(serverConfigService serverconfig.ServerConfigService)
 }
 
 // entityStateProvider reads and writes the governed state. The entity service implements it.
@@ -117,7 +111,7 @@ type entityStateProvider interface {
 
 	// ClearSuspension removes the suspension placed at suspendedAt and writes the given hold, if any,
 	// in the same statement. It returns false, not an error, when that suspension is no longer there.
-	ClearSuspension(ctx context.Context, entityID string, hold *EntityHold, suspendedAt string) (bool, error)
+	ClearSuspension(ctx context.Context, entityID string, hold *AccountHold, suspendedAt string) (bool, error)
 }
 
 // identityGovernanceService is the governance authority.
@@ -125,7 +119,7 @@ type identityGovernanceService struct {
 	entityState entityStateProvider
 	source      accountAccessSourceInterface
 	// notifier is optional; locks form the same without it.
-	notifier lockNotifierInterface
+	notifier LockNotifierInterface
 	// authorizer is optional; nil permits.
 	authorizer sysauthz.SystemAuthorizationServiceInterface
 	// observability receives lifecycle audit events. Optional.
@@ -136,7 +130,7 @@ type identityGovernanceService struct {
 
 // newIdentityGovernanceService builds the governance service.
 func newIdentityGovernanceService(entityState entityStateProvider, source accountAccessSourceInterface,
-	notifier lockNotifierInterface, authorizer sysauthz.SystemAuthorizationServiceInterface,
+	notifier LockNotifierInterface, authorizer sysauthz.SystemAuthorizationServiceInterface,
 	observability providers.ObservabilityProvider) *identityGovernanceService {
 	return &identityGovernanceService{
 		entityState:   entityState,
@@ -162,7 +156,7 @@ func (s *identityGovernanceService) AdmitAuthenticationStep(ctx context.Context,
 		return decision, nil
 	}
 	_, recorded := entity.AccessState.Lock.AuthenticationMethods[method]
-	if recorded && method != AuthenticationMethodEntity {
+	if recorded && method != AuthenticationMethodAccount {
 		cleared, err := s.entityState.ClearAccessStateIfUnchanged(ctx, entityID, method, entity.Revision)
 		if err != nil {
 			s.logger.Warn(ctx, "Failed to clear account access state after an admitted authentication",
@@ -230,8 +224,8 @@ func (s *identityGovernanceService) IsSuspended(ctx context.Context,
 	return isSuspended(entity.State, entity.AccessState), nil
 }
 
-// AdmitSignIn checks a completed sign-in and, when admitted, clears an expired entity-wide entry. A
-// live entity-wide lock is never cleared.
+// AdmitSignIn checks a completed sign-in and, when admitted, clears an expired account-wide entry. A
+// live account-wide lock is never cleared.
 func (s *identityGovernanceService) AdmitSignIn(ctx context.Context,
 	entityID string) (providers.AccessDecision, *tidcommon.ServiceError) {
 	entity, decided, ok, svcErr := s.readForCheck(ctx, entityID)
@@ -240,9 +234,9 @@ func (s *identityGovernanceService) AdmitSignIn(ctx context.Context,
 	}
 
 	decision := s.decide(ctx, entity, providers.AccessPlaneSession, "")
-	entry := entity.AccessState.Lock.Entity
+	entry := entity.AccessState.Lock.Account
 	if decision.Admitted && entry != nil && !isLockLive(entry.UnlockAt, s.now()) {
-		cleared, err := s.entityState.ClearAccessStateIfUnchanged(ctx, entityID, AuthenticationMethodEntity,
+		cleared, err := s.entityState.ClearAccessStateIfUnchanged(ctx, entityID, AuthenticationMethodAccount,
 			entity.Revision)
 		if err != nil {
 			s.logger.Warn(ctx, "Failed to clear the entity access state after a completed sign-in",
@@ -255,7 +249,7 @@ func (s *identityGovernanceService) AdmitSignIn(ctx context.Context,
 	return decision, nil
 }
 
-// Unlock clears lock entries in every method, including the entity-wide key. It does not release a
+// Unlock clears lock entries in every method, including the account-wide key. It does not release a
 // suspension. A runtime-context caller is a recovery flow, so its unlock is recorded as self-service.
 func (s *identityGovernanceService) Unlock(ctx context.Context, entityID string) (svcErr *tidcommon.ServiceError) {
 	record := lifecycleAudit{succeeded: event.EventTypeIdentityUnlocked,
@@ -287,6 +281,9 @@ func (s *identityGovernanceService) Suspend(ctx context.Context,
 	if svcErr != nil {
 		return svcErr
 	}
+	if isOperatorNoteTooLong(operatorNote) {
+		return &ErrorOperatorNoteTooLong
+	}
 	// Already suspended: write nothing and keep the first placement time and note.
 	if isSuspended(entity.State, entity.AccessState) {
 		record.message = messageSuspensionInPlace
@@ -306,7 +303,7 @@ func (s *identityGovernanceService) Suspend(ctx context.Context,
 
 // ValidateSuspend runs Suspend's checks without writing. Only a refusal is audited.
 func (s *identityGovernanceService) ValidateSuspend(ctx context.Context,
-	entityID string) (svcErr *tidcommon.ServiceError) {
+	entityID, operatorNote string) (svcErr *tidcommon.ServiceError) {
 	record := lifecycleAudit{failed: event.EventTypeIdentitySuspensionFailed, entityID: entityID}
 	defer func() {
 		if svcErr != nil {
@@ -314,11 +311,16 @@ func (s *identityGovernanceService) ValidateSuspend(ctx context.Context,
 		}
 	}()
 
-	_, svcErr = s.governedForLifecycle(ctx, entityID, &record)
-	return svcErr
+	if _, svcErr = s.governedForLifecycle(ctx, entityID, &record); svcErr != nil {
+		return svcErr
+	}
+	if isOperatorNoteTooLong(operatorNote) {
+		return &ErrorOperatorNoteTooLong
+	}
+	return nil
 }
 
-// Unsuspend releases the hold and, for a user, writes a permanent entity-wide lock in the same
+// Unsuspend releases the hold and, for a user, writes a permanent account-wide lock in the same
 // statement.
 func (s *identityGovernanceService) Unsuspend(ctx context.Context,
 	entityID string) (svcErr *tidcommon.ServiceError) {
@@ -334,10 +336,10 @@ func (s *identityGovernanceService) Unsuspend(ctx context.Context,
 		return &ErrorNotApplicable
 	}
 
-	var hold *EntityHold
+	var hold *AccountHold
 	if entity.Category == providers.EntityCategoryUser {
 		// The permanent sentinel: this hold does not expire.
-		hold = &EntityHold{UnlockAt: permanentUnlockAt, Reason: lockReasonPostSuspension}
+		hold = &AccountHold{UnlockAt: permanentUnlockAt, Reason: lockReasonPostSuspension}
 	}
 
 	observedSuspension := ""
@@ -415,14 +417,6 @@ func (s *identityGovernanceService) ReadAccess(ctx context.Context, entities []p
 	return reads
 }
 
-// SetServerConfigService injects the server-config service. See IdentityGovernanceServiceInterface.
-func (s *identityGovernanceService) SetServerConfigService(serverConfigService serverconfig.ServerConfigService) {
-	s.source.setReader(serverConfigService)
-	if s.notifier != nil {
-		s.notifier.setServerConfigService(serverConfigService)
-	}
-}
-
 // enforcementFor resolves which recorded locks a category's policy enforces. An application has no
 // lockout policy, so it gets the zero enforcement, which reports every recorded lock, without a read.
 func (s *identityGovernanceService) enforcementFor(ctx context.Context,
@@ -484,22 +478,22 @@ func (s *identityGovernanceService) decideUnder(ctx context.Context, entity Gove
 	}
 
 	effective := effectiveMethodFor(policy.granularity, method)
-	entityWide, held := lockFor(entity.AccessState, effective, s.now())
+	accountWide, held := lockFor(entity.AccessState, effective, s.now())
 	if !held {
 		return admit()
 	}
 
-	// An entity-wide entry holds every method. A method entry holds only a lockable method.
-	if !entityWide && !isLockable(effective) {
+	// An account-wide entry holds every method. A method entry holds only a lockable method.
+	if !accountWide && !isLockable(effective) {
 		return admit()
 	}
 
-	// An entity-wide entry is decided under the entity-wide policy, as the status read reports it.
-	if entityWide && effective != AuthenticationMethodEntity {
-		policy = s.resolvePolicy(ctx, entity, AuthenticationMethodEntity)
+	// An account-wide entry is decided under the account-wide policy, as the status read reports it.
+	if accountWide && effective != AuthenticationMethodAccount {
+		policy = s.resolvePolicy(ctx, entity, AuthenticationMethodAccount)
 	}
 
-	postSuspension := entityWide && entity.AccessState.Lock.Entity.Reason == lockReasonPostSuspension
+	postSuspension := accountWide && entity.AccessState.Lock.Account.Reason == lockReasonPostSuspension
 	if !holdsAuthenticationPlane(policy, plane, method, postSuspension) {
 		return admit()
 	}
@@ -574,8 +568,8 @@ func (s *identityGovernanceService) formLockIfEligible(ctx context.Context, enti
 	}
 }
 
-// resolvePolicy returns the lockout policy for the entity's category at a method. Under entity
-// granularity the entity-wide policy applies, not the presented method's.
+// resolvePolicy returns the lockout policy for the entity's category at a method. Under account
+// granularity the account-wide policy applies, not the presented method's.
 func (s *identityGovernanceService) resolvePolicy(ctx context.Context, entity GovernedEntity,
 	method providers.AuthenticationMethod) lockoutPolicy {
 	category := categoryConfig(s.source.Current(ctx), entity.Category)

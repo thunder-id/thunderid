@@ -9,9 +9,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	authzdetailmgt "github.com/thunder-id/thunderid/internal/authzdetail/mgt"
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
@@ -21,12 +24,15 @@ import (
 	agentmodel "github.com/thunder-id/thunderid/internal/agent/model"
 	"github.com/thunder-id/thunderid/internal/application"
 	"github.com/thunder-id/thunderid/internal/application/model"
+	"github.com/thunder-id/thunderid/internal/connection"
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	"github.com/thunder-id/thunderid/internal/group"
+	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
@@ -36,7 +42,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/user"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 
@@ -134,7 +142,7 @@ func (f *fakeApplicationService) ValidateApplication(
 }
 
 func (f *fakeApplicationService) GetApplicationList(
-	_ context.Context,
+	_ context.Context, _ map[string]interface{},
 ) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
 	return nil, nil
 }
@@ -195,8 +203,18 @@ type fakeIDPService struct {
 	getErr    *tidcommon.ServiceError
 }
 
+func (f *fakeIDPService) ResolveIdentityProviderOU(context.Context, *providers.IDPDTO) *tidcommon.ServiceError {
+	return nil
+}
+
 type fakeAuthZENPDPService struct {
 	created *authzenpdp.AuthZENPDPConnection
+}
+
+func (f *fakeAuthZENPDPService) ResolveConnectionOU(
+	context.Context, *authzenpdp.AuthZENPDPConnection,
+) *tidcommon.ServiceError {
+	return nil
 }
 
 func (f *fakeAuthZENPDPService) CreateAuthZENPDPConnection(
@@ -295,6 +313,10 @@ type fakeSenderService struct {
 	getErr    *tidcommon.ServiceError
 }
 
+func (f *fakeSenderService) ResolveSenderOU(context.Context, *ncommon.NotificationSenderDTO) *tidcommon.ServiceError {
+	return nil
+}
+
 func (f *fakeSenderService) CreateSender(
 	_ context.Context, sender ncommon.NotificationSenderDTO,
 ) (*ncommon.NotificationSenderDTO, *tidcommon.ServiceError) {
@@ -337,10 +359,11 @@ func (f *fakeSenderService) UpdateSender(
 }
 
 type fakeFlowService struct {
-	created []*flowmgt.FlowDefinition
-	updated []*flowmgt.FlowDefinition
-	byID    map[string]*providers.CompleteFlowDefinition
-	byKey   map[string]*providers.CompleteFlowDefinition
+	created    []*flowmgt.FlowDefinition
+	updated    []*flowmgt.FlowDefinition
+	byID       map[string]*providers.CompleteFlowDefinition
+	byKey      map[string]*providers.CompleteFlowDefinition
+	ouIDByPath map[string]string
 }
 
 type fakeThemeService struct {
@@ -670,13 +693,14 @@ func (f *fakeOUService) UpdateOrganizationUnit(
 type fakeRoleService struct {
 	created []role.RoleCreationDetail
 	updated []role.RoleUpdateDetail
+	deleted []string
 }
 
 func (f *fakeRoleService) CreateRole(
 	_ context.Context, req role.RoleCreationDetail,
 ) (*role.RoleWithPermissionsAndAssignments, *tidcommon.ServiceError) {
 	f.created = append(f.created, req)
-	return &role.RoleWithPermissionsAndAssignments{ID: "role-1", Name: req.Name}, nil
+	return &role.RoleWithPermissionsAndAssignments{ID: "role-1", Name: req.Name, OUID: req.OUID}, nil
 }
 
 func (f *fakeRoleService) GetRoleWithPermissions(
@@ -693,7 +717,7 @@ func (f *fakeRoleService) UpdateRoleWithPermissions(
 	_ context.Context, _ string, req role.RoleUpdateDetail,
 ) (*role.RoleWithPermissions, *tidcommon.ServiceError) {
 	f.updated = append(f.updated, req)
-	return &role.RoleWithPermissions{ID: "role-1", Name: req.Name}, nil
+	return &role.RoleWithPermissions{ID: "role-1", Name: req.Name, OUID: req.OUID}, nil
 }
 
 type fakeRoleAssignmentService struct {
@@ -834,6 +858,7 @@ func (f *fakeFlowService) CreateFlow(
 		Name:     flowDef.Name,
 		FlowType: flowDef.FlowType,
 		Nodes:    flowDef.Nodes,
+		OUID:     flowDef.OUID,
 	}
 	f.created = append(f.created, flowDef)
 	f.byID[id] = created
@@ -883,11 +908,27 @@ func (f *fakeFlowService) UpdateFlow(
 		Name:     flowDef.Name,
 		FlowType: flowDef.FlowType,
 		Nodes:    flowDef.Nodes,
+		OUID:     f.byID[flowID].OUID,
 	}
 	f.updated = append(f.updated, flowDef)
 	f.byID[flowID] = updated
 	f.byKey[string(flowDef.FlowType)+":"+flowDef.Handle] = updated
 	return updated, nil
+}
+
+func (f *fakeFlowService) ResolveFlowOU(_ context.Context, flowDef *flowmgt.FlowDefinition) *tidcommon.ServiceError {
+	if flowDef.OUID == "" {
+		if flowDef.OUHandle == "" {
+			return &flowmgt.ErrorFlowOURequired
+		}
+		ouID, ok := f.ouIDByPath[flowDef.OUHandle]
+		if !ok {
+			return &flowmgt.ErrorInvalidFlowOU
+		}
+		flowDef.OUID = ouID
+	}
+	flowDef.OUHandle = ""
+	return nil
 }
 
 // fakeSharingService records what the importer asked it to replay.
@@ -1121,6 +1162,7 @@ func TestImportResources_CreateIDPAndFlow(t *testing.T) {
 		"handle: login",
 		"name: Login Flow",
 		"flowType: AUTHENTICATION",
+		"ouId: ou-1",
 		"nodes: []",
 		"",
 	}, "\n")
@@ -1851,6 +1893,7 @@ func TestImportResources_FlowUpsertCreatePreservesID(t *testing.T) {
 		"handle: registration-flow",
 		"name: Updated Registration Flow",
 		"flowType: REGISTRATION",
+		"ouId: ou-1",
 		"nodes: []",
 		"",
 	}, "\n")
@@ -1866,6 +1909,112 @@ func TestImportResources_FlowUpsertCreatePreservesID(t *testing.T) {
 	assert.Len(t, flowSvc.created, 1)
 	assert.Equal(t, "missing-flow-id", flowSvc.created[0].ID)
 	assert.Len(t, flowSvc.updated, 0)
+}
+
+func TestImportResources_FlowKeepsItsOrganizationUnit(t *testing.T) {
+	flowSvc := &fakeFlowService{
+		byID:  map[string]*providers.CompleteFlowDefinition{},
+		byKey: map[string]*providers.CompleteFlowDefinition{},
+	}
+	svc := newImportService(
+		nil, nil, nil, flowSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	content := strings.Join([]string{
+		"resource_type: flow",
+		"id: owned-flow-id",
+		"handle: owned-flow",
+		"name: Owned Flow",
+		"flowType: AUTHENTICATION",
+		"ouId: ou-1",
+		"nodes: []",
+		"",
+	}, "\n")
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	require.Len(t, flowSvc.created, 1)
+	assert.Equal(t, "ou-1", flowSvc.created[0].OUID)
+}
+
+func TestImportResources_FlowOrganizationUnit(t *testing.T) {
+	flowDoc := func(owner string) string {
+		lines := []string{
+			"resource_type: flow",
+			"id: owned-flow-id",
+			"handle: owned-flow",
+			"name: Owned Flow",
+			"flowType: AUTHENTICATION",
+		}
+		if owner != "" {
+			lines = append(lines, owner)
+		}
+		return strings.Join(append(lines, "nodes: []", ""), "\n")
+	}
+	existing := func() *fakeFlowService {
+		flow := &providers.CompleteFlowDefinition{
+			ID: "owned-flow-id", Handle: "owned-flow", Name: "Owned Flow",
+			FlowType: providers.FlowTypeAuthentication, OUID: "ou-1",
+		}
+		return &fakeFlowService{
+			byID:       map[string]*providers.CompleteFlowDefinition{"owned-flow-id": flow},
+			byKey:      map[string]*providers.CompleteFlowDefinition{"AUTHENTICATION:owned-flow": flow},
+			ouIDByPath: map[string]string{"default": "ou-1", "other": "ou-2"},
+		}
+	}
+
+	tests := []struct {
+		name         string
+		owner        string
+		dryRun       bool
+		wantStatus   string
+		wantCode     string
+		wantUpdated  int
+		wantOwnerSet string
+	}{
+		{name: "handle resolved to the id", owner: "ouHandle: default", wantStatus: statusSuccess,
+			wantUpdated: 1, wantOwnerSet: "ou-1"},
+		{name: "id wins over the handle", owner: "ouId: ou-1\nouHandle: other", wantStatus: statusSuccess,
+			wantUpdated: 1, wantOwnerSet: "ou-1"},
+		{name: "no owner is refused", owner: "", wantStatus: statusFailed, wantCode: flowmgt.ErrorFlowOURequired.Code},
+		{name: "unknown handle is refused", owner: "ouHandle: nowhere", wantStatus: statusFailed,
+			wantCode: flowmgt.ErrorInvalidFlowOU.Code},
+		{name: "dry run without an owner is refused", owner: "", dryRun: true, wantStatus: statusFailed,
+			wantCode: flowmgt.ErrorFlowOURequired.Code},
+		{name: "dry run accepts the owner the flow has", owner: "ouHandle: default", dryRun: true,
+			wantStatus: statusSuccess},
+		{name: "dry run refuses another owner by id", owner: "ouId: ou-2", dryRun: true, wantStatus: statusFailed,
+			wantCode: flowmgt.ErrorOUUpdateNotAllowed.Code},
+		{name: "dry run refuses another owner by handle", owner: "ouHandle: other", dryRun: true,
+			wantStatus: statusFailed, wantCode: flowmgt.ErrorOUUpdateNotAllowed.Code},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			flowSvc := existing()
+			svc := newImportService(
+				nil, nil, nil, flowSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+			resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+				Content: flowDoc(tc.owner),
+				DryRun:  tc.dryRun,
+				Options: &ImportOptions{
+					Upsert: boolPtr(true), ContinueOnError: boolPtr(true), Target: importTargetRuntime,
+				},
+			})
+
+			require.Nil(t, err)
+			require.Len(t, resp.Results, 1)
+			assert.Equal(t, tc.wantStatus, resp.Results[0].Status)
+			assert.Equal(t, tc.wantCode, resp.Results[0].Code)
+			assert.Len(t, flowSvc.updated, tc.wantUpdated)
+			assert.Empty(t, flowSvc.created)
+			if tc.wantOwnerSet != "" {
+				assert.Equal(t, tc.wantOwnerSet, flowSvc.updated[0].OUID)
+				assert.Empty(t, flowSvc.updated[0].OUHandle)
+			}
+		})
+	}
 }
 
 func TestImportResources_FlowUpsertDuplicateHandleFallsBackToHandleUpdate(t *testing.T) {
@@ -1891,6 +2040,7 @@ func TestImportResources_FlowUpsertDuplicateHandleFallsBackToHandleUpdate(t *tes
 		"handle: registration-flow",
 		"name: Updated Registration Flow",
 		"flowType: REGISTRATION",
+		"ouId: ou-1",
 		"nodes: []",
 		"",
 	}, "\n")
@@ -1933,6 +2083,7 @@ func TestImportResources_ApplicationFlowReferencesAreRemappedFromFlowAlias(t *te
 		"handle: registration-flow",
 		"name: Updated Registration Flow",
 		"flowType: REGISTRATION",
+		"ouId: ou-1",
 		"nodes: []",
 		"",
 		"---",
@@ -2236,6 +2387,7 @@ func TestImportResources_UpsertCreatePreservesIDsAcrossResourceTypes(t *testing.
 		"handle: registration-flow",
 		"name: Registration Flow",
 		"flowType: REGISTRATION",
+		"ouId: ou-1",
 		"nodes: []",
 		"",
 	}, "\n")
@@ -3106,6 +3258,7 @@ func TestImportAgent_FlowAliasRemapsFlowIDs(t *testing.T) {
 				"handle: " + tc.flowHandle,
 				"name: " + tc.flowName,
 				"flowType: " + tc.flowType,
+				"ouId: ou-1",
 				"nodes: []",
 				"---",
 				"resource_type: agent",
@@ -3173,6 +3326,17 @@ type fakeResourceServerService struct {
 	updated []providers.ResourceServer
 	// resources are the resources created under a server, in the order they were written.
 	resources []providers.Resource
+	// actions are the actions created under a server, in the order they were written, each with the
+	// ID of the resource it was created under, empty for an action of the server itself.
+	actions []importedAction
+	// actionErrs are the errors CreateAction returns, by action handle.
+	actionErrs map[string]*tidcommon.ServiceError
+}
+
+// importedAction is an action an import created, with the ID of the resource it was created under.
+type importedAction struct {
+	resourceID string
+	action     providers.Action
 }
 
 func (f *fakeResourceServerService) CreateResourceServer(
@@ -3213,8 +3377,16 @@ func (f *fakeResourceServerService) GetResourceList(
 }
 
 func (f *fakeResourceServerService) CreateAction(
-	_ context.Context, _ string, _ *string, _ providers.Action,
+	_ context.Context, _ string, resourceID *string, action providers.Action,
 ) (*providers.Action, *tidcommon.ServiceError) {
+	if svcErr, ok := f.actionErrs[action.Handle]; ok {
+		return nil, svcErr
+	}
+	created := importedAction{action: action}
+	if resourceID != nil {
+		created.resourceID = *resourceID
+	}
+	f.actions = append(f.actions, created)
 	return &providers.Action{}, nil
 }
 
@@ -3683,6 +3855,107 @@ func TestImportResourceServer_SameHandleUnderDifferentParents(t *testing.T) {
 	}, parents)
 }
 
+// TestImportResourceServer_ServerActions verifies that the actions declared on a resource server
+// itself are created at the server level, with or without resources, and that an action whose handle
+// already exists is skipped.
+func TestImportResourceServer_ServerActions(t *testing.T) {
+	tests := []struct {
+		name      string
+		resources []string
+		expected  []importedAction
+	}{
+		{
+			name: "without resources",
+			expected: []importedAction{
+				{action: providers.Action{Name: "Read All", Handle: "read_all", Permission: "read_all"}},
+			},
+		},
+		{
+			name: "beside resources",
+			resources: []string{
+				"resources:",
+				"  - name: Orders",
+				"    handle: orders",
+				"    actions:",
+				"      - { name: Read, handle: read }",
+			},
+			expected: []importedAction{
+				{action: providers.Action{Name: "Read All", Handle: "read_all", Permission: "read_all"}},
+				{resourceID: "id-orders", action: providers.Action{
+					Name: "Read", Handle: "read", Permission: "orders:read",
+				}},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rsSvc := &fakeResourceServerService{actionErrs: map[string]*tidcommon.ServiceError{
+				"existing": &resource.ErrorHandleConflict,
+			}}
+			svc := newImportService(
+				nil, nil, nil, nil, nil, nil, nil, nil, nil, rsSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+			content := strings.Join(append([]string{
+				"resource_type: resource_server",
+				"id: rs-new",
+				"name: Test RS",
+				"identifier: test-rs",
+				"ouId: ou-explicit",
+				"actions:",
+				"  - { name: Read All, handle: read_all }",
+				"  - { name: Existing, handle: existing }",
+			}, append(tc.resources, "")...), "\n")
+
+			resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+				Content: content,
+				Options: &ImportOptions{Upsert: boolPtr(false)},
+			})
+
+			require.Nil(t, err)
+			require.Len(t, resp.Results, 1)
+			assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+			assert.Equal(t, tc.expected, rsSvc.actions)
+		})
+	}
+}
+
+// TestImportResourceServer_ServerActionError verifies that a failure to create an action of the
+// resource server itself fails the import of that resource server.
+func TestImportResourceServer_ServerActionError(t *testing.T) {
+	rsSvc := &fakeResourceServerService{actionErrs: map[string]*tidcommon.ServiceError{
+		"read_all": {
+			Type:  tidcommon.ClientErrorType,
+			Code:  resource.ErrorInvalidRequestFormat.Code,
+			Error: tidcommon.I18nMessage{DefaultValue: "invalid action"},
+		},
+	}}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, rsSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	content := strings.Join([]string{
+		"resource_type: resource_server",
+		"id: rs-new",
+		"name: Test RS",
+		"identifier: test-rs",
+		"ouId: ou-explicit",
+		"actions:",
+		"  - { name: Read All, handle: read_all }",
+		"",
+	}, "\n")
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: content,
+		Options: &ImportOptions{Upsert: boolPtr(false)},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, resource.ErrorInvalidRequestFormat.Code, resp.Results[0].Code)
+	assert.Empty(t, rsSvc.resources)
+}
+
 // TestImportResourceServer_OUHandleNotFound verifies that an unknown ou_handle on a resource
 // server document causes the import to fail with a clear error.
 func TestImportResourceServer_OUHandleNotFound(t *testing.T) {
@@ -3919,6 +4192,35 @@ func (s *ImportNotificationTemplateTestSuite) TestCreate() {
 
 	s.Equal(statusSuccess, outcome.Status)
 	s.Equal(operationCreate, outcome.Operation)
+}
+
+func (s *ImportNotificationTemplateTestSuite) TestCreateKeepsTheDocumentID() {
+	doc, err := parseDocuments(`
+resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000a0
+channel: email
+handle: user-invite
+displayName: User Invitation Email
+description: Invite.
+content:
+  subject: Welcome
+  body: "<p>{{ctx(inviteLink)}}</p>"
+`)
+	s.Require().NoError(err)
+	s.expectValidateSucceeds()
+	s.mockAdapter.EXPECT().
+		GetTemplateByHandle(mock.Anything, notificationtemplate.ChannelTypeEmail, "user-invite").
+		Return(nil, &notificationtemplate.ErrorTemplateNotFound).Once()
+	s.mockAdapter.EXPECT().CreateTemplate(mock.Anything, notificationtemplate.ChannelTypeEmail,
+		mock.MatchedBy(func(req notificationtemplate.CreateTemplateRequest) bool {
+			return req.ID == "01900000-0000-7000-8000-0000000000a0"
+		})).Return(&notificationtemplate.Template{ID: "01900000-0000-7000-8000-0000000000a0",
+		Handle: "user-invite"}, nil).Once()
+
+	outcome := s.svc.importNotificationTemplate(s.ctx, doc[0], &ImportOptions{}, false)
+
+	s.Equal(statusSuccess, outcome.Status)
+	s.Equal("01900000-0000-7000-8000-0000000000a0", outcome.ResourceID)
 }
 
 func (s *ImportNotificationTemplateTestSuite) TestUpsertUpdatesExisting() {
@@ -4325,4 +4627,1150 @@ func TestImportUserRefusesPoliciesWithoutASharingAdapter(t *testing.T) {
 	assert.Equal(t, statusFailed, resp.Results[0].Status)
 	assert.Contains(t, resp.Results[0].Message, "sharing")
 	assert.Equal(t, []string{"user-5"}, userSvc.deleted)
+}
+
+type fakeAuthorizationDetailTypeService struct {
+	existing    map[string]*providers.AuthorizationDetailType
+	created     []providers.AuthorizationDetailType
+	updated     []providers.AuthorizationDetailType
+	updateErr   *tidcommon.ServiceError
+	validateErr *tidcommon.ServiceError
+	validated   []providers.AuthorizationDetailType
+}
+
+func (f *fakeAuthorizationDetailTypeService) DeleteAuthorizationDetailType(
+	_ context.Context, id string,
+) *tidcommon.ServiceError {
+	delete(f.existing, id)
+	return nil
+}
+
+func (f *fakeAuthorizationDetailTypeService) GetAuthorizationDetailTypeByValue(
+	_ context.Context, value string,
+) (*providers.AuthorizationDetailType, *tidcommon.ServiceError) {
+	for _, t := range f.existing {
+		if t.Type == value {
+			return t, nil
+		}
+	}
+	return nil, nil
+}
+
+func (f *fakeAuthorizationDetailTypeService) ValidateAuthorizationDetailType(
+	_ context.Context, t providers.AuthorizationDetailType,
+) *tidcommon.ServiceError {
+	f.validated = append(f.validated, t)
+	return f.validateErr
+}
+
+func (f *fakeAuthorizationDetailTypeService) CreateAuthorizationDetailType(
+	_ context.Context, t providers.AuthorizationDetailType,
+) (*providers.AuthorizationDetailType, *tidcommon.ServiceError) {
+	f.created = append(f.created, t)
+	return &t, nil
+}
+
+func (f *fakeAuthorizationDetailTypeService) GetAuthorizationDetailType(
+	_ context.Context, id string,
+) (*providers.AuthorizationDetailType, *tidcommon.ServiceError) {
+	if t, ok := f.existing[id]; ok {
+		return t, nil
+	}
+	return nil, &authzdetailmgt.ErrorTypeNotFound
+}
+
+func (f *fakeAuthorizationDetailTypeService) UpdateAuthorizationDetailType(
+	ctx context.Context, id string, t providers.AuthorizationDetailType,
+) (*providers.AuthorizationDetailType, *tidcommon.ServiceError) {
+	if _, svcErr := f.GetAuthorizationDetailType(ctx, id); svcErr != nil {
+		return nil, svcErr
+	}
+	if f.updateErr != nil {
+		return nil, f.updateErr
+	}
+	f.updated = append(f.updated, t)
+	return &t, nil
+}
+
+// withAuthorizationDetailTypeStore initializes the server runtime with the given type store mode.
+func withAuthorizationDetailTypeStore(t *testing.T, store string) {
+	config.ResetServerRuntime()
+	t.Cleanup(config.ResetServerRuntime)
+	require.NoError(t, config.InitializeServerRuntime("/tmp/test", &config.Config{
+		AuthorizationDetailType: config.AuthorizationDetailTypeConfig{Store: store},
+	}))
+}
+
+func newAuthorizationDetailTypeImportService(adtSvc authorizationDetailTypeAdapter) ImportServiceInterface {
+	svc := newImportService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil)
+	svc.(*importService).authorizationDetailTypeService = adtSvc
+	return svc
+}
+
+const authorizationDetailTypeDocument = `resource_type: authorization_detail_type
+id: adt-1
+type: payment_initiation
+name: Payment initiation
+version: 2
+schema: '{"type":"object","properties":{"amount":{"type":"string"}}}'
+consentTemplate: Pay {{amount}}
+processor:
+  endpoint: https://bank.example.com/rar
+reuse: false
+`
+
+func TestImportAuthorizationDetailType_CreatesWhenAbsent(t *testing.T) {
+	adtSvc := &fakeAuthorizationDetailTypeService{}
+	svc := newAuthorizationDetailTypeImportService(adtSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: authorizationDetailTypeDocument})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	require.Len(t, adtSvc.created, 1)
+	created := adtSvc.created[0]
+	assert.Equal(t, "adt-1", created.ID, "the type keeps the id it was exported with")
+	assert.Equal(t, "Pay {{amount}}", created.ConsentTemplate, "consent placeholders survive template resolution")
+	assert.Equal(t, "https://bank.example.com/rar", created.Processor.Endpoint)
+	assert.False(t, created.Reuse)
+	assert.JSONEq(t, `{"type":"object","properties":{"amount":{"type":"string"}}}`, string(created.Schema))
+}
+
+func TestImportAuthorizationDetailType_UpdatesWhenPresent(t *testing.T) {
+	adtSvc := &fakeAuthorizationDetailTypeService{existing: map[string]*providers.AuthorizationDetailType{
+		"adt-1": {ID: "adt-1", Type: "payment_initiation"},
+	}}
+	svc := newAuthorizationDetailTypeImportService(adtSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: authorizationDetailTypeDocument})
+
+	require.Nil(t, err)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	require.Len(t, adtSvc.updated, 1)
+	assert.Empty(t, adtSvc.created)
+
+	resp, err = svc.ImportResources(context.Background(), &ImportRequest{
+		Content: authorizationDetailTypeDocument, DryRun: true,
+	})
+	require.Nil(t, err)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	assert.Len(t, adtSvc.updated, 1, "a dry run changes nothing")
+}
+
+func TestImportAuthorizationDetailType_ReportsDeclarativeType(t *testing.T) {
+	adtSvc := &fakeAuthorizationDetailTypeService{
+		existing: map[string]*providers.AuthorizationDetailType{
+			"adt-1": {ID: "adt-1", IsReadOnly: true},
+		},
+		updateErr: &authzdetailmgt.ErrorImmutableType,
+	}
+	svc := newAuthorizationDetailTypeImportService(adtSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: authorizationDetailTypeDocument})
+
+	require.Nil(t, err)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, authzdetailmgt.ErrorImmutableType.Code, resp.Results[0].Code)
+	assert.Empty(t, adtSvc.created)
+}
+
+func TestImportAuthorizationDetailType_DryRunCreateAndFailures(t *testing.T) {
+	withAuthorizationDetailTypeStore(t, "")
+	adtSvc := &fakeAuthorizationDetailTypeService{}
+	svc := newAuthorizationDetailTypeImportService(adtSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: authorizationDetailTypeDocument, DryRun: true,
+	})
+	require.Nil(t, err)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	assert.Empty(t, adtSvc.created)
+
+	resp, err = svc.ImportResources(context.Background(), &ImportRequest{
+		Content: "resource_type: authorization_detail_type\nid: adt-1\nname: Bad\nschema: 'not json'\n",
+	})
+	require.Nil(t, err)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, ErrorInvalidYAMLContent.Code, resp.Results[0].Code)
+
+	resp, err = newAuthorizationDetailTypeImportService(nil).ImportResources(context.Background(),
+		&ImportRequest{Content: authorizationDetailTypeDocument})
+	require.Nil(t, err)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+}
+
+func TestImportAuthorizationDetailType_DeletesAType(t *testing.T) {
+	adtSvc := existingTypes(&providers.AuthorizationDetailType{ID: "adt-1", Type: "payment_initiation"},
+		&providers.AuthorizationDetailType{ID: "adt-2", Type: "other"})
+	svc := newAuthorizationDetailTypeImportService(adtSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Deletions: []ResourceDeletion{{ResourceType: resourceTypeAuthorizationDetailType, ID: "adt-1"}},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, 1, resp.Summary.Deleted)
+	assert.NotContains(t, adtSvc.existing, "adt-1")
+	assert.Contains(t, adtSvc.existing, "adt-2", "unrelated types must be left alone")
+}
+
+// existingTypes returns an authorization details type service holding the given types.
+func existingTypes(types ...*providers.AuthorizationDetailType) *fakeAuthorizationDetailTypeService {
+	existing := make(map[string]*providers.AuthorizationDetailType, len(types))
+	for _, t := range types {
+		existing[t.ID] = t
+	}
+	return &fakeAuthorizationDetailTypeService{existing: existing}
+}
+
+// A dry run refuses what the real import would, reporting the operation that import would perform.
+func TestImportAuthorizationDetailType_DryRunPredictsRefusals(t *testing.T) {
+	invalidUpdate := existingTypes(&providers.AuthorizationDetailType{ID: "adt-1", Type: "payment_initiation"})
+	invalidUpdate.validateErr = &authzdetailmgt.ErrorInvalidSchema
+	cases := map[string]struct {
+		service   *fakeAuthorizationDetailTypeService
+		options   *ImportOptions
+		store     string
+		code      string
+		operation string
+	}{
+		"invalid type": {&fakeAuthorizationDetailTypeService{validateErr: &authzdetailmgt.ErrorInvalidSchema}, nil,
+			"", authzdetailmgt.ErrorInvalidSchema.Code, operationCreate},
+		"invalid update": {invalidUpdate, nil, "", authzdetailmgt.ErrorInvalidSchema.Code, operationUpdate},
+		"type value taken": {existingTypes(&providers.AuthorizationDetailType{ID: "adt-other",
+			Type: "payment_initiation"}), nil, "", authzdetailmgt.ErrorTypeConflict.Code, operationCreate},
+		"id taken without upsert": {existingTypes(&providers.AuthorizationDetailType{ID: "adt-1", Type: "other"}),
+			&ImportOptions{Upsert: boolPtr(false)}, "", authzdetailmgt.ErrorTypeIDConflict.Code, operationCreate},
+		"declarative type": {existingTypes(&providers.AuthorizationDetailType{ID: "adt-1",
+			Type: "payment_initiation", IsReadOnly: true}), nil, "", authzdetailmgt.ErrorImmutableType.Code,
+			operationUpdate},
+		"type value changed": {existingTypes(&providers.AuthorizationDetailType{ID: "adt-1", Type: "other"}), nil,
+			"", authzdetailmgt.ErrorTypeValueImmutable.Code, operationUpdate},
+		"create in declarative-only mode": {&fakeAuthorizationDetailTypeService{}, nil, "declarative",
+			authzdetailmgt.ErrorDeclarativeModeCreateNotAllowed.Code, operationCreate},
+	}
+	for name, tc := range cases {
+		withAuthorizationDetailTypeStore(t, tc.store)
+		resp, err := newAuthorizationDetailTypeImportService(tc.service).ImportResources(context.Background(),
+			&ImportRequest{Content: authorizationDetailTypeDocument, DryRun: true, Options: tc.options})
+		require.Nil(t, err, name)
+		assert.Equal(t, statusFailed, resp.Results[0].Status, name)
+		assert.Equal(t, tc.code, resp.Results[0].Code, name)
+		assert.Equal(t, tc.operation, resp.Results[0].Operation, name)
+		assert.Empty(t, tc.service.created, name)
+		assert.Empty(t, tc.service.updated, name)
+	}
+}
+
+// A dry run create checks the credential as sent, not against a stored type that holds the id, as the
+// real create does.
+func TestImportAuthorizationDetailType_DryRunCreateIgnoresTheStoredType(t *testing.T) {
+	withAuthorizationDetailTypeStore(t, "")
+	adtSvc := existingTypes(&providers.AuthorizationDetailType{ID: "adt-1", Type: "other"})
+
+	resp, err := newAuthorizationDetailTypeImportService(adtSvc).ImportResources(context.Background(),
+		&ImportRequest{Content: authorizationDetailTypeDocument, DryRun: true,
+			Options: &ImportOptions{Upsert: boolPtr(false)}})
+
+	require.Nil(t, err)
+	assert.Equal(t, authzdetailmgt.ErrorTypeIDConflict.Code, resp.Results[0].Code)
+	require.Len(t, adtSvc.validated, 1)
+	assert.Empty(t, adtSvc.validated[0].ID)
+}
+
+// An id wider than the store's ID column is refused before anything is written.
+func TestImportAuthorizationDetailType_RefusesAnOverlongID(t *testing.T) {
+	adtSvc := &fakeAuthorizationDetailTypeService{}
+	content := strings.Replace(authorizationDetailTypeDocument, "id: adt-1", "id: "+strings.Repeat("a", 256), 1)
+
+	for _, dryRun := range []bool{false, true} {
+		resp, err := newAuthorizationDetailTypeImportService(adtSvc).ImportResources(context.Background(),
+			&ImportRequest{Content: content, DryRun: dryRun})
+		require.Nil(t, err)
+		assert.Equal(t, statusFailed, resp.Results[0].Status)
+		assert.Equal(t, ErrorInvalidYAMLContent.Code, resp.Results[0].Code)
+	}
+	assert.Empty(t, adtSvc.created)
+}
+
+func TestDeleteResource_RemovesAuthorizationDetailTypeFile(t *testing.T) {
+	tempHome := t.TempDir()
+	config.ResetServerRuntime()
+	t.Cleanup(config.ResetServerRuntime)
+	require.NoError(t, config.InitializeServerRuntime(tempHome, &config.Config{}))
+
+	resourceDir := filepath.Join(tempHome, "config", "resources", "authorization_detail_types")
+	require.NoError(t, os.MkdirAll(resourceDir, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(resourceDir, "payment.yaml"),
+		[]byte(authorizationDetailTypeDocument), 0o600))
+
+	resp, svcErr := newAuthorizationDetailTypeImportService(nil).DeleteResource(context.Background(),
+		&DeleteResourceRequest{ResourceType: resourceTypeAuthorizationDetailType, ResourceKey: "adt-1"})
+
+	require.Nil(t, svcErr)
+	assert.Equal(t, "payment.yaml", resp.DeletedFile)
+	_, statErr := os.Stat(filepath.Join(resourceDir, "payment.yaml"))
+	assert.True(t, os.IsNotExist(statErr))
+}
+
+// connectionKind describes how the importer drives the service of one kind of connection, so a scenario runs against
+// each kind.
+type connectionKind struct {
+	name string
+	// doc is a connection document of the kind with the given id, naming its owner by the given lines.
+	doc func(id, owner string) string
+	// service returns the mock of the service of the kind, and the methods the importer calls on it.
+	service                                func() *mock.Mock
+	resolveMethod, createMethod, getMethod string
+	// created is what the service answers a create call with, and stored what it answers a get call with for a
+	// connection owned by the given organization unit.
+	created any
+	stored  func(ouID string) any
+	// updateNotAllowedCode is the code of the error the service answers an update to another owner with.
+	updateNotAllowedCode string
+}
+
+// ownerCall is a call to the service to resolve the owner of a connection document.
+type ownerCall struct {
+	// wantOUID and wantHandle are the owner the document names, which the importer hands to the service.
+	wantOUID, wantHandle string
+	// setOUID is the organization unit the service resolves the owner to, when it is not empty.
+	setOUID string
+	// svcErr is the error the service answers with.
+	svcErr *tidcommon.ServiceError
+}
+
+type ImportConnectionOUTestSuite struct {
+	suite.Suite
+	idpService    *idpAdapterMock
+	senderService *senderAdapterMock
+	pdpService    *authZENPDPAdapterMock
+	svc           ImportServiceInterface
+}
+
+func TestImportConnectionOUTestSuite(t *testing.T) {
+	suite.Run(t, new(ImportConnectionOUTestSuite))
+}
+
+func (s *ImportConnectionOUTestSuite) SetupTest() {
+	s.idpService = newIdpAdapterMock(s.T())
+	s.senderService = newSenderAdapterMock(s.T())
+	s.pdpService = newAuthZENPDPAdapterMock(s.T())
+	s.svc = newImportService(
+		nil, s.idpService, s.senderService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, s.pdpService)
+}
+
+// ownerFields returns the pointers to the ouId and the ouHandle of the connection a resolve call is made with, which
+// every kind of connection holds in fields of those names.
+func ownerFields(arg any) (ouID, ouHandle *string) {
+	connection := reflect.ValueOf(arg).Elem()
+	return connection.FieldByName("OUID").Addr().Interface().(*string),
+		connection.FieldByName("OUHandle").Addr().Interface().(*string)
+}
+
+// createdOU returns the organization unit the argument of a create call names, which is a connection or a request
+// that holds it in a field named OUID.
+func createdOU(arg any) string {
+	return reflect.Indirect(reflect.ValueOf(arg)).FieldByName("OUID").String()
+}
+
+// expectResolve expects the service of the kind to be asked to resolve the owner of the document.
+func (s *ImportConnectionOUTestSuite) expectResolve(kind connectionKind, call ownerCall) {
+	kind.service().On(kind.resolveMethod, mock.Anything, mock.MatchedBy(func(arg any) bool {
+		ouID, ouHandle := ownerFields(arg)
+		return *ouID == call.wantOUID && *ouHandle == call.wantHandle
+	})).Run(func(args mock.Arguments) {
+		if call.setOUID != "" {
+			ouID, _ := ownerFields(args.Get(1))
+			*ouID = call.setOUID
+		}
+	}).Return(call.svcErr).Once()
+}
+
+// expectCreate expects the connection to be created under the given organization unit.
+func (s *ImportConnectionOUTestSuite) expectCreate(kind connectionKind, ouID string) {
+	kind.service().On(kind.createMethod, mock.Anything, mock.MatchedBy(func(arg any) bool {
+		return createdOU(arg) == ouID
+	})).Return(kind.created, (*tidcommon.ServiceError)(nil)).Once()
+}
+
+// expectExisting expects the service to hold the connection of the document, owned by the given organization unit.
+func (s *ImportConnectionOUTestSuite) expectExisting(kind connectionKind, ouID string) {
+	kind.service().On(kind.getMethod, mock.Anything, "conn-1").
+		Return(kind.stored(ouID), (*tidcommon.ServiceError)(nil)).Once()
+}
+
+// kinds returns the three kinds of connection the importer drives, each over the suite's mocks.
+func (s *ImportConnectionOUTestSuite) kinds() []connectionKind {
+	return []connectionKind{
+		{
+			name: "identity provider",
+			doc: func(id, owner string) string {
+				return "resource_type: connection\n" + idLine(id) + "name: idp-one\ntype: google\n" + owner +
+					"clientId: abc\n"
+			},
+			service:       func() *mock.Mock { return &s.idpService.Mock },
+			resolveMethod: "ResolveIdentityProviderOU", createMethod: "CreateIdentityProvider",
+			getMethod: "GetIdentityProvider",
+			created:   &providers.IDPDTO{ID: "idp-new", Name: "idp-one"},
+			stored: func(ouID string) any {
+				return &providers.IDPDTO{ID: "conn-1", Name: "idp-one", OUID: ouID}
+			},
+			updateNotAllowedCode: idp.ErrorIDPOUUpdateNotAllowed.Code,
+		},
+		{
+			name: "notification sender",
+			doc: func(id, owner string) string {
+				return "resource_type: connection\n" + idLine(id) + "name: sms\ntype: twilio\n" + owner +
+					"accountSid: AC1\nauthToken: t\nsenderId: x\n"
+			},
+			service:       func() *mock.Mock { return &s.senderService.Mock },
+			resolveMethod: "ResolveSenderOU", createMethod: "CreateSender", getMethod: "GetSender",
+			created: &ncommon.NotificationSenderDTO{ID: "sender-new", Name: "sms"},
+			stored: func(ouID string) any {
+				return &ncommon.NotificationSenderDTO{ID: "conn-1", Name: "sms", OUID: ouID}
+			},
+			updateNotAllowedCode: notification.ErrorSenderOUUpdateNotAllowed.Code,
+		},
+		{
+			name: "AuthZEN PDP",
+			doc: func(id, owner string) string {
+				return "resource_type: connection\n" + idLine(id) + "name: pdp\ntype: authzen-pdp\n" + owner +
+					"endpoint: https://pdp.example.com\n"
+			},
+			service:       func() *mock.Mock { return &s.pdpService.Mock },
+			resolveMethod: "ResolveConnectionOU", createMethod: "CreateAuthZENPDPConnection",
+			getMethod: "GetAuthZENPDP",
+			created:   &authzenpdp.AuthZENPDPConnection{ID: "pdp-new", Name: "pdp"},
+			stored: func(ouID string) any {
+				return &authzenpdp.AuthZENPDPConnection{ID: "conn-1", Name: "pdp", OUID: ouID}
+			},
+			updateNotAllowedCode: authzenpdp.ErrorOUUpdateNotAllowed.Code,
+		},
+	}
+}
+
+// idLine is the id line of a connection document, which is empty for a document that has no id.
+func idLine(id string) string {
+	if id == "" {
+		return ""
+	}
+	return "id: " + id + "\n"
+}
+
+// importOne imports a document that holds one connection and returns its outcome.
+func (s *ImportConnectionOUTestSuite) importOne(content string, dryRun bool) ImportItemOutcome {
+	resp, err := s.svc.ImportResources(context.Background(), &ImportRequest{Content: content, DryRun: dryRun})
+	s.Require().Nil(err)
+	s.Require().Len(resp.Results, 1)
+	return resp.Results[0]
+}
+
+func (s *ImportConnectionOUTestSuite) TestOwnerIsResolvedByTheServiceOfTheKind() {
+	for _, kind := range s.kinds() {
+		s.Run(kind.name, func() {
+			s.SetupTest()
+			s.expectResolve(kind, ownerCall{wantHandle: "default", setOUID: "ou-default"})
+			s.expectCreate(kind, "ou-default")
+
+			outcome := s.importOne(kind.doc("", "ouHandle: default\n"), false)
+
+			s.Equal(statusSuccess, outcome.Status)
+			s.Equal(operationCreate, outcome.Operation)
+		})
+	}
+}
+
+func (s *ImportConnectionOUTestSuite) TestOUIDAndHandleAreBothHandedToTheService() {
+	for _, kind := range s.kinds() {
+		s.Run(kind.name, func() {
+			s.SetupTest()
+			s.expectResolve(kind, ownerCall{wantOUID: "ou-other", wantHandle: "default"})
+			s.expectCreate(kind, "ou-other")
+
+			outcome := s.importOne(kind.doc("", "ouId: ou-other\nouHandle: default\n"), false)
+
+			s.Equal(statusSuccess, outcome.Status)
+		})
+	}
+}
+
+func (s *ImportConnectionOUTestSuite) TestOwnerTheServiceCannotResolveFailsTheItem() {
+	for _, kind := range s.kinds() {
+		for _, dryRun := range []bool{false, true} {
+			s.Run(fmt.Sprintf("%s dry run %t", kind.name, dryRun), func() {
+				s.SetupTest()
+				s.expectResolve(kind, ownerCall{wantHandle: "missing", svcErr: &authzenpdp.ErrorInvalidOU})
+
+				outcome := s.importOne(kind.doc("", "ouHandle: missing\n"), dryRun)
+
+				s.Equal(statusFailed, outcome.Status)
+				s.Equal(authzenpdp.ErrorInvalidOU.Code, outcome.Code)
+			})
+		}
+	}
+}
+
+func (s *ImportConnectionOUTestSuite) TestDryRunRefusesToMoveAnExistingConnection() {
+	for _, kind := range s.kinds() {
+		s.Run(kind.name, func() {
+			s.SetupTest()
+			s.expectResolve(kind, ownerCall{wantOUID: "ou-2"})
+			s.expectExisting(kind, "ou-1")
+
+			outcome := s.importOne(kind.doc("conn-1", "ouId: ou-2\n"), true)
+
+			s.Equal(statusFailed, outcome.Status)
+			s.Equal(kind.updateNotAllowedCode, outcome.Code)
+		})
+	}
+}
+
+func (s *ImportConnectionOUTestSuite) TestDryRunAcceptsTheOwnerAnExistingConnectionHas() {
+	for _, kind := range s.kinds() {
+		s.Run(kind.name, func() {
+			s.SetupTest()
+			s.expectResolve(kind, ownerCall{wantOUID: "ou-1"})
+			s.expectExisting(kind, "ou-1")
+
+			outcome := s.importOne(kind.doc("conn-1", "ouId: ou-1\n"), true)
+
+			s.Equal(statusSuccess, outcome.Status)
+			s.Equal(operationUpdate, outcome.Operation)
+		})
+	}
+}
+
+const httpConnectionImportDoc = `resource_type: connection
+id: http-1
+type: http
+name: Risk Engine
+url: %s
+timeoutMs: 5000
+authentication:
+  type: basic
+  properties:
+    username: svc-user
+%s`
+
+const (
+	httpImportURL          = "https://risk.example.com/evaluate"
+	httpImportPasswordLine = "    password: doc-pw\n"
+)
+
+type ImportHTTPConnectionTestSuite struct {
+	suite.Suite
+	adapter *httpConnectionAdapterMock
+	svc     ImportServiceInterface
+}
+
+func TestImportHTTPConnectionTestSuite(t *testing.T) {
+	suite.Run(t, new(ImportHTTPConnectionTestSuite))
+}
+
+func (s *ImportHTTPConnectionTestSuite) SetupTest() {
+	s.adapter = newHttpConnectionAdapterMock(s.T())
+	s.svc = s.newService(nil, nil, s.adapter)
+}
+
+// newService builds an import service over the connection adapters an HTTP connection test reaches.
+func (s *ImportHTTPConnectionTestSuite) newService(idpSvc idpAdapter, senderSvc senderAdapter,
+	httpSvc httpConnectionAdapter) ImportServiceInterface {
+	svc := newImportService(newAppService(), idpSvc, senderSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil, nil)
+	svc.(*importService).httpConnectionService = httpSvc
+	return svc
+}
+
+func (s *ImportHTTPConnectionTestSuite) importHTTPConnection(url, passwordLine string, dryRun bool) ImportItemOutcome {
+	s.T().Helper()
+	s.adapter.EXPECT().ResolveConnectionOU(mock.Anything, mock.Anything).Return(nil).Maybe()
+	resp, err := s.svc.ImportResources(context.Background(), &ImportRequest{
+		Content: fmt.Sprintf(httpConnectionImportDoc, url, passwordLine),
+		DryRun:  dryRun,
+		Options: &ImportOptions{Upsert: boolPtr(true), ContinueOnError: boolPtr(true), Target: importTargetRuntime},
+	})
+	s.Require().Nil(err)
+	s.Require().Len(resp.Results, 1)
+	return resp.Results[0]
+}
+
+func (s *ImportHTTPConnectionTestSuite) storedPassword(props []cmodels.Property) string {
+	s.T().Helper()
+	authConfig, err := outboundauth.FromProperties(props)
+	s.Require().NoError(err)
+	return authConfig.Get(outboundauth.FieldBasicPassword)
+}
+
+func (s *ImportHTTPConnectionTestSuite) stored() *httpconnection.HTTPConnection {
+	authProps, err := outboundauth.ToProperties(outboundauth.Config{Type: outboundauth.TypeBasic,
+		Properties: map[string]string{
+			outboundauth.FieldBasicUsername: "svc-user",
+			outboundauth.FieldBasicPassword: "stored-pw",
+		}})
+	s.Require().NoError(err)
+	return &httpconnection.HTTPConnection{ID: "http-1", Name: "Risk Engine", URL: httpImportURL,
+		AuthProperties: authProps}
+}
+
+// httpSharingImportDoc is an HTTP connection document that names its owner by handle only and carries one
+// sharing policy.
+const httpSharingImportDoc = `resource_type: connection
+id: http-1
+type: http
+name: Risk Engine
+url: https://risk.example.com/evaluate
+ouHandle: root
+sharingPolicies:
+  - childUnits:
+      mode: all
+`
+
+func (s *ImportHTTPConnectionTestSuite) importSharedHTTPConnection(sharingSvc *fakeSharingService) ImportItemOutcome {
+	s.T().Helper()
+	s.svc.(*importService).sharingService = sharingSvc
+	resp, err := s.svc.ImportResources(context.Background(), &ImportRequest{
+		Content: httpSharingImportDoc,
+		Options: &ImportOptions{Upsert: boolPtr(false), Target: importTargetRuntime},
+	})
+	s.Require().Nil(err)
+	s.Require().Len(resp.Results, 1)
+	return resp.Results[0]
+}
+
+// A document that names its owner by handle is shared against the unit the handle resolves to.
+func (s *ImportHTTPConnectionTestSuite) TestSharingIsReplayedAgainstTheResolvedOwner() {
+	sharingSvc := &fakeSharingService{}
+	s.adapter.EXPECT().ResolveConnectionOU(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, connection *httpconnection.HTTPConnection) { connection.OUID = "ou-root" }).
+		Return(nil)
+	s.adapter.EXPECT().CreateHTTPConnection(mock.Anything, mock.Anything).
+		Return(&httpconnection.HTTPConnection{ID: "http-1", Name: "Risk Engine"}, nil)
+
+	outcome := s.importSharedHTTPConnection(sharingSvc)
+
+	s.Equal(statusSuccess, outcome.Status, outcome.Message)
+	s.Require().Len(sharingSvc.calls, 1)
+	s.Equal(connection.ConnectionSharingType, sharingSvc.calls[0].resourceType)
+	s.Equal("http-1", sharingSvc.calls[0].resourceID)
+	s.Equal("ou-root", sharingSvc.calls[0].owningOUID)
+	s.Len(sharingSvc.calls[0].policies, 1)
+}
+
+// A refused policy fails the document, and a connection the import just created is removed.
+func (s *ImportHTTPConnectionTestSuite) TestRefusedPoliciesRemoveTheCreatedConnection() {
+	sharingSvc := &fakeSharingService{failure: &sharing.PolicyReplayError{
+		Index: 0, InitiatingOUID: "ou-root", Err: &sharing.ErrorPolicyExists}}
+	s.adapter.EXPECT().ResolveConnectionOU(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, connection *httpconnection.HTTPConnection) { connection.OUID = "ou-root" }).
+		Return(nil)
+	s.adapter.EXPECT().CreateHTTPConnection(mock.Anything, mock.Anything).
+		Return(&httpconnection.HTTPConnection{ID: "http-1", Name: "Risk Engine"}, nil)
+	s.adapter.EXPECT().GetHTTPConnection(mock.Anything, "http-1").
+		Return(&httpconnection.HTTPConnection{ID: "http-1"}, nil)
+	s.adapter.EXPECT().DeleteHTTPConnection(mock.Anything, "http-1").Return(nil)
+
+	outcome := s.importSharedHTTPConnection(sharingSvc)
+
+	s.Equal(statusFailed, outcome.Status)
+}
+
+// An owner that cannot be resolved fails the document before anything is written.
+func (s *ImportHTTPConnectionTestSuite) TestAnUnresolvableOwnerWritesNothing() {
+	sharingSvc := &fakeSharingService{}
+	s.adapter.EXPECT().ResolveConnectionOU(mock.Anything, mock.Anything).
+		Return(&httpconnection.ErrorInvalidOU)
+
+	outcome := s.importSharedHTTPConnection(sharingSvc)
+
+	s.Equal(statusFailed, outcome.Status)
+	s.Equal(httpconnection.ErrorInvalidOU.Code, outcome.Code)
+	s.Empty(sharingSvc.calls)
+}
+
+// Flows reference a connection by ID, so an imported one must keep the document's.
+func (s *ImportHTTPConnectionTestSuite) TestCreateKeepsTheDocumentID() {
+	s.adapter.EXPECT().GetHTTPConnection(mock.Anything, "http-1").Return(nil, &httpconnection.ErrorNotFound)
+	var created httpconnection.HTTPConnection
+	s.adapter.EXPECT().CreateHTTPConnection(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, connection httpconnection.HTTPConnection) { created = connection }).
+		Return(&httpconnection.HTTPConnection{ID: "http-1", Name: "Risk Engine"}, nil)
+
+	outcome := s.importHTTPConnection(httpImportURL, httpImportPasswordLine, false)
+
+	s.Equal(statusSuccess, outcome.Status, outcome.Message)
+	s.Equal(operationCreate, outcome.Operation)
+	s.Equal("http-1", created.ID)
+	s.NotContains(fmt.Sprint(created.AuthProperties), "doc-pw")
+	s.Equal("doc-pw", s.storedPassword(created.AuthProperties))
+}
+
+// An upsert hands the writer the connection it read, so the retention rule is applied against it.
+func (s *ImportHTTPConnectionTestSuite) TestAnUpsertUpdatesTheConnectionItRead() {
+	stored := s.stored()
+	s.adapter.EXPECT().GetHTTPConnection(mock.Anything, "http-1").Return(stored, nil)
+	var updated httpconnection.HTTPConnection
+	s.adapter.EXPECT().UpdateHTTPConnection(mock.Anything, stored, mock.Anything).
+		Run(func(_ context.Context, _ *httpconnection.HTTPConnection, connection httpconnection.HTTPConnection) {
+			updated = connection
+		}).Return(stored, nil)
+
+	outcome := s.importHTTPConnection("https://risk.example.com/v2", "", false)
+
+	s.Equal(statusSuccess, outcome.Status, outcome.Message)
+	s.Equal(operationUpdate, outcome.Operation)
+	s.Equal("https://risk.example.com/v2", updated.URL)
+	s.Empty(s.storedPassword(updated.AuthProperties), "the document's omission is the writer's to resolve")
+}
+
+func (s *ImportHTTPConnectionTestSuite) TestDryRunWritesNothing() {
+	stored := s.stored()
+	s.adapter.EXPECT().GetHTTPConnection(mock.Anything, "http-1").Return(stored, nil)
+	s.adapter.EXPECT().ValidateHTTPConnectionUpdate(mock.Anything, stored, mock.Anything).Return(nil)
+
+	outcome := s.importHTTPConnection(httpImportURL, httpImportPasswordLine, true)
+
+	s.Equal(statusSuccess, outcome.Status, outcome.Message)
+	s.Equal(operationUpdate, outcome.Operation)
+}
+
+func (s *ImportHTTPConnectionTestSuite) TestADryRunUpsertReportsTheUpdateRefusal() {
+	stored := s.stored()
+	s.adapter.EXPECT().GetHTTPConnection(mock.Anything, "http-1").Return(stored, nil)
+	s.adapter.EXPECT().ValidateHTTPConnectionUpdate(mock.Anything, stored, mock.Anything).
+		Return(&declarativeresource.ErrorDeclarativeResourceUpdateOperation)
+
+	outcome := s.importHTTPConnection(httpImportURL, httpImportPasswordLine, true)
+
+	s.Equal(statusFailed, outcome.Status)
+	s.Equal(operationUpdate, outcome.Operation)
+	s.Equal(declarativeresource.ErrorDeclarativeResourceUpdateOperation.Code, outcome.Code)
+}
+
+func (s *ImportHTTPConnectionTestSuite) TestADryRunCreateReportsTheValidationRefusal() {
+	s.adapter.EXPECT().GetHTTPConnection(mock.Anything, "http-1").Return(nil, &httpconnection.ErrorNotFound)
+	s.adapter.EXPECT().ValidateHTTPConnectionCreate(mock.Anything, mock.Anything).
+		Return(&httpconnection.ErrorInvalidURL)
+
+	outcome := s.importHTTPConnection("http://risk.example.com/evaluate", httpImportPasswordLine, true)
+
+	s.Equal(statusFailed, outcome.Status)
+	s.Equal(operationCreate, outcome.Operation)
+	s.Equal(httpconnection.ErrorInvalidURL.Code, outcome.Code)
+}
+
+func (s *ImportHTTPConnectionTestSuite) TestFailsWithoutTheAdapter() {
+	s.svc = s.newService(nil, nil, nil)
+
+	outcome := s.importHTTPConnection(httpImportURL, httpImportPasswordLine, false)
+
+	s.Equal(statusFailed, outcome.Status)
+	s.Equal(ErrorInvalidImportRequest.Code, outcome.Code)
+}
+
+func (s *ImportHTTPConnectionTestSuite) TestReportsTheServiceRefusal() {
+	s.adapter.EXPECT().GetHTTPConnection(mock.Anything, "http-1").Return(nil, &httpconnection.ErrorNotFound)
+	s.adapter.EXPECT().CreateHTTPConnection(mock.Anything, mock.Anything).
+		Return(nil, &httpconnection.ErrorInvalidURL)
+
+	outcome := s.importHTTPConnection("http://risk.example.com/evaluate", httpImportPasswordLine, false)
+
+	s.Equal(statusFailed, outcome.Status)
+	s.Equal(httpconnection.ErrorInvalidURL.Code, outcome.Code)
+}
+
+func (s *ImportHTTPConnectionTestSuite) TestALookupFailureIsReportedWithoutWriting() {
+	s.adapter.EXPECT().GetHTTPConnection(mock.Anything, "http-1").Return(nil, &tidcommon.InternalServerError)
+
+	outcome := s.importHTTPConnection(httpImportURL, httpImportPasswordLine, false)
+
+	s.Equal(statusFailed, outcome.Status)
+	s.Equal(operationUpdate, outcome.Operation)
+	s.Equal(tidcommon.InternalServerError.Code, outcome.Code)
+}
+
+// fakeProjectService records the projects it is asked to import.
+type fakeProjectService struct {
+	projects  map[string]projectDocument
+	imported  []string
+	upserts   []bool
+	importErr *tidcommon.ServiceError
+}
+
+func (f *fakeProjectService) ProjectExists(_ context.Context, id string) (bool, *tidcommon.ServiceError) {
+	_, exists := f.projects[id]
+	return exists, nil
+}
+
+func (f *fakeProjectService) ImportProject(_ context.Context, id, rootOUID, handle, displayName,
+	description string, upsert bool) (bool, *tidcommon.ServiceError) {
+	if f.importErr != nil {
+		return false, f.importErr
+	}
+	_, exists := f.projects[id]
+	if f.projects == nil {
+		f.projects = map[string]projectDocument{}
+	}
+	f.projects[id] = projectDocument{
+		ID: id, RootOUID: rootOUID, Handle: handle, DisplayName: displayName, Description: description,
+	}
+	f.imported = append(f.imported, id)
+	f.upserts = append(f.upserts, upsert)
+	return !exists, nil
+}
+
+func newImportServiceWithProjects(ouSvc *fakeOUService, projectSvc *fakeProjectService) ImportServiceInterface {
+	svc := newImportService(
+		nil, nil, nil, nil, ouSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc.(*importService).projectService = projectSvc
+	return svc
+}
+
+func TestImportResources_RootOrganizationUnitIsImportedWithoutAProject(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{}}
+	projectSvc := &fakeProjectService{}
+	upsert := true
+	content := strings.Join([]string{
+		"resource_type: organization_unit",
+		"id: root-ou",
+		"handle: shop",
+		"name: Shop",
+		"",
+	}, "\n")
+
+	resp, err := newImportServiceWithProjects(ouSvc, projectSvc).ImportResources(context.Background(),
+		&ImportRequest{Content: content, Options: &ImportOptions{Upsert: &upsert}})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	require.Len(t, ouSvc.created, 1)
+	assert.Equal(t, "root-ou", ouSvc.created[0].ID)
+	assert.Empty(t, projectSvc.imported, "only a declared project is imported")
+}
+
+const importedProjectDocuments = `resource_type: project
+id: 019a3000-0000-7000-8000-0000000000p1
+rootOuId: root-ou
+handle: shop
+displayName: Shop
+description: Online shop
+---
+resource_type: organization_unit
+id: root-ou
+handle: shop
+name: Shop
+themeId: theme-1
+`
+
+func TestImportResources_ProjectIsSkippedWhereProjectsAreNotServed(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{}}
+	svc := newImportService(
+		nil, nil, nil, nil, ouSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: importedProjectDocuments})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 2)
+	assert.Equal(t, 0, resp.Summary.Failed)
+	assert.Equal(t, resourceTypeOrganizationUnit, resp.Results[0].ResourceType)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, resourceTypeProject, resp.Results[1].ResourceType)
+	assert.Equal(t, statusSuccess, resp.Results[1].Status)
+	assert.Equal(t, operationSkip, resp.Results[1].Operation)
+	assert.Contains(t, resp.Results[1].Message, "Control Plane")
+	require.Len(t, ouSvc.created, 1, "the root organization unit is still imported")
+	assert.Equal(t, "root-ou", ouSvc.created[0].ID)
+}
+
+func TestImportResources_ProjectIsImportedAfterItsRootOrganizationUnit(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{}}
+	projectSvc := &fakeProjectService{}
+
+	resp, err := newImportServiceWithProjects(ouSvc, projectSvc).ImportResources(context.Background(),
+		&ImportRequest{Content: importedProjectDocuments})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 2)
+	assert.Equal(t, 0, resp.Summary.Failed)
+	assert.Equal(t, resourceTypeOrganizationUnit, resp.Results[0].ResourceType)
+	require.Len(t, ouSvc.created, 1)
+	assert.Equal(t, resourceTypeProject, resp.Results[1].ResourceType)
+	assert.Equal(t, operationCreate, resp.Results[1].Operation)
+	assert.Equal(t, "019a3000-0000-7000-8000-0000000000p1", resp.Results[1].ResourceID)
+	assert.Equal(t, projectDocument{
+		ID: "019a3000-0000-7000-8000-0000000000p1", RootOUID: "root-ou", Handle: "shop", DisplayName: "Shop",
+		Description: "Online shop",
+	}, projectSvc.projects["019a3000-0000-7000-8000-0000000000p1"])
+	assert.Equal(t, []bool{true}, projectSvc.upserts)
+}
+
+func TestImportResources_ExistingProjectIsUpdated(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{}}
+	projectSvc := &fakeProjectService{projects: map[string]projectDocument{
+		"019a3000-0000-7000-8000-0000000000p1": {ID: "019a3000-0000-7000-8000-0000000000p1"},
+	}}
+
+	resp, err := newImportServiceWithProjects(ouSvc, projectSvc).ImportResources(context.Background(),
+		&ImportRequest{Content: importedProjectDocuments})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 2)
+	assert.Equal(t, operationUpdate, resp.Results[1].Operation)
+}
+
+func TestImportResources_ProjectDryRun(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{}}
+	projectSvc := &fakeProjectService{projects: map[string]projectDocument{
+		"019a3000-0000-7000-8000-0000000000p1": {ID: "019a3000-0000-7000-8000-0000000000p1"},
+	}}
+	content := "resource_type: project\nid: 019a3000-0000-7000-8000-0000000000p1\nrootOuId: root-ou\n" +
+		"handle: shop\ndisplayName: Shop\n---\nresource_type: project\nid: 019a3000-0000-7000-8000-0000000000p2\n" +
+		"handle: other\ndisplayName: Other\n"
+
+	resp, err := newImportServiceWithProjects(ouSvc, projectSvc).ImportResources(context.Background(),
+		&ImportRequest{Content: content, DryRun: true})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 2)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	assert.Equal(t, operationCreate, resp.Results[1].Operation)
+	assert.Empty(t, projectSvc.imported, "a dry run imports nothing")
+}
+
+func TestImportResources_ProjectFailureIsReported(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{}}
+	projectSvc := &fakeProjectService{importErr: &tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType, Code: "PRJ-1012",
+		ErrorDescription: tidcommon.I18nMessage{DefaultValue: "in use"},
+	}}
+	content := "resource_type: project\nid: 019a3000-0000-7000-8000-0000000000p1\nrootOuId: root-ou\n" +
+		"handle: shop\ndisplayName: Shop\n"
+
+	resp, err := newImportServiceWithProjects(ouSvc, projectSvc).ImportResources(context.Background(),
+		&ImportRequest{Content: content})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, "PRJ-1012", resp.Results[0].Code)
+}
+
+type ImportRoleSharingTestSuite struct {
+	suite.Suite
+	roleSvc           *fakeRoleService
+	roleAssignmentSvc *fakeRoleAssignmentService
+	sharingSvc        *fakeSharingService
+	svc               ImportServiceInterface
+}
+
+func TestImportRoleSharingTestSuite(t *testing.T) {
+	suite.Run(t, new(ImportRoleSharingTestSuite))
+}
+
+func (s *ImportRoleSharingTestSuite) SetupTest() {
+	s.roleSvc = &fakeRoleService{}
+	s.roleAssignmentSvc = &fakeRoleAssignmentService{}
+	s.sharingSvc = &fakeSharingService{}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, s.roleSvc, s.roleAssignmentSvc,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc.(*importService).sharingService = s.sharingSvc
+	s.svc = svc
+}
+
+// roleDocWithPolicies is one role document carrying a sharing policy and its assignments.
+func roleDocWithPolicies(id string) string {
+	return strings.Join([]string{
+		"resource_type: role",
+		"id: " + id,
+		"name: Support Agent",
+		"ouId: ou-owner",
+		"permissions: []",
+		"sharingPolicies:",
+		"  - id: " + id + "-policy-owner",
+		"    childUnits:",
+		"      mode: all",
+		"assignments:",
+		"  - type: group",
+		"    id: group1",
+		"  - type: user",
+		"    id: user1",
+		"",
+	}, "\n")
+}
+
+// connectionDocWithPolicies is an identity provider connection document in ou-1 that carries one sharing
+// policy.
+func connectionDocWithPolicies(id string) string {
+	return strings.Join([]string{
+		"resource_type: connection",
+		"id: " + id,
+		"name: idp-one",
+		"type: google",
+		"clientId: abc",
+		"ouId: ou-1",
+		"sharingPolicies:",
+		"  - childUnits:",
+		"      mode: all",
+		"",
+	}, "\n")
+}
+
+// The importer replays the policies a role document carries once the role exists, against the
+// organization unit that owns it.
+func (s *ImportRoleSharingTestSuite) TestPoliciesAreReplayedOnCreate() {
+	resp, err := s.svc.ImportResources(context.Background(), &ImportRequest{Content: roleDocWithPolicies("role-new")})
+
+	s.Require().Nil(err)
+	s.Require().Len(resp.Results, 1)
+	s.Equal(statusSuccess, resp.Results[0].Status)
+	s.Require().Len(s.roleSvc.created, 1)
+	s.Len(s.roleSvc.created[0].Assignments, 2, "the role is created with its assignments, as before")
+
+	s.Require().Len(s.sharingSvc.calls, 1)
+	call := s.sharingSvc.calls[0]
+	s.Equal(role.RoleSharingType, call.resourceType)
+	s.Equal("role-1", call.resourceID)
+	s.Equal("ou-owner", call.owningOUID)
+	s.Require().Len(call.policies, 1)
+	s.Require().NotNil(call.policies[0].ChildUnits)
+	s.Empty(s.roleSvc.deleted)
+}
+
+// A refused policy has to undo the create: the caller is told the document failed and gets no id
+// back, so a role left behind would hold the name a retry needs.
+func (s *ImportRoleSharingTestSuite) TestRefusedPoliciesUndoTheCreate() {
+	s.sharingSvc.failure = &sharing.PolicyReplayError{
+		Index: 0, InitiatingOUID: "ou-owner", Err: &sharing.ErrorInvalidRequestFormat}
+
+	resp, _ := s.svc.ImportResources(context.Background(), &ImportRequest{Content: roleDocWithPolicies("role-new")})
+
+	s.Require().Len(resp.Results, 1)
+	s.Equal(statusFailed, resp.Results[0].Status)
+	s.Contains(resp.Results[0].Message, "sharing policy 1 (organization unit ou-owner)")
+	s.Equal([]string{"role-1"}, s.roleSvc.deleted)
+}
+
+// An update replays the document's policies against the role as stored, and adds its assignments as
+// before.
+func (s *ImportRoleSharingTestSuite) TestUpsertReplaysPolicies() {
+	upsert := true
+	resp, err := s.svc.ImportResources(context.Background(), &ImportRequest{
+		Content: roleDocWithPolicies("role-1"),
+		Options: &ImportOptions{Upsert: &upsert},
+	})
+
+	s.Require().Nil(err)
+	s.Require().Len(resp.Results, 1)
+	s.Equal(statusSuccess, resp.Results[0].Status)
+	s.Equal(operationUpdate, resp.Results[0].Operation)
+	s.Require().Len(s.sharingSvc.calls, 1)
+	s.Equal("role-1", s.sharingSvc.calls[0].resourceID)
+	s.Len(s.roleAssignmentSvc.assignments, 2)
+	s.Empty(s.roleSvc.deleted, "an update is not undone")
+}
+
+// A document carrying no policies asks the sharing adapter nothing.
+func (s *ImportRoleSharingTestSuite) TestDocumentWithoutPoliciesAsksTheAdapterNothing() {
+	content := strings.Join([]string{
+		"resource_type: role", "id: role-plain", "name: Plain", "ouId: ou-owner", "permissions: []", "",
+	}, "\n")
+
+	resp, err := s.svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	s.Require().Nil(err)
+	s.Equal(statusSuccess, resp.Results[0].Status)
+	s.Empty(s.sharingSvc.calls)
+}
+
+// A misspelled policy field fails the document rather than being dropped, which would share the
+// role with the organization unit the document meant to exclude.
+func (s *ImportRoleSharingTestSuite) TestMisspelledPolicyFieldFailsTheDocument() {
+	content := strings.Join([]string{
+		"resource_type: role", "id: role-typo", "name: Typo", "ouId: ou-owner", "permissions: []",
+		"sharingPolicies:", "  - childUnits:", "      mode: all", "      excludeOuIds: [ou-trial]", "",
+	}, "\n")
+
+	resp, err := s.svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	s.Require().Nil(err)
+	s.Require().Len(resp.Results, 1)
+	s.Equal(statusFailed, resp.Results[0].Status)
+	s.Contains(resp.Results[0].Message, `unknown sharing policy field "excludeOuIds"`)
+	s.Empty(s.roleSvc.created, "nothing is written for a document that does not decode")
+	s.Empty(s.sharingSvc.calls)
+}
+
+func newTestConnectionImportWithSharing(sharingSvc *fakeSharingService) ImportServiceInterface {
+	idpSvc := &fakeIDPService{byID: map[string]*providers.IDPDTO{}, byName: map[string]*providers.IDPDTO{}}
+	svc := newImportService(
+		nil, idpSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	if sharingSvc != nil {
+		svc.(*importService).sharingService = sharingSvc
+	}
+	return svc
+}
+
+// A connection's sharing is replayed by the importer once the connection exists, against the unit it lives in.
+func TestImportConnectionAppliesSharingPolicies(t *testing.T) {
+	sharingSvc := &fakeSharingService{}
+	svc := newTestConnectionImportWithSharing(sharingSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: connectionDocWithPolicies("idp-1"), Options: &ImportOptions{Upsert: boolPtr(false)}})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	require.Len(t, sharingSvc.calls, 1)
+	assert.Equal(t, connection.ConnectionSharingType, sharingSvc.calls[0].resourceType)
+	assert.Equal(t, "idp-1", sharingSvc.calls[0].resourceID)
+	assert.Equal(t, "ou-1", sharingSvc.calls[0].owningOUID)
+	assert.Len(t, sharingSvc.calls[0].policies, 1)
+}
+
+// A refused policy fails the document rather than importing a connection that is not shared as declared.
+func TestImportConnectionFailsWhenPoliciesAreRefused(t *testing.T) {
+	sharingSvc := &fakeSharingService{failure: &sharing.PolicyReplayError{
+		Index: 0, InitiatingOUID: "ou-1", Err: &sharing.ErrorPolicyExists}}
+	svc := newTestConnectionImportWithSharing(sharingSvc)
+
+	resp, _ := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: connectionDocWithPolicies("idp-2"), Options: &ImportOptions{Upsert: boolPtr(false)}})
+
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Contains(t, resp.Results[0].Message, "sharing policy 1")
+}
+
+func TestImportConnectionRefusesPoliciesWithoutASharingAdapter(t *testing.T) {
+	svc := newTestConnectionImportWithSharing(nil)
+
+	resp, _ := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: connectionDocWithPolicies("idp-3"), Options: &ImportOptions{Upsert: boolPtr(false)}})
+
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Contains(t, resp.Results[0].Message, "sharing")
+}
+
+// A dry run writes nothing, so it replays nothing.
+func TestImportConnectionDryRunReplaysNoPolicies(t *testing.T) {
+	sharingSvc := &fakeSharingService{}
+	svc := newTestConnectionImportWithSharing(sharingSvc)
+
+	resp, _ := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: connectionDocWithPolicies("idp-4"), DryRun: true})
+
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Empty(t, sharingSvc.calls)
 }

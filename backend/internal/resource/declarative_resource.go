@@ -107,6 +107,11 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 		Resources:           []providers.Resource{},
 	}
 
+	rs.Actions, err = e.getAllActions(ctx, id, nil)
+	if err != nil {
+		return nil, "", err
+	}
+
 	allResources, err := e.service.GetAllResourceList(ctx, id)
 	if err != nil {
 		return nil, "", err
@@ -124,7 +129,6 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 			Name:        res.Name,
 			Handle:      res.Handle,
 			Description: res.Description,
-			Actions:     []providers.Action{},
 		}
 
 		if res.Parent != nil && *res.Parent != "" {
@@ -133,28 +137,9 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 			}
 		}
 
-		// Get actions for this resource
-		actOffset := 0
-		for {
-			actions, actErr := e.service.GetActionList(ctx, id, &res.ID, "", serverconst.MaxPageSize, actOffset)
-			if actErr != nil {
-				return nil, "", actErr
-			}
-			if len(actions.Actions) == 0 {
-				break
-			}
-			for _, action := range actions.Actions {
-				resource.Actions = append(resource.Actions, providers.Action{
-					Name:        action.Name,
-					Handle:      action.Handle,
-					Description: action.Description,
-					Kind:        action.Kind,
-				})
-			}
-			actOffset += len(actions.Actions)
-			if actOffset >= actions.TotalResults {
-				break
-			}
+		resource.Actions, err = e.getAllActions(ctx, id, &res.ID)
+		if err != nil {
+			return nil, "", err
 		}
 
 		rs.Resources = append(rs.Resources, resource)
@@ -199,21 +184,23 @@ func (e *resourceServerExporter) ViewResource(_ context.Context, document *yaml.
 }
 
 // ViewResourceParts shows the collections a resource server's API serves under it: "resources" (the
-// top-level resources) and "actions", and for each resource "resources/{id}", its children at
-// "resources/{id}/resources" and its actions at "resources/{id}/actions". A list part shows every item
-// on one page. An export carries no database ids, so a resource and an action are given the ids a
-// declarative resource server serves them by, built from the server id and their handles. An export
-// carries no actions at the resource server level, so "actions" is an empty list.
+// top-level resources) and "actions" (the actions of the resource server itself), and for each
+// resource "resources/{id}", its children at "resources/{id}/resources" and its actions at
+// "resources/{id}/actions". A list part shows every item on one page. An export carries no database
+// ids, so a resource and an action are given the ids a declarative resource server serves them by,
+// built from the server id and their handles.
 func (e *resourceServerExporter) ViewResourceParts(_ context.Context, document *yaml.Node) (
 	map[string]interface{}, error) {
 	return declarativeresource.DecodeView(document, func(rs *providers.ResourceServer) (
 		map[string]interface{}, error) {
-		resources, err := viewResources(rs)
+		actions, resources, err := viewResources(rs)
 		if err != nil {
 			return nil, err
 		}
 		parts := map[string]interface{}{
-			resourceServerPartActions: toActionListResponse(&ActionList{StartIndex: 1, Actions: []providers.Action{}}),
+			resourceServerPartActions: toActionListResponse(&ActionList{
+				TotalResults: len(actions), StartIndex: 1, Count: len(actions), Actions: actions,
+			}),
 		}
 		topLevel := make([]providers.Resource, 0, len(resources))
 		for i := range resources {
@@ -244,19 +231,54 @@ func (e *resourceServerExporter) ViewResourceParts(_ context.Context, document *
 	})
 }
 
-// viewResources gives the resources of an exported resource server, and their actions, the ids,
-// parents and permissions a read of them returns.
-func viewResources(rs *providers.ResourceServer) ([]providers.Resource, error) {
+// getAllActions returns every action of a resource, or of the resource server itself when resourceID
+// is nil, in the form an export declares them.
+func (e *resourceServerExporter) getAllActions(
+	ctx context.Context, serverID string, resourceID *string,
+) ([]providers.Action, *tidcommon.ServiceError) {
+	exported := []providers.Action{}
+	offset := 0
+	for {
+		actions, err := e.service.GetActionList(ctx, serverID, resourceID, "", serverconst.MaxPageSize, offset)
+		if err != nil {
+			return nil, err
+		}
+		if len(actions.Actions) == 0 {
+			break
+		}
+		for _, action := range actions.Actions {
+			exported = append(exported, providers.Action{
+				Name:        action.Name,
+				Handle:      action.Handle,
+				Description: action.Description,
+				Kind:        action.Kind,
+			})
+		}
+		offset += len(actions.Actions)
+		if offset >= actions.TotalResults {
+			break
+		}
+	}
+	return exported, nil
+}
+
+// viewResources gives the actions of an exported resource server, its resources and their actions,
+// the ids, parents and permissions a read of them returns.
+func viewResources(rs *providers.ResourceServer) ([]providers.Action, []providers.Resource, error) {
 	view := *rs
+	view.Actions = append([]providers.Action(nil), rs.Actions...)
 	view.Resources = make([]providers.Resource, len(rs.Resources))
 	for i := range rs.Resources {
 		view.Resources[i] = rs.Resources[i]
 		view.Resources[i].Actions = append([]providers.Action(nil), rs.Resources[i].Actions...)
 	}
 	if err := resolveResourcePermissions(&view); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
+	for j := range view.Actions {
+		view.Actions[j].ID = declarativeActionID(&view, "", view.Actions[j].Handle)
+	}
 	for i := range view.Resources {
 		res := &view.Resources[i]
 		res.ID = declarativeResourceID(&view, res.Permission)
@@ -268,7 +290,7 @@ func viewResources(rs *providers.ResourceServer) ([]providers.Resource, error) {
 			res.Actions[j].ID = declarativeActionID(&view, res.Permission, res.Actions[j].Handle)
 		}
 	}
-	return view.Resources, nil
+	return view.Actions, view.Resources, nil
 }
 
 // loadDeclarativeResources loads resource server resources from declarative files.
@@ -358,25 +380,35 @@ func parseToResourceServer(data []byte) (*providers.ResourceServer, error) {
 		rs.Type = providers.ResourceServerTypeCustom
 	}
 
-	// Apply the action kind discriminator rules (mirrors the REST path). The kind is optional for all
-	// resource server types; MCP actions default to "tool" when omitted, and any provided kind must be
-	// one of the supported values (tool|resource).
+	if err := applyActionKinds(&rs, rs.Actions); err != nil {
+		return nil, err
+	}
 	for i := range rs.Resources {
-		for j := range rs.Resources[i].Actions {
-			action := &rs.Resources[i].Actions[j]
-			if rs.Type == providers.ResourceServerTypeMCP && action.Kind == "" {
-				action.Kind = providers.ActionKindTool
-			}
-			if action.Kind != "" && !action.Kind.IsValid() {
-				return nil, fmt.Errorf(
-					"action %q in resource server '%s' has invalid kind %q (allowed: tool|resource)",
-					action.Handle, rs.Name, action.Kind,
-				)
-			}
+		if err := applyActionKinds(&rs, rs.Resources[i].Actions); err != nil {
+			return nil, err
 		}
 	}
 
 	return &rs, nil
+}
+
+// applyActionKinds applies the action kind discriminator rules (mirrors the REST path). The kind is
+// optional for all resource server types; MCP actions default to "tool" when omitted, and any provided
+// kind must be one of the supported values (tool|resource).
+func applyActionKinds(rs *providers.ResourceServer, actions []providers.Action) error {
+	for j := range actions {
+		action := &actions[j]
+		if rs.Type == providers.ResourceServerTypeMCP && action.Kind == "" {
+			action.Kind = providers.ActionKindTool
+		}
+		if action.Kind != "" && !action.Kind.IsValid() {
+			return fmt.Errorf(
+				"action %q in resource server '%s' has invalid kind %q (allowed: tool|resource)",
+				action.Handle, rs.Name, action.Kind,
+			)
+		}
+	}
+	return nil
 }
 
 // ProcessResourceServer processes the resource server and computes permissions in-place.
@@ -401,7 +433,7 @@ func ProcessResourceServer(rs *providers.ResourceServer) error {
 	// For MCP resource servers, a resource (group) and an action (tool/resource) in the same parent
 	// context can derive an identical permission string under exact-string RBAC, silently collapsing
 	// two distinct primitives. Mirror the REST cross-entity check (Rule 6) on the declarative path by
-	// failing on the first duplicate derived permission across all resources and their nested actions.
+	// failing on the first duplicate derived permission across all resources and actions.
 	if rs.Type == providers.ResourceServerTypeMCP {
 		if err := checkDuplicateMCPPermissions(rs); err != nil {
 			return err
@@ -411,30 +443,36 @@ func ProcessResourceServer(rs *providers.ResourceServer) error {
 	return nil
 }
 
-// checkDuplicateMCPPermissions detects duplicate derived permission strings across all resources
-// (groups) and their nested actions (tools/resources) for an MCP resource server. It returns an
-// error naming the colliding permission and handles on the first duplicate found.
+// checkDuplicateMCPPermissions detects duplicate derived permission strings across the actions
+// (tools/resources) of an MCP resource server, its resources (groups) and their nested actions. It
+// returns an error naming the colliding permission and handles on the first duplicate found.
 func checkDuplicateMCPPermissions(rs *providers.ResourceServer) error {
 	seen := make(map[string]string)
-	for i := range rs.Resources {
-		res := &rs.Resources[i]
-		if existing, ok := seen[res.Permission]; ok {
+	record := func(permission, handle string) error {
+		if existing, ok := seen[permission]; ok {
 			return fmt.Errorf(
 				"duplicate permission '%s' derived for handles '%s' and '%s' in resource server '%s'",
-				res.Permission, existing, res.Handle, rs.ID,
+				permission, existing, handle, rs.ID,
 			)
 		}
-		seen[res.Permission] = res.Handle
+		seen[permission] = handle
+		return nil
+	}
 
+	for j := range rs.Actions {
+		if err := record(rs.Actions[j].Permission, rs.Actions[j].Handle); err != nil {
+			return err
+		}
+	}
+	for i := range rs.Resources {
+		res := &rs.Resources[i]
+		if err := record(res.Permission, res.Handle); err != nil {
+			return err
+		}
 		for j := range res.Actions {
-			action := &res.Actions[j]
-			if existing, ok := seen[action.Permission]; ok {
-				return fmt.Errorf(
-					"duplicate permission '%s' derived for handles '%s' and '%s' in resource server '%s'",
-					action.Permission, existing, action.Handle, rs.ID,
-				)
+			if err := record(res.Actions[j].Permission, res.Actions[j].Handle); err != nil {
+				return err
 			}
-			seen[action.Permission] = action.Handle
 		}
 	}
 
@@ -453,17 +491,17 @@ func resolveResourcePermissions(rs *providers.ResourceServer) error {
 	}
 
 	// A handle must not contain the delimiter, so a path splits only one way.
+	if err := validateActionHandles(rs, rs.Actions); err != nil {
+		return err
+	}
 	for i := range rs.Resources {
 		res := &rs.Resources[i]
 		if svcErr := validateHandle(res.Handle, rs.Delimiter); svcErr != nil {
 			return fmt.Errorf("invalid handle '%s' for resource '%s' in resource server '%s': %s",
 				res.Handle, res.Name, rs.ID, svcErr.ErrorDescription.DefaultValue)
 		}
-		for j := range res.Actions {
-			if svcErr := validateHandle(res.Actions[j].Handle, rs.Delimiter); svcErr != nil {
-				return fmt.Errorf("invalid handle '%s' for action '%s' in resource server '%s': %s",
-					res.Actions[j].Handle, res.Actions[j].Name, rs.ID, svcErr.ErrorDescription.DefaultValue)
-			}
+		if err := validateActionHandles(rs, res.Actions); err != nil {
+			return err
 		}
 	}
 
@@ -472,6 +510,9 @@ func resolveResourcePermissions(rs *providers.ResourceServer) error {
 		return err
 	}
 
+	for j := range rs.Actions {
+		rs.Actions[j].Permission = derivePermission(*rs, nil, rs.Actions[j].Handle)
+	}
 	for i := range rs.Resources {
 		res := &rs.Resources[i]
 		res.Permission = paths[i]
@@ -483,6 +524,17 @@ func resolveResourcePermissions(rs *providers.ResourceServer) error {
 		}
 	}
 
+	return nil
+}
+
+// validateActionHandles checks that each action handle is valid and does not contain the delimiter.
+func validateActionHandles(rs *providers.ResourceServer, actions []providers.Action) error {
+	for j := range actions {
+		if svcErr := validateHandle(actions[j].Handle, rs.Delimiter); svcErr != nil {
+			return fmt.Errorf("invalid handle '%s' for action '%s' in resource server '%s': %s",
+				actions[j].Handle, actions[j].Name, rs.ID, svcErr.ErrorDescription.DefaultValue)
+		}
+	}
 	return nil
 }
 
@@ -622,6 +674,13 @@ func unresolvedParentError(
 	)
 }
 
+// keepsValueReferences reports whether service runs on a control plane, which keeps a value reference
+// where a value belongs.
+func keepsValueReferences(service ResourceServiceInterface) bool {
+	s, ok := service.(*resourceService)
+	return ok && s.keepsReferences
+}
+
 func validateResourceServerWrapper(
 	data interface{},
 	fileStore resourceStoreInterface,
@@ -639,6 +698,11 @@ func validateResourceServerWrapper(
 
 	if rs.Identifier == "" {
 		return fmt.Errorf("resource server identifier cannot be empty")
+	}
+
+	if hasInvalidMCPIdentifier(rs.Type, rs.Identifier, keepsValueReferences(service)) {
+		return fmt.Errorf("identifier %q of MCP resource server '%s' must be an http or https URL with no fragment",
+			rs.Identifier, rs.Name)
 	}
 
 	if service != nil {

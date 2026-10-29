@@ -1961,22 +1961,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 			},
 			resolverSetup: func(ur *OUUserResolverMock) {
 				ur.On("GetUserListByOUID", mock.Anything, "ou-1", 5, 0, false).
-					Return([]User(nil), errors.New("list")).Once()
-			},
-			wantErr: &tidcommon.InternalServerError,
-		},
-		{
-			name:  "count error",
-			limit: 5,
-			storeSetup: func(store *organizationUnitStoreInterfaceMock) {
-				store.On("IsOrganizationUnitExists", mock.Anything, "ou-1").
-					Return(true, nil).Once()
-			},
-			resolverSetup: func(ur *OUUserResolverMock) {
-				ur.On("GetUserListByOUID", mock.Anything, "ou-1", 5, 0, false).
-					Return([]User{{ID: "user-1"}}, nil).Once()
-				ur.On("GetUserCountByOUID", mock.Anything, "ou-1").
-					Return(0, errors.New("count")).Once()
+					Return([]User(nil), 0, errors.New("list")).Once()
 			},
 			wantErr: &tidcommon.InternalServerError,
 		},
@@ -1989,9 +1974,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 			},
 			resolverSetup: func(ur *OUUserResolverMock) {
 				ur.On("GetUserListByOUID", mock.Anything, "ou-1", 5, 0, false).
-					Return([]User{{ID: "user-1"}, {ID: "user-2"}}, nil).Once()
-				ur.On("GetUserCountByOUID", mock.Anything, "ou-1").
-					Return(2, nil).Once()
+					Return([]User{{ID: "user-1", IsOwnedByOU: true}, {ID: "user-2"}}, 2, nil).Once()
 			},
 		},
 	}
@@ -2042,11 +2025,9 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 	userRes := NewOUUserResolverMock(suite.T())
 	userRes.On("GetUserListByOUID", mock.Anything, "ou-1", 5, 0, true).
 		Return([]User{
-			{ID: "user-1", Type: "employee", Display: "alice@example.com"},
+			{ID: "user-1", Type: "employee", Display: "alice@example.com", IsOwnedByOU: true},
 			{ID: "user-2", Type: "contractor", Display: "Bob Smith"},
-		}, nil).Once()
-	userRes.On("GetUserCountByOUID", mock.Anything, "ou-1").
-		Return(2, nil).Once()
+		}, 2, nil).Once()
 
 	service := suite.newServiceWithResolvers(
 		store, newAllowAllAuthz(suite.T()), userRes, nil,
@@ -2059,6 +2040,8 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 	suite.Equal("alice@example.com", resp.Users[0].Display)
 	suite.Equal("contractor", resp.Users[1].Type)
 	suite.Equal("Bob Smith", resp.Users[1].Display)
+	suite.True(resp.Users[0].IsOwnedByOU)
+	suite.False(resp.Users[1].IsOwnedByOU)
 }
 
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitUsers_WithDisplay_FallbackToID() {
@@ -2072,9 +2055,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 	userRes.On("GetUserListByOUID", mock.Anything, "ou-1", 5, 0, true).
 		Return([]User{
 			{ID: "user-1", Type: "employee", Display: "user-1"},
-		}, nil).Once()
-	userRes.On("GetUserCountByOUID", mock.Anything, "ou-1").
-		Return(1, nil).Once()
+		}, 1, nil).Once()
 
 	service := suite.newServiceWithResolvers(
 		store, newAllowAllAuthz(suite.T()), userRes, nil,
@@ -2285,15 +2266,13 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 		func() (OUUserResolver, OUGroupResolver) {
 			userRes := NewOUUserResolverMock(suite.T())
 			userRes.On("GetUserListByOUID", mock.Anything, "ou-1", 5, 0, false).
-				Return(nil, errors.New("resolver unavailable")).Once()
+				Return(nil, 0, errors.New("resolver unavailable")).Once()
 			return userRes, nil
 		},
 		func() (OUUserResolver, OUGroupResolver) {
 			userRes := new(OUUserResolverMock)
 			userRes.On("GetUserListByOUID", mock.Anything, "ou-1", 5, 0, false).
-				Return([]User{}, nil).Once()
-			userRes.On("GetUserCountByOUID", mock.Anything, "ou-1").
-				Return(0, nil).Once()
+				Return([]User{}, 0, nil).Once()
 			return userRes, nil
 		},
 		func(svc *organizationUnitService, path string, limit,
@@ -2315,9 +2294,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 		Return([]User{
 			{ID: "user-1", Type: "employee", Display: "alice@example.com"},
 			{ID: "user-2", Type: "employee", Display: "bob@example.com"},
-		}, nil).Once()
-	userRes.On("GetUserCountByOUID", mock.Anything, "ou-1").
-		Return(4, nil).Once()
+		}, 4, nil).Once()
 
 	service := suite.newServiceWithResolvers(
 		store, newAllowAllAuthz(suite.T()), userRes, nil,

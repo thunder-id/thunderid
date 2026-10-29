@@ -77,6 +77,16 @@ vi.mock('@thunderid/components', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/components')>();
   return {
     ...actual,
+    AccountStatusAction: ({listQueryKey, onChanged}: {listQueryKey: unknown; onChanged: () => void}) => (
+      <button
+        type="button"
+        data-testid="account-status-action"
+        data-list-query-key={JSON.stringify(listQueryKey)}
+        onClick={onChanged}
+      >
+        status action
+      </button>
+    ),
     ResourceAvatar: ({
       value = undefined,
       fallback = undefined,
@@ -416,6 +426,153 @@ describe('AgentEditPage', () => {
       descInput.dispatchEvent(new FocusEvent('blur', {bubbles: true}));
 
       expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
+    });
+  });
+
+  // The server holds a delegated agent to the delegated grant rules and does not store the flag, so a
+  // save has to say whether the agent is delegated. Delegated mode is the authorization code grant.
+  describe('Delegated flag on save', () => {
+    // A delegated agent has to pass the page's own checks before it can be saved: a callback and an
+    // allowed user type.
+    const saveWithGrants = async (grantTypes?: string[]): Promise<Record<string, unknown>> => {
+      const user = userEvent.setup();
+      mockUseGetAgent.mockReturnValue({
+        data: {
+          ...baseAgent,
+          allowedUserTypes: ['employee'],
+          inboundAuthConfig:
+            grantTypes === undefined
+              ? []
+              : [
+                  {
+                    type: 'oauth2' as const,
+                    config: {
+                      ...baseAgent.inboundAuthConfig[0].config,
+                      grantTypes,
+                      redirectUris: ['https://app.example.com/callback'],
+                    },
+                  },
+                ],
+        },
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+      render(<AgentEditPage />);
+
+      await user.click(screen.getByRole('button', {name: 'Pick logo B'}));
+      await user.click(screen.getByRole('button', {name: 'Save logo'}));
+
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalled();
+      });
+      return (mockMutateAsync.mock.calls[0][0] as {data: Record<string, unknown>}).data;
+    };
+
+    it('sends delegated when the agent holds the authorization code grant', async () => {
+      const data = await saveWithGrants(['client_credentials', 'authorization_code', 'refresh_token']);
+
+      expect(data.delegated).toBe(true);
+    });
+
+    it('sends delegated when the agent holds CIBA or token exchange without the authorization code grant', async () => {
+      const data = await saveWithGrants(['client_credentials', 'urn:openid:params:grant-type:ciba']);
+
+      expect(data.delegated).toBe(true);
+    });
+
+    it('sends not delegated when the agent has client credentials only', async () => {
+      const data = await saveWithGrants(['client_credentials']);
+
+      expect(data.delegated).toBe(false);
+    });
+
+    it('sends not delegated when the agent has no OAuth configuration', async () => {
+      const data = await saveWithGrants();
+
+      expect(data.delegated).toBe(false);
+    });
+  });
+
+  describe('Access status', () => {
+    const renderAgent = (agent: Record<string, unknown>): void => {
+      mockUseGetAgent.mockReturnValue({
+        data: {...baseAgent, ...agent},
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+      render(<AgentEditPage />);
+    };
+
+    it('shows the suspension banner for a suspended agent', () => {
+      renderAgent({status: {value: 'SUSPENDED'}});
+
+      expect(screen.getByRole('status')).toHaveTextContent('Suspended');
+      expect(screen.getByRole('status')).toHaveTextContent('The agent is suspended');
+    });
+
+    it('shows no banner for an active agent', () => {
+      renderAgent({});
+
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+
+    it('offers the lifecycle action on a writable agent', () => {
+      renderAgent({});
+
+      expect(screen.getByTestId('account-status-action')).toBeInTheDocument();
+    });
+
+    // The lifecycle flows change only runtime state, which a declared record keeps too.
+    it('offers the lifecycle action on a read-only agent', () => {
+      renderAgent({isReadOnly: true});
+
+      expect(screen.getByTestId('account-status-action')).toBeInTheDocument();
+    });
+
+    it('shows the banner below the read-only notice and above the header', () => {
+      renderAgent({isReadOnly: true, status: {value: 'SUSPENDED'}});
+
+      const notice = screen.getByText('This resource is read-only and cannot be modified.');
+      const banner = screen.getByRole('status');
+      expect(banner).toHaveTextContent('Suspended');
+      expect(notice.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(
+        banner.compareDocumentPosition(screen.getByTestId('account-status-action')) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it('hands the agents list query to the lifecycle action', () => {
+      renderAgent({});
+
+      expect(screen.getByTestId('account-status-action')).toHaveAttribute('data-list-query-key', '["agents"]');
+    });
+
+    it('refetches the agent after a lifecycle operation', async () => {
+      const user = userEvent.setup();
+      renderAgent({});
+
+      await user.click(screen.getByTestId('account-status-action'));
+
+      expect(mockRefetch).toHaveBeenCalled();
+    });
+
+    it('keeps a suspended agent editable', async () => {
+      const user = userEvent.setup();
+      renderAgent({allowedUserTypes: [], status: {value: 'SUSPENDED'}});
+
+      const editIcons = screen.getAllByRole('button').filter((b) => b.querySelector('svg'));
+      const editButton = editIcons.find((btn) => btn.parentElement?.textContent?.includes('Test description'));
+      if (!editButton) throw new Error('description edit button not found');
+      await user.click(editButton);
+      const input = screen.getAllByRole('textbox')[0];
+      await user.type(input, ' updated');
+      fireEvent.blur(input);
+
+      expect(screen.getByRole('button', {name: 'Save'})).toBeEnabled();
     });
   });
 

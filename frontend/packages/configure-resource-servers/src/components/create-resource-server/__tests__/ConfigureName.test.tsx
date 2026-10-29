@@ -134,9 +134,85 @@ describe('ConfigureName', () => {
 
     expect(
       screen.getByText(
-        'A unique identifier for this MCP server. When set as an absolute URI, it becomes the token audience for RFC 8707 resource indicators.',
+        'The URL MCP clients use to reach this server, such as https://mcp.example.com/mcp. MCP clients send it as the resource parameter, and it becomes the token audience.',
       ),
     ).toBeInTheDocument();
+  });
+});
+
+describe('ConfigureName MCP identifier validation', () => {
+  beforeEach(() => {
+    vi.mocked(generateRandomHumanReadableIdentifiers).mockReturnValue(mockSuggestions);
+  });
+
+  const renderIdentifier = (identifier: string, selectedType: 'API' | 'MCP' | 'CUSTOM' = 'MCP') => {
+    const onReadyChange = vi.fn();
+    render(
+      <ConfigureName
+        name="Test"
+        identifier={identifier}
+        selectedType={selectedType}
+        onNameChange={vi.fn()}
+        onIdentifierChange={vi.fn()}
+        onReadyChange={onReadyChange}
+      />,
+    );
+    return onReadyChange;
+  };
+
+  const identifierInput = () => screen.getByRole('textbox', {name: /identifier/i});
+
+  it.each([
+    'my-mcp-server',
+    'not a uri',
+    '/mcp',
+    'mcp.example.com',
+    'localhost:8000/mcp',
+    'mcp.example.com:8443/mcp',
+    'https:mcp.example.com',
+    'urn:example:mcp',
+    'ftp://mcp.example.com',
+    'https://mcp.example.com/#x',
+  ])('should show an error and not be ready for the MCP identifier %s', (identifier) => {
+    const onReadyChange = renderIdentifier(identifier);
+
+    expect(identifierInput()).toHaveAttribute('aria-invalid', 'true');
+    expect(identifierInput()).toHaveAccessibleDescription(
+      'Enter an http or https URL with no fragment, such as https://mcp.example.com/mcp.',
+    );
+    expect(onReadyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it.each([
+    'https://mcp.example.com/mcp',
+    'http://localhost:8000/mcp',
+    'HTTPS://MCP.EXAMPLE.COM/mcp',
+    '  https://mcp.example.com/mcp  ',
+  ])('should be ready without an error for the MCP identifier %s', (identifier) => {
+    const onReadyChange = renderIdentifier(identifier);
+
+    expect(identifierInput()).toHaveAttribute('aria-invalid', 'false');
+    expect(
+      screen.queryByText('Enter an http or https URL with no fragment, such as https://mcp.example.com/mcp.'),
+    ).not.toBeInTheDocument();
+    expect(onReadyChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it('should not show an error for an empty MCP identifier, which only keeps the step not ready', () => {
+    const onReadyChange = renderIdentifier('   ');
+
+    expect(identifierInput()).toHaveAttribute('aria-invalid', 'false');
+    expect(onReadyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it.each(['API', 'CUSTOM'] as const)('should accept a non-URI identifier for the %s type', (selectedType) => {
+    const onReadyChange = renderIdentifier('my-api', selectedType);
+
+    expect(identifierInput()).toHaveAttribute('aria-invalid', 'false');
+    expect(
+      screen.queryByText('Enter an http or https URL with no fragment, such as https://mcp.example.com/mcp.'),
+    ).not.toBeInTheDocument();
+    expect(onReadyChange).toHaveBeenLastCalledWith(true);
   });
 });
 

@@ -27,7 +27,7 @@ func registerMCPTools(server *mcp.Server, flowService FlowMgtServiceInterface) {
 	}
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "thunderid_list_flows",
+		Name:        "list_flows",
 		Description: `List available flows. Supports optional filtering by flow_type.`,
 		InputSchema: getListFlowsSchema(),
 		Annotations: &mcp.ToolAnnotations{
@@ -37,7 +37,7 @@ func registerMCPTools(server *mcp.Server, flowService FlowMgtServiceInterface) {
 	}, tools.listFlows)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "thunderid_get_flow_by_handle",
+		Name:        "get_flow_by_handle",
 		Description: `Retrieve a complete definition of a flow by its handle (human-readable identifier).`,
 		InputSchema: getFlowByHandleSchema(),
 		Annotations: &mcp.ToolAnnotations{
@@ -47,7 +47,7 @@ func registerMCPTools(server *mcp.Server, flowService FlowMgtServiceInterface) {
 	}, tools.getFlowByHandle)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "thunderid_get_flow_by_id",
+		Name:        "get_flow_by_id",
 		Description: `Retrieve a complete definition of a flow by its unique ID (UUID).`,
 		InputSchema: getFlowByIDSchema(),
 		Annotations: &mcp.ToolAnnotations{
@@ -57,7 +57,7 @@ func registerMCPTools(server *mcp.Server, flowService FlowMgtServiceInterface) {
 	}, tools.getFlowByID)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "thunderid_create_flow",
+		Name: "create_flow",
 		Description: `Create a new authentication or registration flow.
 
 Prerequisites:
@@ -78,7 +78,7 @@ Key Requirements:
 	}, tools.createFlow)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "thunderid_update_flow",
+		Name: "update_flow",
 		Description: `Update an existing flow definition (full replacement for updateable fields).
 
 Provide the COMPLETE flow object to update the flow. Use get_flow_by_handle first to get current state (including ID).
@@ -181,6 +181,7 @@ func (t *flowTools) updateFlow(
 	updateDef := &FlowDefinition{
 		Handle:       currentFlow.Handle,
 		FlowType:     currentFlow.FlowType,
+		OUID:         currentFlow.OUID,
 		Name:         input.Name,
 		Nodes:        input.Nodes,
 		Interceptors: input.Interceptors,
@@ -225,6 +226,7 @@ func getCreateFlowSchema() *jsonschema.Schema {
 	return tool.GenerateSchema[FlowDefinition](
 		tool.WithEnum("", "flowType",
 			[]string{string(providers.FlowTypeAuthentication), string(providers.FlowTypeRegistration)}),
+		tool.WithRequired("", "ouId"),
 	)
 }
 

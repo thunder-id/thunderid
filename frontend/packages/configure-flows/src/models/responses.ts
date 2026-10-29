@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import type {ApiPaginationLink} from '@thunderid/types';
@@ -28,6 +28,10 @@ export interface BasicFlowDefinition {
    * The version number that is currently active
    */
   activeVersion: number;
+  /**
+   * ID of the organization unit that owns the flow
+   */
+  ouId: string;
   /**
    * Timestamp when the flow was initially created
    */
@@ -275,6 +279,10 @@ export interface CreateFlowRequest {
    */
   flowType: FlowType;
   /**
+   * ID of the organization unit that owns the flow. It cannot change once the flow is created.
+   */
+  ouId: string;
+  /**
    * List of nodes that define the flow graph
    */
   nodes: FlowNode[];
@@ -297,6 +305,11 @@ export interface UpdateFlowRequest {
    */
   flowType: FlowType;
   /**
+   * ID of the organization unit that owns the flow. It cannot change once the flow is created, so this has
+   * to be the id the flow already has.
+   */
+  ouId: string;
+  /**
    * List of nodes that define the flow graph
    */
   nodes: FlowNode[];
@@ -310,6 +323,10 @@ export interface FlowDefinitionResponse {
    * Unique identifier for the flow
    */
   id: string;
+  /**
+   * ID of the organization unit that owns the flow
+   */
+  ouId: string;
   /**
    * Name of the flow
    */

@@ -200,9 +200,13 @@ The following handle fields are supported:
 | Agent | `authFlowHandle` | `authFlowId` |
 | Agent | `registrationFlowHandle` | `registrationFlowId` |
 | User type | `ouHandle` | `ouId` |
+| Flow | `ouHandle` | `ouId` |
+| Connection | `ouHandle` | `ouId` |
 | Notification template | `ouHandle` | `ouId` |
 
 If you provide both a handle field and the corresponding ID field, the ID takes precedence and the handle is ignored.
+
+A `flow` document must carry `ouId` or `ouHandle`, because every flow belongs to exactly one organization unit. A document with neither fails to import, and a dry run reports the same failure. The same rule applies to flow files loaded at startup: the server fails to load a file with no owner. For the details, see [Organization Unit Ownership](../flows/flow-concepts.mdx#organization-unit-ownership).
 
 Updating an existing application or agent with a document that sets only a handle field re-resolves it and keeps the resolved ID.
 
@@ -220,9 +224,61 @@ registrationFlowHandle: default-registration-flow
 isRegistrationFlowEnabled: true
 ```
 
+### Connections and Organization Units
+
+A `connection` document for an identity provider, an SMS or email provider, an AuthZEN PDP connection, or an HTTP endpoint connection must carry `ouId` or `ouHandle`, because every connection belongs to exactly one organization unit. A document with neither fails to import, and a dry run reports the same failure. The same rule applies to connection files loaded at startup: the server fails to load a file with no owner. The error code of a missing owner depends on the kind of connection:
+
+| Connection kind | Error code |
+|---|---|
+| Identity provider | `IDP-1016` |
+| SMS or email provider | `MNS-1020` |
+| AuthZEN PDP | `CON-1025` |
+| HTTP endpoint | `CON-1030` |
+
+When a connection document has both `ouId` and `ouHandle`, `ouId` wins. <ProductName /> logs a warning and does not check that the two name the same organization unit. An export writes `ouId` for each connection, not `ouHandle`.
+
+```yaml
+resource_type: connection
+id: 0193b0a1-1003-7000-8000-000000000001
+name: Corp OIDC
+ouHandle: default
+type: oidc
+clientId: "{{.CORP_OIDC_CLIENT_ID}}"
+clientSecret: "{{.CORP_OIDC_CLIENT_SECRET}}"
+redirectUri: "{{.CORP_OIDC_REDIRECT_URI}}"
+authorizationEndpoint: https://idp.example.com/oauth2/authorize
+tokenEndpoint: https://idp.example.com/oauth2/token
+```
+
+### Sharing Policies on Connections
+
+A `connection` document of any kind can carry a `sharingPolicies` list that shares the connection with other organization units. Each entry has the same fields as a [sharing policy](../../key-concepts/resource-sharing.mdx) on any other resource. A shared connection stays in its owner's organization unit, and the organization units it reaches can use it but cannot override any of its settings.
+
+```yaml
+resource_type: connection
+id: 0193b0a1-1003-7000-8000-000000000002
+name: Corp SMTP
+ouHandle: default
+type: email-smtp
+host: smtp.example.com
+port: 587
+fromAddress: noreply@example.com
+sharingPolicies:
+  - childUnits:
+      mode: all
+```
+
+The importer handles the policies of a document as follows:
+
+- It writes the connection first and then records the policies against the organization unit that owns the connection, whether the document names that unit with `ouId` or `ouHandle`. A policy the connection already has from that organization unit is updated, and a policy that the document does not name is kept.
+- If <ProductName /> refuses a policy, the item fails. When the import created the connection, it removes the connection so that a retry is not blocked by a connection that is left behind. An update that fails on a policy keeps the changes it made to the connection.
+- A dry run validates the connection and records no policy.
+- An export writes the sharing policies of each connection into its document, so importing the export recreates the same sharing.
+- Connection files loaded at startup declare their policies the same way.
+
 ### Dry-Run Behavior
 
-When `dryRun` is `true`, the importer validates documents and reports what would be created or updated, but does not write any changes to runtime stores. Handle resolution is also skipped in dry-run mode: the importer accepts handle fields without attempting to look up their target resources. Use dry-run to validate YAML structure before applying it.
+When `dryRun` is `true`, the importer validates documents and reports what would be created or updated, but does not write any changes to runtime stores. Handle resolution is mostly skipped in dry-run mode: the importer accepts handle fields, such as the flow handles of an application, without attempting to look up their target resources. The exception is `ouHandle`, which is resolved for every resource type that has one, so a handle that does not match an organization unit fails the dry run as it would a real import. Use dry-run to validate YAML structure before applying it.
 
 ## Notification Templates
 
@@ -286,7 +342,7 @@ content:
 
 ## Resource Servers
 
-A `resource_server` document declares a resource server with its resources and actions. A resource's permission joins the handles from the top-level resource down to that resource with the resource server's `delimiter`. An action's permission appends the action handle.
+A `resource_server` document declares a resource server with its resources and actions. List the actions of the resource server itself under the top-level `actions` field, and the actions of a resource under that resource's `actions` field. A resource's permission joins the handles from the top-level resource down to that resource with the resource server's `delimiter`. A resource action's permission appends the action handle to the resource's permission. A resource server action's permission is the action handle alone, such as `audit`.
 
 ### Delimiter and Handles
 
@@ -306,6 +362,8 @@ name: Team Workspace
 identifier: "urn:example:workspace"
 ouHandle: default
 delimiter: ":"
+actions:
+  - { name: Audit, handle: audit }
 resources:
   - { name: App, handle: app }
   - { name: Project, handle: project, parent: app }

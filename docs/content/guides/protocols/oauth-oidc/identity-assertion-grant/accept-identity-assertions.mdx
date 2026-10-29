@@ -62,6 +62,8 @@ sequenceDiagram
 
 The client that presents ID-JAGs to <ProductName /> must be a confidential client, and its allowed grant types must include `urn:ietf:params:oauth:grant-type:jwt-bearer`.
 
+A client registered from a [Client ID Metadata Document](../../../../mcp/mcp-clients/client-id-metadata-document) qualifies only when its document declares the `private_key_jwt` authentication method. Its client ID is the document's URL, so the ID-JAG's `client_id` claim must carry that URL, and the client authenticates with a client assertion instead of a client secret. See [Client Authentication Methods](../../client-authentication-methods).
+
 ## What the Issuer Must Send
 
 The external identity provider's ID-JAG must satisfy these requirements for <ProductName /> to accept it:
@@ -74,7 +76,7 @@ The external identity provider's ID-JAG must satisfy these requirements for <Pro
 | `aud` | Exactly one value, equal to the <ProductName /> issuer identifier, not the token endpoint URL |
 | `client_id` | Equal to the authenticated client's id |
 | `sub` | Present |
-| `exp`, `iat`, `jti` | Present. See [Limitations](#limitations) for the `jti` replay caveat. |
+| `exp`, `iat`, `jti` | Present. <ProductName /> accepts each `jti` once. See [Limitations](#limitations). |
 | `scope` | Optional. Bounds what can be granted. When the request also carries a `scope` parameter, the issued scope is the intersection of the two. When the request omits `scope`, this claim is the candidate in full, narrowed further only by the connection's Authorization Mapping when one is configured — see below. |
 | `resource` | Optional. When present, the request's `resource` parameter must be a subset of this claim. When absent, any valid resource is accepted. |
 
@@ -102,7 +104,7 @@ curl -X POST https://thunderid.example.com/oauth2/token \
 |---|---|
 | `access_token` | The issued access token |
 | `token_type` | `Bearer`, or `DPoP` when the request includes a DPoP proof |
-| `expires_in` | Token lifetime in seconds |
+| `expires_in` | Token lifetime in seconds. See [Token lifetime](#token-lifetime) |
 | `scope` | The granted scope (intersection of the request scope and the assertion's scope) |
 
 No `issued_token_type` or `refresh_token` is returned.
@@ -118,6 +120,7 @@ No `issued_token_type` or `refresh_token` is returned.
 5. Checks the `aud` claim is exactly one value equal to this server's issuer. If not: `invalid_grant` - `The assertion audience must be exactly this server's issuer`.
 6. Checks `client_id` matches the authenticated client. Any other claim failure returns `invalid_grant` - `Invalid assertion`.
 7. Confirms the `sub` claim is present.
+8. Records the assertion's `jti` so it cannot be redeemed twice. A replayed assertion returns `invalid_grant` - `Invalid assertion`.
 
 Requests missing the `assertion` parameter fail with `invalid_request` - `Missing required parameter: assertion`. A public client attempting the grant fails with `invalid_client` - `The jwt-bearer grant requires a confidential client`. An application without the `jwt-bearer` grant type fails with `unauthorized_client` - `The client is not authorized to use this grant type`. A `resource` parameter that is not a subset of the assertion's `resource` claim fails with `invalid_target` - `The resource parameter must be a subset of the assertion's resource claim`; omitting `resource` when no default resource server is configured fails with `invalid_target` - `No resource parameter supplied and no default resource server is configured`.
 
@@ -129,11 +132,28 @@ It does apply the connection's [Authorization Mapping](../../../../identity-prov
 
 The token is DPoP-bound when the request includes a DPoP proof. A `resource` parameter must be a subset of the assertion's `resource` claim, selecting one resource server when the assertion authorizes several.
 
+### Actor claim
+
+The access token carries an `act` (actor) claim naming the client that redeemed the assertion when that client is an agent, or an application with `includeActClaim` enabled. An application without `includeActClaim` receives no `act` claim. `act.sub` is the agent or application resource identifier, not the client ID. This is the same rule the authorization code and CIBA grants, and token exchange without an `actor_token`, follow. An `act` claim inside the ID-JAG is not carried into the issued token. A resource server reads `sub` for the external user the assertion names and `act` for the client that acted for them.
+
+```json
+{
+  "sub": "<external-user-id>",
+  "idp": "<assertion-issuer>",
+  "act": { "sub": "<agent-or-application-id>" }
+}
+```
+
+### Token lifetime
+
+The access token is valid for the client's user access token validity, the same setting the client's other user tokens use. Set it through the API as `token.accessToken.userConfig.validityPeriod` in the client's OAuth configuration. When a client created or updated through the API sets none, <ProductName /> fills it in on save: from the client's `assertion.validityPeriod` if set, otherwise from the server default `jwt.validity_period` in the [server configuration](../../../../../deployment/configuration), which is 3600 seconds unless changed. Changing the server default later does not change a client that is already saved. A client defined in a declarative resource file is stored as written, so with no `userConfig` validity it uses the current server default at runtime.
+
+The token carries none of the user attributes selected for the client's user access token, because the subject is the external user and <ProductName /> holds no local account for it.
+
 ## Limitations
 
-- There is no replay cache. <ProductName /> checks that `jti` is present but does not track previously seen values, so keep assertion expiry short.
+- Each assertion is redeemable once. <ProductName /> records its `jti` until the assertion expires and rejects a second redemption with `invalid_grant`. Request a fresh ID-JAG from the identity provider for each redemption, including a retry.
 - No local account mapping occurs, regardless of Authorization Mapping. The token's `sub` is the external identifier as-is; nothing links it to a local user record.
-- <ProductName /> does not advertise ID-JAG or Enterprise-Managed Authorization discovery metadata in its well-known documents.
 - The Console's Authorization Mapping tab is not yet available on a connection created through the **Trusted token issuer** wizard, even though it is the same OIDC connection type and the backend applies its mapping the same way. Configure it through the Connections API directly until the Console adds it.
 
 :::note

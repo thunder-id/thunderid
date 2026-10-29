@@ -1,7 +1,7 @@
 # Machine-to-Machine Access Across Organization Units Specification
 
 - **Status:** Draft
-- **Version:** 0.2
+- **Version:** 0.3
 - **Related documents:** [Discussion #5461: Machine-to-Machine (M2M) service working across OUs](https://github.com/thunder-id/thunderid/discussions/5461), [Issue #4037: Allow trusted machine clients to obtain an access token scoped to a chosen Organization Unit (without a per-OU application)](https://github.com/thunder-id/thunderid/issues/4037)
 
 ## Summary
@@ -133,6 +133,8 @@ A sharing policy declaration carries its own id, so a reshare beneath it points 
 
 A declaration the framework refuses is fatal at startup, naming the application, the policy index and the organization unit, because a silent skip leaves an operator with a service that cannot act for anyone and no indication why.
 
+A policy field the format does not declare is refused, at any level of the policy, rather than ignored. A misspelled `excludedOuIds` would otherwise read as a section with no exclusions and share the application with the unit the file meant to withhold. The same decoding applies to a document imported through the import API, which fails that document.
+
 Where a declared application's sharing is managed depends on the application store mode:
 
 | Store mode | Owner policy | Reshares |
@@ -158,6 +160,7 @@ Importing the document replays the policies against the stored ones:
 
 - Deleting an application deletes its stored sharing policies, and the reshares beneath them.
 - An organization unit that issued a sharing policy cannot be deleted until the policy is withdrawn.
+- An application that has sharing policies cannot be moved to another organization unit, because its policies were issued against the unit that owns it. The update is refused until the policies are deleted.
 - A policy naming an organization unit that was deleted stays editable and deletable.
 
 ### Claims naming the accessing organization unit
@@ -396,3 +399,4 @@ inboundAuthConfig:
 |---|---|---|
 | 0.1 | 2026-10-09 | Initial specification. |
 | 0.2 | 2026-10-16 | Specified the application sharing API request shapes and error statuses, sharing for declared applications per store mode, import and export, lifecycle, and the Organization Access tab. |
+| 0.3 | 2026-10-27 | A policy field the format does not declare fails a resource file or an imported document instead of being ignored. A shared application cannot be moved to another organization unit. |

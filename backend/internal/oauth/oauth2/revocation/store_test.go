@@ -699,3 +699,56 @@ func anyExecuteContextArgs(rows int) []interface{} {
 	}
 	return args
 }
+
+func (suite *RevocationStoreTestSuite) TestCriterionUpsertKeepsNewestBoundary() {
+	for _, order := range [][]string{{"new", "old", "old"}, {"old", "new", "new"}} {
+		suite.Run(order[0]+"_first", func() {
+			db, err := sql.Open("sqlite", ":memory:")
+			suite.Require().NoError(err)
+			suite.T().Cleanup(func() { suite.Require().NoError(db.Close()) })
+			suite.createCriteriaTable(db)
+
+			now := time.Now().UTC().Truncate(time.Second)
+			newCutoff := now.Add(time.Hour)
+			longExpiry := now.Add(48 * time.Hour)
+			for _, version := range order {
+				cutoff, expiry, reason := now, longExpiry, RevocationReasonRoleAssignmentRemoved
+				if version == "new" {
+					cutoff, expiry, reason = newCutoff, now.Add(24*time.Hour), RevocationReasonIdentitySuspended
+				}
+				_, err = db.Exec(queryInsertRevocationCriterion.Query, version, "subject", "user-1",
+					string(reason), cutoff, expiry, "deployment-1")
+				suite.Require().NoError(err)
+			}
+
+			var cutoff, expiry time.Time
+			err = db.QueryRow(`SELECT REVOKED_AT, EXPIRY_TIME FROM "REVOCATION_CRITERIA"
+				WHERE DEPLOYMENT_ID = ? AND CRITERION_TYPE = ? AND CRITERION_VALUE = ?`,
+				"deployment-1", "subject", "user-1").Scan(&cutoff, &expiry)
+			suite.Require().NoError(err)
+			suite.True(cutoff.Equal(newCutoff))
+			suite.True(expiry.Equal(longExpiry))
+
+			for _, check := range []struct {
+				deployment string
+				issuedAt   time.Time
+				revoked    bool
+			}{
+				{"deployment-1", now.Add(30 * time.Minute), true},
+				{"deployment-1", newCutoff, true},
+				{"deployment-1", newCutoff.Add(time.Second), false},
+				{"deployment-2", now, false},
+			} {
+				query, args := buildCriteriaRevokedQuery([]Criterion{{Type: CriterionTypeSubject, Value: "user-1"}},
+					check.issuedAt, newCutoff.Add(time.Minute), check.deployment)
+				var hit int
+				err = db.QueryRow(query.Query, args...).Scan(&hit)
+				if check.revoked {
+					suite.Require().NoError(err)
+				} else {
+					suite.ErrorIs(err, sql.ErrNoRows)
+				}
+			}
+		})
+	}
+}

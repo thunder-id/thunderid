@@ -168,8 +168,7 @@ func (f *fileBasedResourceStore) CheckResourceServerHasDependencies(
 		return false, errors.New("data corrupted")
 	}
 
-	// Check if it has any resources
-	return len(rs.Resources) > 0, nil
+	return len(rs.Resources) > 0 || len(rs.Actions) > 0, nil
 }
 
 func (f *fileBasedResourceStore) IsResourceServerDeclarative(id string) bool {
@@ -185,9 +184,42 @@ func declarativeResourceID(rs *providers.ResourceServer, path string) string {
 	return rs.ID + rs.Delimiter + path
 }
 
-// declarativeActionID builds the ID of a declarative action from its permission.
+// declarativeActionID builds the ID of a declarative action from its permission. resourcePath is empty
+// for an action of the resource server itself.
 func declarativeActionID(rs *providers.ResourceServer, resourcePath string, actionHandle string) string {
+	if resourcePath == "" {
+		return declarativeResourceID(rs, actionHandle)
+	}
 	return declarativeResourceID(rs, resourcePath+rs.Delimiter+actionHandle)
+}
+
+// declarativeAction gives an action of a declarative resource server the ID a read of it returns.
+// resourcePath is empty for an action of the resource server itself.
+func declarativeAction(rs *providers.ResourceServer, resourcePath string, action providers.Action) providers.Action {
+	return providers.Action{
+		ID:          declarativeActionID(rs, resourcePath, action.Handle),
+		Name:        action.Name,
+		Handle:      action.Handle,
+		Description: action.Description,
+		Permission:  action.Permission,
+		Kind:        action.Kind,
+	}
+}
+
+// declarativeActionsAt returns the actions a declarative resource server holds at one level, and the
+// path of the resource that holds them. A nil resID selects the actions of the resource server itself,
+// mirroring the RESOURCE_ID IS NULL semantics of the database store. It reports false when no
+// resource has the given ID.
+func declarativeActionsAt(rs *providers.ResourceServer, resID *string) (string, []providers.Action, bool) {
+	if resID == nil {
+		return "", rs.Actions, true
+	}
+	for _, res := range rs.Resources {
+		if declarativeResourceID(rs, res.Permission) == *resID {
+			return res.Permission, res.Actions, true
+		}
+	}
+	return "", nil, false
 }
 
 // declarativeParentID returns the ID of a declarative resource's parent, or nil at the top level.
@@ -437,21 +469,13 @@ func (f *fileBasedResourceStore) GetAction(
 			if rs.ID != resServerID {
 				continue
 			}
-			for _, res := range rs.Resources {
-				if resID != nil && declarativeResourceID(rs, res.Permission) != *resID {
-					continue
-				}
-				for _, action := range res.Actions {
-					actionID := declarativeActionID(rs, res.Permission, action.Handle)
-					if actionID == id {
-						return providers.Action{
-							ID:          actionID,
-							Name:        action.Name,
-							Handle:      action.Handle,
-							Description: action.Description,
-							Permission:  action.Permission,
-						}, nil
-					}
+			resourcePath, actions, found := declarativeActionsAt(rs, resID)
+			if !found {
+				continue
+			}
+			for _, action := range actions {
+				if declarativeActionID(rs, resourcePath, action.Handle) == id {
+					return declarativeAction(rs, resourcePath, action), nil
 				}
 			}
 		}
@@ -470,13 +494,6 @@ func (f *fileBasedResourceStore) GetActionList(
 
 	actions := []providers.Action{}
 
-	// A nil resID selects resource server level actions (actions not attached to any resource),
-	// mirroring the RESOURCE_ID IS NULL semantics of the database store. Declarative resource
-	// servers declare actions only under resources, so there are never any at the server level.
-	if resID == nil {
-		return actions, nil
-	}
-
 	// Iterate through all resource servers
 	for _, item := range list {
 		if rs, ok := item.Data.(*providers.ResourceServer); ok {
@@ -485,30 +502,15 @@ func (f *fileBasedResourceStore) GetActionList(
 				continue
 			}
 
-			// Iterate through resources in this server
-			for _, res := range rs.Resources {
-				resUUID := declarativeResourceID(rs, res.Permission)
-
-				// Only get actions from the requested resource
-				if resUUID != *resID {
+			resourcePath, levelActions, found := declarativeActionsAt(rs, resID)
+			if !found {
+				continue
+			}
+			for _, action := range levelActions {
+				if kind != "" && action.Kind != kind {
 					continue
 				}
-
-				// Add all actions from this resource
-				for _, action := range res.Actions {
-					if kind != "" && action.Kind != kind {
-						continue
-					}
-					actionID := declarativeActionID(rs, res.Permission, action.Handle)
-					actions = append(actions, providers.Action{
-						ID:          actionID,
-						Name:        action.Name,
-						Handle:      action.Handle,
-						Description: action.Description,
-						Permission:  action.Permission,
-						Kind:        action.Kind,
-					})
-				}
+				actions = append(actions, declarativeAction(rs, resourcePath, action))
 			}
 		}
 	}
@@ -584,20 +586,13 @@ func (f *fileBasedResourceStore) CheckActionHandleExists(
 				continue
 			}
 
-			// Iterate through resources in this server
-			for _, res := range rs.Resources {
-				resUUID := declarativeResourceID(rs, res.Permission)
-
-				// If resID is specified, only check actions from that resource
-				if resID != nil && resUUID != *resID {
-					continue
-				}
-
-				// Check all actions from this resource
-				for _, action := range res.Actions {
-					if action.Handle == handle {
-						return true, nil
-					}
+			_, actions, found := declarativeActionsAt(rs, resID)
+			if !found {
+				continue
+			}
+			for _, action := range actions {
+				if action.Handle == handle {
+					return true, nil
 				}
 			}
 		}
@@ -623,6 +618,9 @@ func (f *fileBasedResourceStore) ValidatePermissions(
 				continue
 			}
 
+			for _, action := range rs.Actions {
+				validPermissions[action.Permission] = struct{}{}
+			}
 			for _, res := range rs.Resources {
 				validPermissions[res.Permission] = struct{}{}
 				for _, action := range res.Actions {

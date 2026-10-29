@@ -15,6 +15,8 @@ const (
 	ComponentAuthHandler = "AuthHandler"
 	// ComponentBackchannelLogout identifies the back-channel logout dispatcher.
 	ComponentBackchannelLogout = "BackchannelLogout"
+	// ComponentExtensionExecutor identifies the flow step that calls an organization's service.
+	ComponentExtensionExecutor = "ExtensionExecutor"
 	// ComponentIdentityGovernance identifies the identity governance service.
 	ComponentIdentityGovernance = "IdentityGovernance"
 	// ComponentServerConfig identifies the server-config service.
@@ -36,6 +38,9 @@ const (
 
 	// EventTypeTokenRevoked is triggered when a token is revoked (RFC 7009).
 	EventTypeTokenRevoked providers.EventType = "TOKEN_REVOKED" //nolint:gosec
+
+	// EventTypeTokenRevocationFailed is triggered when a criteria revocation cannot be stored.
+	EventTypeTokenRevocationFailed providers.EventType = "TOKEN_REVOCATION_FAILED" //nolint:gosec
 
 	// EventTypeRuntimePersistentDBUnavailable is triggered when the runtime persistent database backing the
 	// deny-list (revocation) check becomes unavailable and enforcement fails closed.
@@ -97,4 +102,8 @@ const (
 
 	// EventTypeFlowFailed is triggered when flow execution fails.
 	EventTypeFlowFailed providers.EventType = "FLOW_FAILED"
+
+	// EventTypeExtensionCall is triggered once for every execution of an extension step, whatever its
+	// outcome.
+	EventTypeExtensionCall providers.EventType = "EXTENSION_CALL"
 )

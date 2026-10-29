@@ -6,11 +6,15 @@ package sdjwt
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"math/big"
 	"testing"
 	"time"
 
@@ -427,6 +431,39 @@ func TestVerifyIssuerSignatureNilKey(t *testing.T) {
 
 	err = VerifyIssuerSignature(p, nil)
 	assert.ErrorIs(t, err, ErrIssuerSignature)
+}
+
+// TestVerifyIssuerSignatureMLDSACertificate covers an issuer certificate signed with ML-DSA, whose
+// public key the standard library parses as a crypto/mldsa key.
+func TestVerifyIssuerSignatureMLDSACertificate(t *testing.T) {
+	issuerKey, err := mldsa.GenerateKey(mldsa.MLDSA65())
+	require.NoError(t, err)
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "ML-DSA issuer"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, issuerKey.PublicKey(), issuerKey)
+	require.NoError(t, err)
+	cert, err := x509.ParseCertificate(der)
+	require.NoError(t, err)
+
+	header, err := json.Marshal(map[string]interface{}{"alg": "ML-DSA-65", "typ": "dc+sd-jwt"})
+	require.NoError(t, err)
+	payload, err := json.Marshal(map[string]interface{}{"iss": testIssuerURL, "vct": testVCT})
+	require.NoError(t, err)
+	signingInput := base64.RawURLEncoding.EncodeToString(header) + "." +
+		base64.RawURLEncoding.EncodeToString(payload)
+	sig, err := issuerKey.Sign(nil, []byte(signingInput), &mldsa.Options{})
+	require.NoError(t, err)
+
+	valid := &Presentation{IssuerJWT: signingInput + "." + base64.RawURLEncoding.EncodeToString(sig)}
+	assert.NoError(t, VerifyIssuerSignature(valid, cert.PublicKey))
+
+	sig[0] ^= 0x01
+	tampered := &Presentation{IssuerJWT: signingInput + "." + base64.RawURLEncoding.EncodeToString(sig)}
+	assert.ErrorIs(t, VerifyIssuerSignature(tampered, cert.PublicKey), ErrIssuerSignature)
 }
 
 func TestParseMalformedDisclosures(t *testing.T) {

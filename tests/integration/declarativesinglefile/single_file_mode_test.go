@@ -53,8 +53,15 @@ handle: sf-decl-ou-1
 name: Single File Declarative OU
 description: Organization unit loaded via single-file mode
 ---
+resource_type: organization_unit
+id: sf-decl-ou-2
+handle: sf-decl-ou-2
+name: Single File Declarative OU Two
+description: Second organization unit loaded via single-file mode
+---
 resource_type: connection
 id: sf-decl-idp-1
+ouHandle: sf-decl-ou-1
 name: Single File GitHub IDP
 description: "{{ t(idp.github.description) }}"
 type: github
@@ -75,6 +82,7 @@ attributeConfiguration:
 ---
 resource_type: connection
 id: sf-decl-idp-2
+ouHandle: sf-decl-ou-1
 name: Single File Google IDP
 description: IDP loaded via single-file mode
 type: google
@@ -84,6 +92,7 @@ redirectUri: https://localhost:8095/callback
 ---
 resource_type: connection
 id: sf-decl-idp-3
+ouHandle: sf-decl-ou-1
 name: Single File Empty Config IDP
 description: IDP whose attributeConfiguration is present but empty
 type: google
@@ -92,6 +101,37 @@ clientSecret: sf-test-empty-secret
 redirectUri: https://localhost:8095/callback
 attributeConfiguration:
   accountLinking: {}
+---
+resource_type: connection
+id: sf-decl-idp-owner-handle
+ouHandle: sf-decl-ou-2
+name: Single File IDP Owned By Handle
+description: IDP that names its owner by ouHandle only
+type: google
+clientId: sf-test-owner-handle-client
+clientSecret: sf-test-owner-handle-secret
+redirectUri: https://localhost:8095/callback
+---
+resource_type: connection
+id: sf-decl-idp-owner-id
+ouId: sf-decl-ou-1
+name: Single File IDP Owned By Id
+description: IDP that names its owner by ouId only
+type: google
+clientId: sf-test-owner-id-client
+clientSecret: sf-test-owner-id-secret
+redirectUri: https://localhost:8095/callback
+---
+resource_type: connection
+id: sf-decl-idp-owner-both
+ouId: sf-decl-ou-1
+ouHandle: sf-decl-ou-2
+name: Single File IDP Owned By Id And Handle
+description: IDP that names a different owner by ouId and by ouHandle
+type: google
+clientId: sf-test-owner-both-client
+clientSecret: sf-test-owner-both-secret
+redirectUri: https://localhost:8095/callback
 `
 
 // envVars are set in the test process before the server starts so they are inherited
@@ -403,4 +443,83 @@ func (s *SingleFileModeSuite) TestDeclarativeResourcesAreImmutable() {
 
 	s.Equal(http.StatusBadRequest, resp.StatusCode,
 		"deleting a declarative IDP should return 400 Bad Request")
+}
+
+// organizationUnitID reads the id the server reports for a declarative organization unit.
+func (s *SingleFileModeSuite) organizationUnitID(handle string) string {
+	client := testutils.GetHTTPClient()
+	resp, err := client.Get(fmt.Sprintf("%s/organization-units/%s", testutils.TestServerURL, handle))
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+	s.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var ou map[string]interface{}
+	s.Require().NoError(json.NewDecoder(resp.Body).Decode(&ou))
+	id, ok := ou["id"].(string)
+	s.Require().True(ok, "organization unit %s should carry an id: %v", handle, ou)
+	return id
+}
+
+// ownerFromRead returns the ouId the vendor read of a declarative connection reports.
+func (s *SingleFileModeSuite) ownerFromRead(vendor, id string) interface{} {
+	client := testutils.GetHTTPClient()
+	resp, err := client.Get(fmt.Sprintf("%s/connections/%s/%s", testutils.TestServerURL, vendor, id))
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+	s.Require().Equal(http.StatusOK, resp.StatusCode, "connection %s/%s should be visible", vendor, id)
+
+	var connection map[string]interface{}
+	s.Require().NoError(json.NewDecoder(resp.Body).Decode(&connection))
+	return connection["ouId"]
+}
+
+// ownersFromList returns the ouId of every connection in the flat listing of a category, keyed by connection id.
+func (s *SingleFileModeSuite) ownersFromList(category string) map[string]interface{} {
+	client := testutils.GetHTTPClient()
+	resp, err := client.Get(fmt.Sprintf("%s/connections?category=%s&limit=100", testutils.TestServerURL, category))
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+	s.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var listResp struct {
+		Connections []map[string]interface{} `json:"connections"`
+	}
+	s.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
+
+	owners := make(map[string]interface{}, len(listResp.Connections))
+	for _, connection := range listResp.Connections {
+		if id, ok := connection["id"].(string); ok {
+			owners[id] = connection["ouId"]
+		}
+	}
+	return owners
+}
+
+// TestIdentityProviderOwnerFromFile verifies the owner of a declarative identity provider is resolved from whichever
+// of ouId and ouHandle the document gives, and that the id wins when it gives both. The document that names both
+// points ouId at one organization unit and ouHandle at another, so the owner it reports shows which one was kept.
+func (s *SingleFileModeSuite) TestIdentityProviderOwnerFromFile() {
+	ouOne := s.organizationUnitID("sf-decl-ou-1")
+	ouTwo := s.organizationUnitID("sf-decl-ou-2")
+	s.NotEqual(ouOne, ouTwo)
+
+	owners := s.ownersFromList("identity-provider")
+
+	tests := []struct {
+		name     string
+		id       string
+		expected string
+	}{
+		{"ouHandle only", "sf-decl-idp-owner-handle", ouTwo},
+		{"ouId only", "sf-decl-idp-owner-id", ouOne},
+		{"ouId and ouHandle of another unit", "sf-decl-idp-owner-both", ouOne},
+		{"ouHandle of the first unit", "sf-decl-idp-2", ouOne},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			s.Equal(tc.expected, s.ownerFromRead("google", tc.id), "the vendor read should report the owner")
+			s.Contains(owners, tc.id, "the listing should include the connection")
+			s.Equal(tc.expected, owners[tc.id], "the flat listing should report the same owner")
+		})
+	}
 }

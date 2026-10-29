@@ -339,6 +339,66 @@ describe('IdentityAssertionsSection', () => {
       ).toBeInTheDocument();
     });
 
+    it('should explain that a public metadata document client cannot be made confidential here', async () => {
+      const user = userEvent.setup();
+      const oauth2Config: OAuth2Config = {
+        ...baseConfig,
+        clientIdMetadataDocument: true,
+        publicClient: true,
+        tokenEndpointAuthMethod: 'none',
+      };
+
+      render(<IdentityAssertionsSection oauth2Config={oauth2Config} onTokenConfigChange={mockOnTokenConfigChange} />);
+
+      const toggle = screen.getByLabelText('Identity assertions (ID-JAG)');
+      expect(toggle).toBeDisabled();
+      await user.hover(toggle.closest('.MuiSwitch-root')!.parentElement!);
+
+      expect(
+        await screen.findByText(
+          "Identity assertions require a confidential client. This client's metadata document declares it as a public client.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('should add the token exchange grant when a private key JWT metadata document client turns it on', async () => {
+      const user = userEvent.setup();
+      const oauth2Config: OAuth2Config = {
+        ...baseConfig,
+        clientIdMetadataDocument: true,
+        pkceRequired: true,
+        tokenEndpointAuthMethod: 'private_key_jwt',
+      };
+
+      render(<IdentityAssertionsSection oauth2Config={oauth2Config} onTokenConfigChange={mockOnTokenConfigChange} />);
+      await user.click(screen.getByLabelText('Identity assertions (ID-JAG)'));
+
+      expect(mockOnTokenConfigChange).toHaveBeenCalledWith(
+        {idJag: {enabled: true, allowedAudiences: [], validityPeriod: 300}},
+        {grantTypes: ['authorization_code', 'urn:ietf:params:oauth:grant-type:token-exchange']},
+      );
+    });
+
+    it('should remove the token exchange grant when a metadata document client turns it off', async () => {
+      const user = userEvent.setup();
+      const oauth2Config = {
+        ...baseConfig,
+        clientIdMetadataDocument: true,
+        pkceRequired: true,
+        tokenEndpointAuthMethod: 'private_key_jwt',
+        grantTypes: ['authorization_code', 'urn:ietf:params:oauth:grant-type:token-exchange'],
+        token: {idJag: {enabled: true, allowedAudiences: ['https://as.example.com'], validityPeriod: 300}},
+      } as unknown as OAuth2Config;
+
+      render(<IdentityAssertionsSection oauth2Config={oauth2Config} onTokenConfigChange={mockOnTokenConfigChange} />);
+      await user.click(screen.getByLabelText('Identity assertions (ID-JAG)'));
+
+      expect(mockOnTokenConfigChange).toHaveBeenCalledWith(
+        {idJag: {enabled: false, allowedAudiences: ['https://as.example.com'], validityPeriod: 300}},
+        {grantTypes: ['authorization_code']},
+      );
+    });
+
     it('should not disable the toggle when the client is confidential', () => {
       render(<IdentityAssertionsSection oauth2Config={baseConfig} onTokenConfigChange={mockOnTokenConfigChange} />);
 

@@ -37,7 +37,7 @@ func exportedRoleDocument(t *testing.T) *yaml.Node {
 
 // An exported role is shown as a read returns it, with its references as they are.
 func TestViewResourceShowsAnExportedRoleAsItsRead(t *testing.T) {
-	view, err := newRoleExporter(nil, nil).ViewResource(context.Background(), exportedRoleDocument(t))
+	view, err := newRoleExporter(nil, nil, nil).ViewResource(context.Background(), exportedRoleDocument(t))
 
 	require.NoError(t, err)
 	assert.Equal(t, &RoleResponse{
@@ -48,7 +48,7 @@ func TestViewResourceShowsAnExportedRoleAsItsRead(t *testing.T) {
 
 // A role's one part, its assignments, is shown as a read of them returns them, all on one page.
 func TestViewResourcePartsShowsTheAssignmentsOfAnExportedRole(t *testing.T) {
-	parts, err := newRoleExporter(nil, nil).ViewResourceParts(context.Background(), exportedRoleDocument(t))
+	parts, err := newRoleExporter(nil, nil, nil).ViewResourceParts(context.Background(), exportedRoleDocument(t))
 
 	require.NoError(t, err)
 	assert.Equal(t, map[string]interface{}{"assignments": &AssignmentListResponse{
@@ -63,7 +63,7 @@ func TestViewResourcePartsShowsTheAssignmentsOfAnExportedRole(t *testing.T) {
 
 // A role without assignments shows an empty page of them.
 func TestViewResourcePartsShowsNoAssignmentsAsAnEmptyPage(t *testing.T) {
-	parts, err := newRoleExporter(nil, nil).ViewResourceParts(context.Background(),
+	parts, err := newRoleExporter(nil, nil, nil).ViewResourceParts(context.Background(),
 		viewDocument(t, "id: role-1\nname: Admins\npermissions: []"))
 
 	require.NoError(t, err)
@@ -75,7 +75,7 @@ func TestViewResourcePartsShowsNoAssignmentsAsAnEmptyPage(t *testing.T) {
 
 // A document that is not a role is refused.
 func TestViewResourceRefusesAnUnreadableDocument(t *testing.T) {
-	exporter := newRoleExporter(nil, nil)
+	exporter := newRoleExporter(nil, nil, nil)
 
 	_, err := exporter.ViewResource(context.Background(), viewDocument(t, "name: [not, a, name]"))
 	assert.Error(t, err)

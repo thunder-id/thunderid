@@ -7,9 +7,13 @@ import {
   FLOW_PAGE_SIZE,
   FlowExecutionFailure,
   findAdministrationFlowId,
+  findAdministrationFlows,
   resolveAdministrationFlowHandle,
+  resolveAdministrationFlowHandles,
   resolveAdministrationFlowId,
+  resolveAdministrationFlows,
   runAdministrationFlow,
+  type HttpLike,
 } from '../administrationFlow';
 
 const SERVER = 'https://localhost:8090';
@@ -220,5 +224,135 @@ describe('FlowExecutionFailure', () => {
     ).toBe('m');
     expect(new FlowExecutionFailure({description: {defaultValue: 'd'}}, 'f').message).toBe('d');
     expect(new FlowExecutionFailure({}, 'fallback').message).toBe('fallback');
+  });
+});
+
+/**
+ * A client that answers each url containing a key from a table, recording every url requested.
+ */
+function httpReturning(responses: Record<string, unknown>): {http: HttpLike; calls: string[]} {
+  const calls: string[] = [];
+  const http: HttpLike = {
+    request: vi.fn((config: unknown) => {
+      const {url} = config as {url: string};
+
+      calls.push(url);
+      const match = Object.keys(responses).find((key) => url.includes(key));
+
+      return Promise.resolve({data: match ? responses[match] : undefined});
+    }),
+  };
+
+  return {calls, http};
+}
+
+describe('resolveAdministrationFlowHandles', () => {
+  it('reads the merged layer, not the envelope', async () => {
+    // Only the merged layer is the effective configuration.
+    const {http} = httpReturning({
+      '/server-config/flow': {
+        merged: {userSuspendFlow: {defaultHandle: 'merged-handle'}},
+        readOnly: {userSuspendFlow: {defaultHandle: 'declarative-handle'}},
+      },
+    });
+
+    await expect(resolveAdministrationFlowHandles(http, SERVER, ['userSuspendFlow'])).resolves.toEqual({
+      userSuspendFlow: 'merged-handle',
+    });
+  });
+
+  it('omits a purpose that is configured to nothing', async () => {
+    // Absent, so the caller withholds the action.
+    const {http} = httpReturning({'/server-config/flow': {merged: {userUnlockFlow: {}}}});
+
+    await expect(
+      resolveAdministrationFlowHandles(http, SERVER, ['userSuspendFlow', 'userUnlockFlow']),
+    ).resolves.toEqual({});
+  });
+
+  it('propagates a read failure rather than reporting nothing configured', async () => {
+    // Swallowing it would silently withdraw every lifecycle action.
+    const http: HttpLike = {request: vi.fn().mockRejectedValue(new Error('boom'))};
+
+    await expect(resolveAdministrationFlowHandles(http, SERVER, ['userSuspendFlow'])).rejects.toThrow('boom');
+  });
+});
+
+describe('findAdministrationFlows', () => {
+  it('resolves every handle in one page walk', async () => {
+    const a = {flowType: 'ADMINISTRATION', handle: 'a', id: 'id-a', name: 'A', updatedAt: '2026-10-01T00:00:00Z'};
+    const b = {flowType: 'ADMINISTRATION', handle: 'b', id: 'id-b', name: 'B', updatedAt: '2026-10-02T00:00:00Z'};
+    const {calls, http} = httpReturning({'/flows': {flows: [a, b]}});
+
+    await expect(findAdministrationFlows(http, SERVER, ['a', 'b'])).resolves.toEqual({a, b});
+    // One listing request, not one per handle.
+    expect(calls).toHaveLength(1);
+  });
+
+  it('walks past a full page to find a handle further along', async () => {
+    // The listing is newest first, so bootstrap flows sink as a deployment adds its own.
+    const firstPage = Array.from({length: 100}, (_unused, index) => ({
+      flowType: 'ADMINISTRATION',
+      handle: `other-${index}`,
+      id: `id-${index}`,
+    }));
+    let page = 0;
+    const http: HttpLike = {
+      request: vi.fn(() => {
+        page += 1;
+
+        return Promise.resolve({
+          data: {flows: page === 1 ? firstPage : [{flowType: 'ADMINISTRATION', handle: 'wanted', id: 'id-w'}]},
+        });
+      }),
+    };
+
+    await expect(findAdministrationFlows(http, SERVER, ['wanted'])).resolves.toEqual({
+      wanted: {flowType: 'ADMINISTRATION', handle: 'wanted', id: 'id-w'},
+    });
+    expect(page).toBe(2);
+  });
+
+  it('ignores a handle carried by a flow of another type', async () => {
+    const {http} = httpReturning({
+      '/flows': {flows: [{flowType: 'AUTHENTICATION', handle: 'a', id: 'id-a'}]},
+    });
+
+    await expect(findAdministrationFlows(http, SERVER, ['a'])).resolves.toEqual({});
+  });
+
+  it('makes no request when there is nothing to look for', async () => {
+    const {calls, http} = httpReturning({});
+
+    await expect(findAdministrationFlows(http, SERVER, [])).resolves.toEqual({});
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe('resolveAdministrationFlows', () => {
+  it('returns the listed flow for each purpose whose configured handle names one', async () => {
+    // Either half missing means the operation is not offered.
+    const suspend = {
+      flowType: 'ADMINISTRATION',
+      handle: 'suspend-handle',
+      id: 'flow-1',
+      isReadOnly: true,
+      name: 'Suspend',
+      updatedAt: '2026-10-01T00:00:00Z',
+    };
+    const {http} = httpReturning({
+      '/flows': {flows: [suspend]},
+      '/server-config/flow': {
+        merged: {
+          userSuspendFlow: {defaultHandle: 'suspend-handle'},
+          agentSuspendFlow: {defaultHandle: 'suspend-handle'},
+          userUnlockFlow: {defaultHandle: 'handle-of-a-deleted-flow'},
+        },
+      },
+    });
+
+    await expect(
+      resolveAdministrationFlows(http, SERVER, ['userSuspendFlow', 'agentSuspendFlow', 'userUnlockFlow']),
+    ).resolves.toStrictEqual({userSuspendFlow: suspend, agentSuspendFlow: suspend});
   });
 });

@@ -133,6 +133,12 @@ func (m *authnProviderManager) AuthenticateUser(ctx context.Context, identifiers
 					log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
 				return authUser, nil, &ErrorAmbiguousUser
 			}
+		case authnprovidercm.ErrorCodeAccountLocked:
+			m.logger.Debug(ctx, "authentication refused a locked account")
+			return authUser, nil, &ErrorAccountLocked
+		case authnprovidercm.ErrorCodeAccountSuspended:
+			m.logger.Debug(ctx, "authentication refused a suspended account")
+			return authUser, nil, &ErrorAccountSuspended
 		}
 		m.logger.Debug(ctx, "authentication failed with client error from provider",
 			log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
@@ -334,7 +340,12 @@ func (m *authnProviderManager) InitiateEnrollment(ctx context.Context, credentia
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	return selectedProvider.InitiateEnrollment(ctx, credentialType, initData, metadata)
+	result, svcErr := selectedProvider.InitiateEnrollment(ctx, credentialType, initData, metadata)
+	if stated := statedHold(svcErr); stated != nil {
+		m.logger.Debug(ctx, "enrollment initiation refused by a suspension", log.String("errorCode", stated.Code))
+		return nil, stated
+	}
+	return result, svcErr
 }
 
 // Enroll routes a credential to the matching provider to complete enrollment and merges
@@ -354,6 +365,10 @@ func (m *authnProviderManager) Enroll(ctx context.Context, identifiers, credenti
 			m.logger.Error(ctx, "provider returned server error during enrollment",
 				log.String("error", svcErr.ErrorDescription.DefaultValue))
 			return authUser, nil, &tidcommon.InternalServerError
+		}
+		if stated := statedHold(svcErr); stated != nil {
+			m.logger.Debug(ctx, "enrollment refused by a suspension", log.String("errorCode", stated.Code))
+			return authUser, nil, stated
 		}
 		switch svcErr.Code {
 		case authnprovidercm.ErrorCodeUserNotFound:
@@ -694,4 +709,14 @@ func isEntityRefsEqual(ref1, ref2 *providers.EntityReference) bool {
 	}
 	// EntityCategory is intentionally excluded — it's optional and may be missing.
 	return true
+}
+
+// statedHold maps a provider's suspension code to this package's error, or returns nil for any other
+// error. Only a suspension is stated on enrolment.
+func statedHold(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
+	if svcErr == nil || svcErr.Type != tidcommon.ClientErrorType ||
+		svcErr.Code != authnprovidercm.ErrorCodeAccountSuspended {
+		return nil
+	}
+	return &ErrorAccountSuspended
 }

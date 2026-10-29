@@ -17,23 +17,23 @@ const formationRetries = 3
 // correctly both as a string and as a timestamp.
 const permanentUnlockAt = "9999-12-31T23:59:59Z"
 
-// LockReason says why an entity-wide lock entry exists. Descriptive only; the unlock time decides
+// LockReason says why an account-wide lock entry exists. Descriptive only; the unlock time decides
 // expiry.
 type LockReason string
 
-// lockReasonPostSuspension marks the entity-wide lock written on unsuspend.
+// lockReasonPostSuspension marks the account-wide lock written on unsuspend.
 const lockReasonPostSuspension LockReason = "POST_SUSPENDED"
 
-// granularity is what a lock holds: the authentication method that failed, or the whole entity.
+// granularity is what a lock holds: the authentication method that failed, or the whole account.
 type granularity string
 
 const (
 	// granularityAuthenticationMethod locks only the method that failed. The default.
 	granularityAuthenticationMethod granularity = "authentication_method"
 
-	// granularityEntity counts every lockable failure under the entity-wide key, and a lock holds every
+	// granularityAccount counts every lockable failure under the account-wide key, and a lock holds every
 	// method.
-	granularityEntity granularity = "entity"
+	granularityAccount granularity = "account"
 )
 
 // disclosureMode is whether a refusal may state the account's hold.
@@ -68,7 +68,7 @@ const (
 	// noticeTimeout bounds one delivery attempt: profile read, render and send.
 	noticeTimeout = 30 * time.Second
 
-	// noticeShutdownBudget bounds Close. The server's graceful shutdown has five seconds in total.
+	// noticeShutdownBudget bounds Stop. The server's graceful shutdown has five seconds in total.
 	noticeShutdownBudget = 2 * time.Second
 )
 
@@ -81,8 +81,12 @@ const (
 	failureNotApplicable   lifecycleFailure = "not_applicable"
 	failureNoSubject       lifecycleFailure = "no_subject"
 	failureNotFound        lifecycleFailure = "not_found"
+	failureNoteTooLong     lifecycleFailure = "note_too_long"
 	failureOperationFailed lifecycleFailure = "operation_failed"
 )
+
+// maxOperatorNoteLength is the longest operator note a suspension takes, in characters.
+const maxOperatorNoteLength = 100
 
 // Lifecycle audit messages, published with a successful operation.
 const (
@@ -116,18 +120,18 @@ const (
 // Lock email template placeholders. All are always supplied, since the renderer fails on a
 // placeholder with no value.
 const (
-	templateKeyAuthenticationMethod = "authenticationMethod"
-	templateKeyLockDuration         = "lockDuration"
-	templateKeyUnlockTime           = "unlockTime"
+	templateKeyLockedAuthenticationMethod = "lockedAuthenticationMethod"
+	templateKeyLockDuration               = "lockDuration"
+	templateKeyUnlockTime                 = "unlockTime"
 )
 
 // unlockTimeLayout writes the unlock time in UTC, locale-neutrally, to the minute. The templates name
 // the zone.
 const unlockTimeLayout = "2006-01-02 15:04"
 
-// AuthenticationMethodEntity is the reserved key for entity-wide lock counting. It is never derived from an
+// AuthenticationMethodAccount is the reserved key for account-wide lock counting. It is never derived from an
 // authentication method, so no caller names it.
-const AuthenticationMethodEntity providers.AuthenticationMethod = "entity"
+const AuthenticationMethodAccount providers.AuthenticationMethod = "account"
 
 // AllAuthenticationMethods lists every registered authentication method.
 var AllAuthenticationMethods = []providers.AuthenticationMethod{
@@ -138,7 +142,7 @@ var AllAuthenticationMethods = []providers.AuthenticationMethod{
 	providers.AuthenticationMethodMagicLink,
 	providers.AuthenticationMethodOpenID4VP,
 	providers.AuthenticationMethodSystemCredential,
-	AuthenticationMethodEntity,
+	AuthenticationMethodAccount,
 }
 
 // lockableMethods says whether failures at each registered method are counted and may form a lock. It
@@ -156,8 +160,8 @@ var lockableMethods = map[providers.AuthenticationMethod]bool{
 	providers.AuthenticationMethodFederated: false,
 	providers.AuthenticationMethodOpenID4VP: false,
 
-	// Entity-wide key; never derived.
-	AuthenticationMethodEntity: true,
+	// Account-wide key; never derived.
+	AuthenticationMethodAccount: true,
 }
 
 // heldAtRecovery says whether an automatic lock still holds each method at the recovery plane. Only a
@@ -172,6 +176,6 @@ var heldAtRecovery = map[providers.AuthenticationMethod]bool{
 	providers.AuthenticationMethodFederated: false,
 	providers.AuthenticationMethodOpenID4VP: false,
 
-	// Entity-wide key; never derived.
-	AuthenticationMethodEntity: false,
+	// Account-wide key; never derived.
+	AuthenticationMethodAccount: false,
 }

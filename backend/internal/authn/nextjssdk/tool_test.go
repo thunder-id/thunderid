@@ -71,10 +71,10 @@ func (suite *NextJSSDKToolsTestSuite) TestRegisterTools() {
 	found := false
 	iter := featuresField.MapRange()
 	for iter.Next() {
-		if iter.Key().String() == "thunderid_integrate_nextjs_sdk" {
+		if iter.Key().String() == "integrate_nextjs_sdk" {
 			found = true
 			break
 		}
 	}
-	assert.True(suite.T(), found, "thunderid_integrate_nextjs_sdk tool should be registered")
+	assert.True(suite.T(), found, "integrate_nextjs_sdk tool should be registered")
 }

@@ -6,6 +6,7 @@ import {FileBadge, KeyRound, Laptop, UserRound} from '@wso2/oxygen-ui-icons-reac
 import type {JSX, ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {CimdPreview} from '../../../models/cimd';
+import {getGrantTypeLabel} from '../../../utils/getGrantTypeLabel';
 import isLoopbackRedirectUri from '../../../utils/isLoopbackRedirectUri';
 
 /**
@@ -20,6 +21,10 @@ export interface CimdPreviewCardProps {
   redirectUriMarker?: (uri: string) => ReactNode;
   /** Redirect URIs to list in addition to the preview's own, for example ones a re-fetch would remove. */
   extraRedirectUris?: string[];
+  /** Optional marker per grant type, used by the re-fetch dialog to show additions and removals. */
+  grantMarker?: (grant: string) => ReactNode;
+  /** Grant types to list in addition to the preview's own, for example ones a re-fetch keeps or removes. */
+  extraGrantTypes?: string[];
 }
 
 function Row({label, children}: {label: string; children: ReactNode}): JSX.Element {
@@ -43,6 +48,8 @@ export default function CimdPreviewCard({
   preview,
   redirectUriMarker = undefined,
   extraRedirectUris = [],
+  grantMarker = undefined,
+  extraGrantTypes = [],
 }: CimdPreviewCardProps): JSX.Element {
   const {t} = useTranslation();
   const isConfidential = preview.tokenEndpointAuthMethod === 'private_key_jwt';
@@ -107,7 +114,14 @@ export default function CimdPreviewCard({
           </Row>
 
           <Row label={t('applications:cimd.preview.grants', 'Grants')}>
-            <Typography variant="body2">{preview.grantTypes.join(', ')}</Typography>
+            <Stack spacing={0.5}>
+              {[...preview.grantTypes, ...extraGrantTypes].map((grant) => (
+                <Stack key={grant} direction="row" spacing={1} alignItems="center">
+                  {grantMarker?.(grant)}
+                  <Typography variant="body2">{getGrantTypeLabel(grant, t)}</Typography>
+                </Stack>
+              ))}
+            </Stack>
           </Row>
 
           {preview.loopbackOnly && (

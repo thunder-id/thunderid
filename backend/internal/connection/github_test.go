@@ -91,3 +91,15 @@ func (s *GitHubTestSuite) TestGetMasksSecret() {
 	s.Contains(rr.Body.String(), maskedSecretValue)
 	s.Contains(rr.Body.String(), `"type":"github"`)
 }
+
+func (s *GitHubTestSuite) TestOUCarriedThroughMapping() {
+	dto, err := githubToIDPDTO(githubConnectionRequest{
+		Name: "n", OUID: "ou-1", ClientID: "c", RedirectURI: "https://app/cb",
+	})
+	s.Require().NoError(err)
+	s.Equal("ou-1", dto.OUID)
+
+	resp, err := githubFromIDPDTO(*dto)
+	s.Require().NoError(err)
+	s.Equal("ou-1", resp.OUID)
+}

@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -33,6 +34,7 @@ type connectionInstance struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`
 	Description string   `json:"description,omitempty"`
+	OUID        string   `json:"ouId,omitempty"`
 	Type        string   `json:"type"`
 	Categories  []string `json:"categories"`
 }
@@ -99,10 +101,27 @@ func doRequest(method, path string, body interface{}) (httpResult, error) {
 	return httpResult{status: resp.StatusCode, body: respBody}, nil
 }
 
+// ownedBy returns body as a JSON object that names ouID as the owning organization unit, unless it already
+// names one. Every connection needs an owner, so the requests that are not about ownership go through it, which
+// keeps them from failing on the missing ouId instead of what they check. A body that is not a JSON object fails
+// the test.
+func ownedBy(t *testing.T, ouID string, body interface{}) interface{} {
+	t.Helper()
+	raw, err := json.Marshal(body)
+	require.NoError(t, err, "the request body cannot be marshaled")
+	var object map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &object), "the request body is not a JSON object")
+	if existing, ok := object["ouId"].(string); !ok || existing == "" {
+		object["ouId"] = ouID
+	}
+	return object
+}
+
 // --- Vendor request/response shapes (mirror backend/internal/connection/*.go wire format) ---
 
 type googleConnectionRequest struct {
 	Name                   string                            `json:"name"`
+	OUID                   string                            `json:"ouId,omitempty"`
 	ClientID               string                            `json:"clientId"`
 	ClientSecret           string                            `json:"clientSecret,omitempty"`
 	RedirectURI            string                            `json:"redirectUri"`
@@ -112,6 +131,7 @@ type googleConnectionRequest struct {
 
 type githubConnectionRequest struct {
 	Name                   string                            `json:"name"`
+	OUID                   string                            `json:"ouId,omitempty"`
 	ClientID               string                            `json:"clientId"`
 	ClientSecret           string                            `json:"clientSecret,omitempty"`
 	RedirectURI            string                            `json:"redirectUri"`
@@ -120,6 +140,7 @@ type githubConnectionRequest struct {
 
 type oidcConnectionRequest struct {
 	Name                   string                            `json:"name"`
+	OUID                   string                            `json:"ouId,omitempty"`
 	ClientID               string                            `json:"clientId"`
 	ClientSecret           string                            `json:"clientSecret,omitempty"`
 	RedirectURI            string                            `json:"redirectUri"`
@@ -131,6 +152,7 @@ type oidcConnectionRequest struct {
 
 type oauthConnectionRequest struct {
 	Name                   string                            `json:"name"`
+	OUID                   string                            `json:"ouId,omitempty"`
 	ClientID               string                            `json:"clientId"`
 	ClientSecret           string                            `json:"clientSecret,omitempty"`
 	RedirectURI            string                            `json:"redirectUri"`
@@ -143,6 +165,7 @@ type oauthConnectionRequest struct {
 
 type twilioConnectionRequest struct {
 	Name       string `json:"name"`
+	OUID       string `json:"ouId,omitempty"`
 	AccountSID string `json:"accountSid"`
 	AuthToken  string `json:"authToken,omitempty"`
 	SenderID   string `json:"senderId"`
@@ -150,6 +173,7 @@ type twilioConnectionRequest struct {
 
 type vonageConnectionRequest struct {
 	Name      string `json:"name"`
+	OUID      string `json:"ouId,omitempty"`
 	APIKey    string `json:"apiKey"`
 	APISecret string `json:"apiSecret,omitempty"`
 	SenderID  string `json:"senderId"`
@@ -157,6 +181,7 @@ type vonageConnectionRequest struct {
 
 type smsGatewayConnectionRequest struct {
 	Name           string                  `json:"name"`
+	OUID           string                  `json:"ouId,omitempty"`
 	URL            string                  `json:"url"`
 	HTTPMethod     string                  `json:"httpMethod,omitempty"`
 	HTTPHeaders    string                  `json:"httpHeaders,omitempty"`
@@ -165,6 +190,7 @@ type smsGatewayConnectionRequest struct {
 
 type smtpConnectionRequest struct {
 	Name           string                  `json:"name"`
+	OUID           string                  `json:"ouId,omitempty"`
 	Host           string                  `json:"host"`
 	Port           int                     `json:"port"`
 	FromAddress    string                  `json:"fromAddress"`
@@ -195,6 +221,7 @@ func basicAuth(username, password string) *outboundAuthentication {
 type connectionResponse struct {
 	ID           string `json:"id"`
 	Name         string `json:"name"`
+	OUID         string `json:"ouId,omitempty"`
 	Type         string `json:"type"`
 	ClientID     string `json:"clientId,omitempty"`
 	ClientSecret string `json:"clientSecret,omitempty"`
@@ -317,7 +344,7 @@ func (s *ConnectionAPITestSuite) TearDownSuite() {
 // createConnection posts to /connections/{vendor} and returns the decoded response.
 func (s *ConnectionAPITestSuite) createConnection(vendor string, body interface{}) connectionResponse {
 	s.T().Helper()
-	res, err := doRequest(http.MethodPost, "/connections/"+vendor, body)
+	res, err := doRequest(http.MethodPost, "/connections/"+vendor, ownedBy(s.T(), s.ouID, body))
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusCreated, res.status, "create %s: %s", vendor, string(res.body))
 	var resp connectionResponse
@@ -546,10 +573,11 @@ func (s *ConnectionAPITestSuite) TestSMSGatewayRejectsInvalidAPIKeyHeaders() {
 	}
 	for _, test := range tests {
 		s.Run(test.name, func() {
-			response, err := doRequest(http.MethodPost, "/connections/sms-gateway", smsGatewayConnectionRequest{
-				Name: "Invalid SMS Gateway Headers", URL: "https://sms.example.com/send", HTTPMethod: "POST",
-				Authentication: &outboundAuthentication{Type: "api_key", Properties: test.headers},
-			})
+			response, err := doRequest(http.MethodPost, "/connections/sms-gateway",
+				ownedBy(s.T(), s.ouID, smsGatewayConnectionRequest{
+					Name: "Invalid SMS Gateway Headers", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+					Authentication: &outboundAuthentication{Type: "api_key", Properties: test.headers},
+				}))
 			s.Require().NoError(err)
 			s.Equal(http.StatusBadRequest, response.status, string(response.body))
 		})
@@ -758,7 +786,7 @@ func (s *ConnectionAPITestSuite) TestSMTPInvalidConfigurationReturnsBadRequest()
 	}
 
 	for _, tc := range cases {
-		res, err := doRequest(http.MethodPost, "/connections/email-smtp", tc.body)
+		res, err := doRequest(http.MethodPost, "/connections/email-smtp", ownedBy(s.T(), s.ouID, tc.body))
 		s.Require().NoError(err, tc.name)
 		s.Equal(http.StatusBadRequest, res.status, tc.name)
 	}
@@ -800,7 +828,7 @@ func (s *ConnectionAPITestSuite) TestDuplicateNameReturnsConflict() {
 	defer s.deleteConnection("google", created.ID)
 
 	res, err := doRequest(http.MethodPost, "/connections/google", googleConnectionRequest{
-		Name: "Duplicate Name Test", ClientID: "dup-client-2", ClientSecret: "dup-secret-2",
+		Name: "Duplicate Name Test", OUID: s.ouID, ClientID: "dup-client-2", ClientSecret: "dup-secret-2",
 		RedirectURI: "https://localhost:3000/google/callback",
 	})
 	s.Require().NoError(err)
@@ -815,10 +843,10 @@ func (s *ConnectionAPITestSuite) TestDuplicateSenderNameReturnsConflict() {
 	})
 	defer s.deleteConnection("twilio", created.ID)
 
-	res, err := doRequest(http.MethodPost, "/connections/twilio", twilioConnectionRequest{
+	res, err := doRequest(http.MethodPost, "/connections/twilio", ownedBy(s.T(), s.ouID, twilioConnectionRequest{
 		Name: "Duplicate Sender Test", AccountSID: "AC00000000000000000000000000000001",
 		AuthToken: "tok2", SenderID: "+15005550007",
-	})
+	}))
 	s.Require().NoError(err)
 	s.Equal(http.StatusConflict, res.status)
 	s.Equal("MNS-1005", res.errorCode())
@@ -826,7 +854,8 @@ func (s *ConnectionAPITestSuite) TestDuplicateSenderNameReturnsConflict() {
 
 func (s *ConnectionAPITestSuite) TestInvalidBodyReturnsBadRequest() {
 	// Missing required clientId/redirectUri.
-	res, err := doRequest(http.MethodPost, "/connections/google", map[string]string{"name": "Incomplete"})
+	res, err := doRequest(http.MethodPost, "/connections/google",
+		map[string]string{"name": "Incomplete", "ouId": s.ouID})
 	s.Require().NoError(err)
 	s.Equal(http.StatusBadRequest, res.status)
 }
@@ -1711,7 +1740,7 @@ func (s *ConnectionAPITestSuite) TestAttributeConfigurationValidationOnCreate() 
 	for _, invalid := range s.invalidAttributeConfigs() {
 		s.Run(invalid.name, func() {
 			res, err := doRequest(http.MethodPost, "/connections/oauth",
-				s.oauthRequestWithConfig("OAuth Invalid "+invalid.name, invalid.config))
+				ownedBy(s.T(), s.ouID, s.oauthRequestWithConfig("OAuth Invalid "+invalid.name, invalid.config)))
 			s.Require().NoError(err)
 			s.Equal(http.StatusBadRequest, res.status,
 				"expected 400 for %s, got %d: %s", invalid.name, res.status, string(res.body))
@@ -2100,10 +2129,11 @@ func (s *ConnectionAPITestSuite) TestSMSGatewayRejectsInsecureAuthenticatedURLAn
 		basicAuth("sms-user", "secret-password"),
 		{Type: "api_key", Properties: map[string]string{"X-API-Key": "secret-key"}},
 	} {
-		response, err := doRequest(http.MethodPost, "/connections/sms-gateway", smsGatewayConnectionRequest{
-			Name: "Insecure SMS Gateway", URL: "http://sms.example.com/send", HTTPMethod: "POST",
-			Authentication: authentication,
-		})
+		response, err := doRequest(http.MethodPost, "/connections/sms-gateway",
+			ownedBy(s.T(), s.ouID, smsGatewayConnectionRequest{
+				Name: "Insecure SMS Gateway", URL: "http://sms.example.com/send", HTTPMethod: "POST",
+				Authentication: authentication,
+			}))
 		s.Require().NoError(err)
 		s.Equal(http.StatusBadRequest, response.status, string(response.body))
 	}
@@ -2111,10 +2141,11 @@ func (s *ConnectionAPITestSuite) TestSMSGatewayRejectsInsecureAuthenticatedURLAn
 		{Type: "bearer", Properties: map[string]string{"token": "secret-token"}},
 		basicAuth("sms-user", "secret-password"),
 	} {
-		response, err := doRequest(http.MethodPost, "/connections/sms-gateway", smsGatewayConnectionRequest{
-			Name: "Overlapping SMS Gateway", URL: "https://sms.example.com/send", HTTPMethod: "POST",
-			HTTPHeaders: "authorization: legacy-value", Authentication: authentication,
-		})
+		response, err := doRequest(http.MethodPost, "/connections/sms-gateway",
+			ownedBy(s.T(), s.ouID, smsGatewayConnectionRequest{
+				Name: "Overlapping SMS Gateway", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+				HTTPHeaders: "authorization: legacy-value", Authentication: authentication,
+			}))
 		s.Require().NoError(err)
 		s.Equal(http.StatusBadRequest, response.status, string(response.body))
 	}

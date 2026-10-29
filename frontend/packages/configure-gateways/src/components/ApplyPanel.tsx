@@ -23,6 +23,7 @@ import {useTranslation} from 'react-i18next';
 import ChangedValuesNotice from './ChangedValuesNotice';
 import ChangeList from './ChangeList';
 import MissingValuesFields from './MissingValuesFields';
+import {changedCount} from '../api/useChangedValues';
 import {useApplyCheck, useApplyVersion} from '../api/useGatewayVersions';
 import {useSetStoredValue} from '../api/useStoredValues';
 import useGatewayErrorTranslator from '../hooks/useGatewayErrorTranslator';
@@ -99,7 +100,11 @@ export default function ApplyPanel({
   );
   const fields: MissingField[] = useMemo(() => missingFields(check.data?.missing), [check.data?.missing]);
   const unfilled = fields.filter((field: MissingField) => (values[fieldKey(field)] ?? '').trim() === '');
-  const canDeploy = Boolean(gateway) && check.isSuccess && selected.size > 0 && unfilled.length === 0 && !isWriting;
+  // A deploy carries the changes ticked, or, with none, takes up the values set on the gateway since
+  // its version was deployed: the version is sent whole either way, so the gateway fills them in again.
+  const owed = changedCount(check.data?.changed);
+  const canDeploy =
+    Boolean(gateway) && check.isSuccess && (selected.size > 0 || owed > 0) && unfilled.length === 0 && !isWriting;
   const removals = active.filter((change: Change) => change.change === 'deleted' && selected.has(change.key)).length;
 
   // A confirmation covers the removals the user was warned about, so changing what is ticked drops it.

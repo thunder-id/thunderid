@@ -56,6 +56,12 @@ describe('ResourceSummaryTable', () => {
       expect(screen.getByText('No resources found')).toBeInTheDocument();
     });
 
+    it('spans the empty state across the status column when showStatus is true', () => {
+      render(<ResourceSummaryTable items={[]} showStatus={true} t={mockT} />);
+
+      expect(screen.getByText('No resources found').closest('td')).toHaveAttribute('colspan', '4');
+    });
+
     it('renders table headers', () => {
       render(<ResourceSummaryTable items={mockItems} />);
 

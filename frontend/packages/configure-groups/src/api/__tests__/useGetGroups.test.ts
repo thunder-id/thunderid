@@ -73,6 +73,19 @@ describe('useGetGroups', () => {
     });
   });
 
+  it('should pass the filter to the server', async () => {
+    mockHttpRequest.mockResolvedValue({data: mockGroupsData});
+    renderHook(() => useGetGroups({limit: 10, offset: 0, filter: 'ouId eq "ou-1"'}));
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: 'https://localhost:8090/groups?limit=10&offset=0&include=display&filter=ouId+eq+%22ou-1%22',
+        }),
+      );
+    });
+  });
+
   it('should set loading state', () => {
     mockHttpRequest.mockImplementation(() => new Promise(() => null));
     const {result, unmount} = renderHook(() => useGetGroups());
@@ -145,6 +158,57 @@ describe('useGetGroups', () => {
     await waitFor(() => {
       expect(result.current.isFetching).toBe(false);
       expect(result.current.data).toEqual(nextPageData);
+    });
+  });
+
+  it('should not show the previous filter results while fetching another filter', async () => {
+    const otherOUData: GroupListResponse = {
+      totalResults: 1,
+      startIndex: 1,
+      count: 1,
+      groups: [{id: 'g5', name: 'Group Five', ouId: 'ou-2'}],
+    };
+    let resolveOtherOU: ((value: {data: GroupListResponse}) => void) | undefined;
+    mockHttpRequest.mockImplementation((request: {url: string}) => {
+      if (request.url.includes('ou-1')) {
+        return Promise.resolve({data: mockGroupsData});
+      }
+
+      if (request.url.includes('ou-2')) {
+        return new Promise((resolve) => {
+          resolveOtherOU = resolve;
+        });
+      }
+
+      throw new Error(`Unexpected groups request: ${request.url}`);
+    });
+
+    const {result, rerender} = renderHook(
+      ({filter}: {filter: string}) => useGetGroups({limit: 10, offset: 0, filter}),
+      {
+        initialProps: {filter: 'ouId eq "ou-1"'},
+      },
+    );
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(mockGroupsData);
+    });
+
+    rerender({filter: 'ouId eq "ou-2"'});
+
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.isLoading).toBe(true);
+    await waitFor(() => {
+      expect(resolveOtherOU).toBeDefined();
+    });
+
+    if (!resolveOtherOU) {
+      throw new Error('The other organization unit request was not captured');
+    }
+    resolveOtherOU({data: otherOUData});
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(otherOUData);
     });
   });
 });

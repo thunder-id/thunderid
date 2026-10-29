@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,7 +21,6 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/observabilityprovidermock"
-	"github.com/thunder-id/thunderid/tests/mocks/serverconfigmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
@@ -47,7 +47,7 @@ func (s *ServiceTestSuite) SetupTest() {
 }
 
 // newTestService builds the service over a source that always serves cfg.
-func newTestService(t *testing.T, port entityStateProvider, cfg accountAccessValue, notifier lockNotifierInterface,
+func newTestService(t *testing.T, port entityStateProvider, cfg accountAccessValue, notifier LockNotifierInterface,
 	authorizer sysauthz.SystemAuthorizationServiceInterface) *identityGovernanceService {
 	source := newAccountAccessSourceInterfaceMock(t)
 	source.EXPECT().Current(mock.Anything).Return(cfg).Maybe()
@@ -92,7 +92,7 @@ func (s *ServiceTestSuite) activeEntity() GovernedEntity {
 // methodGranularityConfig is the default shape: a user locked per authentication method after five
 // failures in fifteen minutes, for five and then fifteen minutes.
 func methodGranularityConfig() accountAccessValue {
-	cfg := entityGranularityConfig()
+	cfg := accountGranularityConfig()
 	cfg.User.LockGranularity = new(granularityAuthenticationMethod)
 	return cfg
 }
@@ -239,13 +239,13 @@ func (s *ServiceTestSuite) TestACredentialHoldDoesNotReachOtherPlanesByDefault()
 	}
 }
 
-// Under entity granularity one entry under the reserved key holds every method.
-func (s *ServiceTestSuite) TestEntityGranularityHoldsEveryAuthenticationMethod() {
+// Under account granularity one entry under the reserved key holds every method.
+func (s *ServiceTestSuite) TestAccountGranularityHoldsEveryAuthenticationMethod() {
 	cfg := methodGranularityConfig()
-	cfg.User.LockGranularity = new(granularityEntity)
+	cfg.User.LockGranularity = new(granularityAccount)
 
 	entity := s.activeEntity()
-	putLockEntry(&entity.AccessState, AuthenticationMethodEntity, LockEntry{
+	putLockEntry(&entity.AccessState, AuthenticationMethodAccount, LockEntry{
 		LockCount: 1, UnlockAt: s.at(5 * time.Minute),
 	})
 	s.expectRead(entity)
@@ -259,16 +259,16 @@ func (s *ServiceTestSuite) TestEntityGranularityHoldsEveryAuthenticationMethod()
 	} {
 		decision, err := s.svc.EvaluateAccess(s.ctx, entity.ID, providers.AccessPlaneAuthentication, method)
 		s.Require().Nil(err)
-		s.False(decision.Admitted, "method %s must be held by the entity-wide lock", method)
+		s.False(decision.Admitted, "method %s must be held by the account-wide lock", method)
 	}
 }
 
-func (s *ServiceTestSuite) TestEntityGranularityAloneDoesNotReachSessionsOrIssuance() {
+func (s *ServiceTestSuite) TestAccountGranularityAloneDoesNotReachSessionsOrIssuance() {
 	cfg := methodGranularityConfig()
-	cfg.User.LockGranularity = new(granularityEntity)
+	cfg.User.LockGranularity = new(granularityAccount)
 
 	entity := s.activeEntity()
-	putLockEntry(&entity.AccessState, AuthenticationMethodEntity, LockEntry{
+	putLockEntry(&entity.AccessState, AuthenticationMethodAccount, LockEntry{
 		LockCount: 1, UnlockAt: s.at(5 * time.Minute),
 	})
 	s.expectRead(entity)
@@ -281,13 +281,13 @@ func (s *ServiceTestSuite) TestEntityGranularityAloneDoesNotReachSessionsOrIssua
 	}
 }
 
-// An entity-wide lock holds only the authentication and dispatch planes, under either granularity.
-func (s *ServiceTestSuite) TestAnEntityWideLockHoldsOnlyTheCredentialAndDispatchPlanes() {
+// An account-wide lock holds only the authentication and dispatch planes, under either granularity.
+func (s *ServiceTestSuite) TestAnAccountWideLockHoldsOnlyTheCredentialAndDispatchPlanes() {
 	cfg := methodGranularityConfig()
-	cfg.User.LockGranularity = new(granularityEntity)
+	cfg.User.LockGranularity = new(granularityAccount)
 
 	entity := s.activeEntity()
-	putLockEntry(&entity.AccessState, AuthenticationMethodEntity, LockEntry{
+	putLockEntry(&entity.AccessState, AuthenticationMethodAccount, LockEntry{
 		LockCount: 1, UnlockAt: s.at(5 * time.Minute),
 	})
 	s.expectRead(entity)
@@ -296,7 +296,7 @@ func (s *ServiceTestSuite) TestAnEntityWideLockHoldsOnlyTheCredentialAndDispatch
 	for _, plane := range []providers.AccessPlane{providers.AccessPlaneAuthentication, providers.AccessPlaneDispatch} {
 		decision, err := s.svc.EvaluateAccess(s.ctx, entity.ID, plane, testMethod)
 		s.Require().Nil(err)
-		s.False(decision.Admitted, "plane %s must refuse under a live entity-wide lock", plane)
+		s.False(decision.Admitted, "plane %s must refuse under a live account-wide lock", plane)
 	}
 
 	for _, plane := range []providers.AccessPlane{
@@ -339,7 +339,7 @@ func (s *ServiceTestSuite) TestAtTheRecoveryPlaneALockHoldsOnlyAGuessableSecret(
 // passkey or a code gets past it at the recovery plane. A password does not.
 func (s *ServiceTestSuite) TestThePostSuspensionHoldGivesWayToARecoveryProof() {
 	entity := s.activeEntity()
-	entity.AccessState.Lock.Entity = &LockEntry{UnlockAt: permanentUnlockAt, Reason: lockReasonPostSuspension}
+	entity.AccessState.Lock.Account = &LockEntry{UnlockAt: permanentUnlockAt, Reason: lockReasonPostSuspension}
 	s.expectRead(entity)
 	s.expectConfig(methodGranularityConfig())
 
@@ -647,15 +647,15 @@ func (s *ServiceTestSuite) TestFailureOnAMissingRowIsNotAnError() {
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
-func (s *ServiceTestSuite) TestFailureUnderEntityGranularityCountsUnderTheReservedKey() {
+func (s *ServiceTestSuite) TestFailureUnderAccountGranularityCountsUnderTheReservedKey() {
 	cfg := methodGranularityConfig()
-	cfg.User.LockGranularity = new(granularityEntity)
+	cfg.User.LockGranularity = new(granularityAccount)
 
 	entity := s.activeEntity()
 	s.expectRead(entity)
 	s.expectConfig(cfg)
 	s.port.On("IncrementFailure", mock.Anything, entity.ID,
-		AuthenticationMethodEntity, mock.Anything, mock.Anything).
+		AuthenticationMethodAccount, mock.Anything, mock.Anything).
 		Return(LockEntry{FailureCount: 1}, true, nil).Once()
 
 	s.Require().Nil(s.admittedFailure(s.svc.RecordFailure(s.ctx, entity.ID, providers.AccessPlaneAuthentication,
@@ -677,7 +677,7 @@ func (s *ServiceTestSuite) TestFailureWindowIsPassedAsAnInstant() {
 	s.Equal(s.now.Add(-15*time.Minute), windowStart)
 }
 
-// An admitted step clears only its own method's entry, not the entity entry.
+// An admitted step clears only its own method's entry, not the account entry.
 func (s *ServiceTestSuite) TestAdmittedStepClearsOnlyObservedMethodEntry() {
 	entity := s.activeEntity()
 	entity.Revision = 7
@@ -693,7 +693,7 @@ func (s *ServiceTestSuite) TestAdmittedStepClearsOnlyObservedMethodEntry() {
 // An admitted step leaves the reserved entry for AdmitSignIn.
 func (s *ServiceTestSuite) TestAdmittedStepNeverClearsTheReservedKey() {
 	s.expectRead(s.activeEntity())
-	decision, err := s.svc.AdmitAuthenticationStep(s.ctx, "e1", AuthenticationMethodEntity)
+	decision, err := s.svc.AdmitAuthenticationStep(s.ctx, "e1", AuthenticationMethodAccount)
 	s.Require().Nil(err)
 	s.True(decision.Admitted)
 	s.port.AssertNotCalled(s.T(), "ClearAccessStateIfUnchanged",
@@ -795,6 +795,19 @@ func (s *ServiceTestSuite) TestSuspendWritesOneAtomicSuspension() {
 	s.port.AssertNotCalled(s.T(), "ClearAccessState", mock.Anything, mock.Anything, mock.Anything)
 }
 
+// The note limit counts characters, not bytes, and a longer note is refused before anything is written.
+func (s *ServiceTestSuite) TestSuspendTakesANoteUpToTheLimit() {
+	longest := strings.Repeat("é", maxOperatorNoteLength)
+	s.expectRead(s.activeEntity())
+	s.port.On("SetSuspension", mock.Anything, "e1", s.now, longest).Return(true, nil).Once()
+	s.Require().Nil(s.svc.Suspend(s.ctx, "e1", longest))
+	s.Require().Nil(s.svc.ValidateSuspend(s.ctx, "e1", longest))
+
+	s.requireServiceError(s.svc.Suspend(s.ctx, "e1", longest+"é"), ErrorOperatorNoteTooLong)
+	s.requireServiceError(s.svc.ValidateSuspend(s.ctx, "e1", longest+"é"), ErrorOperatorNoteTooLong)
+	s.port.AssertNumberOfCalls(s.T(), "SetSuspension", 1)
+}
+
 // An unknown identity is a client error, not a failed read.
 func (s *ServiceTestSuite) TestSuspendOfAnUnknownIdentityIsAClientError() {
 	s.port.On("GetGovernedEntity", mock.Anything, "missing", true).
@@ -885,7 +898,7 @@ func (s *ServiceTestSuite) TestASuspensionAppliesWithLockingSwitchedOff() {
 // The strict port mock expects seedMissing false, so a seeding read fails the test.
 func (s *ServiceTestSuite) TestIsSuspendedReadsWithoutWriting() {
 	locked := s.activeEntity()
-	locked.AccessState.Lock.Entity = &LockEntry{UnlockAt: permanentUnlockAt, Reason: lockReasonPostSuspension}
+	locked.AccessState.Lock.Account = &LockEntry{UnlockAt: permanentUnlockAt, Reason: lockReasonPostSuspension}
 	documentOnly := s.suspendedEntity()
 	documentOnly.State = providers.EntityStateActive
 	columnOnly := s.suspendedEntity()
@@ -938,14 +951,14 @@ func (s *ServiceTestSuite) TestSuspendResolvesTheSourceBeforeWriting() {
 	s.port.AssertNotCalled(s.T(), "ClearAccessState", mock.Anything, mock.Anything, mock.Anything)
 }
 
-func (s *ServiceTestSuite) TestUnsuspendOnAUserLandsOnTheEntityHold() {
+func (s *ServiceTestSuite) TestUnsuspendOnAUserLandsOnTheAccountHold() {
 	s.expectRead(s.suspendedEntity())
 
-	var written *EntityHold
+	var written *AccountHold
 	var order []string
 	s.port.On("ClearSuspension", mock.Anything, "e1", mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
-			written, _ = args.Get(2).(*EntityHold)
+			written, _ = args.Get(2).(*AccountHold)
 			order = append(order, "document")
 		}).
 		Return(true, nil).Once()
@@ -967,9 +980,9 @@ func (s *ServiceTestSuite) TestUnsuspendOnAnAgentOrApplicationLandsActive() {
 		entity.Category = category
 		s.expectRead(entity)
 
-		var written *EntityHold
+		var written *AccountHold
 		s.port.On("ClearSuspension", mock.Anything, "e1", mock.Anything, mock.Anything).
-			Run(func(args mock.Arguments) { written, _ = args.Get(2).(*EntityHold) }).
+			Run(func(args mock.Arguments) { written, _ = args.Get(2).(*AccountHold) }).
 			Return(true, nil).Once()
 
 		s.Require().Nil(s.svc.Unsuspend(s.ctx, "e1"))
@@ -980,7 +993,7 @@ func (s *ServiceTestSuite) TestUnsuspendOnAnAgentOrApplicationLandsActive() {
 // The post-suspension hold holds every method, including ones that never lock automatically.
 func (s *ServiceTestSuite) TestThePostSuspensionHoldHoldsEveryAuthenticationMethod() {
 	entity := s.activeEntity()
-	putLockEntry(&entity.AccessState, AuthenticationMethodEntity,
+	putLockEntry(&entity.AccessState, AuthenticationMethodAccount,
 		LockEntry{UnlockAt: permanentUnlockAt, Reason: lockReasonPostSuspension})
 	s.expectRead(entity)
 	s.expectConfig(methodGranularityConfig())
@@ -1004,7 +1017,7 @@ func (s *ServiceTestSuite) TestThePostSuspensionHoldSurvivesLockingBeingSwitched
 	cfg.User.Default.Enabled = new(false)
 
 	entity := s.activeEntity()
-	putLockEntry(&entity.AccessState, AuthenticationMethodEntity,
+	putLockEntry(&entity.AccessState, AuthenticationMethodAccount,
 		LockEntry{UnlockAt: permanentUnlockAt, Reason: lockReasonPostSuspension})
 	s.expectRead(entity)
 	s.expectConfig(cfg)
@@ -1015,13 +1028,13 @@ func (s *ServiceTestSuite) TestThePostSuspensionHoldSurvivesLockingBeingSwitched
 	s.Equal(providers.AccessRefusalReasonLocked, decision.Reason)
 }
 
-// Only the post-suspension hold outlives disabled locking; an entity-wide failure lock does not.
-func (s *ServiceTestSuite) TestAnEntityWideFailureLockDoesNotSurviveLockingBeingSwitchedOff() {
+// Only the post-suspension hold outlives disabled locking; an account-wide failure lock does not.
+func (s *ServiceTestSuite) TestAnAccountWideFailureLockDoesNotSurviveLockingBeingSwitchedOff() {
 	cfg := methodGranularityConfig()
 	cfg.User.Default.Enabled = new(false)
 
 	entity := s.activeEntity()
-	putLockEntry(&entity.AccessState, AuthenticationMethodEntity, LockEntry{LockCount: 3, UnlockAt: permanentUnlockAt})
+	putLockEntry(&entity.AccessState, AuthenticationMethodAccount, LockEntry{LockCount: 3, UnlockAt: permanentUnlockAt})
 	s.expectRead(entity)
 	s.expectConfig(cfg)
 
@@ -1034,7 +1047,7 @@ func (s *ServiceTestSuite) TestAnEntityWideFailureLockDoesNotSurviveLockingBeing
 // account or writing its new credential.
 func (s *ServiceTestSuite) TestThePostSuspensionHoldNeverHoldsRecovery() {
 	entity := s.activeEntity()
-	putLockEntry(&entity.AccessState, AuthenticationMethodEntity,
+	putLockEntry(&entity.AccessState, AuthenticationMethodAccount,
 		LockEntry{UnlockAt: permanentUnlockAt, Reason: lockReasonPostSuspension})
 	s.expectRead(entity)
 	s.expectConfig(methodGranularityConfig())
@@ -1044,9 +1057,9 @@ func (s *ServiceTestSuite) TestThePostSuspensionHoldNeverHoldsRecovery() {
 	s.True(decision.Admitted)
 }
 
-func (s *ServiceTestSuite) TestNoFailureIsCountedUnderALiveEntityHold() {
+func (s *ServiceTestSuite) TestNoFailureIsCountedUnderALiveAccountHold() {
 	entity := s.activeEntity()
-	putLockEntry(&entity.AccessState, AuthenticationMethodEntity,
+	putLockEntry(&entity.AccessState, AuthenticationMethodAccount,
 		LockEntry{UnlockAt: permanentUnlockAt, Reason: lockReasonPostSuspension})
 	s.expectRead(entity)
 	s.expectConfig(methodGranularityConfig())
@@ -1086,10 +1099,10 @@ func (s *ServiceTestSuite) TestLifecycleOperationsRequireASubject() {
 	s.port.AssertNotCalled(s.T(), "ClearSuspension", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
-// The entity entry wins under either granularity; the read does not depend on the configuration.
-func (s *ServiceTestSuite) TestTheEntityEntryWinsUnderBothGranularities() {
+// The account entry wins under either granularity; the read does not depend on the configuration.
+func (s *ServiceTestSuite) TestTheAccountEntryWinsUnderBothGranularities() {
 	for _, granularity := range []granularity{
-		granularityAuthenticationMethod, granularityEntity,
+		granularityAuthenticationMethod, granularityAccount,
 	} {
 		s.SetupTest()
 
@@ -1097,25 +1110,25 @@ func (s *ServiceTestSuite) TestTheEntityEntryWinsUnderBothGranularities() {
 		cfg.User.LockGranularity = new(granularity)
 
 		entity := s.activeEntity()
-		// A lapsed method entry under a live entity entry, as a granularity change can leave.
+		// A lapsed method entry under a live account entry, as a granularity change can leave.
 		putLockEntry(&entity.AccessState, testMethod,
 			LockEntry{LockCount: 2, UnlockAt: s.at(-time.Hour)})
-		putLockEntry(&entity.AccessState, AuthenticationMethodEntity,
+		putLockEntry(&entity.AccessState, AuthenticationMethodAccount,
 			LockEntry{LockCount: 1, UnlockAt: s.at(5 * time.Minute)})
 		s.expectRead(entity)
 		s.expectConfig(cfg)
 
 		decision, err := s.svc.EvaluateAccess(s.ctx, entity.ID, providers.AccessPlaneAuthentication, testMethod)
 		s.Require().Nil(err)
-		s.Falsef(decision.Admitted, "granularity %s must be held by the entity entry", granularity)
+		s.Falsef(decision.Admitted, "granularity %s must be held by the account entry", granularity)
 		s.Equal(providers.AccessStatusLocked,
 			reportFor(entity.State, entity.AccessState, s.now, lockEnforcement{}).Value)
 	}
 }
 
-func (s *ServiceTestSuite) TestALapsedEntityEntryFallsThroughToTheAuthenticationMethod() {
+func (s *ServiceTestSuite) TestALapsedAccountEntryFallsThroughToTheAuthenticationMethod() {
 	entity := s.activeEntity()
-	putLockEntry(&entity.AccessState, AuthenticationMethodEntity,
+	putLockEntry(&entity.AccessState, AuthenticationMethodAccount,
 		LockEntry{LockCount: 1, UnlockAt: s.at(-time.Hour)})
 	putLockEntry(&entity.AccessState, testMethod,
 		LockEntry{LockCount: 1, UnlockAt: s.at(5 * time.Minute)})
@@ -1129,9 +1142,9 @@ func (s *ServiceTestSuite) TestALapsedEntityEntryFallsThroughToTheAuthentication
 
 // putLockEntry records one lock entry under the member the method maps to.
 func putLockEntry(state *AccessState, method providers.AuthenticationMethod, entry LockEntry) {
-	if method == AuthenticationMethodEntity {
+	if method == AuthenticationMethodAccount {
 		held := entry
-		state.Lock.Entity = &held
+		state.Lock.Account = &held
 		return
 	}
 	if state.Lock.AuthenticationMethods == nil {
@@ -1154,11 +1167,11 @@ func (s *ServiceTestSuite) serviceWith(cfg accountAccessValue) *identityGovernan
 	return svc
 }
 
-// entityGranularityConfig is a user category in entity mode.
-func entityGranularityConfig() accountAccessValue {
+// accountGranularityConfig is a user category in account mode.
+func accountGranularityConfig() accountAccessValue {
 	return accountAccessValue{
 		User: &accountAccessCategory{
-			LockGranularity: new(granularityEntity),
+			LockGranularity: new(granularityAccount),
 			Default: &accountAccessPolicy{
 				Enabled:              new(true),
 				Threshold:            new(5),
@@ -1170,20 +1183,20 @@ func entityGranularityConfig() accountAccessValue {
 	}
 }
 
-func (s *ServiceTestSuite) lockedEntityWide() GovernedEntity {
+func (s *ServiceTestSuite) lockedAccountWide() GovernedEntity {
 	return GovernedEntity{
 		ID:       "e1",
 		Category: providers.EntityCategoryUser,
 		Type:     "person",
 		State:    providers.EntityStateActive,
-		AccessState: lockedState(AuthenticationMethodEntity,
+		AccessState: lockedState(AuthenticationMethodAccount,
 			LockEntry{LockCount: 1, UnlockAt: s.at(5 * time.Minute)}),
 	}
 }
 
-func (s *ServiceTestSuite) TestEntityWideLockHoldsAuthenticationMethodsWithNoBlockOfTheirOwn() {
-	svc := s.serviceWith(entityGranularityConfig())
-	entity := s.lockedEntityWide()
+func (s *ServiceTestSuite) TestAccountWideLockHoldsAuthenticationMethodsWithNoBlockOfTheirOwn() {
+	svc := s.serviceWith(accountGranularityConfig())
+	entity := s.lockedAccountWide()
 	s.port.On("GetGovernedEntity", mock.Anything, entity.ID, true).Return(&entity, nil).Maybe()
 
 	for _, method := range []providers.AuthenticationMethod{
@@ -1196,22 +1209,22 @@ func (s *ServiceTestSuite) TestEntityWideLockHoldsAuthenticationMethodsWithNoBlo
 	} {
 		decision, err := svc.EvaluateAccess(s.ctx, entity.ID, providers.AccessPlaneAuthentication, method)
 		s.Require().Nil(err)
-		s.False(decision.Admitted, "method %s must be held by the entity-wide lock", method)
+		s.False(decision.Admitted, "method %s must be held by the account-wide lock", method)
 	}
 }
 
-// Under method granularity, a federated sign-in obeys an entity-wide lock and ignores a password lock.
-func (s *ServiceTestSuite) TestAFederatedSignInObeysOnlyAnEntityWideLock() {
+// Under method granularity, a federated sign-in obeys an account-wide lock and ignores a password lock.
+func (s *ServiceTestSuite) TestAFederatedSignInObeysOnlyAnAccountWideLock() {
 	svc := s.serviceWith(testAccountAccessConfig())
 
-	entityWide := s.lockedEntityWide()
-	s.port.On("GetGovernedEntity", mock.Anything, entityWide.ID, true).Return(&entityWide, nil).Once()
-	decision, err := svc.EvaluateAccess(s.ctx, entityWide.ID, providers.AccessPlaneAuthentication,
+	accountWide := s.lockedAccountWide()
+	s.port.On("GetGovernedEntity", mock.Anything, accountWide.ID, true).Return(&accountWide, nil).Once()
+	decision, err := svc.EvaluateAccess(s.ctx, accountWide.ID, providers.AccessPlaneAuthentication,
 		providers.AuthenticationMethodFederated)
 	s.Require().Nil(err)
-	s.False(decision.Admitted, "an entity-wide lock holds a federated sign-in")
+	s.False(decision.Admitted, "an account-wide lock holds a federated sign-in")
 
-	passwordOnly := s.lockedEntityWide()
+	passwordOnly := s.lockedAccountWide()
 	passwordOnly.ID = "e2"
 	passwordOnly.AccessState = lockedState(providers.AuthenticationMethodCredential,
 		LockEntry{LockCount: 1, UnlockAt: s.at(time.Minute)})
@@ -1224,8 +1237,8 @@ func (s *ServiceTestSuite) TestAFederatedSignInObeysOnlyAnEntityWideLock() {
 
 // The session and issuance planes present no method: the policy still resolves and the lock does not apply.
 func (s *ServiceTestSuite) TestALockIsNotReachedWithNoAuthenticationMethodPresent() {
-	svc := s.serviceWith(entityGranularityConfig())
-	entity := s.lockedEntityWide()
+	svc := s.serviceWith(accountGranularityConfig())
+	entity := s.lockedAccountWide()
 	s.port.On("GetGovernedEntity", mock.Anything, entity.ID, true).Return(&entity, nil).Maybe()
 
 	for _, plane := range []providers.AccessPlane{
@@ -1242,9 +1255,9 @@ func (s *ServiceTestSuite) TestALockIsNotReachedWithNoAuthenticationMethodPresen
 	s.False(decision.Admitted)
 }
 
-// Under entity granularity a password failure uses the entity block's threshold, not the credential block's.
-func (s *ServiceTestSuite) TestEntityGranularityUsesOneThresholdForEveryAuthenticationMethod() {
-	svc := s.serviceWith(entityGranularityConfig())
+// Under account granularity a password failure uses the account block's threshold, not the credential block's.
+func (s *ServiceTestSuite) TestAccountGranularityUsesOneThresholdForEveryAuthenticationMethod() {
+	svc := s.serviceWith(accountGranularityConfig())
 	entity := GovernedEntity{
 		ID: "e1", Category: providers.EntityCategoryUser, State: providers.EntityStateActive,
 		AccessState: AccessState{},
@@ -1252,26 +1265,26 @@ func (s *ServiceTestSuite) TestEntityGranularityUsesOneThresholdForEveryAuthenti
 
 	s.port.On("GetGovernedEntity", mock.Anything, entity.ID, true).Return(&entity, nil).Maybe()
 
-	// Both methods count under the reserved key, with the entity block's 15-minute window.
+	// Both methods count under the reserved key, with the account block's 15-minute window.
 	for _, method := range []providers.AuthenticationMethod{
 		providers.AuthenticationMethodCredential,
 		providers.AuthenticationMethodOTP,
 	} {
 		s.port.On("IncrementFailure", mock.Anything, entity.ID,
-			AuthenticationMethodEntity, s.now, s.now.Add(-15*time.Minute)).
+			AuthenticationMethodAccount, s.now, s.now.Add(-15*time.Minute)).
 			Return(LockEntry{FailureCount: 4}, true, nil).Once()
 
 		s.Require().Nil(s.admittedFailure(svc.RecordFailure(s.ctx, entity.ID, providers.AccessPlaneAuthentication,
 			method)))
 	}
 
-	// Four failures are below the entity threshold of 5; the OTP threshold of 2 would have formed a lock.
+	// Four failures are below the account threshold of 5; the OTP threshold of 2 would have formed a lock.
 	s.port.AssertNotCalled(s.T(), "FormLock",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
-func (s *ServiceTestSuite) TestEntityGranularityFormsTheLockFromTheEntityEscalation() {
-	svc := s.serviceWith(entityGranularityConfig())
+func (s *ServiceTestSuite) TestAccountGranularityFormsTheLockFromTheAccountEscalation() {
+	svc := s.serviceWith(accountGranularityConfig())
 	entity := GovernedEntity{
 		ID: "e1", Category: providers.EntityCategoryUser, State: providers.EntityStateActive,
 		AccessState: AccessState{},
@@ -1279,11 +1292,11 @@ func (s *ServiceTestSuite) TestEntityGranularityFormsTheLockFromTheEntityEscalat
 
 	s.port.On("GetGovernedEntity", mock.Anything, entity.ID, true).Return(&entity, nil).Maybe()
 	s.port.On("IncrementFailure", mock.Anything, entity.ID,
-		AuthenticationMethodEntity, mock.Anything, mock.Anything).
+		AuthenticationMethodAccount, mock.Anything, mock.Anything).
 		Return(LockEntry{FailureCount: 5}, true, nil).Once()
 
 	var episode LockEpisode
-	s.port.On("FormLock", mock.Anything, entity.ID, AuthenticationMethodEntity,
+	s.port.On("FormLock", mock.Anything, entity.ID, AuthenticationMethodAccount,
 		mock.Anything, mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) { episode, _ = args.Get(4).(LockEpisode) }).
 		Return(true, nil).Once()
@@ -1291,11 +1304,11 @@ func (s *ServiceTestSuite) TestEntityGranularityFormsTheLockFromTheEntityEscalat
 	s.Require().Nil(s.admittedFailure(svc.RecordFailure(s.ctx, entity.ID, providers.AccessPlaneAuthentication,
 		providers.AuthenticationMethodCredential)))
 	s.Equal(s.now.Add(5*time.Minute).UTC().Format(time.RFC3339), episode.UnlockAt,
-		"the entity block's first duration is 5 minutes; the credential block's is 1")
+		"the account block's first duration is 5 minutes; the credential block's is 1")
 }
 
-func (s *ServiceTestSuite) TestEntityGranularityStillDoesNotCountUncountableAuthenticationMethods() {
-	svc := s.serviceWith(entityGranularityConfig())
+func (s *ServiceTestSuite) TestAccountGranularityStillDoesNotCountUncountableAuthenticationMethods() {
+	svc := s.serviceWith(accountGranularityConfig())
 
 	// No entity is set up: the class is checked before the read.
 	s.Require().Nil(s.admittedFailure(svc.RecordFailure(s.ctx, "e1", providers.AccessPlaneAuthentication,
@@ -1375,7 +1388,7 @@ func (s *ServiceTestSuite) TestAgentCategoryCountsNothing() {
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
-// A lock formed under method granularity is not read after switching to entity granularity.
+// A lock formed under method granularity is not read after switching to account granularity.
 func (s *ServiceTestSuite) TestAAuthenticationMethodLockGoesInertWhenGranularityFlips() {
 	entity := GovernedEntity{
 		ID: "e1", Category: providers.EntityCategoryUser, State: providers.EntityStateActive,
@@ -1390,19 +1403,19 @@ func (s *ServiceTestSuite) TestAAuthenticationMethodLockGoesInertWhenGranularity
 	s.Require().Nil(err)
 	s.False(held.Admitted)
 
-	// Flipped to entity granularity, the same stored entry is not read at all.
-	admitted, err := s.serviceWith(entityGranularityConfig()).EvaluateAccess(s.ctx, entity.ID,
+	// Flipped to account granularity, the same stored entry is not read at all.
+	admitted, err := s.serviceWith(accountGranularityConfig()).EvaluateAccess(s.ctx, entity.ID,
 		providers.AccessPlaneAuthentication, providers.AuthenticationMethodCredential)
 	s.Require().Nil(err)
 	s.True(admitted.Admitted, "an entry under the inactive key must not hold")
 }
 
 // In either granularity a step clears its method entry and a completed sign-in clears a lapsed
-// entity entry.
+// account entry.
 func (s *ServiceTestSuite) TestStepAndGrantClearTheirOwnKeysInEitherMode() {
 	for name, cfg := range map[string]accountAccessValue{
 		"authentication_method": testAccountAccessConfig(),
-		"entity":                entityGranularityConfig(),
+		"account":               accountGranularityConfig(),
 	} {
 		s.Run(name, func() {
 			port := newEntityStateProviderMock(s.T())
@@ -1414,7 +1427,7 @@ func (s *ServiceTestSuite) TestStepAndGrantClearTheirOwnKeysInEitherMode() {
 				ID: "e1", Category: providers.EntityCategoryUser, State: providers.EntityStateActive,
 				AccessState: AccessState{
 					Lock: LockState{
-						Entity: &LockEntry{LockCount: 1},
+						Account: &LockEntry{LockCount: 1},
 						AuthenticationMethods: map[providers.AuthenticationMethod]LockEntry{
 							providers.AuthenticationMethodCredential: {LockCount: 1},
 						},
@@ -1429,7 +1442,7 @@ func (s *ServiceTestSuite) TestStepAndGrantClearTheirOwnKeysInEitherMode() {
 			s.Require().Nil(err)
 			s.True(step.Admitted)
 
-			port.On("ClearAccessStateIfUnchanged", mock.Anything, "e1", AuthenticationMethodEntity, int64(0)).
+			port.On("ClearAccessStateIfUnchanged", mock.Anything, "e1", AuthenticationMethodAccount, int64(0)).
 				Return(true, nil).Once()
 			decision, err := svc.AdmitSignIn(s.ctx, "e1")
 			s.Require().Nil(err)
@@ -1480,16 +1493,31 @@ func (s *ServiceTestSuite) TestRecordLoginSkipsEntityReadsWhenNoCategoryRecords(
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
-// Once any category records, the entity's own category decides.
+// Once any category records, the entity's own category decides, and an application never records.
 func (s *ServiceTestSuite) TestRecordLoginWritesNothingWhenThisCategoryDoesNot() {
-	s.source.EXPECT().Current(mock.Anything).Return(recordingConfig(0)).Once()
-	s.port.On("GetEntityProfile", mock.Anything, "e1").
-		Return(&providers.Entity{Category: providers.EntityCategoryAgent}, nil).Once()
+	everyCategoryRecords := recordingConfig(0)
+	everyCategoryRecords.Agent = &accountAccessCategory{RecordLastLogin: new(true)}
+	testCases := []struct {
+		name     string
+		config   accountAccessValue
+		category providers.EntityCategory
+	}{
+		{name: "agent", config: recordingConfig(0), category: providers.EntityCategoryAgent},
+		{name: "application", config: everyCategoryRecords, category: providers.EntityCategoryApp},
+	}
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			s.source.EXPECT().Current(mock.Anything).Return(tc.config).Once()
+			s.port.On("GetEntityProfile", mock.Anything, "e1").
+				Return(&providers.Entity{Category: tc.category}, nil).Once()
 
-	s.Require().Nil(s.svc.RecordLogin(s.ctx, "e1"))
+			s.Require().Nil(s.svc.RecordLogin(s.ctx, "e1"))
 
-	s.port.AssertNotCalled(s.T(), "RecordLogin",
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+			s.port.AssertNotCalled(s.T(), "RecordLogin",
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
 }
 
 // The window is passed to the write, so the store compares without a read-modify-write.
@@ -1586,13 +1614,13 @@ func (s *ServiceTestSuite) TestAdmitAuthenticationStepUngovernedSubjectDoesNoIO(
 	s.True(decision.Admitted)
 }
 
-// A completed sign-in clears a lapsed entity-wide record: the counter and the escalation.
-func (s *ServiceTestSuite) TestAdmitSignInClearsALapsedEntityRecord() {
+// A completed sign-in clears a lapsed account-wide record: the counter and the escalation.
+func (s *ServiceTestSuite) TestAdmitSignInClearsALapsedAccountRecord() {
 	entity := s.activeEntity()
-	entity.AccessState.Lock.Entity = &LockEntry{FailureCount: 2, LockCount: 1, UnlockAt: s.at(-time.Second)}
+	entity.AccessState.Lock.Account = &LockEntry{FailureCount: 2, LockCount: 1, UnlockAt: s.at(-time.Second)}
 	s.expectRead(entity)
 	s.expectConfig(methodGranularityConfig())
-	s.port.On("ClearAccessStateIfUnchanged", mock.Anything, entity.ID, AuthenticationMethodEntity, int64(0)).
+	s.port.On("ClearAccessStateIfUnchanged", mock.Anything, entity.ID, AuthenticationMethodAccount, int64(0)).
 		Return(true, nil).Once()
 
 	decision, err := s.svc.AdmitSignIn(s.ctx, entity.ID)
@@ -1600,7 +1628,7 @@ func (s *ServiceTestSuite) TestAdmitSignInClearsALapsedEntityRecord() {
 	s.True(decision.Admitted)
 }
 
-// A live entity-wide lock, including the permanent one Unsuspend writes, is never cleared.
+// A live account-wide lock, including the permanent one Unsuspend writes, is never cleared.
 func (s *ServiceTestSuite) TestAdmitSignInNeverClearsALiveLock() {
 	for name, unlockAt := range map[string]string{
 		"timed":     s.at(5 * time.Minute),
@@ -1609,7 +1637,7 @@ func (s *ServiceTestSuite) TestAdmitSignInNeverClearsALiveLock() {
 		s.Run(name, func() {
 			s.SetupTest()
 			entity := s.activeEntity()
-			entity.AccessState.Lock.Entity = &LockEntry{LockCount: 1, UnlockAt: unlockAt}
+			entity.AccessState.Lock.Account = &LockEntry{LockCount: 1, UnlockAt: unlockAt}
 			s.expectRead(entity)
 			s.expectConfig(methodGranularityConfig())
 
@@ -1626,7 +1654,7 @@ func (s *ServiceTestSuite) TestAdmitSignInNeverClearsALiveLock() {
 func (s *ServiceTestSuite) TestAdmitSignInRefusesWithoutClearing() {
 	entity := s.activeEntity()
 	entity.State = providers.EntityStateSuspended
-	entity.AccessState.Lock.Entity = &LockEntry{FailureCount: 2}
+	entity.AccessState.Lock.Account = &LockEntry{FailureCount: 2}
 	s.expectRead(entity)
 	s.expectConfig(methodGranularityConfig())
 
@@ -1655,10 +1683,10 @@ func (s *ServiceTestSuite) TestAdmitSignInClearFailureStillAdmits() {
 		s.Run(name, func() {
 			s.SetupTest()
 			entity := s.activeEntity()
-			entity.AccessState.Lock.Entity = &LockEntry{FailureCount: 2}
+			entity.AccessState.Lock.Account = &LockEntry{FailureCount: 2}
 			s.expectRead(entity)
 			s.expectConfig(methodGranularityConfig())
-			s.port.On("ClearAccessStateIfUnchanged", mock.Anything, entity.ID, AuthenticationMethodEntity, int64(0)).
+			s.port.On("ClearAccessStateIfUnchanged", mock.Anything, entity.ID, AuthenticationMethodAccount, int64(0)).
 				Return(false, clearErr).Once()
 
 			decision, err := s.svc.AdmitSignIn(s.ctx, entity.ID)
@@ -1712,7 +1740,7 @@ func (s *ServiceTestSuite) TestLifecycleAuthorization() {
 			authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 			authz.EXPECT().IsActionAllowed(mock.Anything, tc.action, &sysauthz.ActionContext{
 				ResourceType: tc.resource, OUID: "ou-a", ResourceID: "e1",
-			}).Return(false, nil).Times(4)
+			}).Return(false, nil).Times(6)
 			svc := newTestService(s.T(), port, accountAccessValue{}, nil, authz)
 			for _, operation := range []struct {
 				name string
@@ -1720,7 +1748,15 @@ func (s *ServiceTestSuite) TestLifecycleAuthorization() {
 			}{
 				{"suspend", func() *tidcommon.ServiceError { return svc.Suspend(callerContext("operator"), "e1", "") }},
 				{"validate suspend", func() *tidcommon.ServiceError {
-					return svc.ValidateSuspend(callerContext("operator"), "e1")
+					return svc.ValidateSuspend(callerContext("operator"), "e1", "")
+				}},
+				// Authorized before the note is checked, so the limit cannot be probed from outside.
+				{"suspend with an over-long note", func() *tidcommon.ServiceError {
+					return svc.Suspend(callerContext("operator"), "e1", strings.Repeat("n", maxOperatorNoteLength+1))
+				}},
+				{"validate suspend with an over-long note", func() *tidcommon.ServiceError {
+					return svc.ValidateSuspend(callerContext("operator"), "e1",
+						strings.Repeat("n", maxOperatorNoteLength+1))
 				}},
 				{"unsuspend", func() *tidcommon.ServiceError { return svc.Unsuspend(callerContext("operator"), "e1") }},
 				{"unlock", func() *tidcommon.ServiceError { return svc.Unlock(callerContext("operator"), "e1") }},
@@ -1758,9 +1794,9 @@ func (s *ServiceTestSuite) TestValidateSuspendWritesNothing() {
 	authz := s.authorizer(true)
 	svc := newTestService(s.T(), port, accountAccessValue{}, nil, authz)
 
-	s.Require().Nil(svc.ValidateSuspend(callerContext("operator"), "e1"))
+	s.Require().Nil(svc.ValidateSuspend(callerContext("operator"), "e1", ""))
 	authz.AssertNumberOfCalls(s.T(), "IsActionAllowed", 1)
-	s.requireServiceError(svc.ValidateSuspend(callerContext("operator"), ""), ErrorMissingSubject)
+	s.requireServiceError(svc.ValidateSuspend(callerContext("operator"), "", ""), ErrorMissingSubject)
 	port.AssertNotCalled(s.T(), "SetSuspension", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
@@ -1820,8 +1856,8 @@ func lockFormationConfig() accountAccessValue {
 
 // notifyingService builds the service over lockFormationConfig with a notifier mock. Only the writer
 // that commits a new lock notifies.
-func (s *ServiceTestSuite) notifyingService() (*identityGovernanceService, *lockNotifierInterfaceMock) {
-	notifier := newLockNotifierInterfaceMock(s.T())
+func (s *ServiceTestSuite) notifyingService() (*identityGovernanceService, *LockNotifierInterfaceMock) {
+	notifier := NewLockNotifierInterfaceMock(s.T())
 	svc := newTestService(s.T(), s.port, lockFormationConfig(), notifier, nil)
 	svc.now = func() time.Time { return s.now }
 	return svc, notifier
@@ -1898,7 +1934,7 @@ func (s *ServiceTestSuite) TestLosingWriterDoesNotNotify() {
 func (s *ServiceTestSuite) TestFailureUnderALiveHoldDoesNotNotify() {
 	svc, notifier := s.notifyingService()
 	entity := s.governedUser()
-	entity.AccessState = AccessState{Lock: LockState{Entity: &LockEntry{
+	entity.AccessState = AccessState{Lock: LockState{Account: &LockEntry{
 		UnlockAt: s.now.Add(5 * time.Minute).UTC().Format(time.RFC3339),
 	}}}
 	s.port.EXPECT().GetGovernedEntity(mock.Anything, entity.ID, true).Return(&entity, nil)
@@ -2116,9 +2152,19 @@ func (s *ServiceTestSuite) TestARefusedLifecycleOperationIsPublishedAsAFailure()
 			event.EventTypeIdentitySuspensionFailed, "not_authorized"},
 		{"suspend pre-check outside the boundary", agent, false,
 			func(s *identityGovernanceService) *tidcommon.ServiceError {
-				return s.ValidateSuspend(callerContext("operator"), "e1")
+				return s.ValidateSuspend(callerContext("operator"), "e1", "")
 			},
 			event.EventTypeIdentitySuspensionFailed, "not_authorized"},
+		{"suspend with an over-long note", agent, true,
+			func(s *identityGovernanceService) *tidcommon.ServiceError {
+				return s.Suspend(callerContext("operator"), "e1", strings.Repeat("n", maxOperatorNoteLength+1))
+			},
+			event.EventTypeIdentitySuspensionFailed, "note_too_long"},
+		{"suspend pre-check with an over-long note", agent, true,
+			func(s *identityGovernanceService) *tidcommon.ServiceError {
+				return s.ValidateSuspend(callerContext("operator"), "e1", strings.Repeat("n", maxOperatorNoteLength+1))
+			},
+			event.EventTypeIdentitySuspensionFailed, "note_too_long"},
 		{"unsuspend on an active identity", agent, true,
 			func(s *identityGovernanceService) *tidcommon.ServiceError {
 				return s.Unsuspend(callerContext("operator"), "e1")
@@ -2210,7 +2256,7 @@ func (s *ServiceTestSuite) TestAPassingSuspendPreCheckIsNotPublished() {
 		Return(new(governedSubject(providers.EntityCategoryUser)), nil)
 	svc, published := auditedService(s.T(), port, authorizerAllowing(s.T(), true))
 
-	s.Require().Nil(svc.ValidateSuspend(callerContext("operator"), "e1"))
+	s.Require().Nil(svc.ValidateSuspend(callerContext("operator"), "e1", ""))
 	s.Require().Empty(*published)
 }
 
@@ -2348,9 +2394,9 @@ func (s *ServiceTestSuite) TestAFailureMeetsEveryLockThatHoldsIt() {
 		cfg   accountAccessValue
 		plane providers.AccessPlane
 	}{
-		"entity-wide lock under method granularity": {
+		"account-wide lock under method granularity": {
 			lock: func(a *AccessState) {
-				putLockEntry(a, AuthenticationMethodEntity, LockEntry{LockCount: 1, UnlockAt: s.at(5 * time.Minute)})
+				putLockEntry(a, AuthenticationMethodAccount, LockEntry{LockCount: 1, UnlockAt: s.at(5 * time.Minute)})
 			},
 			cfg:   methodGranularityConfig(),
 			plane: providers.AccessPlaneAuthentication,
@@ -2364,7 +2410,7 @@ func (s *ServiceTestSuite) TestAFailureMeetsEveryLockThatHoldsIt() {
 		},
 		"post-suspension hold under a disabled policy": {
 			lock: func(a *AccessState) {
-				putLockEntry(a, AuthenticationMethodEntity,
+				putLockEntry(a, AuthenticationMethodAccount,
 					LockEntry{UnlockAt: permanentUnlockAt, Reason: lockReasonPostSuspension})
 			},
 			cfg:   disabled,
@@ -2637,7 +2683,7 @@ func (s *ServiceTestSuite) TestReadAccessResolvesThePolicyOncePerCall() {
 func (s *ServiceTestSuite) TestReadAccessForAnApplicationReadsNoSection() {
 	entity := providers.Entity{
 		ID: "a1", Category: providers.EntityCategoryApp, State: providers.EntityStateActive,
-		RuntimeAttributes: []byte(`{"accessState":{"lock":{"entity":{"unlockAt":"9999-12-31T23:59:59Z"}}}}`),
+		RuntimeAttributes: []byte(`{"accessState":{"lock":{"account":{"unlockAt":"9999-12-31T23:59:59Z"}}}}`),
 	}
 
 	reads := s.svc.ReadAccess(s.ctx, []providers.Entity{entity})
@@ -2645,24 +2691,6 @@ func (s *ServiceTestSuite) TestReadAccessForAnApplicationReadsNoSection() {
 	s.Require().Len(reads, 1)
 	s.Equal(providers.AccessStatusLocked, reads[0].Status.Value)
 	s.source.AssertNotCalled(s.T(), "Current", mock.Anything)
-}
-
-func (s *ServiceTestSuite) TestSetServerConfigServiceSetsTheSectionReader() {
-	reader := serverconfigmock.NewServerConfigServiceMock(s.T())
-	s.source.EXPECT().setReader(reader).Once()
-
-	s.svc.SetServerConfigService(reader)
-}
-
-// The lock email reads its default sender through the same server-config service.
-func (s *ServiceTestSuite) TestSetServerConfigServiceReachesTheNotifier() {
-	reader := serverconfigmock.NewServerConfigServiceMock(s.T())
-	notifier := newLockNotifierInterfaceMock(s.T())
-	s.source.EXPECT().setReader(reader).Once()
-	notifier.EXPECT().setServerConfigService(reader).Once()
-	svc := newIdentityGovernanceService(s.port, s.source, notifier, nil, nil)
-
-	svc.SetServerConfigService(reader)
 }
 
 // testAccountAccessConfig is a representative deployment: a user default and agent locking switched
@@ -2794,20 +2822,20 @@ func (s *ServiceTestSuite) TestAnOverrideMaySwitchOneMethodOff() {
 		"switching one method off must not switch the category off")
 }
 
-// Under entity granularity every method resolves the entity-wide policy, not its own.
-func (s *ServiceTestSuite) TestEntityGranularityUsesTheEntityMethodPolicy() {
+// Under account granularity every method resolves the account-wide policy, not its own.
+func (s *ServiceTestSuite) TestAccountGranularityUsesTheAccountMethodPolicy() {
 	cfg := testAccountAccessConfig()
-	cfg.User.LockGranularity = new(granularityEntity)
+	cfg.User.LockGranularity = new(granularityAccount)
 	cfg.User.Methods = map[string]accountAccessPolicy{
-		string(AuthenticationMethodEntity):        {Threshold: new(7)},
+		string(AuthenticationMethodAccount):       {Threshold: new(7)},
 		string(providers.AuthenticationMethodOTP): {Threshold: new(2)},
 	}
 
 	otp := s.resolve(cfg, providers.EntityCategoryUser, providers.AuthenticationMethodOTP)
 
-	s.Equal(7, otp.threshold, "the entity-wide override applies, not the method's")
+	s.Equal(7, otp.threshold, "the account-wide override applies, not the method's")
 	s.Equal(15*time.Minute, otp.failureWindow, "over the category default")
-	s.Equal(granularityEntity, otp.granularity)
+	s.Equal(granularityAccount, otp.granularity)
 }
 
 // Zero is a value, not an omission: a zero decay never decays and a zero duration is permanent.
@@ -2951,9 +2979,9 @@ func (s *ServiceTestSuite) TestActivityIsEnabledByAnyCategory() {
 	s.True(s.activity(cfg).enabled())
 }
 
-// Under method granularity a live entity-wide failure lock is decided under the entity-wide policy,
+// Under method granularity a live account-wide failure lock is decided under the account-wide policy,
 // not the presented method's, so the decision agrees with the status a management read reports.
-func (s *ServiceTestSuite) TestAnEntityWideLockIsDecidedUnderTheEntityMethodPolicy() {
+func (s *ServiceTestSuite) TestAnAccountWideLockIsDecidedUnderTheAccountMethodPolicy() {
 	for name, tc := range map[string]struct {
 		disabledMethod providers.AuthenticationMethod
 		admitted       bool
@@ -2961,14 +2989,14 @@ func (s *ServiceTestSuite) TestAnEntityWideLockIsDecidedUnderTheEntityMethodPoli
 	}{
 		"method switched off": {providers.AuthenticationMethodCredential, false,
 			providers.AccessStatusLocked},
-		"entity-wide policy switched off": {AuthenticationMethodEntity, true, providers.AccessStatusActive},
+		"account-wide policy switched off": {AuthenticationMethodAccount, true, providers.AccessStatusActive},
 	} {
 		s.Run(name, func() {
 			s.SetupTest()
 			cfg := methodGranularityConfig()
 			cfg.User.Methods = map[string]accountAccessPolicy{string(tc.disabledMethod): {Enabled: new(false)}}
 			s.expectConfig(cfg)
-			entity := s.lockedEntityWide()
+			entity := s.lockedAccountWide()
 			s.expectRead(entity)
 			attributes, err := json.Marshal(RuntimeAttributes{AccessState: entity.AccessState})
 			s.Require().NoError(err)
@@ -2987,13 +3015,13 @@ func (s *ServiceTestSuite) TestAnEntityWideLockIsDecidedUnderTheEntityMethodPoli
 	}
 }
 
-// A failure on a held account whose method policy is switched off is refused under the entity-wide
+// A failure on a held account whose method policy is switched off is refused under the account-wide
 // policy, without counting.
-func (s *ServiceTestSuite) TestAFailureUnderAnEntityWideLockIsRefusedWhenTheMethodIsSwitchedOff() {
+func (s *ServiceTestSuite) TestAFailureUnderAnAccountWideLockIsRefusedWhenTheMethodIsSwitchedOff() {
 	cfg := methodGranularityConfig()
 	cfg.User.Methods = map[string]accountAccessPolicy{string(testMethod): {Enabled: new(false)}}
 	s.expectConfig(cfg)
-	s.expectRead(s.lockedEntityWide())
+	s.expectRead(s.lockedAccountWide())
 
 	decision, err := s.svc.RecordFailure(s.ctx, "e1", providers.AccessPlaneAuthentication, testMethod)
 
@@ -3010,7 +3038,7 @@ func (s *ServiceTestSuite) TestAnUnknownIdentityIsPublishedAsNotFound() {
 			return svc.Suspend(s.ctx, "x", "")
 		},
 		"validate suspend": func(svc *identityGovernanceService) *tidcommon.ServiceError {
-			return svc.ValidateSuspend(s.ctx, "x")
+			return svc.ValidateSuspend(s.ctx, "x", "")
 		},
 		"unsuspend": func(svc *identityGovernanceService) *tidcommon.ServiceError {
 			return svc.Unsuspend(s.ctx, "x")
@@ -3033,9 +3061,9 @@ func (s *ServiceTestSuite) TestAnUnknownIdentityIsPublishedAsNotFound() {
 	}
 }
 
-// Under entity granularity a lost formation re-reads the entity entry and guards the retry on it; with
+// Under account granularity a lost formation re-reads the account entry and guards the retry on it; with
 // no entry left there is nothing to lock.
-func (s *ServiceTestSuite) TestFormationRetryUnderEntityGranularityReadsTheEntityEntry() {
+func (s *ServiceTestSuite) TestFormationRetryUnderAccountGranularityReadsTheAccountEntry() {
 	for name, tc := range map[string]struct {
 		entry   *LockEntry
 		retried bool
@@ -3045,20 +3073,20 @@ func (s *ServiceTestSuite) TestFormationRetryUnderEntityGranularityReadsTheEntit
 	} {
 		s.Run(name, func() {
 			s.SetupTest()
-			s.expectConfig(entityGranularityConfig())
+			s.expectConfig(accountGranularityConfig())
 			entity := s.activeEntity()
 			s.port.On("GetGovernedEntity", mock.Anything, entity.ID, true).Return(&entity, nil).Once()
-			s.port.On("IncrementFailure", mock.Anything, entity.ID, AuthenticationMethodEntity, mock.Anything,
+			s.port.On("IncrementFailure", mock.Anything, entity.ID, AuthenticationMethodAccount, mock.Anything,
 				mock.Anything).
 				Return(LockEntry{FailureCount: 5, Revision: 3}, true, nil).Once()
-			s.port.On("FormLock", mock.Anything, entity.ID, AuthenticationMethodEntity,
+			s.port.On("FormLock", mock.Anything, entity.ID, AuthenticationMethodAccount,
 				LockEntry{FailureCount: 5, Revision: 3}, mock.Anything, mock.Anything).Return(false, nil).Once()
 			refreshed := s.activeEntity()
 			refreshed.Revision = 9
-			refreshed.AccessState.Lock.Entity = tc.entry
+			refreshed.AccessState.Lock.Account = tc.entry
 			s.port.On("GetGovernedEntity", mock.Anything, entity.ID, true).Return(&refreshed, nil).Once()
 			if tc.retried {
-				s.port.On("FormLock", mock.Anything, entity.ID, AuthenticationMethodEntity,
+				s.port.On("FormLock", mock.Anything, entity.ID, AuthenticationMethodAccount,
 					LockEntry{FailureCount: 6, Revision: 9}, mock.Anything, mock.Anything).Return(true, nil).Once()
 			}
 
@@ -3086,12 +3114,12 @@ func (s *ServiceTestSuite) TestFormationStopsWhenTheIdentityIsGone() {
 }
 
 // Only a suspension holds an application, so its failure is admitted and not counted even with an
-// entity-wide hold recorded.
+// account-wide hold recorded.
 func (s *ServiceTestSuite) TestAnApplicationFailureIsAdmittedWithoutCounting() {
 	s.expectConfig(methodGranularityConfig())
 	entity := s.activeEntity()
 	entity.Category = providers.EntityCategoryApp
-	entity.AccessState.Lock.Entity = &LockEntry{UnlockAt: permanentUnlockAt, Reason: lockReasonPostSuspension}
+	entity.AccessState.Lock.Account = &LockEntry{UnlockAt: permanentUnlockAt, Reason: lockReasonPostSuspension}
 	s.expectRead(entity)
 
 	decision, err := s.svc.RecordFailure(s.ctx, entity.ID, providers.AccessPlaneAuthentication, testMethod)

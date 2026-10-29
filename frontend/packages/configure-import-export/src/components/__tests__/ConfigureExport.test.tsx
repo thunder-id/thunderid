@@ -395,6 +395,12 @@ type: google
         `resource_type: user\ntype: person\nattributes:\n  name: User Name ${idx}\n  username: user${idx}\n  email: user${idx}@example.com`,
     },
     {
+      resourceType: 'project',
+      label: 'Projects',
+      body: (idx) =>
+        `resource_type: project\nid: project-${idx}\nrootOuId: ou-${idx}\nhandle: project-${idx}\ndisplayName: Project ${idx}\ndescription: Project description ${idx}`,
+    },
+    {
       resourceType: 'organization_unit',
       label: 'Organization units',
       body: (idx) =>

@@ -68,7 +68,12 @@ export {default as FlowComponentRenderer} from './components/flow/FlowComponentR
 // Flow adapters
 export {default as BlockAdapter} from './components/flow/adapters/BlockAdapter';
 export {default as CopyableTextAdapter} from './components/flow/adapters/CopyableTextAdapter';
-export {default as ConsentAdapter} from './components/flow/adapters/ConsentAdapter';
+export {
+  default as ConsentAdapter,
+  AuthorizationDetailSummary,
+  AuthorizationDetailValue,
+} from './components/flow/adapters/ConsentAdapter';
+export type {AuthorizationDetailValueProps} from './components/flow/adapters/ConsentAdapter';
 export {default as DividerAdapter} from './components/flow/adapters/DividerAdapter';
 export {default as IconAdapter} from './components/flow/adapters/IconAdapter';
 export {default as ImageAdapter} from './components/flow/adapters/ImageAdapter';
@@ -86,6 +91,10 @@ export {default as TimerAdapter} from './components/flow/adapters/TimerAdapter';
 // Utils
 export {default as extractLayoutFromDesign} from './utils/extractLayoutFromDesign';
 export {default as getIntegrationIcon} from './utils/getIntegrationIcon';
+export {
+  default as getAuthorizationDetailRowLayout,
+  type AuthorizationDetailRowLayout,
+} from './utils/getAuthorizationDetailRowLayout';
 export {default as getStackGridSx, parseStackItems, type StackGridInput} from './utils/getStackGridSx';
 export {default as mapEmbeddedFlowTextColor} from './utils/mapEmbeddedFlowTextColor';
 export {default as mapEmbeddedFlowTextVariant} from './utils/mapEmbeddedFlowTextVariant';

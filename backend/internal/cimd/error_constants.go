@@ -100,8 +100,10 @@ var (
 			DefaultValue: "Invalid grant types for a Client ID Metadata Document client",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.cimdservice.invalid_grant_types_description",
-			DefaultValue: "The grant types must include authorization_code and may add only refresh_token",
+			Key: "error.cimdservice.invalid_grant_types_description",
+			DefaultValue: "The grant types must include authorization_code and may add refresh_token, and a " +
+				"private_key_jwt client may also add urn:ietf:params:oauth:grant-type:token-exchange and " +
+				"urn:ietf:params:oauth:grant-type:jwt-bearer",
 		},
 	}
 	// ErrorImmutable is the error returned when an update changes the CIMD marker or a CIMD client's client ID.
@@ -169,6 +171,37 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.cimdservice.invalid_request_format_description",
 			DefaultValue: "The request body is malformed or contains invalid data",
+		},
+	}
+	// ErrorPrivateKeySet is the error returned when a CIMD client's inline key set is unreadable or holds
+	// private or symmetric key material.
+	ErrorPrivateKeySet = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CIMD-1014",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.cimdservice.private_key_set",
+			DefaultValue: "Key set is not a public key set",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.cimdservice.private_key_set_description",
+			DefaultValue: "The inline jwks must be a JSON key set of public keys, with no private or symmetric " +
+				"key members such as d or k",
+		},
+	}
+	// ErrorTokenExchangeRequiresIDJAG is the error returned when a CIMD client holds the token exchange grant
+	// without identity assertions (ID-JAG) turned on.
+	ErrorTokenExchangeRequiresIDJAG = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CIMD-1015",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.cimdservice.token_exchange_requires_idjag",
+			DefaultValue: "Token exchange requires identity assertions",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.cimdservice.token_exchange_requires_idjag_description",
+			DefaultValue: "A Client ID Metadata Document client can hold " +
+				"urn:ietf:params:oauth:grant-type:token-exchange only with token.idJag.enabled, because token " +
+				"exchange serves it only for ID-JAG requests",
 		},
 	}
 )

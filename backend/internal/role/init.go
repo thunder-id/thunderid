@@ -4,6 +4,7 @@
 package role
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/group"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	resourcepkg "github.com/thunder-id/thunderid/internal/resource"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
@@ -28,6 +30,7 @@ func Initialize(
 	resourceService resourcepkg.ResourceServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
+	sharingService sharing.SharingServiceInterface,
 ) (
 	RoleServiceInterface, RoleAssignmentServiceInterface, oupkg.OURoleResolver,
 	declarativeresource.ResourceExporter, error,
@@ -40,13 +43,21 @@ func Initialize(
 
 	// Step 2: Create service with store
 	roleService := newRoleService(
-		roleStore, entityService, groupService, ouService, resourceService,
-		transactioner, authzService,
-	)
+		roleStore, entityService, groupService, ouService, resourceService, transactioner, authzService,
+		sharingService)
+
+	// Registered before declarative resources load, because loading seeds the sharing policies those
+	// files declare and the framework refuses a type it does not know.
+	sharingService.RegisterResourceType(newRoleSharingDeclaration(roleService))
 
 	// Step 3: Load declarative resources into store (if applicable)
 	if fileStore != nil {
+		// One document, read once per thing it carries: the role, then its sharing policies.
 		if err := loadDeclarativeResources(fileStore, dbStore, roleService); err != nil {
+			return nil, nil, nil, nil, err
+		}
+		if err := sharingService.LoadDeclarativeResources(
+			context.Background(), makeRoleSharingConfig(roleService)); err != nil {
 			return nil, nil, nil, nil, err
 		}
 	}
@@ -56,7 +67,7 @@ func Initialize(
 	)
 	roleHandler := newRoleHandler(roleService, assignmentService)
 	registerRoutes(mux, roleHandler)
-	exporter := newRoleExporter(roleService, assignmentService)
+	exporter := newRoleExporter(roleService, assignmentService, sharingService)
 	ouRoleResolver := newOURoleResolver(roleStore)
 	return roleService, assignmentService, ouRoleResolver, exporter, nil
 }
@@ -188,4 +199,45 @@ func registerRoutes(mux *http.ServeMux, roleHandler *roleHandler) {
 		func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}, opts3))
+
+	// Sharing policies live under the role they govern: a policy has no life of its own.
+	opts5 := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET", "POST"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("POST /roles/{id}/sharing-policies",
+		roleHandler.HandleSharingPolicyPostRequest, opts5))
+	mux.HandleFunc(middleware.WithCORS("GET /roles/{id}/sharing-policies",
+		roleHandler.HandleSharingPolicyListRequest, opts5))
+	// Without its own preflight route this collection falls to OPTIONS /roles/{id}, which does not
+	// allow POST, and the browser blocks the create.
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /roles/{id}/sharing-policies",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, opts5))
+	mux.HandleFunc(middleware.WithCORS("GET /roles/{id}/overlay-rules",
+		roleHandler.HandleOverlayRuleGetRequest, opts5))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /roles/{id}/overlay-rules",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, opts5))
+
+	opts6 := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET", "PUT", "DELETE"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("GET /roles/{id}/sharing-policies/{policyId}",
+		roleHandler.HandleSharingPolicyGetRequest, opts6))
+	mux.HandleFunc(middleware.WithCORS("PUT /roles/{id}/sharing-policies/{policyId}",
+		roleHandler.HandleSharingPolicyPutRequest, opts6))
+	mux.HandleFunc(middleware.WithCORS("DELETE /roles/{id}/sharing-policies/{policyId}",
+		roleHandler.HandleSharingPolicyDeleteRequest, opts6))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /roles/{id}/sharing-policies/{policyId}",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, opts6))
 }

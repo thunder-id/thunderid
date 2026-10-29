@@ -38,4 +38,6 @@ export interface GroupListParams {
   limit?: number;
   /** Number of records to skip */
   offset?: number;
+  /** Filter expression, for example `ouId eq "<id>"` */
+  filter?: string;
 }

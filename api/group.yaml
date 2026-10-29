@@ -30,9 +30,12 @@ paths:
       tags:
         - Groups
       summary: List groups
+      description: |
+        Retrieve a list of groups. An `ouId` filter lists the groups the organization unit owns.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
+        - $ref: '#/components/parameters/groupFilterQueryParam'
         - $ref: '#/components/parameters/includeGroupQueryParam'
       responses:
         "200":
@@ -94,6 +97,16 @@ paths:
                     description:
                       key: "error.groupservice.invalid_offset_parameter_description"
                       defaultValue: "The offset parameter must be a non-negative integer"
+                invalid-filter:
+                  summary: Invalid filter parameter
+                  value:
+                    code: "GRP-1018"
+                    message:
+                      key: "error.groupservice.invalid_filter_parameter"
+                      defaultValue: "Invalid filter parameter"
+                    description:
+                      key: "error.groupservice.invalid_filter_parameter_description"
+                      defaultValue: "The filter must be a single ouId eq expression with a quoted organization unit ID"
         "500":
           description: Internal server error
           content:
@@ -1048,6 +1061,20 @@ components:
         type: integer
         minimum: 0
         default: 0
+    groupFilterQueryParam:
+      in: query
+      name: filter
+      required: false
+      description: |
+        Filter groups by organization unit. The only supported expression is `ouId eq "<id>"`,
+        which lists the groups the organization unit owns. A caller that cannot list the
+        organization unit's groups gets an empty list.
+      schema:
+        type: string
+      examples:
+        organization-unit:
+          summary: Groups owned by an organization unit
+          value: 'ouId eq "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"'
     includeQueryParam:
       in: query
       name: include

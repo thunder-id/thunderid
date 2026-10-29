@@ -35,6 +35,30 @@ type SystemAttributeQuery struct {
 	Attributes map[string]interface{}
 }
 
+// OUEntityScope selects which of an organization unit's entities a page lists.
+type OUEntityScope int
+
+const (
+	// OUEntityScopeAll lists the entities the organization unit owns, followed by the ones shared into it.
+	// It is the zero value, so a page lists both unless told otherwise.
+	OUEntityScopeAll OUEntityScope = iota
+	// OUEntityScopeOwned lists only the entities the organization unit owns.
+	OUEntityScopeOwned
+	// OUEntityScopeShared lists only the entities shared into the organization unit.
+	OUEntityScopeShared
+)
+
+// OUEntityPage is one page of the entities an organization unit owns, followed by the ones shared
+// into it.
+type OUEntityPage struct {
+	// Owned holds the page's entities the organization unit owns.
+	Owned []providers.Entity
+	// Shared holds the page's entities shared into the organization unit.
+	Shared []providers.Entity
+	// TotalResults counts the owned and shared entities across every page.
+	TotalResults int
+}
+
 // AuthenticateResult represents the result of an entity authentication.
 type AuthenticateResult struct {
 	EntityID       string                   `json:"entityId"`

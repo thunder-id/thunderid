@@ -13,7 +13,7 @@
  */
 
 import type { APIRequestContext } from "@playwright/test";
-import { send, sendOk } from "../api-request";
+import { send, sendOk, type ApiAccessStatus } from "../api-request";
 
 export type ApiApplication = {
   id: string;
@@ -24,6 +24,7 @@ export type ApiApplication = {
   recoveryFlowId?: string | null;
   isRegistrationFlowEnabled?: boolean;
   allowedUserTypes?: string[];
+  status?: ApiAccessStatus;
   [key: string]: unknown;
 };
 

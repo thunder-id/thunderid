@@ -248,7 +248,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         "403":
-          description: 'Forbidden: Direct flow initiation is not permitted for this application or its OAuth configuration'
+          description: >
+            Forbidden: Direct flow initiation is not permitted for this application or its OAuth
+            configuration, or the application is suspended.
           content:
             application/json:
               schema:
@@ -311,6 +313,8 @@ components:
           type: boolean
           description: When true, the response includes full UI metadata (meta/components) for prompt nodes
           example: false
+        sessionData:
+          $ref: '#/components/schemas/FlowRequestSessionData'
 
     AdministrativeFlowRequest:
       type: object
@@ -376,6 +380,8 @@ components:
           type: boolean
           description: When true, the response includes full UI metadata (meta/components) for prompt nodes
           example: false
+        sessionData:
+          $ref: '#/components/schemas/FlowRequestSessionData'
 
     IncompleteFlowResponse:
       type: object
@@ -411,6 +417,10 @@ components:
           allOf:
             - $ref: '#/components/schemas/Data'
           description: Data for the next step in the flow
+        sessionData:
+          $ref: '#/components/schemas/FlowResponseSessionData'
+        clearedSessions:
+          $ref: '#/components/schemas/FlowClearedSessions'
 
     CompleteFlowResponse:
       type: object
@@ -433,6 +443,10 @@ components:
           type: string
           description: Authentication assertion. This will be the JWT authentication token
           example: "<jwt_token>"
+        sessionData:
+          $ref: '#/components/schemas/FlowResponseSessionData'
+        clearedSessions:
+          $ref: '#/components/schemas/FlowClearedSessions'
 
     ErrorFlowResponse:
       type: object
@@ -459,6 +473,79 @@ components:
             Optionally returned signed JWT error assertion. It carries the flow error type and description bound to 
             that authorization request.
           example: "<jwt_token>"
+        sessionData:
+          $ref: '#/components/schemas/FlowResponseSessionData'
+        clearedSessions:
+          $ref: '#/components/schemas/FlowClearedSessions'
+
+    FlowRequestSessionData:
+      type: array
+      description: >-
+        Every SSO session the caller holds, as returned in earlier responses' `sessionData`. The server
+        uses the one whose `flowIdentifier` matches the flow whose session the request acts on, as a
+        browser's per-flow session cookies are matched, and uses it instead of the session cookie. That
+        is the flow being run, except for a `SIGNOUT` flow, which acts on the application's sign-in
+        flow. Send it on every request of the flow, not only the first: the handle is not kept with the
+        flow, so a Check SSO Session node reached after a prompt step uses the one sent with that
+        request. An entry without a `flowIdentifier` or a `sessionHandle` is refused with `FES-1021`.
+      items:
+        $ref: '#/components/schemas/FlowSessionData'
+
+    FlowResponseSessionData:
+      type: array
+      description: >-
+        The SSO sessions this step started, in the same shape as the request's `sessionData`, plus
+        `expiresIn`. Returned only on the response of the step that started them. A caller that holds
+        its sessions itself keeps them with any others it holds and sends them all back in later
+        requests' `sessionData`. The session cookie is set as well.
+      items:
+        $ref: '#/components/schemas/FlowIssuedSessionData'
+
+    FlowClearedSessions:
+      type: array
+      description: >-
+        Flow identifiers of the SSO sessions a sign-out in this step ended. An identifier is listed even
+        when its session had already ended, so the listing does not confirm the session was active. A
+        caller that holds its sessions itself drops the `sessionData` held under each.
+      items:
+        type: string
+      example: ["77e0937879f72858"]
+
+    FlowSessionData:
+      type: object
+      description: >-
+        One SSO session a caller holds, keyed by the flow it belongs to, as a browser holds it in a
+        per-flow session cookie. The handle resumes the session, so keep it as secret as a credential.
+      required:
+        - flowIdentifier
+        - sessionHandle
+      properties:
+        flowIdentifier:
+          type: string
+          description: Opaque identifier of the flow the session belongs to
+          example: "77e0937879f72858"
+        sessionHandle:
+          type: string
+          description: Handle of the SSO session
+          example: "<session_handle>"
+
+    FlowIssuedSessionData:
+      description: >-
+        An SSO session a step started, with how long its handle stays usable. The session can still end
+        earlier, through its idle timeout or a sign-out.
+      allOf:
+        - $ref: '#/components/schemas/FlowSessionData'
+        - type: object
+          required:
+            - expiresIn
+          properties:
+            expiresIn:
+              type: integer
+              format: int64
+              description: >-
+                Seconds until the session reaches its absolute timeout, after which the handle no longer
+                resumes it. The per-flow session cookie carries the same lifetime as its Max-Age.
+              example: 28800
 
     Data:
       type: object

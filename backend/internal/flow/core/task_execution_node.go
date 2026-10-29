@@ -81,9 +81,13 @@ func (n *taskExecutionNode) Execute(ctx *providers.NodeContext) (*common.NodeRes
 		return nil, &tidcommon.InternalServerError
 	}
 
-	// Set node properties in context
+	// Set node properties in context, with any variable placeholders resolved. A resolved set of properties is a
+	// copy: the node belongs to a graph every execution shares.
 	if len(n.GetProperties()) > 0 {
 		ctx.NodeProperties = n.GetProperties()
+		if resolved, ok := resolveVariables(ctx.NodeProperties, ctx).(map[string]interface{}); ok {
+			ctx.NodeProperties = resolved
+		}
 	} else {
 		ctx.NodeProperties = make(map[string]interface{})
 	}

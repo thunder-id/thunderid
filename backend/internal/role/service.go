@@ -19,6 +19,7 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	resourcepkg "github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/revocation"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -67,6 +68,19 @@ type RoleServiceInterface interface {
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	CascadeDeleteDependencies(ctx context.Context, resourceType, id string) (int, error)
+
+	// Sharing policies decide which organization units a role is shared with.
+	CreateSharingPolicy(ctx context.Context, roleID string, req sharing.PolicyRequest) (
+		sharing.Policy, *tidcommon.ServiceError)
+	GetSharingPolicy(ctx context.Context, roleID, policyID string) (
+		sharing.Policy, *tidcommon.ServiceError)
+	ListSharingPolicies(ctx context.Context, roleID string, limit, offset int) (
+		sharing.PolicyList, *tidcommon.ServiceError)
+	UpdateSharingPolicy(ctx context.Context, roleID, policyID string, req sharing.PolicyRequest) (
+		sharing.Policy, *tidcommon.ServiceError)
+	DeleteSharingPolicy(ctx context.Context, roleID, policyID string) *tidcommon.ServiceError
+	ResolveSharingOverlay(ctx context.Context, roleID, ouID string) (
+		sharing.ResolvedOverlay, *tidcommon.ServiceError)
 }
 
 // roleService is the default implementation of the RoleServiceInterface.
@@ -78,6 +92,8 @@ type roleService struct {
 	resourceService resourcepkg.ResourceServiceInterface
 	transactioner   providers.Transactioner
 	authzService    sysauthz.SystemAuthorizationServiceInterface
+	sharingService  sharing.SharingServiceInterface
+	logger          *log.Logger
 }
 
 // newRoleService creates a new instance of RoleService with injected dependencies.
@@ -89,6 +105,7 @@ func newRoleService(
 	resourceService resourcepkg.ResourceServiceInterface,
 	transactioner providers.Transactioner,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
+	sharingService sharing.SharingServiceInterface,
 ) RoleServiceInterface {
 	return &roleService{
 		roleStore:       roleStore,
@@ -98,6 +115,8 @@ func newRoleService(
 		resourceService: resourceService,
 		transactioner:   transactioner,
 		authzService:    authzService,
+		sharingService:  sharingService,
+		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 	}
 }
 
@@ -362,14 +381,14 @@ func (rs *roleService) UpdateRoleWithPermissions(
 		return nil, svcErr
 	}
 
-	exists, err := rs.roleStore.IsRoleExist(ctx, id)
+	existing, err := rs.roleStore.GetRole(ctx, id)
 	if err != nil {
-		logger.Error(ctx, "Failed to check role existence", log.String("id", id), log.Error(err))
+		if errors.Is(err, ErrRoleNotFound) {
+			logger.Debug(ctx, "Role not found", log.String("id", id))
+			return nil, &ErrorRoleNotFound
+		}
+		logger.Error(ctx, "Failed to retrieve role", log.String("id", id), log.Error(err))
 		return nil, &tidcommon.InternalServerError
-	}
-	if !exists {
-		logger.Debug(ctx, "Role not found", log.String("id", id))
-		return nil, &ErrorRoleNotFound
 	}
 
 	if svcErr := rs.validateRoleMutable(ctx, id); svcErr != nil {
@@ -398,6 +417,17 @@ func (rs *roleService) UpdateRoleWithPermissions(
 		logger.Debug(ctx, "Role name already exists in organization unit",
 			log.String("name", role.Name), log.String("ouID", role.OUID))
 		return nil, &ErrorRoleNameConflict
+	}
+
+	// A shared role stays in its organization unit: its policies were issued against that unit.
+	if role.OUID != existing.OUID {
+		policies, svcErr := rs.sharingService.ListPolicies(ctx, RoleSharingType, id)
+		if svcErr != nil {
+			return nil, translateSharingError(svcErr)
+		}
+		if len(policies) > 0 {
+			return nil, &ErrorSharedRoleCannotMove
+		}
 	}
 
 	err = rs.transactioner.Transact(ctx, func(txCtx context.Context) error {
@@ -443,15 +473,25 @@ func (rs *roleService) DeleteRole(ctx context.Context, id string) *tidcommon.Ser
 		return svcErr
 	}
 
-	// Delete all assignments for the role before deleting the role itself (cascade delete).
-	// The ROLE_ASSIGNMENT table does not have a FK constraint on ROLE_ID to allow assignments
-	// for roles that live in the file-based store, so cascade delete is handled here in code.
+	var capturedSvcErr *tidcommon.ServiceError
 	err = rs.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		// The sharing policies recorded against the role go with it.
+		if svcErr := rs.sharingService.DeletePoliciesForResource(txCtx, RoleSharingType, id); svcErr != nil {
+			capturedSvcErr = svcErr
+			return errors.New("rollback for refused sharing policy removal")
+		}
+
+		// Delete all assignments for the role before deleting the role itself (cascade delete).
+		// The ROLE_ASSIGNMENT table does not have a FK constraint on ROLE_ID to allow assignments
+		// for roles that live in the file-based store, so cascade delete is handled here in code.
 		if err := rs.roleStore.DeleteAssignmentsByRoleID(txCtx, id); err != nil {
 			return err
 		}
 		return rs.roleStore.DeleteRole(txCtx, id)
 	})
+	if capturedSvcErr != nil {
+		return translateSharingError(capturedSvcErr)
+	}
 	if err != nil {
 		logger.Error(ctx, "Failed to delete role", log.String("id", id), log.Error(err))
 		return &tidcommon.InternalServerError
@@ -961,4 +1001,145 @@ func (rs *roleService) CascadeDeleteDependencies(
 	}
 
 	return deleted, nil
+}
+
+// CreateSharingPolicy records which organization units a role is shared with.
+func (rs *roleService) CreateSharingPolicy(
+	ctx context.Context, roleID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	owningOUID, svcErr := rs.requireSharing(ctx, roleID)
+	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	// Roles that load from resource files only have all their sharing declared there.
+	if isDeclarativeModeEnabled() {
+		return sharing.Policy{}, &ErrorImmutableRole
+	}
+	// A declared role's own sharing is declared with it.
+	if req.InitiatingOUID == "" || req.InitiatingOUID == owningOUID {
+		if svcErr := rs.validateRoleMutable(ctx, roleID); svcErr != nil {
+			return sharing.Policy{}, svcErr
+		}
+	}
+	// The framework drops the caller's id and version on an interactive create, so a request
+	// carrying either is answered as though it had not.
+	policy, svcErr := rs.sharingService.CreatePolicy(ctx, RoleSharingType, roleID, owningOUID, req)
+	return policy, translateSharingError(svcErr)
+}
+
+// GetSharingPolicy returns one of the role's sharing policies.
+func (rs *roleService) GetSharingPolicy(
+	ctx context.Context, roleID, policyID string,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	return rs.requireOwnPolicy(ctx, roleID, policyID)
+}
+
+// ListSharingPolicies returns one page of the role's sharing policies.
+func (rs *roleService) ListSharingPolicies(
+	ctx context.Context, roleID string, limit, offset int,
+) (sharing.PolicyList, *tidcommon.ServiceError) {
+	if _, svcErr := rs.requireSharing(ctx, roleID); svcErr != nil {
+		return sharing.PolicyList{}, svcErr
+	}
+	list, svcErr := rs.sharingService.GetPolicyList(ctx, RoleSharingType, roleID, limit, offset)
+	return list, translateSharingError(svcErr)
+}
+
+// UpdateSharingPolicy replaces a sharing policy's contents.
+func (rs *roleService) UpdateSharingPolicy(
+	ctx context.Context, roleID, policyID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	if _, svcErr := rs.requireOwnPolicy(ctx, roleID, policyID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	if isDeclarativeModeEnabled() {
+		return sharing.Policy{}, &ErrorImmutableRole
+	}
+	policy, svcErr := rs.sharingService.UpdatePolicy(ctx, policyID, req)
+	return policy, translateSharingError(svcErr)
+}
+
+// DeleteSharingPolicy removes a sharing policy and the reshares issued beneath it.
+func (rs *roleService) DeleteSharingPolicy(
+	ctx context.Context, roleID, policyID string,
+) *tidcommon.ServiceError {
+	policy, svcErr := rs.requireOwnPolicy(ctx, roleID, policyID)
+	if svcErr != nil {
+		if svcErr.Code == ErrorSharingPolicyNotFound.Code {
+			return nil
+		}
+		return svcErr
+	}
+	if isDeclarativeModeEnabled() {
+		return &ErrorImmutableRole
+	}
+	if policy.Declared {
+		return &ErrorSharingPolicyDeclared
+	}
+	return translateSharingError(rs.sharingService.DeletePolicy(ctx, policyID))
+}
+
+// ResolveSharingOverlay answers whether one organization unit owns the role or is shared it, and
+// which policies reached it.
+func (rs *roleService) ResolveSharingOverlay(
+	ctx context.Context, roleID, ouID string,
+) (sharing.ResolvedOverlay, *tidcommon.ServiceError) {
+	if _, svcErr := rs.requireSharing(ctx, roleID); svcErr != nil {
+		return sharing.ResolvedOverlay{}, svcErr
+	}
+	if ouID == "" {
+		return sharing.ResolvedOverlay{}, &ErrorMissingOUIDParameter
+	}
+	overlay, svcErr := rs.sharingService.ResolveOverlayRules(ctx, RoleSharingType, roleID, ouID)
+	if svcErr != nil {
+		// An id naming no organization unit leaves nothing to resolve either, and answering it as
+		// a malformed policy would describe a mistake the caller did not make.
+		if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
+			return sharing.ResolvedOverlay{}, &ErrorRoleNotSharedToOU
+		}
+		return sharing.ResolvedOverlay{}, translateSharingError(svcErr)
+	}
+	// An organization unit the role never reached holds no terms to answer with.
+	if !overlay.Visible {
+		return sharing.ResolvedOverlay{}, &ErrorRoleNotSharedToOU
+	}
+	return overlay, nil
+}
+
+// requireSharing resolves the role a sharing call names and returns its owning organization unit,
+// so an unknown role answers as one rather than as a sharing failure.
+func (rs *roleService) requireSharing(
+	ctx context.Context, roleID string,
+) (string, *tidcommon.ServiceError) {
+	if roleID == "" {
+		return "", &ErrorMissingRoleID
+	}
+	role, svcErr := rs.GetRoleWithPermissions(ctx, roleID)
+	if svcErr != nil {
+		return "", svcErr
+	}
+	return role.OUID, nil
+}
+
+// requireOwnPolicy fetches a policy and refuses one belonging to another resource. Without it a
+// policy id alone would reach any policy in the deployment through any role's path.
+func (rs *roleService) requireOwnPolicy(
+	ctx context.Context, roleID, policyID string,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	if _, svcErr := rs.requireSharing(ctx, roleID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	policy, svcErr := rs.sharingService.GetPolicy(ctx, policyID)
+	if svcErr != nil {
+		return sharing.Policy{}, translateSharingError(svcErr)
+	}
+	if policy.ResourceType != RoleSharingType || policy.ResourceID != roleID {
+		return sharing.Policy{}, &ErrorSharingPolicyNotFound
+	}
+	return policy, nil
+}
+
+// translateSharingError maps a sharing framework error into this service's own codes.
+func translateSharingError(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
+	return sharingErrors.Translate(svcErr)
 }

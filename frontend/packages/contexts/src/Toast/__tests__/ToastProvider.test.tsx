@@ -172,6 +172,21 @@ describe('ToastProvider', () => {
     expect(isToastVisible()).toBe(false);
   });
 
+  it('gives a toast shown while another is open its own full duration', () => {
+    renderProvider();
+    show('Application suspended.');
+
+    advance(5000);
+    show('Application unsuspended.');
+
+    advance(DEFAULT_DURATION_MS - 1);
+    expect(getAlertText()).toBe('Application unsuspended.');
+    expect(isToastVisible()).toBe(true);
+
+    advance(1);
+    expect(isToastVisible()).toBe(false);
+  });
+
   it('dismisses the toast when the close button is clicked', () => {
     renderProvider();
     show('Saved successfully.');

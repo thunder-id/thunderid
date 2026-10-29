@@ -17,6 +17,7 @@ import (
 type httpConnectionRequest struct {
 	Name           string                       `json:"name"`
 	Description    string                       `json:"description,omitempty"`
+	OUID           string                       `json:"ouId,omitempty"`
 	URL            string                       `json:"url"`
 	TimeoutMS      int                          `json:"timeoutMs,omitempty"`
 	Headers        []httpconnection.Header      `json:"headers,omitempty"`
@@ -28,6 +29,7 @@ type httpConnectionResponse struct {
 	ID             string                      `json:"id"`
 	Name           string                      `json:"name"`
 	Description    string                      `json:"description,omitempty"`
+	OUID           string                      `json:"ouId"`
 	Type           string                      `json:"type"`
 	URL            string                      `json:"url"`
 	TimeoutMS      int                         `json:"timeoutMs"`
@@ -69,6 +71,7 @@ func httpRequestToDTO(req httpConnectionRequest, update bool) (*httpconnection.H
 	return &httpconnection.HTTPConnection{
 		Name:           req.Name,
 		Description:    req.Description,
+		OUID:           req.OUID,
 		URL:            req.URL,
 		TimeoutMS:      req.TimeoutMS,
 		Headers:        req.Headers,
@@ -105,6 +108,7 @@ func httpFromDTO(dto httpconnection.HTTPConnection) (httpConnectionResponse, err
 		ID:             dto.ID,
 		Name:           dto.Name,
 		Description:    dto.Description,
+		OUID:           dto.OUID,
 		Type:           httpVendorName,
 		URL:            dto.URL,
 		TimeoutMS:      dto.TimeoutMS,

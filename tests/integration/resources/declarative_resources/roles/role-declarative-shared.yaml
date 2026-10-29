@@ -1,0 +1,19 @@
+resource_type: role
+id: decl-shared-role
+name: Declarative Shared Role
+description: A declarative role shared with named child organization units
+ouId: decl-m2m-root
+permissions:
+  - resourceServerId: decl-rs-1
+    permissions:
+      - test-resource:read
+# Children A and B are named one by one. Child C is not named, so the role is not shared there.
+sharingPolicies:
+  - id: decl-shared-role-policy-owner
+    childUnits:
+      mode: selected
+      units:
+        - ouId: decl-m2m-child-a
+          reach: unit
+        - ouId: decl-m2m-child-b
+          reach: unit

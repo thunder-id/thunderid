@@ -12,6 +12,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	agentmodel "github.com/thunder-id/thunderid/internal/agent/model"
+	authzdetailmgt "github.com/thunder-id/thunderid/internal/authzdetail/mgt"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entitytype"
@@ -69,13 +70,14 @@ func documentState(doc parsedDocument) (string, bool) {
 }
 
 type roleDeclarativeYAML struct {
-	ID          string                     `yaml:"id"`
-	Name        string                     `yaml:"name"`
-	Description string                     `yaml:"description,omitempty"`
-	OUID        string                     `yaml:"ouId,omitempty"`
-	OUHandle    string                     `yaml:"ouHandle,omitempty"`
-	Permissions []role.ResourcePermissions `yaml:"permissions"`
-	Assignments []role.RoleAssignment      `yaml:"assignments,omitempty"`
+	ID              string                     `yaml:"id"`
+	Name            string                     `yaml:"name"`
+	Description     string                     `yaml:"description,omitempty"`
+	OUID            string                     `yaml:"ouId,omitempty"`
+	OUHandle        string                     `yaml:"ouHandle,omitempty"`
+	Permissions     []role.ResourcePermissions `yaml:"permissions"`
+	Assignments     []role.RoleAssignment      `yaml:"assignments,omitempty"`
+	SharingPolicies []sharing.PolicyRequest    `yaml:"sharingPolicies,omitempty"`
 }
 
 type userDeclarativeYAML struct {
@@ -119,6 +121,7 @@ type layoutDeclarativeYAML struct {
 // notificationTemplateDeclarativeYAML is the import shape for a notification template.
 // It mirrors the API create model with an added channel discriminator.
 type notificationTemplateDeclarativeYAML struct {
+	ID          string `yaml:"id,omitempty"`
 	Channel     string `yaml:"channel"`
 	Handle      string `yaml:"handle"`
 	OUID        string `yaml:"ouId,omitempty"`
@@ -375,6 +378,10 @@ func (s *importService) importRole(
 			if updateErr != nil {
 				return serviceErrorOutcome(resourceTypeRole, req.ID, req.Name, operationUpdate, updateErr)
 			}
+			if outcome := s.applySharingPolicies(ctx, role.RoleSharingType, resourceTypeRole,
+				updated.ID, updated.Name, updated.OUID, req.SharingPolicies, operationUpdate); outcome != nil {
+				return *outcome
+			}
 			if len(req.Assignments) > 0 {
 				if s.roleAssignmentService == nil {
 					return serviceErrorOutcome(resourceTypeRole, updated.ID, updated.Name, operationUpdate,
@@ -397,6 +404,17 @@ func (s *importService) importRole(
 	created, svcErr := s.roleService.CreateRole(ctx, createReq)
 	if svcErr != nil {
 		return serviceErrorOutcome(resourceTypeRole, req.ID, req.Name, operationCreate, svcErr)
+	}
+
+	// A policy names the role it governs, so the policies are replayed once the role exists. A refusal
+	// therefore undoes the create, so a retry does not meet a half-imported role.
+	if outcome := s.applySharingPolicies(ctx, role.RoleSharingType, resourceTypeRole,
+		created.ID, created.Name, created.OUID, req.SharingPolicies, operationCreate); outcome != nil {
+		if delErr := s.roleService.DeleteRole(ctx, created.ID); delErr != nil {
+			log.GetLogger().Error(ctx, "Failed to remove a role whose sharing policies were refused",
+				log.String("roleID", created.ID), log.String("code", delErr.Code))
+		}
+		return *outcome
 	}
 	return successOutcome(resourceTypeRole, created.ID, created.Name, operationCreate)
 }
@@ -873,13 +891,14 @@ func (s *importService) importTranslation(ctx context.Context, doc parsedDocumen
 	return successOutcome(resourceTypeTranslation, "", req.Language, operationUpdate)
 }
 
-// importResourceServerChildren creates resources and actions nested under a resource server.
-// It first computes permission strings via ProcessResourceServer, then calls the resource service
-// for each resource and action.  Existing resources/actions (on upsert paths) are silently skipped.
+// importResourceServerChildren creates the actions of a resource server and the resources and actions
+// nested under it. It first computes permission strings via ProcessResourceServer, then calls the
+// resource service for each resource and action.  Existing resources/actions (on upsert paths) are
+// silently skipped.
 func (s *importService) importResourceServerChildren(
 	ctx context.Context, serverID string, rs providers.ResourceServer,
 ) *tidcommon.ServiceError {
-	if len(rs.Resources) == 0 {
+	if len(rs.Actions) == 0 && len(rs.Resources) == 0 {
 		return nil
 	}
 
@@ -891,6 +910,12 @@ func (s *importService) importResourceServerChildren(
 			Error: tidcommon.I18nMessage{
 				DefaultValue: fmt.Sprintf("failed to process resource server children: %v", err),
 			},
+		}
+	}
+
+	for j := range rs.Actions {
+		if svcErr := s.importResourceServerAction(ctx, serverID, nil, rs.Actions[j]); svcErr != nil {
+			return svcErr
 		}
 	}
 
@@ -943,14 +968,24 @@ func (s *importService) importResourceServerChildren(
 		pathToID[res.Permission] = created.ID
 
 		for j := range res.Actions {
-			action := res.Actions[j]
-			_, actionErr := s.resourceService.CreateAction(ctx, serverID, &created.ID, action)
-			if actionErr != nil && actionErr.Code != resource.ErrorHandleConflict.Code {
-				return actionErr
+			if svcErr := s.importResourceServerAction(ctx, serverID, &created.ID, res.Actions[j]); svcErr != nil {
+				return svcErr
 			}
 		}
 	}
 
+	return nil
+}
+
+// importResourceServerAction creates an action of a resource, or of the resource server itself when
+// resourceID is nil. An action whose handle already exists there is skipped.
+func (s *importService) importResourceServerAction(
+	ctx context.Context, serverID string, resourceID *string, action providers.Action,
+) *tidcommon.ServiceError {
+	_, svcErr := s.resourceService.CreateAction(ctx, serverID, resourceID, action)
+	if svcErr != nil && svcErr.Code != resource.ErrorHandleConflict.Code {
+		return svcErr
+	}
 	return nil
 }
 
@@ -1377,6 +1412,7 @@ func (s *importService) importNotificationTemplate(
 		design = &notificationtemplate.TemplateDesign{ColorScheme: raw.Design.ColorScheme}
 	}
 	createReq := notificationtemplate.CreateTemplateRequest{
+		ID:          raw.ID,
 		Handle:      raw.Handle,
 		OUID:        raw.OUID,
 		DisplayName: raw.DisplayName,
@@ -1468,4 +1504,92 @@ func (s *importService) importNotificationTemplate(
 		return serviceErrorOutcome(resourceTypeNotificationTemplate, existingID, raw.Handle, operationUpdate, updErr)
 	}
 	return successOutcome(resourceTypeNotificationTemplate, updated.ID, updated.Handle, operationUpdate)
+}
+
+// importAuthorizationDetailType imports an authorization_detail_type document.
+func (s *importService) importAuthorizationDetailType(
+	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool,
+) ImportItemOutcome {
+	if s.authorizationDetailTypeService == nil {
+		return unsupportedAdapterOutcome(resourceTypeAuthorizationDetailType, "authorization details type")
+	}
+
+	id, name := extractDocumentIdentity(doc)
+	t, err := authzdetailmgt.ParseAuthorizationDetailTypeNode(doc.Node)
+	if err != nil {
+		return decodeErrorOutcome(resourceTypeAuthorizationDetailType, id, name, err)
+	}
+
+	if dryRun {
+		return s.dryRunAuthorizationDetailType(ctx, t, options)
+	}
+
+	if options.IsUpsertEnabled() && t.ID != "" {
+		updated, svcErr := s.authorizationDetailTypeService.UpdateAuthorizationDetailType(ctx, t.ID, *t)
+		if svcErr == nil {
+			return successOutcome(resourceTypeAuthorizationDetailType, updated.ID, updated.Name, operationUpdate)
+		}
+
+		if !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate, svcErr)
+		}
+	}
+
+	created, svcErr := s.authorizationDetailTypeService.CreateAuthorizationDetailType(ctx, *t)
+	if svcErr != nil {
+		return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationCreate, svcErr)
+	}
+	return successOutcome(resourceTypeAuthorizationDetailType, created.ID, created.Name, operationCreate)
+}
+
+// dryRunAuthorizationDetailType predicts the outcome of importing a type, refusing it in the order the
+// real update or create would.
+func (s *importService) dryRunAuthorizationDetailType(ctx context.Context, t *providers.AuthorizationDetailType,
+	options *ImportOptions) ImportItemOutcome {
+	var existing *providers.AuthorizationDetailType
+	if t.ID != "" {
+		found, svcErr := s.authorizationDetailTypeService.GetAuthorizationDetailType(ctx, t.ID)
+		if svcErr != nil && !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate, svcErr)
+		}
+		existing = found
+	}
+	if existing != nil && options.IsUpsertEnabled() {
+		if existing.IsReadOnly {
+			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate,
+				&authzdetailmgt.ErrorImmutableType)
+		}
+		if existing.Type != t.Type {
+			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate,
+				&authzdetailmgt.ErrorTypeValueImmutable)
+		}
+		if svcErr := s.authorizationDetailTypeService.ValidateAuthorizationDetailType(ctx, *t); svcErr != nil {
+			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate, svcErr)
+		}
+		return successOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate)
+	}
+
+	if authzdetailmgt.IsDeclarativeModeEnabled() {
+		return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationCreate,
+			&authzdetailmgt.ErrorDeclarativeModeCreateNotAllowed)
+	}
+	// A create takes the credential as sent, so it is not checked against a stored type that holds the id.
+	candidate := *t
+	candidate.ID = ""
+	if svcErr := s.authorizationDetailTypeService.ValidateAuthorizationDetailType(ctx, candidate); svcErr != nil {
+		return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationCreate, svcErr)
+	}
+	byValue, svcErr := s.authorizationDetailTypeService.GetAuthorizationDetailTypeByValue(ctx, t.Type)
+	if svcErr != nil {
+		return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationCreate, svcErr)
+	}
+	if byValue != nil {
+		return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationCreate,
+			&authzdetailmgt.ErrorTypeConflict)
+	}
+	if existing != nil {
+		return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationCreate,
+			&authzdetailmgt.ErrorTypeIDConflict)
+	}
+	return successOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationCreate)
 }

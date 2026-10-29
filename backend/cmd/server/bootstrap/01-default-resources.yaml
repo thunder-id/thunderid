@@ -5,6 +5,13 @@ name: Default
 description: Default organization unit
 logoUrl: "avatar:shape=rounded,variant=anonymous_entity,content=pavilion,colors=0"
 ---
+resource_type: project
+id: 01900000-0000-7000-8000-000000000002
+rootOuId: 01900000-0000-7000-8000-000000000001
+handle: default
+displayName: Default
+description: Default organization unit
+---
 resource_type: user_type
 id: 01900000-0000-7000-8000-000000000010
 category: user
@@ -113,6 +120,7 @@ resources:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000061
+ouHandle: default
 name: Default Authentication Flow
 handle: default-flow
 flowType: AUTHENTICATION
@@ -277,6 +285,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000068
+ouHandle: default
 name: Console App Authentication Flow
 handle: console-app-flow
 flowType: AUTHENTICATION
@@ -389,6 +398,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000070
+ouHandle: default
 name: Console App Recovery Flow
 handle: console-app-flow
 flowType: RECOVERY
@@ -545,6 +555,12 @@ nodes:
   type: TASK_EXECUTION
   executor:
     name: CredentialSetter
+  onSuccess: release_account_locks
+- id: release_account_locks
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unlock
   onSuccess: recovery_complete
 - id: recovery_complete
   type: PROMPT
@@ -577,6 +593,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-00000000006a
+ouHandle: default
 name: Default Sign Out Flow
 handle: default-flow
 flowType: SIGNOUT
@@ -633,6 +650,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000067
+ouHandle: default
 name: Default Recovery Flow
 handle: default-flow
 flowType: RECOVERY
@@ -861,13 +879,26 @@ nodes:
   type: TASK_EXECUTION
   executor:
     name: CredentialSetter
-  onSuccess: recovery_complete
+  onSuccess: release_account_locks
   layout:
     size:
       width: 206
       height: 113
     position:
       x: 2820
+      y: 340
+- id: release_account_locks
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unlock
+  onSuccess: recovery_complete
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 3200
       y: 340
 - id: recovery_complete
   type: PROMPT
@@ -895,7 +926,7 @@ nodes:
       width: 350
       height: 340
     position:
-      x: 3140
+      x: 3580
       y: 250
 - id: call_authentication
   type: CALL
@@ -916,11 +947,12 @@ nodes:
       width: 85
       height: 34
     position:
-      x: 3600
+      x: 4040
       y: 375
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000064
+ouHandle: default
 name: Default Registration Flow
 handle: default-flow
 flowType: REGISTRATION
@@ -1162,6 +1194,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000069
+ouHandle: default
 name: Console App Registration Flow
 handle: console-app-flow
 flowType: REGISTRATION
@@ -1321,6 +1354,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000066
+ouHandle: default
 name: Default User Onboarding Flow
 handle: default-flow
 flowType: USER_ONBOARDING
@@ -1811,11 +1845,6 @@ nodes:
       y: 726
 - id: invite_verify
   type: TASK_EXECUTION
-  inputs:
-  - ref: input_003
-    identifier: inviteToken
-    type: HIDDEN
-    required: true
   executor:
     name: InviteExecutor
     mode: verify
@@ -1915,6 +1944,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000077
+ouHandle: default
 name: Default User Deletion Flow
 handle: default-user-deletion-flow
 flowType: ADMINISTRATION
@@ -2005,6 +2035,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000079
+ouHandle: default
 name: Default Application Deletion Flow
 handle: default-application-deletion-flow
 flowType: ADMINISTRATION
@@ -2092,6 +2123,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-00000000007a
+ouHandle: default
 name: Default Secret Regeneration Flow
 handle: default-secret-regeneration-flow
 flowType: ADMINISTRATION
@@ -2181,6 +2213,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000081
+ouHandle: default
 name: Default Role Assignment Removal Flow
 handle: default-role-assignment-removal-flow
 flowType: ADMINISTRATION
@@ -2274,6 +2307,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-00000000007c
+ouHandle: default
 name: Default Action Deletion Flow
 handle: default-action-deletion-flow
 flowType: ADMINISTRATION
@@ -2366,6 +2400,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-00000000007d
+ouHandle: default
 name: Default Role Deletion Flow
 handle: default-role-deletion-flow
 flowType: ADMINISTRATION
@@ -2459,6 +2494,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-00000000007e
+ouHandle: default
 name: Default Group Deletion Flow
 handle: default-group-deletion-flow
 flowType: ADMINISTRATION
@@ -2552,6 +2588,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-00000000007f
+ouHandle: default
 name: Default Group Membership Removal Flow
 handle: default-group-membership-removal-flow
 flowType: ADMINISTRATION
@@ -2645,6 +2682,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000080
+ouHandle: default
 name: Default Role Permission Removal Flow
 handle: default-role-permission-removal-flow
 flowType: ADMINISTRATION
@@ -2738,6 +2776,7 @@ nodes:
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-00000000007b
+ouHandle: default
 name: Default Agent Onboarding Flow
 handle: default-agent-onboarding-flow
 flowType: ADMINISTRATION
@@ -2747,11 +2786,11 @@ nodes:
   onSuccess: permission_validator
   layout:
     size:
-      width: 101
+      width: 61
       height: 34
     position:
-      x: 100
-      y: 200
+      x: 62
+      y: 1131
 - id: permission_validator
   type: TASK_EXECUTION
   executor:
@@ -2759,11 +2798,11 @@ nodes:
   onSuccess: agent_type_resolution
   layout:
     size:
-      width: 206
-      height: 113
+      width: 268
+      height: 117
     position:
-      x: 300
-      y: 175
+      x: 283
+      y: 1089
 - id: agent_type_resolution
   type: TASK_EXECUTION
   properties:
@@ -2775,11 +2814,11 @@ nodes:
   onIncomplete: prompt_agent_type
   layout:
     size:
-      width: 206
-      height: 113
+      width: 278
+      height: 117
     position:
-      x: 440
-      y: 175
+      x: 803
+      y: 1089
 - id: prompt_agent_type
   type: PROMPT
   meta:
@@ -2821,10 +2860,10 @@ nodes:
   layout:
     size:
       width: 350
-      height: 480
+      height: 680
     position:
-      x: 440
-      y: -320
+      x: 1328
+      y: 289
 - id: ou_selection
   type: TASK_EXECUTION
   properties:
@@ -2835,11 +2874,11 @@ nodes:
   onIncomplete: prompt_ou_selection
   layout:
     size:
-      width: 206
-      height: 113
+      width: 217
+      height: 117
     position:
-      x: 580
-      y: 175
+      x: 1417
+      y: 1089
 - id: prompt_ou_selection
   type: PROMPT
   meta:
@@ -2879,23 +2918,23 @@ nodes:
   layout:
     size:
       width: 350
-      height: 525
+      height: 652
     position:
-      x: 580
-      y: -320
+      x: 1947
+      y: 1306
 - id: owner_resolution
   type: TASK_EXECUTION
   executor:
     name: OwnerResolver
-  onSuccess: provisioning
+  onSuccess: prompt_agent_details
   onIncomplete: prompt_owner
   layout:
     size:
-      width: 206
-      height: 113
+      width: 247
+      height: 117
     position:
-      x: 580
-      y: 175
+      x: 2015
+      y: 1089
 - id: prompt_owner
   type: PROMPT
   meta:
@@ -2936,10 +2975,10 @@ nodes:
   layout:
     size:
       width: 350
-      height: 480
+      height: 597
     position:
-      x: 580
-      y: -320
+      x: 2506
+      y: 122
 - id: prompt_agent_details
   type: PROMPT
   meta:
@@ -2969,7 +3008,12 @@ nodes:
         label: '{{ t(agentOnboarding:forms.agent_details.fields.model_provider.label) }}'
         placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.model_provider.placeholder) }}'
         required: false
-        options: []
+        options:
+        - openai
+        - anthropic
+        - gemini
+        - mistral
+        - custom
       - id: input_agent_model
         ref: model
         type: TEXT_INPUT
@@ -2982,7 +3026,15 @@ nodes:
         label: '{{ t(agentOnboarding:forms.agent_details.fields.function.label) }}'
         placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.function.placeholder) }}'
         required: false
-        options: []
+        options:
+        - task-automation
+        - rag-retrieval
+        - code-gen
+        - data-analysis
+        - orchestrator
+        - sub-agent
+        - assistant
+        - custom
       - type: ACTION
         id: action_agent_details
         label: '{{ t(agentOnboarding:forms.agent_details.actions.submit.label) }}'
@@ -3012,29 +3064,27 @@ nodes:
   layout:
     size:
       width: 350
-      height: 646
+      height: 954
     position:
-      x: 1130
-      y: 60
+      x: 3070
+      y: 711
 - id: agent_attribute_uniqueness
   type: TASK_EXECUTION
-  properties:
-    mode: agent
   executor:
     name: AttributeUniquenessValidator
   onSuccess: provisioning
   onIncomplete: prompt_agent_details
   layout:
     size:
-      width: 206
-      height: 113
+      width: 312
+      height: 117
     position:
-      x: 1500
-      y: 175
+      x: 3580
+      y: 1089
 - id: provisioning
   type: TASK_EXECUTION
   properties:
-    mode: agent
+    delegated: false
     includeOptional: true
   executor:
     name: ProvisioningExecutor
@@ -3043,11 +3093,11 @@ nodes:
   onFailure: prompt_agent_details
   layout:
     size:
-      width: 206
-      height: 113
+      width: 216
+      height: 117
     position:
-      x: 900
-      y: 175
+      x: 4052
+      y: 1089
 - id: agent_credentials
   type: PROMPT
   meta:
@@ -3081,19 +3131,19 @@ nodes:
   layout:
     size:
       width: 350
-      height: 520
+      height: 532
     position:
-      x: 1760
-      y: 60
+      x: 4428
+      y: 882
 - id: end
   type: END
   layout:
     size:
-      width: 85
+      width: 45
       height: 34
     position:
-      x: 2110
-      y: 200
+      x: 4938
+      y: 1131
 ---
 resource_type: theme
 id: 01900000-0000-7000-8000-000000000071
@@ -6301,6 +6351,34 @@ translations:
     forms.owner.fields.owner.label: Owner
     forms.owner.fields.owner.placeholder: Select a user
     forms.owner.actions.next.label: Continue
+    forms.obo_details.title: Details for acting on behalf of a user
+    forms.obo_details.subtitle: Provide the redirect URIs, login flow, and user type for an agent that acts on behalf of a signed-in user.
+    forms.obo_details.fields.redirect_uris.label: Authorized redirect URIs
+    forms.obo_details.fields.redirect_uris.placeholder: https://example.com/callback, https://app.example.com/callback
+    forms.obo_details.fields.redirect_uris.hint: The callbacks users return to after signing in. Enter several separated by commas.
+    forms.obo_details.fields.auth_flow.label: Login flow
+    forms.obo_details.fields.auth_flow.placeholder: Select a login flow
+    forms.obo_details.fields.auth_flow.hint: The login flow that signs users in to this agent.
+    forms.obo_details.fields.user_type.label: User type
+    forms.obo_details.fields.user_type.placeholder: Select a user type
+    forms.obo_details.fields.user_type.hint: The user type that may sign in through this agent.
+    forms.obo_details.actions.next.label: Continue
+    forms.delegation.title: Agent mode
+    forms.delegation.subtitle: Choose how this agent acts. It can use its own identity or act on behalf of a signed-in user.
+    forms.delegation.fields.delegated.label: Act on behalf of a signed-in user
+    forms.delegation.fields.redirect_uris.label: Authorized redirect URIs
+    forms.delegation.fields.redirect_uris.placeholder: https://example.com/callback, https://app.example.com/callback
+    forms.delegation.fields.redirect_uris.hint: Used when the agent acts on behalf of a signed-in user. The callbacks users return to after signing in. Enter several separated by commas.
+    forms.delegation.fields.auth_flow.label: Login flow
+    forms.delegation.fields.auth_flow.placeholder: Select a login flow
+    forms.delegation.fields.auth_flow.hint: Used when the agent acts on behalf of a signed-in user. The login flow that signs users in to this agent.
+    forms.delegation.fields.user_type.label: User type
+    forms.delegation.fields.user_type.placeholder: Select a user type
+    forms.delegation.fields.user_type.hint: Used when the agent acts on behalf of a signed-in user. The user type that may sign in through this agent.
+    forms.delegation.actions.next.label: Continue
+    forms.missing_inputs.title: Complete the agent details
+    forms.missing_inputs.subtitle: These details are still needed before the agent can be created.
+    forms.missing_inputs.actions.next.label: Continue
     forms.agent_details.title: Agent Details
     forms.agent_details.subtitle: Name the agent and describe the model it runs on and what it does.
     forms.agent_details.fields.name.label: Name
@@ -6612,8 +6690,692 @@ translations:
     otp.email.expiry: "This code will expire in {{ctx(expiryTime)}}."
     otp.email.ignore: "If you did not request this, you can safely ignore this email."
     otp.sms.body: "Your verification code is: {{ctx(otpCode)}}. It expires in {{ctx(expiryTime)}}."
+    authenticationMethodLocked.email.subject: "Sign-in was temporarily locked on your account"
+    authenticationMethodLocked.email.heading: "Sign-in temporarily locked"
+    authenticationMethodLocked.email.intro: "The {{ctx(lockedAuthenticationMethod)}} sign-in method on your account has been temporarily locked due to multiple failed attempts."
+    authenticationMethodLocked.email.availability: "It will be available again in {{ctx(lockDuration)}}, on {{ctx(unlockTime)}} UTC."
+    authenticationMethodLocked.email.recovery: "To regain access sooner, complete account recovery or contact your administrator."
+    authenticationMethodLocked.email.warning: "<strong>Didn't try to sign in?</strong> Someone else may be trying to get into your account. Report this to your administrator. Once you regain access, change your credentials and check that your email address and phone number are still yours."
+    authenticationMethodLockedPermanent.email.subject: "Sign-in was locked on your account"
+    authenticationMethodLockedPermanent.email.heading: "Sign-in locked"
+    authenticationMethodLockedPermanent.email.intro: "The {{ctx(lockedAuthenticationMethod)}} sign-in method on your account has been locked due to multiple failed attempts."
+    authenticationMethodLockedPermanent.email.notice: "This lock does not expire automatically."
+    authenticationMethodLockedPermanent.email.recovery: "To regain access, complete account recovery or contact your administrator."
+    authenticationMethodLockedPermanent.email.warning: "<strong>Didn't try to sign in?</strong> Someone else may be trying to get into your account. Report this to your administrator. Once you regain access, change your credentials and check that your email address and phone number are still yours."
+    accountLocked.email.subject: "Sign-in was temporarily locked on your account"
+    accountLocked.email.heading: "Sign-in temporarily locked"
+    accountLocked.email.intro: "Sign-in to your account has been temporarily locked due to multiple failed attempts."
+    accountLocked.email.availability: "It will be available again in {{ctx(lockDuration)}}, on {{ctx(unlockTime)}} UTC."
+    accountLocked.email.recovery: "To regain access sooner, complete account recovery or contact your administrator."
+    accountLocked.email.warning: "<strong>Didn't try to sign in?</strong> Someone else may be trying to get into your account. Report this to your administrator. Once you regain access, change your credentials and check that your email address and phone number are still yours."
+    accountLockedPermanent.email.subject: "Sign-in was locked on your account"
+    accountLockedPermanent.email.heading: "Sign-in locked"
+    accountLockedPermanent.email.intro: "Sign-in to your account has been locked due to multiple failed attempts."
+    accountLockedPermanent.email.notice: "This lock does not expire automatically."
+    accountLockedPermanent.email.recovery: "To regain access, complete account recovery or contact your administrator."
+    accountLockedPermanent.email.warning: "<strong>Didn't try to sign in?</strong> Someone else may be trying to get into your account. Report this to your administrator. Once you regain access, change your credentials and check that your email address and phone number are still yours."
+    accountSuspended.email.subject: "Your account has been suspended"
+    accountSuspended.email.heading: "Your account has been suspended"
+    accountSuspended.email.intro: "Your account has been suspended by an administrator. You can no longer sign in, and your existing sessions have been ended."
+    accountSuspended.email.recovery: "To regain access, contact your administrator. Only an administrator can lift the suspension."
+    accountUnsuspended.email.subject: "The suspension on your account has been lifted"
+    accountUnsuspended.email.heading: "Your account suspension has been lifted"
+    accountUnsuspended.email.intro: "An administrator has lifted the suspension on your account."
+    accountUnsuspended.email.notice: "<strong>Your account is still locked.</strong> To sign in again, complete account recovery or contact your administrator."
+    accountUnlocked.email.subject: "Your account has been unlocked"
+    accountUnlocked.email.heading: "Your account has been unlocked"
+    accountUnlocked.email.intro: "An administrator has unlocked your account. You can sign in again."
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000087
+ouHandle: default
+name: Default User Unlock Flow
+handle: default-user-unlock-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:user
+  executor:
+    name: PermissionValidator
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unlock
+  onSuccess: notify_holder
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 680
+      y: 175
+- id: notify_holder
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: account-unlocked
+    bestEffort: true
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1060
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1440
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000086
+ouHandle: default
+name: Default Agent Unlock Flow
+handle: default-agent-unlock-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:agent
+  executor:
+    name: PermissionValidator
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unlock
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 680
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1060
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000088
+ouHandle: default
+name: Default User Suspend Flow
+handle: default-user-suspend-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:user
+  executor:
+    name: PermissionValidator
+  onSuccess: pre_suspend
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: pre_suspend
+  type: TASK_EXECUTION
+  executor:
+    name: PreSuspendExecutor
+  onSuccess: revoke_tokens
+  layout:
+    size:
+      width: 220
+      height: 113
+    position:
+      x: 680
+      y: 175
+- id: revoke_tokens
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+  onSuccess: revoke_sessions
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1060
+      y: 175
+- id: revoke_sessions
+  type: TASK_EXECUTION
+  executor:
+    name: SessionRevocationExecutor
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1440
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: suspend
+  onSuccess: notify_holder
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1820
+      y: 175
+- id: notify_holder
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: account-suspended
+    bestEffort: true
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 2200
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 2580
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000089
+ouHandle: default
+name: Default User Unsuspend Flow
+handle: default-user-unsuspend-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:user
+  executor:
+    name: PermissionValidator
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unsuspend
+  onSuccess: notify_holder
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 680
+      y: 175
+- id: notify_holder
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: account-unsuspended
+    bestEffort: true
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1060
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1440
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000082
+ouHandle: default
+name: Default Agent Suspend Flow
+handle: default-agent-suspend-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:agent
+  executor:
+    name: PermissionValidator
+  onSuccess: pre_suspend
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: pre_suspend
+  type: TASK_EXECUTION
+  executor:
+    name: PreSuspendExecutor
+  onSuccess: revoke_tokens
+  layout:
+    size:
+      width: 220
+      height: 113
+    position:
+      x: 680
+      y: 175
+- id: revoke_tokens
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+  onSuccess: revoke_sessions
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1060
+      y: 175
+- id: revoke_sessions
+  type: TASK_EXECUTION
+  executor:
+    name: SessionRevocationExecutor
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1440
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: suspend
+  onSuccess: notify_holder
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1820
+      y: 175
+- id: notify_holder
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: account-suspended
+    bestEffort: true
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 2200
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 2580
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000083
+ouHandle: default
+name: Default Agent Unsuspend Flow
+handle: default-agent-unsuspend-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:agent
+  executor:
+    name: PermissionValidator
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unsuspend
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 680
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1060
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000084
+ouHandle: default
+name: Default Application Suspend Flow
+handle: default-application-suspend-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system
+  executor:
+    name: PermissionValidator
+  onSuccess: pre_suspend
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: pre_suspend
+  type: TASK_EXECUTION
+  executor:
+    name: PreSuspendExecutor
+  onSuccess: revoke_tokens
+  layout:
+    size:
+      width: 220
+      height: 113
+    position:
+      x: 680
+      y: 175
+- id: revoke_tokens
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+  onSuccess: revoke_sessions
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1060
+      y: 175
+- id: revoke_sessions
+  type: TASK_EXECUTION
+  executor:
+    name: SessionRevocationExecutor
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1440
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: suspend
+  onSuccess: notify_holder
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1820
+      y: 175
+- id: notify_holder
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: account-suspended
+    bestEffort: true
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 2200
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 2580
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000085
+ouHandle: default
+name: Default Application Unsuspend Flow
+handle: default-application-unsuspend-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system
+  executor:
+    name: PermissionValidator
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unsuspend
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 680
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1060
+      y: 200
 ---
 resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000a0
 channel: email
 handle: user-invite
 ouHandle: default
@@ -6637,6 +7399,7 @@ content:
     </html>
 ---
 resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000a1
 channel: sms
 handle: user-invite
 ouHandle: default
@@ -6646,6 +7409,7 @@ content:
   body: "{{t(userInvite.sms.body)}}"
 ---
 resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000a2
 channel: email
 handle: self-registration
 ouHandle: default
@@ -6669,6 +7433,7 @@ content:
     </html>
 ---
 resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000a3
 channel: sms
 handle: self-registration
 ouHandle: default
@@ -6678,6 +7443,7 @@ content:
   body: "{{t(selfRegistration.sms.body)}}"
 ---
 resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000a4
 channel: email
 handle: magic-link
 ouHandle: default
@@ -6702,6 +7468,7 @@ content:
     </html>
 ---
 resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000a5
 channel: email
 handle: password-recovery
 ouHandle: default
@@ -6733,6 +7500,7 @@ content:
     </html>
 ---
 resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000a6
 channel: email
 handle: ciba-notification
 ouHandle: default
@@ -6759,6 +7527,7 @@ content:
     </html>
 ---
 resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000a7
 channel: sms
 handle: ciba-notification
 ouHandle: default
@@ -6768,6 +7537,7 @@ content:
   body: "{{t(cibaNotification.sms.body)}}"
 ---
 resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000a8
 channel: email
 handle: otp
 ouHandle: default
@@ -6792,6 +7562,7 @@ content:
     </html>
 ---
 resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000a9
 channel: sms
 handle: otp
 ouHandle: default
@@ -6801,81 +7572,141 @@ content:
   body: "{{t(otp.sms.body)}}"
 ---
 resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000aa
 channel: email
 handle: authentication-method-locked
 ouHandle: default
 displayName: Account Temporarily Locked Email
 description: Sent when repeated failed sign-ins lock one sign-in method for a limited time.
 content:
-  subject: "Sign-in was temporarily locked on your account"
+  subject: "{{t(authenticationMethodLocked.email.subject)}}"
   body: |
     <!DOCTYPE html>
     <html>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
-      <h2>Sign-in temporarily locked</h2>
-      <p>The {{ctx(authenticationMethod)}} sign-in method on your account has been temporarily locked due to multiple failed attempts.</p>
-      <p><strong>It will be available again in {{ctx(lockDuration)}}, on {{ctx(unlockTime)}} UTC.</strong></p>
-      <p>To regain access sooner, complete account recovery or contact your administrator.</p>
-      <p><strong>Didn't try to sign in?</strong> Someone else may be trying to get into your account. Report this to your administrator. Once you regain access, change your credentials and check that your email address and phone number are still yours.</p>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: {{design(palette.text.primary)}}; background-color: {{design(palette.background.default)}};">
+      <h2>{{t(authenticationMethodLocked.email.heading)}}</h2>
+      <p>{{t(authenticationMethodLocked.email.intro)}}</p>
+      <p><strong>{{t(authenticationMethodLocked.email.availability)}}</strong></p>
+      <p>{{t(authenticationMethodLocked.email.recovery)}}</p>
+      <p>{{t(authenticationMethodLocked.email.warning)}}</p>
     </body>
     </html>
 ---
 resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000ab
 channel: email
 handle: authentication-method-locked-permanent
 ouHandle: default
 displayName: Account Locked Email
 description: Sent when repeated failed sign-ins lock one sign-in method until it is released.
 content:
-  subject: "Sign-in was locked on your account"
+  subject: "{{t(authenticationMethodLockedPermanent.email.subject)}}"
   body: |
     <!DOCTYPE html>
     <html>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
-      <h2>Sign-in locked</h2>
-      <p>The {{ctx(authenticationMethod)}} sign-in method on your account has been locked due to multiple failed attempts.</p>
-      <p><strong>This lock does not expire automatically.</strong></p>
-      <p>To regain access, complete account recovery or contact your administrator.</p>
-      <p><strong>Didn't try to sign in?</strong> Someone else may be trying to get into your account. Report this to your administrator. Once you regain access, change your credentials and check that your email address and phone number are still yours.</p>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: {{design(palette.text.primary)}}; background-color: {{design(palette.background.default)}};">
+      <h2>{{t(authenticationMethodLockedPermanent.email.heading)}}</h2>
+      <p>{{t(authenticationMethodLockedPermanent.email.intro)}}</p>
+      <p><strong>{{t(authenticationMethodLockedPermanent.email.notice)}}</strong></p>
+      <p>{{t(authenticationMethodLockedPermanent.email.recovery)}}</p>
+      <p>{{t(authenticationMethodLockedPermanent.email.warning)}}</p>
     </body>
     </html>
 ---
 resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000ac
 channel: email
 handle: account-locked
 ouHandle: default
 displayName: Account Sign-in Temporarily Locked Email
 description: Sent when repeated failed sign-ins lock every sign-in method on the account for a limited time.
 content:
-  subject: "Sign-in was temporarily locked on your account"
+  subject: "{{t(accountLocked.email.subject)}}"
   body: |
     <!DOCTYPE html>
     <html>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
-      <h2>Sign-in temporarily locked</h2>
-      <p>Sign-in to your account has been temporarily locked due to multiple failed attempts.</p>
-      <p><strong>It will be available again in {{ctx(lockDuration)}}, on {{ctx(unlockTime)}} UTC.</strong></p>
-      <p>To regain access sooner, complete account recovery or contact your administrator.</p>
-      <p><strong>Didn't try to sign in?</strong> Someone else may be trying to get into your account. Report this to your administrator. Once you regain access, change your credentials and check that your email address and phone number are still yours.</p>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: {{design(palette.text.primary)}}; background-color: {{design(palette.background.default)}};">
+      <h2>{{t(accountLocked.email.heading)}}</h2>
+      <p>{{t(accountLocked.email.intro)}}</p>
+      <p><strong>{{t(accountLocked.email.availability)}}</strong></p>
+      <p>{{t(accountLocked.email.recovery)}}</p>
+      <p>{{t(accountLocked.email.warning)}}</p>
     </body>
     </html>
 ---
 resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000ad
 channel: email
 handle: account-locked-permanent
 ouHandle: default
 displayName: Account Sign-in Locked Email
 description: Sent when repeated failed sign-ins lock every sign-in method on the account until it is released.
 content:
-  subject: "Sign-in was locked on your account"
+  subject: "{{t(accountLockedPermanent.email.subject)}}"
   body: |
     <!DOCTYPE html>
     <html>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
-      <h2>Sign-in locked</h2>
-      <p>Sign-in to your account has been locked due to multiple failed attempts.</p>
-      <p><strong>This lock does not expire automatically.</strong></p>
-      <p>To regain access, complete account recovery or contact your administrator.</p>
-      <p><strong>Didn't try to sign in?</strong> Someone else may be trying to get into your account. Report this to your administrator. Once you regain access, change your credentials and check that your email address and phone number are still yours.</p>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: {{design(palette.text.primary)}}; background-color: {{design(palette.background.default)}};">
+      <h2>{{t(accountLockedPermanent.email.heading)}}</h2>
+      <p>{{t(accountLockedPermanent.email.intro)}}</p>
+      <p><strong>{{t(accountLockedPermanent.email.notice)}}</strong></p>
+      <p>{{t(accountLockedPermanent.email.recovery)}}</p>
+      <p>{{t(accountLockedPermanent.email.warning)}}</p>
+    </body>
+    </html>
+---
+resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000ae
+channel: email
+handle: account-suspended
+ouHandle: default
+displayName: Account Suspended Email
+description: Sent when an administrator suspends an account.
+content:
+  subject: "{{t(accountSuspended.email.subject)}}"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: {{design(palette.text.primary)}}; background-color: {{design(palette.background.default)}};">
+      <h2>{{t(accountSuspended.email.heading)}}</h2>
+      <p>{{t(accountSuspended.email.intro)}}</p>
+      <p>{{t(accountSuspended.email.recovery)}}</p>
+    </body>
+    </html>
+---
+resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000af
+channel: email
+handle: account-unsuspended
+ouHandle: default
+displayName: Account Suspension Lifted Email
+description: Sent when an administrator lifts a suspension. The account stays locked until it is recovered or unlocked.
+content:
+  subject: "{{t(accountUnsuspended.email.subject)}}"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: {{design(palette.text.primary)}}; background-color: {{design(palette.background.default)}};">
+      <h2>{{t(accountUnsuspended.email.heading)}}</h2>
+      <p>{{t(accountUnsuspended.email.intro)}}</p>
+      <p>{{t(accountUnsuspended.email.notice)}}</p>
+    </body>
+    </html>
+---
+resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000b0
+channel: email
+handle: account-unlocked
+ouHandle: default
+displayName: Account Unlocked Email
+description: Sent when an administrator unlocks an account.
+content:
+  subject: "{{t(accountUnlocked.email.subject)}}"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: {{design(palette.text.primary)}}; background-color: {{design(palette.background.default)}};">
+      <h2>{{t(accountUnlocked.email.heading)}}</h2>
+      <p>{{t(accountUnlocked.email.intro)}}</p>
     </body>
     </html>

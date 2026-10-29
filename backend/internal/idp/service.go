@@ -9,19 +9,20 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/group"
+	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/role"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/system/valuecompare"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -42,9 +43,17 @@ type IDPServiceInterface interface {
 	GetIDPUsages(ctx context.Context, idpID string) (*resourcedependency.DependenciesResponse, *tidcommon.ServiceError)
 	SetDependencyRegistry(r resourcedependency.Registry)
 	ApplySchemaAwareDefaults(ctx context.Context, idp *providers.IDPDTO)
+	ResolveIdentityProviderOU(ctx context.Context, idp *providers.IDPDTO) *tidcommon.ServiceError
 	GetDirectAuthorizationTargets(
 		ctx context.Context, idp *providers.IDPDTO, claims map[string]interface{},
 	) ([]providers.AuthorizationTarget, *tidcommon.ServiceError)
+}
+
+// ownerErrors are the errors given when the organization unit of an identity provider is refused.
+var ownerErrors = ou.OwnerErrors{
+	Required: ErrorIDPOURequired,
+	NotFound: ErrorInvalidIDPOU,
+	Changed:  ErrorIDPOUUpdateNotAllowed,
 }
 
 // idpService is the default implementation of the IdPServiceInterface.
@@ -55,6 +64,7 @@ type idpService struct {
 	groupService       group.GroupServiceInterface
 	resourceService    providers.ResourceServerProvider
 	transactioner      providers.Transactioner
+	ouService          ou.OrganizationUnitServiceInterface
 	dependencyRegistry resourcedependency.Registry
 	logger             *log.Logger
 	uuidGenerator      func() (string, error)
@@ -83,7 +93,8 @@ func (u userTypeAttributes) isRequired(attr string) bool {
 // newIDPService creates a new instance of IdPService.
 func newIDPService(idpStore idpStoreInterface, entityTypeService entitytype.EntityTypeServiceInterface,
 	roleService role.RoleServiceInterface, groupService group.GroupServiceInterface,
-	resourceService providers.ResourceServerProvider, transactioner providers.Transactioner) IDPServiceInterface {
+	resourceService providers.ResourceServerProvider, transactioner providers.Transactioner,
+	ouService ou.OrganizationUnitServiceInterface) IDPServiceInterface {
 	return &idpService{
 		idpStore:          idpStore,
 		entityTypeService: entityTypeService,
@@ -91,6 +102,7 @@ func newIDPService(idpStore idpStoreInterface, entityTypeService entitytype.Enti
 		groupService:      groupService,
 		resourceService:   resourceService,
 		transactioner:     transactioner,
+		ouService:         ouService,
 		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "IdPService")),
 		uuidGenerator:     utils.GenerateUUIDv7,
 	}
@@ -111,6 +123,9 @@ func (is *idpService) CreateIdentityProvider(
 	// silently restore a section the administrator removed.
 	is.ApplySchemaAwareDefaults(ctx, idp)
 	if svcErr := is.validateAttributeConfiguration(ctx, idp); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := is.ResolveIdentityProviderOU(ctx, idp); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -156,6 +171,21 @@ func (is *idpService) CreateIdentityProvider(
 	}
 
 	return idp, nil
+}
+
+// ResolveIdentityProviderOU sets the organization unit an identity provider is owned by. The owner is named by id or by
+// handle, and a handle is resolved to the id of the unit it names; when both are given the id wins. An identity
+// provider has to name an organization unit, and it has to exist. The owner is only recorded: nothing restricts what an
+// organization unit can do with an identity provider it does not own.
+func (is *idpService) ResolveIdentityProviderOU(
+	ctx context.Context, idp *providers.IDPDTO,
+) *tidcommon.ServiceError {
+	ouID, svcErr := is.ouService.ResolveOwner(ctx, idp.OUID, idp.OUHandle, ownerErrors)
+	if svcErr != nil {
+		return svcErr
+	}
+	idp.OUID = ouID
+	return nil
 }
 
 // GetIdentityProviderList retrieves the list of all Identity Providers.
@@ -277,6 +307,15 @@ func (is *idpService) UpdateIdentityProvider(
 			}
 			return err
 		}
+
+		// Prevent changing the organization unit. Leaving it out keeps the one the identity provider has.
+		ouID, ouErr := is.ouService.ResolveOwnerForUpdate(
+			txCtx, idp.OUID, idp.OUHandle, existingIDP.OUID, ownerErrors)
+		if ouErr != nil {
+			svcErr = ouErr
+			return errors.New("organization unit of an identity provider cannot be resolved")
+		}
+		idp.OUID = ouID
 
 		// If the name is being updated, check whether another IdP with the same name exists
 		if existingIDP.Name != idp.Name {
@@ -1005,7 +1044,7 @@ func validateAuthorizationRule(
 		})
 	}
 	if valueType == providers.AuthorizationValueTypeNumber {
-		if _, err := strconv.ParseFloat(strings.TrimSpace(rule.Value), 64); err != nil {
+		if err := valuecompare.Validate(strings.TrimSpace(rule.Value), valuecompare.TypeNumber); err != nil {
 			return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 				Key: "error.idpservice.authorization_rule_mapping_value_not_number_description",
 				DefaultValue: "authorization rule mapping for claim '{{param(claim)}}' has value " +
@@ -1015,7 +1054,7 @@ func validateAuthorizationRule(
 		}
 	}
 	if valueType == providers.AuthorizationValueTypeBoolean {
-		if _, err := strconv.ParseBool(strings.TrimSpace(rule.Value)); err != nil {
+		if err := valuecompare.Validate(strings.TrimSpace(rule.Value), valuecompare.TypeBoolean); err != nil {
 			return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 				Key: "error.idpservice.authorization_rule_mapping_value_not_boolean_description",
 				DefaultValue: "authorization rule mapping for claim '{{param(claim)}}' has value " +

@@ -26,7 +26,7 @@ The proof JWT is a one-time, short-lived JWT signed by the client. Each call to 
 | Detection | A `DPoP` header on `/oauth2/token` switches the response `token_type` from `Bearer` to `DPoP` |
 | Token binding | The proof's public-key thumbprint (`jkt`) is embedded in the issued access token as `cnf.jkt` |
 | Refresh token binding | Refresh tokens issued under DPoP are **also** sender-constrained; refreshing requires a DPoP proof |
-| Supported signing algorithms | `RS256`, `RS512`, `PS256`, `ES256`, `ES384`, `ES512`, `EdDSA` (configurable via `oauth.dpop.allowed_algs`). Symmetric algorithms are rejected. |
+| Supported signing algorithms | `RS256`, `RS512`, `PS256`, `ES256`, `ES384`, `ES512`, `EdDSA`, `ML-DSA-44`, `ML-DSA-65`, `ML-DSA-87` (configurable via `oauth.dpop.allowed_algs`). An ML-DSA proof carries the client's public key as an AKP JWK (RFC 9964). Symmetric algorithms are rejected. |
 | Header type | The proof's JWT header must include `typ: dpop+jwt` |
 | Replay protection | JTI-based replay store; each `jti` accepted at most once within the configured window |
 | Where DPoP applies | `/oauth2/token`, `/oauth2/par`, and downstream resource servers that validate the proof |

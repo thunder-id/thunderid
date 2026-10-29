@@ -9,7 +9,6 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
-	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -595,46 +594,6 @@ func (_c *IdentityGovernanceServiceInterfaceMock_RecordLogin_Call) RunAndReturn(
 	return _c
 }
 
-// SetServerConfigService provides a mock function for the type IdentityGovernanceServiceInterfaceMock
-func (_mock *IdentityGovernanceServiceInterfaceMock) SetServerConfigService(serverConfigService serverconfig.ServerConfigService) {
-	_mock.Called(serverConfigService)
-	return
-}
-
-// IdentityGovernanceServiceInterfaceMock_SetServerConfigService_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetServerConfigService'
-type IdentityGovernanceServiceInterfaceMock_SetServerConfigService_Call struct {
-	*mock.Call
-}
-
-// SetServerConfigService is a helper method to define mock.On call
-//   - serverConfigService serverconfig.ServerConfigService
-func (_e *IdentityGovernanceServiceInterfaceMock_Expecter) SetServerConfigService(serverConfigService any) *IdentityGovernanceServiceInterfaceMock_SetServerConfigService_Call {
-	return &IdentityGovernanceServiceInterfaceMock_SetServerConfigService_Call{Call: _e.mock.On("SetServerConfigService", serverConfigService)}
-}
-
-func (_c *IdentityGovernanceServiceInterfaceMock_SetServerConfigService_Call) Run(run func(serverConfigService serverconfig.ServerConfigService)) *IdentityGovernanceServiceInterfaceMock_SetServerConfigService_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 serverconfig.ServerConfigService
-		if args[0] != nil {
-			arg0 = args[0].(serverconfig.ServerConfigService)
-		}
-		run(
-			arg0,
-		)
-	})
-	return _c
-}
-
-func (_c *IdentityGovernanceServiceInterfaceMock_SetServerConfigService_Call) Return() *IdentityGovernanceServiceInterfaceMock_SetServerConfigService_Call {
-	_c.Call.Return()
-	return _c
-}
-
-func (_c *IdentityGovernanceServiceInterfaceMock_SetServerConfigService_Call) RunAndReturn(run func(serverConfigService serverconfig.ServerConfigService)) *IdentityGovernanceServiceInterfaceMock_SetServerConfigService_Call {
-	_c.Run(run)
-	return _c
-}
-
 // Suspend provides a mock function for the type IdentityGovernanceServiceInterfaceMock
 func (_mock *IdentityGovernanceServiceInterfaceMock) Suspend(ctx context.Context, entityID string, operatorNote string) *common.ServiceError {
 	ret := _mock.Called(ctx, entityID, operatorNote)
@@ -819,16 +778,16 @@ func (_c *IdentityGovernanceServiceInterfaceMock_Unsuspend_Call) RunAndReturn(ru
 }
 
 // ValidateSuspend provides a mock function for the type IdentityGovernanceServiceInterfaceMock
-func (_mock *IdentityGovernanceServiceInterfaceMock) ValidateSuspend(ctx context.Context, entityID string) *common.ServiceError {
-	ret := _mock.Called(ctx, entityID)
+func (_mock *IdentityGovernanceServiceInterfaceMock) ValidateSuspend(ctx context.Context, entityID string, operatorNote string) *common.ServiceError {
+	ret := _mock.Called(ctx, entityID, operatorNote)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ValidateSuspend")
 	}
 
 	var r0 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
-		r0 = returnFunc(ctx, entityID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, entityID, operatorNote)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*common.ServiceError)
@@ -845,11 +804,12 @@ type IdentityGovernanceServiceInterfaceMock_ValidateSuspend_Call struct {
 // ValidateSuspend is a helper method to define mock.On call
 //   - ctx context.Context
 //   - entityID string
-func (_e *IdentityGovernanceServiceInterfaceMock_Expecter) ValidateSuspend(ctx any, entityID any) *IdentityGovernanceServiceInterfaceMock_ValidateSuspend_Call {
-	return &IdentityGovernanceServiceInterfaceMock_ValidateSuspend_Call{Call: _e.mock.On("ValidateSuspend", ctx, entityID)}
+//   - operatorNote string
+func (_e *IdentityGovernanceServiceInterfaceMock_Expecter) ValidateSuspend(ctx any, entityID any, operatorNote any) *IdentityGovernanceServiceInterfaceMock_ValidateSuspend_Call {
+	return &IdentityGovernanceServiceInterfaceMock_ValidateSuspend_Call{Call: _e.mock.On("ValidateSuspend", ctx, entityID, operatorNote)}
 }
 
-func (_c *IdentityGovernanceServiceInterfaceMock_ValidateSuspend_Call) Run(run func(ctx context.Context, entityID string)) *IdentityGovernanceServiceInterfaceMock_ValidateSuspend_Call {
+func (_c *IdentityGovernanceServiceInterfaceMock_ValidateSuspend_Call) Run(run func(ctx context.Context, entityID string, operatorNote string)) *IdentityGovernanceServiceInterfaceMock_ValidateSuspend_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -859,9 +819,14 @@ func (_c *IdentityGovernanceServiceInterfaceMock_ValidateSuspend_Call) Run(run f
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -872,7 +837,7 @@ func (_c *IdentityGovernanceServiceInterfaceMock_ValidateSuspend_Call) Return(se
 	return _c
 }
 
-func (_c *IdentityGovernanceServiceInterfaceMock_ValidateSuspend_Call) RunAndReturn(run func(ctx context.Context, entityID string) *common.ServiceError) *IdentityGovernanceServiceInterfaceMock_ValidateSuspend_Call {
+func (_c *IdentityGovernanceServiceInterfaceMock_ValidateSuspend_Call) RunAndReturn(run func(ctx context.Context, entityID string, operatorNote string) *common.ServiceError) *IdentityGovernanceServiceInterfaceMock_ValidateSuspend_Call {
 	_c.Call.Return(run)
 	return _c
 }

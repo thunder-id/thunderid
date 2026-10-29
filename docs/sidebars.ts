@@ -206,6 +206,7 @@ const sidebars: SidebarsConfig = {
                 {type: 'doc', id: 'use-cases/b2c/tokens-and-apis', label: 'Protect APIs'},
                 {type: 'doc', id: 'use-cases/b2c/sessions-and-logout', label: 'Sessions & Logout'},
                 {type: 'doc', id: 'use-cases/b2c/notification', label: 'Notification'},
+                {type: 'doc', id: 'use-cases/b2c/conditional-journeys', label: 'Conditional Journeys'},
                 {type: 'doc', id: 'use-cases/b2c/operations', label: 'Run & Observe'},
               ],
             },
@@ -522,6 +523,30 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'category',
+          label: 'Account Protection',
+          collapsed: true,
+          collapsible: true,
+          items: [
+            {
+              type: 'doc',
+              id: 'guides/account-protection/overview',
+              label: 'Overview',
+              key: 'account-protection-overview',
+            },
+            {
+              type: 'doc',
+              id: 'guides/account-protection/configure-account-lockout',
+              label: 'Configure Account Lockout',
+            },
+            {
+              type: 'doc',
+              id: 'guides/account-protection/suspend-and-restore-accounts',
+              label: 'Suspend and Restore Accounts',
+            },
+          ],
+        },
+        {
+          type: 'category',
           label: 'MCP',
           key: 'guides-mcp',
           collapsed: true,
@@ -630,6 +655,11 @@ const sidebars: SidebarsConfig = {
                   type: 'doc',
                   id: 'guides/identity-providers/connect-idp-to-application',
                   label: 'Connect IdP to Application',
+                },
+                {
+                  type: 'doc',
+                  id: 'guides/identity-providers/link-accounts',
+                  label: 'Link Accounts',
                 },
                 {
                   type: 'doc',
@@ -1005,6 +1035,11 @@ const sidebars: SidebarsConfig = {
                       type: 'doc',
                       id: 'guides/protocols/oauth-oidc/rp-initiated-logout',
                       label: 'RP-Initiated Logout',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'guides/protocols/oauth-oidc/backchannel-logout',
+                      label: 'Back-Channel Logout',
                     },
                     {type: 'doc', id: 'guides/protocols/oauth-oidc/userinfo', label: 'UserInfo'},
                     {type: 'doc', id: 'guides/protocols/oauth-oidc/claims-and-scopes', label: 'Claims & Scopes'},

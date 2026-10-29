@@ -210,4 +210,40 @@ describe('buildConnectionCards', () => {
       navTarget: '/connections/google/g1',
     });
   });
+
+  describe('default email sender', () => {
+    const SMTP_VENDOR: ConnectionVendorMeta = {
+      key: 'email-smtp',
+      backendType: 'email-smtp',
+      displayName: 'SMTP',
+      descriptionKey: 'connections:vendor.smtp.description',
+      logo: LOGO,
+      categories: ['email'],
+      presentation: 'custom',
+    };
+    const instances: ConnectionInstance[] = [
+      {id: 'sm1', name: 'Corp SMTP', type: 'email-smtp', categories: ['email-provider']},
+      {id: 'sm2', name: 'Backup SMTP', type: 'email-smtp', categories: ['email-provider']},
+      {id: 's1', name: 'Corp Gateway', type: 'sms-gateway', categories: ['sms-provider']},
+    ];
+
+    it('marks only the email sender the notification section names', () => {
+      const cards = buildConnectionCards(instances, [...VENDORS, SMTP_VENDOR], undefined, 'sm2');
+
+      expect(cards.find((c) => c.id === 'email-smtp:sm2')?.isDefault).toBe(true);
+      expect(cards.find((c) => c.id === 'email-smtp:sm1')?.isDefault).toBe(false);
+    });
+
+    it('never marks a connection that is not an email sender', () => {
+      const cards = buildConnectionCards(instances, [...VENDORS, SMTP_VENDOR], undefined, 's1');
+
+      expect(cards.some((c) => c.isDefault)).toBe(false);
+    });
+
+    it('marks nothing when no default is set', () => {
+      const cards = buildConnectionCards(instances, [...VENDORS, SMTP_VENDOR]);
+
+      expect(cards.some((c) => c.isDefault)).toBe(false);
+    });
+  });
 });

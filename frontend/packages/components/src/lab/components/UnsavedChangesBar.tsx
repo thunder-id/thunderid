@@ -16,6 +16,8 @@ export interface UnsavedChangesBarProps {
   isSaving: boolean;
   /** Whether the save button should be disabled (e.g. due to validation errors). */
   saveDisabled?: boolean;
+  /** Whether the reset button should be disabled (e.g. while a save is still running). */
+  resetDisabled?: boolean;
   /** Inline error to show above the actions when the last save attempt failed. */
   error?: string;
   /** Called when the reset button is clicked. */
@@ -35,6 +37,7 @@ export default function UnsavedChangesBar({
   savingLabel,
   isSaving,
   saveDisabled = false,
+  resetDisabled = false,
   error = undefined,
   onReset,
   onSave,
@@ -85,7 +88,7 @@ export default function UnsavedChangesBar({
           </Box>
           {message}
         </Typography>
-        <Button variant="outlined" color="inherit" onClick={onReset}>
+        <Button variant="outlined" color="inherit" onClick={onReset} disabled={resetDisabled}>
           {resetLabel}
         </Button>
         <Button variant="contained" onClick={onSave} disabled={isSaving || saveDisabled}>

@@ -361,7 +361,7 @@ export default function RoleEditPage(): JSX.Element {
         </TabPanel>
 
         <TabPanel value={activeTab} index={2}>
-          <EditAssignmentsSettings roleId={role.id} isReadOnly={role.isReadOnly} />
+          <EditAssignmentsSettings roleId={role.id} ouId={role.ouId} isReadOnly={role.isReadOnly} />
         </TabPanel>
 
         <TabPanel value={activeTab} index={3}>

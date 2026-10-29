@@ -30,7 +30,7 @@
  */
 
 import type { APIRequestContext } from "@playwright/test";
-import { test, expect, UsersPage, UsersApi, ConsoleRoutes } from "../../fixtures/console";
+import { test, expect, UsersPage, UsersApi } from "../../fixtures/console";
 import { TestTags } from "../../constants/test-tags";
 import { Timeouts } from "../../constants/timeouts";
 import { TestDataFactory } from "../../utils/test-data";
@@ -146,7 +146,6 @@ test.describe.serial("Wayfinder Mock Email Inbox", { tag: [TestTags.WAYFINDER] }
       await test.step("Open Add User and select the Staff user type", async () => {
         await usersPage.goto();
         await usersPage.clickAddUser();
-        await usersPage.page.waitForURL(`**${ConsoleRoutes.users}/add`, { timeout: Timeouts.PAGE_LOAD });
         await usersPage.selectUserTypeAndContinue("staff");
       });
 
@@ -154,7 +153,7 @@ test.describe.serial("Wayfinder Mock Email Inbox", { tag: [TestTags.WAYFINDER] }
         await usersPage.selectStaffRole(role);
         await usersPage.fillInviteeEmail(user.email);
         await usersPage.clickSendInvitation();
-        await expect(usersPage.invitationSentHeading).toBeVisible({ timeout: Timeouts.FORM_LOAD });
+        await expect(usersPage.invitationSent).toBeVisible({ timeout: Timeouts.FORM_LOAD });
       });
 
       await test.step("Open the invite email and complete the invitee's profile", async () => {

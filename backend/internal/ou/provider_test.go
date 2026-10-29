@@ -72,6 +72,7 @@ func (suite *OUProviderTestSuite) TestGetOrganizationUnitMapsRuntimeFields() {
 	suite.Nil(svcErr)
 	suite.Equal(providers.OrganizationUnit{
 		ID:              providerTestOUID,
+		Parent:          providerTestParentID,
 		Handle:          "engineering",
 		Name:            "Engineering",
 		Description:     "Engineering unit",

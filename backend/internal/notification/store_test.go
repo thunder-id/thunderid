@@ -86,6 +86,7 @@ func (suite *StoreTestSuite) TestCreateSender() {
 		Name:        "Test Sender",
 		Description: "Test Description",
 		Type:        common.NotificationSenderTypeMessage,
+		OUID:        "ou-1",
 		Provider:    common.NotificationProviderTypeTwilio,
 		Properties:  []cmodels.Property{*p},
 	}
@@ -96,7 +97,7 @@ func (suite *StoreTestSuite) TestCreateSender() {
 	suite.mockDBClient.EXPECT().ExecuteContext(
 		context.Background(),
 		queryCreateNotificationSender, sender.Name, sender.ID, sender.Description,
-		string(sender.Type), string(sender.Provider), propsJSON, testDeploymentID,
+		string(sender.Type), sender.OUID, string(sender.Provider), propsJSON, testDeploymentID,
 	).Return(int64(1), nil).Once()
 
 	err = suite.store.createSender(context.Background(), sender)
@@ -125,8 +126,8 @@ func (suite *StoreTestSuite) TestCreateSender_DBExecuteError() {
 	suite.NoError(err)
 	suite.mockDBClient.EXPECT().ExecuteContext(context.Background(), queryCreateNotificationSender,
 		sender.Name, sender.ID,
-		sender.Description, string(sender.Type), string(sender.Provider), propsJSON, testDeploymentID).Return(
-		int64(0), errors.New("exec fail")).Once()
+		sender.Description, string(sender.Type), sender.OUID, string(sender.Provider), propsJSON,
+		testDeploymentID).Return(int64(0), errors.New("exec fail")).Once()
 
 	err = suite.store.createSender(context.Background(), sender)
 	suite.Error(err)
@@ -167,6 +168,7 @@ func (suite *StoreTestSuite) TestListSenders_WithPropertiesStringAndBytes() {
 		"description": "d1",
 		"type":        "message",
 		"provider":    "twilio",
+		"ou_id":       "ou-1",
 		"properties":  propsJSON,
 	}
 	row2 := map[string]interface{}{
@@ -175,6 +177,7 @@ func (suite *StoreTestSuite) TestListSenders_WithPropertiesStringAndBytes() {
 		"description": "d2",
 		"type":        "message",
 		"provider":    "twilio",
+		"ou_id":       "ou-1",
 		"properties":  []byte(propsJSON),
 	}
 
@@ -189,6 +192,8 @@ func (suite *StoreTestSuite) TestListSenders_WithPropertiesStringAndBytes() {
 	suite.Len(senders, 2)
 	suite.Len(senders[0].Properties, 1)
 	suite.Len(senders[1].Properties, 1)
+	suite.Equal("ou-1", senders[0].OUID)
+	suite.Equal("ou-1", senders[1].OUID)
 }
 
 func (suite *StoreTestSuite) TestListSendersByType_FiltersAtQueryLevel() {
@@ -198,6 +203,7 @@ func (suite *StoreTestSuite) TestListSendersByType_FiltersAtQueryLevel() {
 		"description": "d1",
 		"type":        "MESSAGE",
 		"provider":    "twilio",
+		"ou_id":       "ou-1",
 		"properties":  "",
 	}
 
@@ -258,6 +264,7 @@ func (suite *StoreTestSuite) TestListSenders_WithError() {
 		"description": "d1",
 		"type":        "message",
 		"provider":    "twilio",
+		"ou_id":       "ou-1",
 		"properties":  "not-json",
 	}
 	suite.mockDBProvider.EXPECT().GetConfigDBClient().Return(suite.mockDBClient, nil).Once()
@@ -280,6 +287,7 @@ func (suite *StoreTestSuite) TestGetSenderByID() {
 		"description": "d1",
 		"type":        "message",
 		"provider":    "twilio",
+		"ou_id":       "ou-1",
 		"properties":  "",
 	}
 	suite.mockDBProvider.EXPECT().GetConfigDBClient().Return(suite.mockDBClient, nil).Once()
@@ -291,6 +299,7 @@ func (suite *StoreTestSuite) TestGetSenderByID() {
 	suite.NoError(err)
 	suite.NotNil(s)
 	suite.Equal("s1", s.ID)
+	suite.Equal("ou-1", s.OUID)
 
 	// not found
 	suite.mockDBProvider.EXPECT().GetConfigDBClient().Return(suite.mockDBClient, nil).Once()
@@ -350,6 +359,7 @@ func (suite *StoreTestSuite) TestGetSender_WithError() {
 					"description": "d1",
 					"type":        "message",
 					"provider":    "twilio",
+					"ou_id":       "ou-1",
 				}
 				suite.mockDBProvider.EXPECT().GetConfigDBClient().Return(suite.mockDBClient, nil).Once()
 				suite.mockDBClient.EXPECT().QueryContext(context.Background(), queryGetNotificationSenderByID,
@@ -378,6 +388,7 @@ func (suite *StoreTestSuite) TestGetSender_WithError() {
 					"description": "d1",
 					"type":        "message",
 					"provider":    "twilio",
+					"ou_id":       "ou-1",
 					"properties":  "not-json",
 				}
 				suite.mockDBProvider.EXPECT().GetConfigDBClient().Return(suite.mockDBClient, nil).Once()
@@ -412,6 +423,7 @@ func (suite *StoreTestSuite) TestGetSender_WithProperties() {
 		"description": "d1",
 		"type":        "message",
 		"provider":    "twilio",
+		"ou_id":       "ou-1",
 		"properties":  propsJSON,
 	}
 	suite.mockDBProvider.EXPECT().GetConfigDBClient().Return(suite.mockDBClient, nil).Once()
@@ -564,13 +576,14 @@ func (suite *StoreTestSuite) TestBuildSenderFromResultRow_WithError() {
 	s := &notificationStore{}
 
 	// missing sender_id
-	row := map[string]interface{}{"name": "n1", "description": "d1", "type": "message", "provider": "p"}
+	row := map[string]interface{}{"name": "n1", "description": "d1", "type": "message", "provider": "p",
+		"ou_id": "ou-1"}
 	_, err := s.buildSenderFromResultRow(row)
 	suite.Error(err)
 
 	// wrong type for sender_id
 	row2 := map[string]interface{}{"id": 123, "name": "n1", "description": "d1",
-		"type": "message", "provider": "p"}
+		"type": "message", "provider": "p", "ou_id": "ou-1"}
 	_, err = s.buildSenderFromResultRow(row2)
 	suite.Error(err)
 }
@@ -579,28 +592,35 @@ func (suite *StoreTestSuite) TestBuildSenderFromResultRow_MissingFields() {
 	s := &notificationStore{}
 
 	// missing name
-	row := map[string]interface{}{"id": "s1", "description": "d1", "type": "message", "provider": "p"}
+	row := map[string]interface{}{"id": "s1", "description": "d1", "type": "message", "provider": "p", "ou_id": "ou-1"}
 	_, err := s.buildSenderFromResultRow(row)
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to parse name")
 
 	// missing description
-	row2 := map[string]interface{}{"id": "s1", "name": "n1", "type": "message", "provider": "p"}
+	row2 := map[string]interface{}{"id": "s1", "name": "n1", "type": "message", "provider": "p", "ou_id": "ou-1"}
 	_, err = s.buildSenderFromResultRow(row2)
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to parse description")
 
 	// missing type
-	row3 := map[string]interface{}{"id": "s1", "name": "n1", "description": "d1", "provider": "p"}
+	row3 := map[string]interface{}{"id": "s1", "name": "n1", "description": "d1", "provider": "p", "ou_id": "ou-1"}
 	_, err = s.buildSenderFromResultRow(row3)
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to parse type")
 
 	// missing provider
-	row4 := map[string]interface{}{"id": "s1", "name": "n1", "description": "d1", "type": "message"}
+	row4 := map[string]interface{}{"id": "s1", "name": "n1", "description": "d1", "type": "message", "ou_id": "ou-1"}
 	_, err = s.buildSenderFromResultRow(row4)
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to parse provider")
+
+	// missing ou_id
+	row5 := map[string]interface{}{"id": "s1", "name": "n1", "description": "d1", "type": "message",
+		"provider": "p"}
+	_, err = s.buildSenderFromResultRow(row5)
+	suite.Error(err)
+	suite.Contains(err.Error(), "failed to parse ou_id")
 }
 
 func (suite *StoreTestSuite) TestBuildSenderFromResultRow() {
@@ -611,6 +631,7 @@ func (suite *StoreTestSuite) TestBuildSenderFromResultRow() {
 		"description": "desc",
 		"type":        "message",
 		"provider":    "twilio",
+		"ou_id":       "ou-1",
 	}
 	sender, err := s.buildSenderFromResultRow(row)
 	suite.NoError(err)

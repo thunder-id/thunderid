@@ -73,6 +73,16 @@ Credential fields (such as passwords) are write-only and cannot be viewed. To se
 3. Fill in the credential fields you want to update. You do not need to update all credentials; empty fields are skipped.
 4. Click **Save**.
 
+## Suspend or Unlock a User
+
+<ProductName /> locks a user's sign-in method automatically after repeated failed attempts, and the user's **Status** shows **Locked**. To end a user's access while you investigate, suspend the account. Suspending ends the user's sessions and revokes their tokens, and the record stays editable.
+
+1. Open the user from the **Users** list.
+2. Click **Actions**. Select **Suspend**, **Unsuspend**, **Unlock**, or **Unsuspend and unlock**. The menu offers only the operations that apply to the user's status.
+3. Confirm the operation. **Unlock** runs without a confirmation.
+
+For what each operation does, see [Suspend and Restore Accounts](../../account-protection/suspend-and-restore-accounts). For the lock policy and how a user recovers from a lock, see [Configure Account Lockout](../../account-protection/configure-account-lockout).
+
 ## Delete a User
 
 1. Open the user from the **Users** list.
@@ -91,4 +101,5 @@ Use the search bar at the top of the **Users** list to filter users by name or e
 - [User Types](../user-types) - Define schemas and attribute rules for each user type
 - [Organization Units](../../organization-units/manage-organization-units) - Manage the organizational hierarchy that contains users
 - [Roles](../manage-roles) - Assign roles to grant permissions to users
+- [Account Protection](../../account-protection/overview) - How locks and suspensions hold a user
 - [Flows](../../flows/what-are-flows) - Configure registration flows for self-service sign-up

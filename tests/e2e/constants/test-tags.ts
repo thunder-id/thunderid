@@ -45,6 +45,9 @@ export const TestTags = {
   /** Accessibility (a11y) related tests */
   ACCESSIBILITY: "@accessibility",
 
+  /** Account suspension, lock and account security settings tests */
+  ACCOUNT_STATUS: "@account-status",
+
   /** Wayfinder sample setup / welcome screen related tests */
   WAYFINDER: "@wayfinder",
 } as const;

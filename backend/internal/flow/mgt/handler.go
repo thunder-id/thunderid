@@ -296,6 +296,7 @@ func sanitizeFlowDefinitionRequest(req *FlowDefinitionRequest) *FlowDefinition {
 		FlowType:     req.FlowType,
 		Interceptors: interceptors,
 		Nodes:        req.Nodes,
+		OUID:         utils.SanitizeString(req.OUID),
 	}
 
 	return sanitized

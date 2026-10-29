@@ -8,9 +8,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -130,10 +132,33 @@ func TestDeleterForRefusesAnAdapterThatIsNotConfigured(t *testing.T) {
 		resourceTypeApplication, resourceTypeConnection, resourceTypeFlow, resourceTypeOrganizationUnit,
 		resourceTypeEntityType, resourceTypeAgentType, resourceTypeRole, resourceTypeGroup,
 		resourceTypeResourceServer, resourceTypeTheme, resourceTypeLayout, resourceTypeUser, resourceTypeAgent,
-		resourceTypePresentationDefinition, resourceTypeCredentialConfiguration,
+		resourceTypePresentationDefinition, resourceTypeCredentialConfiguration, resourceTypeNotificationTemplate,
 	} {
 		assert.Nil(t, svc.deleterFor(resourceType), "%s with no adapter should have no delete", resourceType)
 	}
+}
+
+// A template id is unique across channels, so its delete is asked of every channel.
+func TestDeleterForDeletesANotificationTemplateOnEveryChannel(t *testing.T) {
+	templates := newNotificationTemplateAdapterMock(t)
+	templates.EXPECT().DeleteTemplate(mock.Anything, notificationtemplate.ChannelTypeEmail, "the-id").Return(nil)
+	templates.EXPECT().DeleteTemplate(mock.Anything, notificationtemplate.ChannelTypeSMS, "the-id").Return(nil)
+	svc := &importService{notifTemplateService: templates}
+
+	deleteFn := svc.deleterFor(resourceTypeNotificationTemplate)
+
+	require.NotNil(t, deleteFn)
+	assert.Nil(t, deleteFn(context.Background(), "the-id"))
+}
+
+// A channel that fails the delete stops it there and reports the failure.
+func TestDeleterForStopsANotificationTemplateDeleteThatFails(t *testing.T) {
+	templates := newNotificationTemplateAdapterMock(t)
+	conflict := &notificationtemplate.ErrorTemplateInUse
+	templates.EXPECT().DeleteTemplate(mock.Anything, notificationtemplate.ChannelTypeEmail, "the-id").Return(conflict)
+	svc := &importService{notifTemplateService: templates}
+
+	assert.Equal(t, conflict, svc.deleterFor(resourceTypeNotificationTemplate)(context.Background(), "the-id"))
 }
 
 // Each resource type resolves to its own service. A table rather than a test apiece, because the

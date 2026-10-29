@@ -77,7 +77,7 @@ func newApplicationActionValidator(
 		[]providers.Input{
 			{Identifier: revocationInputApplication, Type: providers.InputTypeText, Required: true},
 		}, nil, &providers.ExecutorMeta{
-			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeAdministration},
+			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeAdministration, providers.FlowTypeSystem},
 			SupportedModes:     modes,
 		})
 	return &applicationActionValidator{Executor: base}

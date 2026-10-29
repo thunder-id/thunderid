@@ -209,8 +209,68 @@ export function isGrantItemDisabled(grant: string, currentGrants: string[], idJa
 /** i18n key paired with its English fallback, suitable for spreading into `t(key, fallback)`. */
 export type CaptionTuple = readonly [key: string, fallback: string];
 
+/**
+ * Grant types a client registered from a client ID metadata document can hold. Token exchange and JWT
+ * bearer are among them only for a client that authenticates with private_key_jwt.
+ */
+export const CIMD_GRANT_TYPES: readonly string[] = [
+  OAuth2GrantTypes.AUTHORIZATION_CODE,
+  OAuth2GrantTypes.REFRESH_TOKEN,
+  OAuth2GrantTypes.TOKEN_EXCHANGE,
+  OAuth2GrantTypes.JWT_BEARER,
+];
+
+/**
+ * Returns whether a client registered from a client ID metadata document may hold a grant when it
+ * authenticates with the given method, following the server's document rules.
+ */
+export function isCimdGrantAllowed(grant: string, tokenEndpointAuthMethod: string | undefined): boolean {
+  switch (grant) {
+    case OAuth2GrantTypes.AUTHORIZATION_CODE:
+    case OAuth2GrantTypes.REFRESH_TOKEN:
+      return true;
+    case OAuth2GrantTypes.TOKEN_EXCHANGE:
+    case OAuth2GrantTypes.JWT_BEARER:
+      return tokenEndpointAuthMethod === TokenEndpointAuthMethods.PRIVATE_KEY_JWT;
+    default:
+      return false;
+  }
+}
+
+/**
+ * Returns why a grant cannot be changed for a client registered from a client ID metadata document, or
+ * undefined when it can. The authorization code grant is always required, token exchange and JWT bearer
+ * need a client whose document declares private_key_jwt, and token exchange serves such a client only for
+ * identity assertions, so it comes and goes with the ID-JAG toggle.
+ */
+export function getCimdGrantRestriction(grant: string, config: OAuth2Config): CaptionTuple | undefined {
+  if (!config.clientIdMetadataDocument) return undefined;
+  if (grant === OAuth2GrantTypes.AUTHORIZATION_CODE) {
+    return [
+      'applications:edit.advanced.grantTypes.requiredByMetadataDocument',
+      'Required for a client registered from a metadata document',
+    ];
+  }
+  if (!isCimdGrantAllowed(grant, config.tokenEndpointAuthMethod)) {
+    return [
+      'applications:edit.advanced.grantTypes.requiresPrivateKeyJwt',
+      'Requires a metadata document that declares private key JWT authentication',
+    ];
+  }
+  if (grant === OAuth2GrantTypes.TOKEN_EXCHANGE) {
+    return [
+      'applications:edit.advanced.grantTypes.followsIdJag',
+      'Turned on and off with identity assertions (ID-JAG)',
+    ];
+  }
+  return undefined;
+}
+
 /** Picks the public-client toggle caption for the current config state. */
 export function getPublicClientCaption(flags: OAuth2Flags, config: OAuth2Config): CaptionTuple {
+  if (config.clientIdMetadataDocument) {
+    return ['applications:edit.advanced.publicClient.setByMetadataDocument', "Set by the client's metadata document."];
+  }
   if (flags.hasClientCredentialsGrant) {
     return [
       'applications:edit.advanced.publicClient.incompatibleWithClientCredentials',
@@ -242,6 +302,12 @@ export function getPublicClientCaption(flags: OAuth2Flags, config: OAuth2Config)
 
 /** Picks the PKCE toggle caption for the current config state. */
 export function getPkceCaption(flags: OAuth2Flags, config: OAuth2Config): CaptionTuple {
+  if (config.clientIdMetadataDocument) {
+    return [
+      'applications:edit.advanced.pkce.requiredForMetadataDocument',
+      'Always required for clients registered from a metadata document.',
+    ];
+  }
   if (flags.isPkceForcedByPublicClient) {
     return ['applications:edit.advanced.pkce.requiredForPublicClient', 'Always required for public clients.'];
   }

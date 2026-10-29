@@ -128,3 +128,15 @@ func (s *TwilioTestSuite) TestGetProviderMismatchReturnsNotFound() {
 
 	s.Equal(http.StatusNotFound, rr.Code)
 }
+
+func (s *TwilioTestSuite) TestOUCarriedThroughMapping() {
+	dto, err := twilioToSenderDTO(twilioConnectionRequest{
+		Name: "n", OUID: "ou-1", AccountSID: "AC1", AuthToken: "t", SenderID: "+1",
+	})
+	s.Require().NoError(err)
+	s.Equal("ou-1", dto.OUID)
+
+	resp, err := twilioFromSenderDTO(*dto)
+	s.Require().NoError(err)
+	s.Equal("ou-1", resp.OUID)
+}

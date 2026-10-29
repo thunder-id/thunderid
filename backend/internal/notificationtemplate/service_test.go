@@ -87,6 +87,24 @@ func (s *NotificationTemplateServiceTestSuite) TestCreateTemplate_Email() {
 	s.Require().Equal(colorSchemeLight, tmpl.Design.ColorScheme)
 }
 
+// TestCreateTemplate_KeepsProvidedID verifies an import's id is kept, so a template has the same id on
+// every plane it is applied to.
+func (s *NotificationTemplateServiceTestSuite) TestCreateTemplate_KeepsProvidedID() {
+	s.mockStore.On("IsHandleExists", mock.Anything, ChannelTypeEmail, "otp-verification").Return(false, nil)
+	s.mockStore.On("CreateTemplate", mock.Anything, mock.MatchedBy(func(d templateDAO) bool {
+		return d.ID == "01900000-0000-7000-8000-0000000000a0"
+	})).Return(nil)
+
+	tmpl, err := s.svc.CreateTemplate(s.ctx, ChannelTypeEmail, CreateTemplateRequest{
+		ID:          "01900000-0000-7000-8000-0000000000a0",
+		Handle:      "otp-verification",
+		DisplayName: "OTP Verification",
+		Content:     TemplateContent{Subject: "s.key", Body: "b.key"},
+	})
+	s.Require().Nil(err)
+	s.Require().Equal("01900000-0000-7000-8000-0000000000a0", tmpl.ID)
+}
+
 // svcWithOU builds a service whose OU service is the given mock, so the create-path ouId validation is
 // exercised (the shared SetupTest service has a nil OU service that skips the check).
 func (s *NotificationTemplateServiceTestSuite) svcWithOU(

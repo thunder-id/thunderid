@@ -39,6 +39,9 @@ const (
 	issuanceRedirectURI  = "https://localhost:3000"
 	allowedAudience      = "https://target-rs.example.com"
 
+	issuanceAgentClientID     = "idjag_issuance_agent"
+	issuanceAgentClientSecret = "idjag_issuance_agent_secret"
+
 	// appErrorInvalidOAuthConfiguration is the APP-1024 error code returned when an OAuth
 	// configuration is rejected at application create time (see
 	// backend/internal/application/error_constants.go: ErrorInvalidOAuthConfiguration).
@@ -212,18 +215,24 @@ func (ts *IDJAGIssuanceTestSuite) TearDownSuite() {
 // createApplication POSTs an application definition and returns its ID.
 func (ts *IDJAGIssuanceTestSuite) createApplication(app map[string]any) string {
 	ts.T().Helper()
-	jsonData, err := json.Marshal(app)
+	return ts.create("/applications", app)
+}
+
+// create POSTs a resource definition to path and returns its ID.
+func (ts *IDJAGIssuanceTestSuite) create(path string, body map[string]any) string {
+	ts.T().Helper()
+	jsonData, err := json.Marshal(body)
 	ts.Require().NoError(err)
-	req, err := http.NewRequest("POST", testutils.TestServerURL+"/applications", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", testutils.TestServerURL+path, bytes.NewBuffer(jsonData))
 	ts.Require().NoError(err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := ts.client.Do(req)
 	ts.Require().NoError(err)
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	ts.Require().Equalf(http.StatusCreated, resp.StatusCode, "create app failed: %s", string(body))
+	respBody, _ := io.ReadAll(resp.Body)
+	ts.Require().Equalf(http.StatusCreated, resp.StatusCode, "create %s failed: %s", path, string(respBody))
 	var respData map[string]any
-	ts.Require().NoError(json.Unmarshal(body, &respData))
+	ts.Require().NoError(json.Unmarshal(respBody, &respData))
 	id, _ := respData["id"].(string)
 	ts.Require().NotEmpty(id)
 	return id
@@ -262,13 +271,20 @@ func (ts *IDJAGIssuanceTestSuite) createApplicationExpectError(app map[string]an
 // issuance test application and returns the resulting self-issued ID token.
 func (ts *IDJAGIssuanceTestSuite) obtainSelfIssuedIDToken() string {
 	ts.T().Helper()
+	return ts.obtainIDToken(issuanceClientID, issuanceClientSecret)
+}
+
+// obtainIDToken runs the full authorization code flow for the given client and returns the
+// resulting self-issued ID token.
+func (ts *IDJAGIssuanceTestSuite) obtainIDToken(clientID, clientSecret string) string {
+	ts.T().Helper()
 
 	verifier, err := testutils.GenerateCodeVerifier()
 	ts.Require().NoError(err)
 	challenge := testutils.GenerateCodeChallenge(verifier)
 
 	params := url.Values{}
-	params.Set("client_id", issuanceClientID)
+	params.Set("client_id", clientID)
 	params.Set("redirect_uri", issuanceRedirectURI)
 	params.Set("response_type", "code")
 	params.Set("scope", "openid email")
@@ -310,7 +326,7 @@ func (ts *IDJAGIssuanceTestSuite) obtainSelfIssuedIDToken() string {
 		strings.NewReader(formData.Encode()))
 	ts.Require().NoError(err)
 	tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	tokenReq.Header.Set("Authorization", "Basic "+basicAuth(issuanceClientID, issuanceClientSecret))
+	tokenReq.Header.Set("Authorization", "Basic "+basicAuth(clientID, clientSecret))
 
 	tokenResp, err := testutils.GetRawHTTPClient().Do(tokenReq)
 	ts.Require().NoError(err)
@@ -396,6 +412,77 @@ func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_Success() {
 	ts.Equal(allowedAudience, claims.Aud)
 	ts.Equal("https://localhost:8095", claims.Iss)
 	ts.Equal(issuanceClientID, claims.Additional["client_id"])
+}
+
+// TestIDJAGIssuance_Agent covers a delegated agent created through /agents with ID-JAG on: it signs
+// the user in and exchanges the ID token for an ID-JAG naming the agent's client.
+func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_Agent() {
+	// The `default` agent type is a singleton shared with every other suite. Snapshot it before
+	// pointing it at this suite's OU, so it is put back before the OU is deleted.
+	snapshot, err := testutils.SnapshotAgentType()
+	ts.Require().NoError(err, "snapshot the default agent type")
+	defer func() {
+		ts.Require().NoError(testutils.RestoreAgentType(snapshot), "restore the default agent type")
+	}()
+	_, err = testutils.CreateAgentType(testutils.UserType{
+		Handle:      "default",
+		DisplayName: "Default",
+		OUID:        ts.ouID,
+		Schema: map[string]interface{}{
+			"name": map[string]interface{}{"type": "string", "required": true, "unique": true},
+		},
+	})
+	ts.Require().NoError(err, "point the default agent type at the test OU")
+
+	agentID := ts.create("/agents", map[string]any{
+		"ouId": ts.ouID, "type": "default", "attributes": map[string]any{"name": "IDJAG Issuance Agent"},
+		"delegated": true, "authFlowId": ts.authFlowID,
+		"allowedUserTypes": []string{"idjag-issuance-person"},
+		"inboundAuthConfig": []map[string]any{{
+			"type": "oauth2",
+			"config": map[string]any{
+				"clientId": issuanceAgentClientID, "clientSecret": issuanceAgentClientSecret,
+				"redirectUris":            []string{issuanceRedirectURI},
+				"grantTypes":              []string{"authorization_code", "urn:ietf:params:oauth:grant-type:token-exchange"},
+				"responseTypes":           []string{"code"},
+				"pkceRequired":            true,
+				"tokenEndpointAuthMethod": "client_secret_basic",
+				"scopes":                  []string{"openid", "profile", "email", "read", "write"},
+				"token": map[string]any{
+					"idJag": map[string]any{
+						"enabled":          true,
+						"allowedAudiences": []string{allowedAudience},
+					},
+				},
+			},
+		}},
+	})
+	defer func() { _ = testutils.DeleteAgent(agentID) }()
+
+	idToken := ts.obtainIDToken(issuanceAgentClientID, issuanceAgentClientSecret)
+
+	formData := url.Values{}
+	formData.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
+	formData.Set("subject_token", idToken)
+	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:id_token")
+	formData.Set("requested_token_type", "urn:ietf:params:oauth:token-type:id-jag")
+	formData.Set("audience", allowedAudience)
+
+	resp, statusCode, err := ts.exchangeForIDJAG(formData.Encode(),
+		"Basic "+basicAuth(issuanceAgentClientID, issuanceAgentClientSecret))
+	ts.Require().NoError(err)
+	ts.Require().Equalf(http.StatusOK, statusCode, "%s: %s", resp.Error, resp.ErrorDescription)
+	ts.Equal("urn:ietf:params:oauth:token-type:id-jag", resp.IssuedTokenType)
+
+	header, err := testutils.DecodeJWTHeaderMap(resp.AccessToken)
+	ts.Require().NoError(err)
+	ts.Equal("oauth-id-jag+jwt", header["typ"])
+
+	claims, err := testutils.DecodeJWT(resp.AccessToken)
+	ts.Require().NoError(err)
+	ts.Equal(ts.userID, claims.Sub)
+	ts.Equal(allowedAudience, claims.Aud)
+	ts.Equal(issuanceAgentClientID, claims.Additional["client_id"])
 }
 
 func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_WithScope() {

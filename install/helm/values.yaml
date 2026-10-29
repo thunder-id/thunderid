@@ -143,6 +143,13 @@ configuration:
     # The URL where users reach ThunderID in their browser.
     # ThunderID uses it to build the login and error redirect links.
     publicUrl: "https://thunderid.local"
+    # HTTP server timeouts for every route, in seconds. writeSeconds bounds a request from the end of
+    # its headers until its response is written; a slow API has its own timeout instead (see
+    # import.timeoutSeconds), so this one can stay short.
+    timeouts:
+      readHeaderSeconds: 10
+      writeSeconds: 10
+      idleSeconds: 120
     # Security configuration.
     # jwksCacheTtl controls how long fetched JWKS responses are cached in-process for
     # every JWKS consumer in the server (trusted issuer validation, federated OIDC
@@ -465,6 +472,12 @@ configuration:
     # MCP clients should register through Dynamic Client Registration instead.
     cimd:
       enabled: true
+    # RFC 9396 rich authorization requests. processorTimeout bounds one call to an authorization details
+    # type's processor, in seconds (at most 30). typeMetadataEnabled serves the type metadata endpoint and
+    # advertises it in the authorization server metadata.
+    authorizationDetails:
+      processorTimeout: 5
+      typeMetadataEnabled: true
     # Maximum revocation entries one role, group or scope change may record; a larger change is refused.
     revocation:
       criteria:
@@ -488,6 +501,19 @@ configuration:
       - "urn:ietf:params:oauth:grant-type:token-exchange"
       - "urn:openid:params:grant-type:ciba"
       - "urn:ietf:params:oauth:grant-type:jwt-bearer"
+
+  # Import API configuration.
+  # timeoutSeconds bounds an import request, in place of server.timeouts.writeSeconds. A control plane
+  # applies a configuration version through this API, so raise it when large applies time out.
+  import:
+    timeoutSeconds: 120
+
+  # Gateway configuration.
+  # applyTimeoutSeconds bounds a request to apply a configuration version to a gateway, or to revert
+  # one, in place of server.timeouts.writeSeconds. It covers waiting for an apply already running on
+  # that gateway and the gateway's import, so keep it above the gateway's import.timeoutSeconds.
+  gateway:
+    applyTimeoutSeconds: 300
 
   # Flow configuration
   flow:
@@ -570,14 +596,15 @@ configuration:
   # is not rendered, so the product default applies.
   accountAccess:
     user:
-      # "authentication_method" locks only the sign-in method that failed; "entity" locks every method.
+      # "authentication_method" locks only the sign-in method that failed; "account" locks every method.
       lockGranularity: "authentication_method"
       # Record when the user last signed in, at most once per lastLoginResolutionSeconds.
       recordLastLogin: false
       lastLoginResolutionSeconds: 3600
       default:
         enabled: true
-        # Failed attempts within failureWindowSeconds that form a lock.
+        # Failed attempts that form a lock. A failure more than failureWindowSeconds after the previous
+        # one restarts the count.
         threshold: 5
         failureWindowSeconds: 3600
         # Durations of consecutive locks; the last one repeats.
@@ -601,6 +628,14 @@ configuration:
         lockDurationsSeconds: [60, 300, 900]
         lockDecaySeconds: 3600
         maxConsecutiveFailures: 50
+
+  # Identity governance provider. "disabled" turns off the governance checks of the flow engine and
+  # OAuth, and the suspend, unsuspend and unlock flows. With "disabled", also set
+  # accountAccess.<category>.default.enabled to false for user and agent; otherwise locks still form
+  # and cannot be released early. Keep recordLastLogin off too: only the Direct API authentication
+  # endpoints record the last sign-in then. Leave empty to keep the default provider.
+  identityGovernanceProvider:
+    type: ""
 
   # Logging configuration. Logs go to the console (stdout) so a log collector can pick
   # them up from the pod, which is the expected setup on Kubernetes. Everything below
@@ -647,7 +682,7 @@ configuration:
   #   identity_provider: declarative
   # Supported keys: user, group, role, theme, layout, translation, agent, user_type,
   # organization_unit, identity_provider, application, server_config, resource,
-  # notification_template.
+  # authorization_detail_type, http_connection, notification_template.
   stores: {}
 
 

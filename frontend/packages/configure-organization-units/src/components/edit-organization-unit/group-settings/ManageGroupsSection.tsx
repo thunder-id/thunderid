@@ -3,7 +3,7 @@
 
 import {QueryErrorNotice, SettingsCard, getInitials} from '@thunderid/components';
 import {useDataGridLocaleText} from '@thunderid/hooks';
-import {Box, DataGrid, Avatar} from '@wso2/oxygen-ui';
+import {Box, DataGrid, Avatar, ListingTable} from '@wso2/oxygen-ui';
 import {useMemo, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import useGetOrganizationUnitGroups from '../../../api/useGetOrganizationUnitGroups';
@@ -123,22 +123,26 @@ export default function ManageGroupsSection({organizationUnitId}: ManageGroupsSe
         },
       }}
     >
-      <Box sx={{height: 400, width: '100%'}}>
-        <DataGrid.DataGrid
-          rows={groupsData?.groups ?? []}
-          columns={columns}
-          loading={isLoading}
-          getRowId={(row): string => row.id}
-          initialState={{
-            pagination: {
-              paginationModel: {pageSize: 10},
-            },
-          }}
-          pageSizeOptions={[5, 10, 25]}
-          disableRowSelectionOnClick
-          localeText={dataGridLocaleText}
-        />
-      </Box>
+      <ListingTable.Provider variant="data-grid">
+        <ListingTable.Container sx={{height: 400}}>
+          <ListingTable.DataGrid
+            rows={groupsData?.groups ?? []}
+            columns={columns}
+            loading={isLoading}
+            getRowId={(row): string => (row as Group).id}
+            initialState={{
+              pagination: {
+                paginationModel: {pageSize: 10},
+              },
+            }}
+            pageSizeOptions={[5, 10, 25]}
+            disableRowSelectionOnClick
+            // Filtering is not wired end to end, so the column filter panel stays hidden.
+            disableColumnFilter
+            localeText={dataGridLocaleText}
+          />
+        </ListingTable.Container>
+      </ListingTable.Provider>
     </SettingsCard>
   );
 }

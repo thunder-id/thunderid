@@ -41,7 +41,7 @@ func registerMCPTools(server *mcp.Server, ouService OrganizationUnitServiceInter
 	tools := &ouTools{ouService: ouService}
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "thunderid_list_organization_units",
+		Name:        "list_organization_units",
 		Description: `List all organization units.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "List Organization Units",

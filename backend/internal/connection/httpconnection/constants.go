@@ -19,12 +19,6 @@ const (
 	urlSchemeHTTPS   = "https"
 	defaultPortHTTP  = "80"
 	defaultPortHTTPS = "443"
-	minPort          = 1
-	maxPort          = 65535
-
-	// DNS limits on a host name and on each of its labels.
-	maxHostLength  = 253
-	maxLabelLength = 63
 
 	loggerComponentName = "HTTPConnectionService"
 )

@@ -342,6 +342,45 @@ var (
 				"inconsistent state and has been rejected.",
 		},
 	}
+	// ErrorInvalidFlowOU is the error returned when the organization unit given for a flow does not exist.
+	ErrorInvalidFlowOU = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1027",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.invalid_flow_ou",
+			DefaultValue: "Invalid organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.invalid_flow_ou_description",
+			DefaultValue: "The organization unit given for the flow does not exist",
+		},
+	}
+	// ErrorOUUpdateNotAllowed is the error returned when attempting to change the organization unit of a flow.
+	ErrorOUUpdateNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1028",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.ou_update_not_allowed",
+			DefaultValue: "Organization unit update not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.ou_update_not_allowed_description",
+			DefaultValue: "The organization unit of a flow cannot be changed",
+		},
+	}
+	// ErrorFlowOURequired is the error returned when a flow is created or updated without an organization unit.
+	ErrorFlowOURequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1029",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.flow_ou_required",
+			DefaultValue: "Organization unit required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.flow_ou_required_description",
+			DefaultValue: "A flow needs an organization unit. Give its ouId in the request",
+		},
+	}
 )
 
 // Internal errors

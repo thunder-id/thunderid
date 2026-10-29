@@ -18,6 +18,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the user service and registers its routes.
@@ -38,6 +39,7 @@ func Initialize(
 	userService := newUserService(authzService, entityService, ouService, entityTypeService, governance,
 		valueCapturer, sharingService)
 	sharingService.RegisterResourceType(newUserSharingDeclaration(userService))
+	entityService.RegisterSharedCategory(providers.EntityCategoryUser, UserSharingType)
 
 	// Step 2: Load user-specific indexed attributes into the entity store.
 	if err := entityService.LoadIndexedAttributes(getUserIndexedAttributes()); err != nil {

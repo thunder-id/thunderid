@@ -37,12 +37,15 @@ Register the external IdP in <ProductName /> as an OIDC connection and enable it
 | `jwksEndpoint` | Yes | The IdP's JWKS URL. <ProductName /> fetches public signing keys from this URL to verify token signatures. |
 | `tokenExchangeEnabled` | Yes | Set to `true` to allow this IdP's tokens to be exchanged. |
 
+Every connection also names the organization unit that owns it in `ouId`. The field is required on create, the organization unit must exist, and it cannot change afterwards. Replace `<organization-unit-id>` with the `id` of an organization unit from `GET /organization-units`. See [Organization Unit Ownership](../manage-identity-providers#organization-unit-ownership).
+
 ```bash
 curl -X POST https://thunderid.example.com/connections/oidc \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Asgardeo",
+    "ouId": "<organization-unit-id>",
     "clientId": "my-external-client-id",
     "clientSecret": "my-external-client-secret",
     "redirectUri": "https://thunderid.example.com/gate/callback",

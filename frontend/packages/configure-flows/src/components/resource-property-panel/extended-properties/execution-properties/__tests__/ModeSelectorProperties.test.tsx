@@ -122,6 +122,53 @@ describe('ModeSelectorProperties', () => {
       resource,
     );
   });
+
+  it('should set the node image only when the selected mode carries one', async () => {
+    const user = userEvent.setup();
+    const resource = makeResource('TestExecutor');
+    render(
+      <ModeSelectorProperties
+        resource={resource}
+        onChange={mockOnChange}
+        modes={[
+          {value: 'plain_mode', translationKey: 'flows:test.mode.plain', displayLabel: 'Plain Mode'},
+          {
+            value: 'image_mode',
+            translationKey: 'flows:test.mode.image',
+            displayLabel: 'Image Mode',
+            image: 'assets/images/icons/image-mode.svg',
+          },
+        ]}
+        selectId="test-mode-select"
+        fallbackLabel="Test Executor"
+        description="Test description"
+        label="Mode"
+        placeholder="Select a mode"
+      />,
+    );
+
+    await user.click(screen.getByRole('combobox'));
+    await user.click(screen.getByRole('option', {name: 'Image Mode'}));
+
+    expect(mockOnChange).toHaveBeenLastCalledWith(
+      'data',
+      expect.objectContaining({
+        display: {label: 'Image Mode', image: 'assets/images/icons/image-mode.svg'},
+      }),
+      resource,
+    );
+
+    await user.click(screen.getByRole('combobox'));
+    await user.click(screen.getByRole('option', {name: 'Plain Mode'}));
+
+    expect(mockOnChange).toHaveBeenLastCalledWith(
+      'data',
+      expect.objectContaining({
+        display: {label: 'Plain Mode'},
+      }),
+      resource,
+    );
+  });
 });
 
 // A mode missing from the backend's SupportedModes would let the builder save a flow that fails validation.

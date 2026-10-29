@@ -14,7 +14,7 @@ import (
 // RegisterTools registers all Next.js SDK tools with the MCP server.
 func RegisterTools(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "thunderid_integrate_nextjs_sdk",
+		Name: "integrate_nextjs_sdk",
 		Description: "Provides instructions and code snippets for integrating ThunderID authentication via the " +
 			"ThunderID Next.js SDK into a Next.js application (App Router). Uses ThunderID-hosted login pages " +
 			"with redirect-based OAuth 2.0/OIDC flow and server-side session management via middleware.",

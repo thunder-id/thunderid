@@ -32,12 +32,14 @@ const (
 	// else, which is the whole of what sharing means for a resource whose configuration is global
 	// rather than per-organization-unit state layered on a shared definition.
 	fieldlessType = ResourceType("fieldless")
-	testResource  = "resource-1"
-	ownerOU       = "owner-ou"
-	rootOU        = "root-ou"
-	childOU       = "child-ou"
-	grandOU       = "grand-ou"
-	otherOU       = "other-ou"
+	// editableOnlyType declares one field a policy may only switch on or off.
+	editableOnlyType = ResourceType("editable-only")
+	testResource     = "resource-1"
+	ownerOU          = "owner-ou"
+	rootOU           = "root-ou"
+	childOU          = "child-ou"
+	grandOU          = "grand-ou"
+	otherOU          = "other-ou"
 	// nestedOwnerOU owns a resource while sitting inside a tree, which is the case the cross-tree
 	// restriction exists for.
 	nestedOwnerOU = "nested-owner-ou"
@@ -55,6 +57,22 @@ type fieldlessDeclaration struct{}
 func (d *fieldlessDeclaration) ResourceType() ResourceType { return fieldlessType }
 func (d *fieldlessDeclaration) Fields() []FieldDeclaration { return nil }
 func (d *fieldlessDeclaration) OwningOUID(
+	_ context.Context, _ string,
+) (string, *tidcommon.ServiceError) {
+	return ownerOU, nil
+}
+
+// editableOnlyDeclaration is a resource type whose one field a policy may only switch on or off.
+type editableOnlyDeclaration struct{}
+
+func (d *editableOnlyDeclaration) ResourceType() ResourceType { return editableOnlyType }
+func (d *editableOnlyDeclaration) Fields() []FieldDeclaration {
+	return []FieldDeclaration{{
+		Key: "assignments", Kind: FieldReferenceSet, EditableOnly: true,
+		Default: &OverlayRule{Editable: true},
+	}}
+}
+func (d *editableOnlyDeclaration) OwningOUID(
 	_ context.Context, _ string,
 ) (string, *tidcommon.ServiceError) {
 	return ownerOU, nil
@@ -605,6 +623,7 @@ func (s *ServiceTestSuite) SetupTest() {
 		inlineTx(s.T()), nil, nil, false)
 	s.svc.RegisterResourceType(s.decl)
 	s.svc.RegisterResourceType(&fieldlessDeclaration{})
+	s.svc.RegisterResourceType(&editableOnlyDeclaration{})
 }
 
 // testResolver returns the generated hierarchy and enumerator mocks over the fixture tree: two
@@ -661,6 +680,7 @@ func (s *ServiceTestSuite) withRollback() {
 		rollbackTx(s.T(), s.store), nil, nil, false)
 	s.svc.RegisterResourceType(s.decl)
 	s.svc.RegisterResourceType(&fieldlessDeclaration{})
+	s.svc.RegisterResourceType(&editableOnlyDeclaration{})
 }
 
 // storedAllChildren issues the one blanket policy an API can create: the owner reaching its own
@@ -1036,6 +1056,42 @@ func (s *ServiceTestSuite) TestCreateRejectsAnUnknownFieldKey() {
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorUnknownFieldKey.Code, svcErr.Code)
 	s.Contains(svcErr.ErrorDescription.DefaultValue, "nonsense", "the rejection names the field")
+}
+
+// A field a policy may only switch on or off refuses a rule naming members, and one leaving editable
+// out, rather than storing members nothing checks or reading the omission as off.
+func (s *ServiceTestSuite) TestCreateRejectsMoreThanEditableForAnEditableOnlyField() {
+	for _, tc := range []struct {
+		name string
+		rule OverlayRule
+	}{
+		{"editable left out", OverlayRule{editableMissing: true}},
+		{"value named", OverlayRule{Editable: false, Value: members("u1")}},
+		{"allowed values named", OverlayRule{Editable: true, AllowedValues: members("u1")}},
+		{"excluded values named", OverlayRule{Editable: true, ExcludedValues: members()}},
+	} {
+		s.Run(tc.name, func() {
+			_, svcErr := s.svc.CreatePolicy(context.Background(), editableOnlyType, testResource, ownerOU,
+				PolicyRequest{OtherTreeRoots: roots(rootWith(rootOU, map[string]OverlayRule{"assignments": tc.rule}))})
+
+			s.Require().NotNil(svcErr)
+			s.Equal(ErrorEditableOnlyRule.Code, svcErr.Code)
+			s.Contains(svcErr.ErrorDescription.DefaultValue, "assignments", "the rejection names the field")
+		})
+	}
+}
+
+// A rule stating editable alone is what an editable-only field takes, either way it is set.
+func (s *ServiceTestSuite) TestCreateAcceptsEditableAloneForAnEditableOnlyField() {
+	for resourceID, editable := range map[string]bool{"resource-on": true, "resource-off": false} {
+		policy, svcErr := s.svc.CreatePolicy(context.Background(), editableOnlyType, resourceID, ownerOU,
+			PolicyRequest{OtherTreeRoots: roots(rootWith(rootOU,
+				map[string]OverlayRule{"assignments": {Editable: editable}}))})
+
+		s.Require().Nil(svcErr)
+		s.Require().Len(policy.Rules, 1)
+		s.Equal(OverlayRule{Editable: editable}, policy.Rules[0].Resolved)
+	}
 }
 
 // A sharee may not hand on more than it holds, and the rejection says which field was at fault.
@@ -5131,4 +5187,37 @@ func (s *ServiceTestSuite) TestListResourceSharedOUIDsSkipsADeletedUnit() {
 
 	s.Require().Nil(svcErr)
 	s.Equal([]string{nestedOwnerOU}, got)
+}
+
+// The chain walk counts the owner as covered, so a policy relevant to the owner's own chain must not
+// bring back a resource it owns: the reverse lookup answers what is shared into a unit.
+func (s *ServiceTestSuite) TestTheReverseLookupLeavesOutWhatTheUnitOwns() {
+	ctx := context.Background()
+	s.decl.owner = rootOU
+	_, svcErr := s.svc.CreatePolicy(ctx, testType, testResource, rootOU, PolicyRequest{ChildUnits: allChildren()})
+	s.Require().Nil(svcErr)
+
+	owned, svcErr := s.svc.ListVisibleResourceIDs(ctx, testType, rootOU)
+	s.Require().Nil(svcErr)
+	s.Empty(owned)
+
+	shared, svcErr := s.svc.ListVisibleResourceIDs(ctx, testType, childOU)
+	s.Require().Nil(svcErr)
+	s.Equal([]string{testResource}, shared)
+}
+
+// Callers page over the reverse lookup, so it comes back in one order however the policies were
+// fetched.
+func (s *ServiceTestSuite) TestTheReverseLookupIsSortedByResource() {
+	ctx := context.Background()
+	for _, resourceID := range []string{"resource-c", "resource-a", "resource-b"} {
+		_, svcErr := s.svc.CreatePolicy(ctx, testType, resourceID, ownerOU,
+			PolicyRequest{AllUnits: &AllUnitsRequest{}})
+		s.Require().Nil(svcErr)
+	}
+
+	ids, svcErr := s.svc.ListVisibleResourceIDs(ctx, testType, childOU)
+
+	s.Require().Nil(svcErr)
+	s.Equal([]string{"resource-a", "resource-b", "resource-c"}, ids)
 }

@@ -211,6 +211,32 @@ func (dto *PropertyDTO) ToProperty() (*Property, error) {
 	return NewProperty(dto.Name, dto.Value, dto.IsSecret)
 }
 
+// MarshalJSON serializes a Property using the same shape as PropertyDTO. The raw internal value is
+// used as-is rather than GetValue(): for secret properties this is already ciphertext (see Encrypt),
+// so a cached or exported Property never carries a decrypted secret.
+func (p Property) MarshalJSON() ([]byte, error) {
+	return json.Marshal(PropertyDTO{
+		Name:     p.name,
+		Value:    p.value,
+		IsSecret: p.isSecret,
+	})
+}
+
+// UnmarshalJSON deserializes a Property from the same shape as PropertyDTO, mirroring
+// DeserializePropertiesFromJSON. The value is stored as-is (already-encrypted ciphertext for secret
+// properties) without re-encrypting.
+func (p *Property) UnmarshalJSON(data []byte) error {
+	var dto PropertyDTO
+	if err := json.Unmarshal(data, &dto); err != nil {
+		return err
+	}
+
+	p.name = dto.Name
+	p.value = dto.Value
+	p.isSecret = dto.IsSecret
+	return nil
+}
+
 // ToPropertyDTO converts Property to PropertyDTO.
 func (p *Property) ToPropertyDTO() (*PropertyDTO, error) {
 	value, err := p.GetValue()

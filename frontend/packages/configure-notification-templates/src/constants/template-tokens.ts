@@ -57,8 +57,9 @@ export const DESIGN_TOKENS: readonly TemplateToken[] = [
 /**
  * Context tokens substituted with runtime values when a notification is sent. Both channels.
  *
- * Keys mirror the runtime data injected by the backend flow executors (OTP, magic-link, invite)
- * and the authn service — see `backend/internal/flow/executor/*` and `backend/internal/authn`.
+ * Keys mirror the runtime data injected by the backend flow executors (OTP, magic-link, invite),
+ * the authn service and the account-lock email; see `backend/internal/flow/executor/*`,
+ * `backend/internal/authn` and `backend/internal/identitygovernance`.
  * Hardcoded here until a context-placeholder catalog API exists; keep in sync with those keys so a
  * token the catalog offers actually resolves on send.
  *
@@ -70,6 +71,13 @@ export const CONTEXT_TOKENS: readonly TemplateToken[] = [
   {labelKey: 'editor.tokens.labels.context.expiryTime', label: 'Expiry time', insert: '{{ctx(expiryTime)}}'},
   {labelKey: 'editor.tokens.labels.context.magicLink', label: 'Magic link', insert: '{{ctx(magicLink)}}'},
   {labelKey: 'editor.tokens.labels.context.inviteLink', label: 'Invite link', insert: '{{ctx(inviteLink)}}'},
+  {
+    labelKey: 'editor.tokens.labels.context.lockedAuthenticationMethod',
+    label: 'Locked sign-in method',
+    insert: '{{ctx(lockedAuthenticationMethod)}}',
+  },
+  {labelKey: 'editor.tokens.labels.context.lockDuration', label: 'Lock duration', insert: '{{ctx(lockDuration)}}'},
+  {labelKey: 'editor.tokens.labels.context.unlockTime', label: 'Unlock time', insert: '{{ctx(unlockTime)}}'},
 ];
 
 /**

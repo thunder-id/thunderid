@@ -284,7 +284,7 @@ func (suite *FlowReferenceValidationTestSuite) baseApp(nameSuffix string) testut
 }
 
 func (suite *FlowReferenceValidationTestSuite) createFlowReturningID(flowDef FlowDefinition) string {
-	body, _ := json.Marshal(flowDef)
+	body, _ := json.Marshal(withOwner(flowDef))
 	req, _ := http.NewRequest(http.MethodPost, testServerURL+flowsEndpoint, bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 

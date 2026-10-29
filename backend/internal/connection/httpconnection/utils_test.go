@@ -44,14 +44,3 @@ func (s *UtilsTestSuite) TestSameOrigin() {
 		})
 	}
 }
-
-func (s *UtilsTestSuite) TestValidHost() {
-	for _, host := range []string{"risk.example.com", "localhost", "risk-engine", "my_service", "10.0.0.1",
-		"::1", "risk.example.com."} {
-		s.True(isValidHost(host), host)
-	}
-	for _, host := range []string{"", "risk..example.com", "-risk.com", "risk-.com", "risk example.com",
-		"rïsk.com", "fe80::1%en0", ".risk.com"} {
-		s.False(isValidHost(host), host)
-	}
-}

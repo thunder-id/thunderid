@@ -46,20 +46,20 @@ type AccessState struct {
 
 // observedFor returns the entry recorded for a method, whether or not it is currently locked.
 func (a AccessState) observedFor(method providers.AuthenticationMethod) LockEntry {
-	if method == AuthenticationMethodEntity {
-		if a.Lock.Entity == nil {
+	if method == AuthenticationMethodAccount {
+		if a.Lock.Account == nil {
 			return LockEntry{}
 		}
-		return *a.Lock.Entity
+		return *a.Lock.Account
 	}
 	return a.Lock.AuthenticationMethods[method]
 }
 
-// LockState holds the entity-wide entry and the per-method entries. A live entity entry holds under
-// either granularity; method entries are not read under entity granularity.
+// LockState holds the account-wide entry and the per-method entries. A live account entry holds under
+// either granularity; method entries are not read under account granularity.
 type LockState struct {
-	// Entity is the entity-wide entry, set under entity granularity and after an unsuspend.
-	Entity *LockEntry `json:"entity"`
+	// Account is the account-wide entry, set under account granularity and after an unsuspend.
+	Account *LockEntry `json:"account"`
 	// AuthenticationMethods holds the per-method entries, keyed by authentication method.
 	AuthenticationMethods map[providers.AuthenticationMethod]LockEntry `json:"authenticationMethods"`
 }
@@ -87,13 +87,13 @@ type LockEntry struct {
 	// ConsecutiveFailures counts failures since the entry was last cleared. Neither the window nor a
 	// lock resets it; only clearing the entry does.
 	ConsecutiveFailures int `json:"consecutiveFailures"`
-	// Reason is why an entity-wide entry exists.
+	// Reason is why an account-wide entry exists.
 	Reason LockReason `json:"reason"`
 }
 
-// EntityHold is the entity-wide hold written on unsuspend, in the same write that clears the
+// AccountHold is the account-wide hold written on unsuspend, in the same write that clears the
 // suspension.
-type EntityHold struct {
+type AccountHold struct {
 	// UnlockAt is permanentUnlockAt.
 	UnlockAt string
 	// Reason is descriptive only.
@@ -206,7 +206,7 @@ type lockNotice struct {
 }
 
 // lockEnforcement says which of a category's recorded locks are still enforced. A lock whose method's
-// policy is switched off is not, and under entity granularity only the entity entry is. The zero
+// policy is switched off is not, and under account granularity only the account entry is. The zero
 // value enforces every lock.
 type lockEnforcement struct {
 	// unenforced is the set of methods whose recorded locks are not enforced.
@@ -240,7 +240,7 @@ func (v accountAccessValue) isEmpty() bool {
 
 // accountAccessCategory is one entity category's settings. A nil category inherits the layer below.
 type accountAccessCategory struct {
-	// LockGranularity is "authentication_method" or "entity". Nil inherits.
+	// LockGranularity is "authentication_method" or "account". Nil inherits.
 	LockGranularity *granularity `json:"lockGranularity,omitempty"`
 	// RecordLastLogin turns on the lastLoginAt write when access is granted.
 	RecordLastLogin *bool `json:"recordLastLogin,omitempty"`

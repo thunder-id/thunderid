@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	flowcm "github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -56,6 +57,7 @@ type cibaService struct {
 	jwtService      jwt.JWTServiceInterface
 	inboundClient   providers.ActorProvider
 	resourceService providers.ResourceServerProvider
+	governance      providers.IdentityGovernanceProvider
 	logger          *log.Logger
 }
 
@@ -66,6 +68,7 @@ func newCIBAService(
 	jwtService jwt.JWTServiceInterface,
 	actorProvider providers.ActorProvider,
 	resourceService providers.ResourceServerProvider,
+	governance providers.IdentityGovernanceProvider,
 	cfg oauthconfig.Config,
 ) CIBAServiceInterface {
 	return &cibaService{
@@ -75,6 +78,7 @@ func newCIBAService(
 		jwtService:      jwtService,
 		inboundClient:   actorProvider,
 		resourceService: resourceService,
+		governance:      governance,
 		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CIBAService")),
 	}
 }
@@ -115,7 +119,7 @@ func (s *cibaService) InitiateBackchannelAuth(
 	// OIDC-only (no resource, no permission scopes) stays unbound; a permission-bearing request resolves
 	// an explicit resource or the configured default, rejecting with invalid_target when none applies.
 	targetRS, rsErr := resourceindicators.ResolveAudienceBinding(
-		ctx, s.resourceService, request.Resources, permissionScopes)
+		ctx, s.resourceService, request.Resources, permissionScopes, false)
 	if rsErr != nil {
 		return nil, &CIBAError{Code: rsErr.Error, Message: rsErr.ErrorDescription}
 	}
@@ -262,7 +266,13 @@ func (s *cibaService) loadPendingRequestForCallback(
 
 	// Resolve the owning client to obtain the expected audience (the app entity ID used as the
 	// assertion `aud`) for defense-in-depth audience validation during signature verification.
-	expectedAud := s.resolveExpectedAudience(ctx, record.ClientID)
+	expectedAud, cibaErr := s.resolveExpectedAudience(ctx, record.ClientID)
+	if cibaErr != nil {
+		if cibaErr.Code == oauth2const.ErrorServerError {
+			s.failUncheckedRequest(ctx, authReqID, assertion)
+		}
+		return nil, cibaErr
+	}
 
 	if verifyErr := s.jwtService.VerifyJWT(ctx, assertion, expectedAud, ""); verifyErr != nil {
 		s.logger.Debug(ctx, "Assertion verification failed",
@@ -403,34 +413,67 @@ func (s *cibaService) handleFailedCallback(
 	return nil
 }
 
-// resolveExpectedAudience resolves the app entity ID for the given client ID, which the flow uses
-// as the assertion `aud`. It returns an empty string (skipping the audience check) on lookup
-// failure; the authorization_request_id binding remains the primary protection in that case.
-func (s *cibaService) resolveExpectedAudience(ctx context.Context, clientID string) string {
-	app, svcErr := s.inboundClient.GetOAuthClientByClientID(ctx, clientID)
-	if svcErr != nil {
-		s.logger.Warn(ctx, "Failed to resolve client for audience validation; skipping audience check",
-			log.String("error", svcErr.Error.DefaultValue))
-		return ""
+// failUncheckedRequest marks a pending request FAILED when its client could not be resolved or its
+// access could not be checked, so the polling client stops waiting. The assertion must still verify,
+// without the audience, and be bound to the request. A deployment that does not report server errors
+// leaves the request pending, as handleFailedCallback does.
+func (s *cibaService) failUncheckedRequest(ctx context.Context, authReqID, assertion string) {
+	if !s.cfg.OAuth.SendServerErrorsToClientEnabled() {
+		return
 	}
-	if app == nil {
-		return ""
+	if verifyErr := s.jwtService.VerifyJWT(ctx, assertion, "", ""); verifyErr != nil {
+		return
 	}
-	return app.ID
+	claims, _, decodeErr := decodeAttributesFromAssertion(assertion)
+	if decodeErr != nil || claims.authReqID != authReqID {
+		return
+	}
+	s.logger.Debug(ctx, "Failing backchannel authentication request; its client could not be checked",
+		log.MaskedString("auth_req_id", authReqID))
+	if err := s.UpdateState(ctx, authReqID, CIBAStateFailed); err != nil {
+		s.logger.Error(ctx, "Failed to update CIBA authentication request state",
+			log.String("state", string(CIBAStateFailed)), log.Error(err))
+	}
 }
 
-// Flow executor error codes that mean the login_hint resolved to no single entity. Matched by
-// code rather than by message, because the messages are translatable and name the entity category.
-const (
-	flowErrCodeEntityNotFound          = "FET-1001"
-	flowErrCodeAmbiguousEntityIdentity = "FET-1003"
-)
+// resolveExpectedAudience resolves the app entity ID for the given client ID, which the flow uses
+// as the assertion `aud`. It returns an empty string (skipping the audience check) when the client no
+// longer exists; the authorization_request_id binding remains the primary protection in that case. A
+// failed lookup or a held client refuses the callback.
+func (s *cibaService) resolveExpectedAudience(ctx context.Context, clientID string) (string, *CIBAError) {
+	app, svcErr := s.inboundClient.GetOAuthClientByClientID(ctx, clientID)
+	if svcErr != nil {
+		return "", &CIBAError{
+			Code:    oauth2const.ErrorServerError,
+			Message: "Failed to process backchannel authentication callback",
+		}
+	}
+	if app == nil {
+		return "", nil
+	}
+
+	held, svcErr := oauth2utils.IsClientHeld(ctx, s.governance, app)
+	if svcErr != nil {
+		return "", &CIBAError{
+			Code:    oauth2const.ErrorServerError,
+			Message: "Failed to process backchannel authentication callback",
+		}
+	}
+	if held {
+		s.logger.Debug(ctx, "Refusing a backchannel authentication callback for an unavailable application")
+		return "", &CIBAError{
+			Code:    oauth2const.ErrorUnauthorizedClient,
+			Message: "This application is currently unavailable",
+		}
+	}
+	return app.ID, nil
+}
 
 // mapFlowErrorToCIBAError maps a flow failure to the appropriate CIBA error.
 // Not-found and ambiguous-identity failures map to unknown_user_id per CIBA Core 1.0 §7.3.
 func mapFlowErrorToCIBAError(failureCode string) *CIBAError {
 	switch failureCode {
-	case flowErrCodeEntityNotFound, flowErrCodeAmbiguousEntityIdentity:
+	case executor.ErrEntityNotFound.Code, executor.ErrAmbiguousEntityIdentity.Code:
 		return &CIBAError{
 			Code:    oauth2const.ErrorUnknownUserID,
 			Message: "Unable to resolve the user for the provided login_hint",

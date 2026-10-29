@@ -13,4 +13,8 @@ const (
 	ErrorCodeInvalidRequest       = "AUP-0006"
 	ErrorCodeAmbiguousUser        = "AUP-0007"
 	ErrorCodeEnrollmentFailed     = "AUP-0008"
+	// ErrorCodeAccountLocked is returned when an automatic lock refuses the identity.
+	ErrorCodeAccountLocked = "AUP-0009"
+	// ErrorCodeAccountSuspended is returned when a suspension refuses the identity.
+	ErrorCodeAccountSuspended = "AUP-0010"
 )

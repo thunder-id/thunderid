@@ -607,6 +607,100 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_WithOAuth_Success() {
 	assert.NotEmpty(suite.T(), resp.InboundAuthConfig[0].OAuthConfig.ClientSecret)
 }
 
+// captureCreatedOAuthProfile stubs inbound client creation and returns a pointer to the OAuth profile
+// the service hands it.
+func (suite *AgentServiceTestSuite) captureCreatedOAuthProfile(
+	mockEntity *entitymock.EntityServiceInterfaceMock,
+	mockInbound *inboundclientmock.InboundClientServiceInterfaceMock,
+) **providers.OAuthProfile {
+	clearMockCalls(mockEntity, "CreateEntity")
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(buildAgentEntityFixture(testAgentName, "", "", "cid-xxx"), nil)
+
+	captured := new(*providers.OAuthProfile)
+	clearMockCalls(mockInbound, "CreateInboundClient")
+	mockInbound.On("CreateInboundClient", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) { *captured = args.Get(2).(*providers.OAuthProfile) }).
+		Return(nil)
+	return captured
+}
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_DelegatedGetsTheDefaultGrants() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+	profile := suite.captureCreatedOAuthProfile(mockEntity, mockInbound)
+
+	req := &providers.Agent{
+		Type:      testAgentType,
+		OUID:      testOUID,
+		Delegated: true,
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+			{
+				Type:        providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{RedirectURIs: []string{"https://app.example.com/cb"}},
+			},
+		},
+	}
+	resp, svcErr := svc.CreateAgent(context.Background(), req)
+
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(resp)
+	suite.Require().NotNil(*profile)
+	assert.Equal(suite.T(), []string{"client_credentials", "authorization_code", "refresh_token"},
+		(*profile).GrantTypes)
+	assert.Equal(suite.T(), []string{"code"}, (*profile).ResponseTypes)
+	assert.True(suite.T(), (*profile).PKCERequired)
+	assert.Equal(suite.T(), []string{"https://app.example.com/cb"}, (*profile).RedirectURIs)
+}
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_NotDelegatedAlwaysHoldsClientCredentials() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+	profile := suite.captureCreatedOAuthProfile(mockEntity, mockInbound)
+
+	req := &providers.Agent{
+		Type: testAgentType,
+		OUID: testOUID,
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+			{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
+					GrantTypes: []providers.GrantType{providers.GrantTypeRefreshToken},
+				},
+			},
+		},
+	}
+	_, svcErr := svc.CreateAgent(context.Background(), req)
+
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(*profile)
+	assert.Equal(suite.T(), []string{"client_credentials", "refresh_token"}, (*profile).GrantTypes)
+}
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_DelegatedWithoutADelegationGrantIsRejected() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+
+	req := &providers.Agent{
+		Type:      testAgentType,
+		OUID:      testOUID,
+		Delegated: true,
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+			{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
+					GrantTypes: []providers.GrantType{providers.GrantTypeRefreshToken},
+				},
+			},
+		},
+	}
+	resp, svcErr := svc.CreateAgent(context.Background(), req)
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorMissingDelegationGrantType.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	mockInbound.AssertNotCalled(suite.T(), "Validate", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything)
+}
+
 func (suite *AgentServiceTestSuite) TestCreateAgent_EntityCreationFails() {
 	svc, mockEntity, _, _, _ := suite.setupService()
 
@@ -830,6 +924,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentList_Success() {
 	assert.Equal(suite.T(), 1, resp.TotalResults)
 	suite.Require().Len(resp.Agents, 1)
 	assert.JSONEq(suite.T(), `{"name":"test-agent"}`, string(resp.Agents[0].Attributes))
+	assert.Equal(suite.T(), new(true), resp.Agents[0].IsOwnedByOU)
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgentList_ReturnsLogoFromInboundClients() {
@@ -2084,6 +2179,101 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_WantsInbound_NoExisting_Crea
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
+// captureUpdatedOAuthProfile stubs the entity read and update and the inbound client creation, and
+// returns a pointer to the OAuth profile the service hands the inbound client service.
+func (suite *AgentServiceTestSuite) captureUpdatedOAuthProfile(
+	mockEntity *entitymock.EntityServiceInterfaceMock,
+	mockInbound *inboundclientmock.InboundClientServiceInterfaceMock,
+) **providers.OAuthProfile {
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture("old-name", "", "", ""), nil)
+	clearMockCalls(mockEntity, "UpdateEntity")
+	mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).
+		Return(&providers.Entity{}, nil)
+
+	captured := new(*providers.OAuthProfile)
+	clearMockCalls(mockInbound, "CreateInboundClient")
+	mockInbound.On("CreateInboundClient", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) { *captured = args.Get(2).(*providers.OAuthProfile) }).
+		Return(nil)
+	return captured
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_DelegatedGetsTheDefaultGrants() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+	profile := suite.captureUpdatedOAuthProfile(mockEntity, mockInbound)
+
+	_, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Type:      testAgentType,
+		Delegated: true,
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+			{
+				Type:        providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{RedirectURIs: []string{"https://app.example.com/cb"}},
+			},
+		},
+	})
+
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(*profile)
+	assert.Equal(suite.T(), []string{"client_credentials", "authorization_code", "refresh_token"},
+		(*profile).GrantTypes)
+	assert.Equal(suite.T(), []string{"code"}, (*profile).ResponseTypes)
+	assert.True(suite.T(), (*profile).PKCERequired)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_NotDelegatedAlwaysHoldsClientCredentials() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+	profile := suite.captureUpdatedOAuthProfile(mockEntity, mockInbound)
+
+	_, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Type: testAgentType,
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+			{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
+					GrantTypes: []providers.GrantType{providers.GrantTypeRefreshToken},
+				},
+			},
+		},
+	})
+
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(*profile)
+	assert.Equal(suite.T(), []string{"client_credentials", "refresh_token"}, (*profile).GrantTypes)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_DelegatedWithoutADelegationGrantIsRejectedBeforeAnyWrite() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture("old-name", "", "", ""), nil)
+
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Type:      testAgentType,
+		Delegated: true,
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+			{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
+					GrantTypes: []providers.GrantType{providers.GrantTypeRefreshToken},
+				},
+			},
+		},
+	})
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorMissingDelegationGrantType.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "UpdateEntity", mock.Anything, mock.Anything, mock.Anything)
+	mockInbound.AssertNotCalled(suite.T(), "CreateInboundClient",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	mockInbound.AssertNotCalled(suite.T(), "UpdateInboundClient",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
 func (suite *AgentServiceTestSuite) TestUpdateAgent_SetsLogoProperty() {
 	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 
@@ -3193,6 +3383,115 @@ func (suite *AgentServiceTestSuite) TestGetAgentList_NoAccessibleOUs() {
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
+// An organization unit filter lists the agents it owns, then the ones shared into it, each shared
+// agent under the listed organization unit.
+func (suite *AgentServiceTestSuite) TestGetAgentList_InOrganizationUnit() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+
+	mockEntity.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryAgent, testOUID,
+		entity.OUEntityScopeAll, 1, 0, map[string]interface{}(nil)).
+		Return(&entity.OUEntityPage{
+			Owned: []providers.Entity{{ID: "owned-agent", Category: providers.EntityCategoryAgent,
+				OUID: testOUID}},
+			Shared: []providers.Entity{{ID: "shared-agent", Category: providers.EntityCategoryAgent,
+				OUID: "owner-ou", OUHandle: "owner"}},
+			TotalResults: 3,
+		}, nil)
+
+	resp, svcErr := svc.GetAgentList(context.Background(), 1, 0,
+		map[string]interface{}{"ouId": testOUID}, false)
+
+	suite.Require().Nil(svcErr)
+	assert.Equal(suite.T(), 3, resp.TotalResults)
+	assert.Equal(suite.T(), 2, resp.Count)
+	suite.Require().Len(resp.Agents, 2)
+	assert.Equal(suite.T(), "owned-agent", resp.Agents[0].ID)
+	assert.Equal(suite.T(), new(true), resp.Agents[0].IsOwnedByOU)
+	assert.False(suite.T(), resp.Agents[0].IsReadOnly)
+	assert.Equal(suite.T(), "shared-agent", resp.Agents[1].ID)
+	assert.Equal(suite.T(), new(false), resp.Agents[1].IsOwnedByOU)
+	assert.True(suite.T(), resp.Agents[1].IsReadOnly)
+	assert.Equal(suite.T(), testOUID, resp.Agents[1].OUID)
+	assert.Empty(suite.T(), resp.Agents[1].OUHandle)
+	suite.Require().NotEmpty(resp.Links)
+	assert.Contains(suite.T(), resp.Links[0].Href, "&filter=ouId+eq+%22"+testOUID+"%22")
+	mockEntity.AssertNotCalled(suite.T(), "GetEntityList", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A caller who cannot list agents from the filtered organization unit gets an empty page.
+func (suite *AgentServiceTestSuite) TestGetAgentList_InOrganizationUnitWithoutAccess() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListAgents,
+		security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{AllAllowed: false, IDs: []string{"other-ou"}}, nil).Once()
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+
+	resp, svcErr := svc.GetAgentList(context.Background(), 10, 0,
+		map[string]interface{}{"ouId": testOUID}, false)
+
+	suite.Require().Nil(svcErr)
+	assert.Zero(suite.T(), resp.TotalResults)
+	assert.Empty(suite.T(), resp.Agents)
+	mockEntity.AssertNotCalled(suite.T(), "GetEntityPageInOU", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A restricted caller lists an organization unit it has access to.
+func (suite *AgentServiceTestSuite) TestGetAgentList_InAccessibleOrganizationUnit() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListAgents,
+		security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{AllAllowed: false, IDs: []string{testOUID}}, nil).Once()
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+
+	mockEntity.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryAgent, testOUID,
+		entity.OUEntityScopeAll, 10, 0, map[string]interface{}(nil)).
+		Return(&entity.OUEntityPage{
+			Owned:        []providers.Entity{*buildAgentEntityFixture(testAgentName, "", "", "")},
+			TotalResults: 1,
+		}, nil)
+
+	resp, svcErr := svc.GetAgentList(context.Background(), 10, 0,
+		map[string]interface{}{"ouId": testOUID}, false)
+
+	suite.Require().Nil(svcErr)
+	assert.Equal(suite.T(), 1, resp.TotalResults)
+	suite.Require().Len(resp.Agents, 1)
+	assert.Equal(suite.T(), new(true), resp.Agents[0].IsOwnedByOU)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentList_InOrganizationUnitError() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+
+	mockEntity.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryAgent, testOUID,
+		entity.OUEntityScopeAll, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, errors.New("db error"))
+
+	resp, svcErr := svc.GetAgentList(context.Background(), 10, 0,
+		map[string]interface{}{"ouId": testOUID}, false)
+
+	assert.Nil(suite.T(), resp)
+	assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentList_InvalidOrganizationUnitFilter() {
+	for name, filters := range map[string]map[string]interface{}{
+		"a number":               {"ouId": int64(5)},
+		"an empty ID":            {"ouId": ""},
+		"with another attribute": {"ouId": testOUID, "name": testAgentName},
+	} {
+		suite.Run(name, func() {
+			svc, _, _, _, _ := suite.setupService()
+
+			resp, svcErr := svc.GetAgentList(context.Background(), 10, 0, filters, false)
+
+			assert.Nil(suite.T(), resp)
+			assert.Equal(suite.T(), &ErrorInvalidFilter, svcErr)
+		})
+	}
+}
+
 // A failed authorization check is a refusal, not a pass.
 func (suite *AgentServiceTestSuite) TestGetAgent_AuthzCheckError() {
 	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
@@ -3289,7 +3588,8 @@ func (suite *AgentServiceTestSuite) TestGetAgent_ReportsTheGovernedStatus() {
 	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
 	governance.EXPECT().ReadEntityAccess(mock.Anything, *agentEntity).
 		Return(identitygovernance.AccessRead{
-			Status: providers.AccessStatusReport{Value: providers.AccessStatusLocked},
+			Status:      providers.AccessStatusReport{Value: providers.AccessStatusLocked},
+			LastLoginAt: "2026-09-09T18:22:04Z",
 		}).Once()
 	svc.governance = governance
 
@@ -3297,6 +3597,7 @@ func (suite *AgentServiceTestSuite) TestGetAgent_ReportsTheGovernedStatus() {
 	suite.Require().Nil(svcErr)
 	suite.Require().NotNil(resp.Status)
 	suite.Equal(providers.AccessStatusLocked, resp.Status.Value)
+	suite.Equal("2026-09-09T18:22:04Z", resp.LastLoginAt)
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgentList_ReportsTheGovernedStatus() {
@@ -3314,7 +3615,8 @@ func (suite *AgentServiceTestSuite) TestGetAgentList_ReportsTheGovernedStatus() 
 	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
 	governance.EXPECT().ReadAccess(mock.Anything, listed).Return([]identitygovernance.AccessRead{
 		{
-			Status: providers.AccessStatusReport{Value: providers.AccessStatusLocked},
+			Status:      providers.AccessStatusReport{Value: providers.AccessStatusLocked},
+			LastLoginAt: "2026-09-09T18:22:04Z",
 		},
 		{Status: providers.AccessStatusReport{Value: providers.AccessStatusSuspended}},
 	}).Once()
@@ -3326,6 +3628,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentList_ReportsTheGovernedStatus() 
 	suite.Require().Len(resp.Agents, 2)
 	suite.Equal(testAgentID, resp.Agents[0].ID)
 	suite.Equal(providers.AccessStatusLocked, resp.Agents[0].Status.Value)
+	suite.Equal("2026-09-09T18:22:04Z", resp.Agents[0].LastLoginAt)
 	suite.Equal("agent-2", resp.Agents[1].ID)
 	suite.Equal(providers.AccessStatusSuspended, resp.Agents[1].Status.Value)
 }
@@ -3340,6 +3643,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ReportsTheGovernedStatus() {
 				Details: &providers.AccessStatusDetails{Reason: providers.AccessHoldReasonFailedAttempts,
 					LockedMethods: []providers.AccessLockedMethod{
 						{Method: "credential", ExpiresAt: "2026-10-21T09:00:00Z"}}}},
+			LastLoginAt: "2026-10-20T08:00:00Z",
 		}},
 		{name: "an active agent", read: identitygovernance.AccessRead{
 			Status: providers.AccessStatusReport{Value: providers.AccessStatusActive}}},
@@ -3365,6 +3669,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ReportsTheGovernedStatus() {
 			suite.Require().Nil(svcErr)
 			suite.Require().NotNil(resp.Status)
 			suite.Equal(tc.read.Status, *resp.Status)
+			suite.Equal(tc.read.LastLoginAt, resp.LastLoginAt)
 		})
 	}
 }
@@ -3380,4 +3685,5 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_ReportsNoStatus() {
 
 	suite.Require().Nil(svcErr)
 	suite.Nil(resp.Status)
+	suite.Empty(resp.LastLoginAt)
 }

@@ -1,10 +1,11 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 // Package utils provides utility functions for OAuth2 operations.
 package utils
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -16,8 +17,38 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
+
+// ValidateAuthorizationDetails validates a request's authorization_details, mapping a refusal to an OAuth error.
+func ValidateAuthorizationDetails(ctx context.Context,
+	authzDetails providers.AuthorizationDetailProvider,
+	raw string) (json.RawMessage, *model.ErrorResponse) {
+	details, svcErr := authzDetails.ValidateAuthorizationDetails(ctx, raw)
+	if svcErr != nil {
+		return nil, AuthorizationDetailsErrorResponse(svcErr)
+	}
+	return details, nil
+}
+
+// AuthorizationDetailsErrorResponse maps an authorization details error to an OAuth error response.
+func AuthorizationDetailsErrorResponse(svcErr *tidcommon.ServiceError) *model.ErrorResponse {
+	if svcErr.Type != tidcommon.ClientErrorType {
+		return &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to process authorization details",
+		}
+	}
+	description := SanitizeErrorDescription(svcErr.ErrorDescription.String())
+	if description == "" {
+		description = SanitizeErrorDescription(svcErr.Error.String())
+	}
+	return &model.ErrorResponse{
+		Error:            constants.ErrorInvalidAuthorizationDetails,
+		ErrorDescription: description,
+	}
+}
 
 // GetURIWithQueryParams constructs a URI with the given query parameters.
 // It validates the error code and error description according to the spec.
@@ -279,4 +310,18 @@ func EnsureClientSubTypeAttribute(token *providers.OAuthTokenConfig) *providers.
 		clientConfig.Attributes = append(clientConfig.Attributes, constants.ClaimSubType)
 	}
 	return token
+}
+
+// IsClientHeld reports whether governance holds the client's entity at the application plane. With no
+// governance, client or entity ID the client is not held. A governance fault is a server error.
+func IsClientHeld(ctx context.Context, governance providers.IdentityGovernanceProvider,
+	client *providers.OAuthClient) (bool, *tidcommon.ServiceError) {
+	if governance == nil || client == nil || client.ID == "" {
+		return false, nil
+	}
+	decision, svcErr := governance.EvaluateAccess(ctx, client.ID, providers.AccessPlaneApplication, "")
+	if svcErr != nil {
+		return false, &tidcommon.InternalServerError
+	}
+	return !decision.Admitted, nil
 }

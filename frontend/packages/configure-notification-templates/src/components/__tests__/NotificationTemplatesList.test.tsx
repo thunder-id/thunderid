@@ -36,12 +36,16 @@ vi.mock('@wso2/oxygen-ui', async () => {
   return {
     ...actual,
     ListingTable: {
-      Provider: ({children, loading}: {children: React.ReactNode; loading: boolean}) => (
-        <div data-testid="data-grid" data-loading={String(loading)}>
+      Provider: ({children, loading, variant}: {children: React.ReactNode; loading: boolean; variant: string}) => (
+        <div data-testid="data-grid" data-loading={String(loading)} data-variant={variant}>
           {children}
         </div>
       ),
-      Container: ({children}: {children: React.ReactNode}) => children,
+      Container: ({children, disablePaper = undefined}: {children: React.ReactNode; disablePaper?: boolean}) => (
+        <div data-testid="listing-container" data-disable-paper={disablePaper}>
+          {children}
+        </div>
+      ),
       DataGrid: ({
         rows,
         columns,
@@ -70,6 +74,21 @@ vi.mock('@wso2/oxygen-ui', async () => {
         </>
       ),
       RowActions: ({children}: {children: React.ReactNode}) => children,
+      CellIcon: ({
+        icon = null,
+        primary = null,
+        secondary = null,
+      }: {
+        icon?: React.ReactNode;
+        primary?: React.ReactNode;
+        secondary?: React.ReactNode;
+      }) => (
+        <span>
+          {icon}
+          <span>{primary}</span>
+          {secondary && <span>{secondary}</span>}
+        </span>
+      ),
       EmptyState: ({title = null, description = null}: {title?: React.ReactNode; description?: React.ReactNode}) => (
         <div>
           <div>{title}</div>
@@ -97,7 +116,7 @@ vi.mock('@/components/NotificationTemplateDeleteDialog', () => ({
 }));
 
 const templates = [
-  {id: 'tmpl-1', handle: 'otp-verification', displayName: 'OTP Verification'},
+  {id: 'tmpl-1', handle: 'otp-verification', displayName: 'OTP Verification', description: 'Sends a one-time code'},
   {id: 'tmpl-2', handle: 'password-reset', displayName: 'Password Reset'},
 ];
 
@@ -125,6 +144,33 @@ describe('NotificationTemplatesList', () => {
     expect(screen.getByTestId('row-tmpl-2')).toBeInTheDocument();
     expect(screen.getByText('OTP Verification')).toBeInTheDocument();
     expect(screen.getByText('Password Reset')).toBeInTheDocument();
+  });
+
+  it('renders the listing as a papered data grid', () => {
+    render(<NotificationTemplatesList channel="email" />);
+
+    expect(screen.getByTestId('data-grid')).toHaveAttribute('data-variant', 'data-grid');
+    expect(screen.getByTestId('listing-container')).not.toHaveAttribute('data-disable-paper');
+  });
+
+  it('shows the description as the second line only when the template has one', () => {
+    render(<NotificationTemplatesList channel="email" />);
+
+    expect(screen.getByTestId('row-tmpl-1')).toHaveTextContent('Sends a one-time code');
+    expect(screen.getByTestId('row-tmpl-2')).toHaveTextContent(/^Password Reset$/);
+  });
+
+  it('shows the mail icon for email templates and the message icon for SMS templates', () => {
+    const {unmount} = render(<NotificationTemplatesList channel="email" />);
+
+    expect(screen.getByTestId('row-tmpl-1').querySelector('.lucide-mail')).toBeInTheDocument();
+    expect(screen.getByTestId('row-tmpl-1').querySelector('.lucide-message-square')).not.toBeInTheDocument();
+    unmount();
+
+    render(<NotificationTemplatesList channel="sms" />);
+
+    expect(screen.getByTestId('row-tmpl-1').querySelector('.lucide-message-square')).toBeInTheDocument();
+    expect(screen.getByTestId('row-tmpl-1').querySelector('.lucide-mail')).not.toBeInTheDocument();
   });
 
   it('navigates to the template editor when a row is clicked', () => {

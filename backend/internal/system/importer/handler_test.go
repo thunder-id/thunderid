@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
@@ -145,4 +146,28 @@ func (suite *ImportHandlerTestSuite) TestHandleDeleteImportRequest_Success() {
 	suite.handler.HandleDeleteImportRequest(w, req)
 
 	assert.Equal(suite.T(), http.StatusOK, w.Code)
+}
+
+// An import runs longer than the server's write timeout allows other requests, and answers within
+// the import timeout instead. The import only has to outlast the server's 100 ms, which a slow machine
+// makes it do all the more; the import timeout is an hour, so no pause can reach it.
+func (suite *ImportHandlerTestSuite) TestHandleImportRequest_AnswersWithinTheImportTimeout() {
+	config.ResetServerRuntime()
+	suite.Require().NoError(config.InitializeServerRuntime(suite.T().TempDir(), &config.Config{
+		Import: config.ImportConfig{TimeoutSeconds: 3600},
+	}))
+	suite.service.importFn = func(context.Context, *ImportRequest) (*ImportResponse, *tidcommon.ServiceError) {
+		time.Sleep(300 * time.Millisecond)
+		return &ImportResponse{}, nil
+	}
+	server := httptest.NewUnstartedServer(http.HandlerFunc(suite.handler.HandleImportRequest))
+	server.Config.WriteTimeout = 100 * time.Millisecond
+	server.Start()
+	suite.T().Cleanup(server.Close)
+
+	resp, err := server.Client().Post(server.URL+"/import", "application/json", strings.NewReader(`{"content":"x"}`))
+
+	suite.Require().NoError(err, "the import lost its connection at the server's write timeout")
+	suite.Equal(http.StatusOK, resp.StatusCode)
+	suite.Require().NoError(resp.Body.Close())
 }

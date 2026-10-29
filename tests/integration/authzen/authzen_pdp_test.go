@@ -24,6 +24,7 @@ type authZENPDPConnectionResponse struct {
 	Name                     string                              `json:"name"`
 	Description              string                              `json:"description,omitempty"`
 	Type                     string                              `json:"type"`
+	OUID                     string                              `json:"ouId"`
 	Endpoint                 string                              `json:"endpoint"`
 	BatchEndpoint            string                              `json:"batchEndpoint,omitempty"`
 	TimeoutMS                int                                 `json:"timeoutMs"`
@@ -234,6 +235,7 @@ func (s *AuthZENPDPIntegrationSuite) SetupSuite() {
 
 	connectionBody := map[string]interface{}{
 		"name":          "AuthZEN PDP",
+		"ouId":          s.ouID,
 		"description":   "AuthZEN PDP used by the AuthZEN integration suite",
 		"endpoint":      s.pdpServer.URL + "/access/v1/evaluation",
 		"batchEndpoint": s.pdpServer.URL + "/access/v1/evaluations",
@@ -687,6 +689,7 @@ func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionSettingsAndUsagePer
 	s.Equal("AuthZEN PDP", connection.Name)
 	s.Equal("AuthZEN PDP used by the AuthZEN integration suite", connection.Description)
 	s.Equal("authzen-pdp", connection.Type)
+	s.Equal(s.ouID, connection.OUID)
 	s.Equal(s.pdpServer.URL+"/access/v1/evaluation", connection.Endpoint)
 	s.Equal(s.pdpServer.URL+"/access/v1/evaluations", connection.BatchEndpoint)
 	s.Equal(750, connection.TimeoutMS)
@@ -745,6 +748,7 @@ func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionSettingsAndUsagePer
 	var updatedConnection authZENPDPConnectionResponse
 	s.Require().NoError(json.Unmarshal(body, &updatedConnection))
 	s.Equal("Updated AuthZEN PDP connection", updatedConnection.Description)
+	s.Equal(s.ouID, updatedConnection.OUID, "an update that leaves the ouId out keeps the owning organization unit")
 	s.Equal(900, updatedConnection.TimeoutMS)
 	s.Equal(3, updatedConnection.RetryCount)
 	s.Require().Len(updatedConnection.SubjectAttributeMappings, 1)
@@ -920,6 +924,7 @@ func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionValidationAndNotFou
 			path:   "/connections/authzen-pdp",
 			body: string(mustJSON(map[string]interface{}{
 				"name":     "Missing Batch Endpoint PDP",
+				"ouId":     s.ouID,
 				"endpoint": s.pdpServer.URL + "/access/v1/evaluation",
 			})),
 			status: http.StatusCreated,
@@ -930,6 +935,7 @@ func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionValidationAndNotFou
 			path:   "/connections/authzen-pdp",
 			body: string(mustJSON(map[string]interface{}{
 				"name":           "Invalid Authentication PDP",
+				"ouId":           s.ouID,
 				"endpoint":       s.pdpServer.URL + "/access/v1/evaluation",
 				"authentication": map[string]interface{}{"type": "unknown"},
 			})),
@@ -941,6 +947,7 @@ func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionValidationAndNotFou
 			path:   "/connections/authzen-pdp",
 			body: string(mustJSON(map[string]interface{}{
 				"name":           "Insecure PDP",
+				"ouId":           s.ouID,
 				"endpoint":       "http://pdp.example.com/access/v1/evaluation",
 				"authentication": map[string]interface{}{"type": "bearer", "properties": map[string]string{"token": "secret"}},
 			})),
@@ -952,6 +959,7 @@ func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionValidationAndNotFou
 			path:   "/connections/authzen-pdp",
 			body: string(mustJSON(map[string]interface{}{
 				"name":           "Insecure Batch PDP",
+				"ouId":           s.ouID,
 				"endpoint":       "https://pdp.example.com/access/v1/evaluation",
 				"batchEndpoint":  "http://pdp.example.com/access/v1/evaluations",
 				"authentication": map[string]interface{}{"type": "bearer", "properties": map[string]string{"token": "secret"}},
@@ -964,6 +972,7 @@ func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionValidationAndNotFou
 			path:   "/connections/authzen-pdp",
 			body: string(mustJSON(map[string]interface{}{
 				"name":          "Invalid Mapping Attribute PDP",
+				"ouId":          s.ouID,
 				"endpoint":      s.pdpServer.URL + "/access/v1/evaluation",
 				"batchEndpoint": s.pdpServer.URL + "/access/v1/evaluations",
 				"subjectAttributeMappings": []authZENPDPSubjectAttributeMapping{{
@@ -979,6 +988,7 @@ func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionValidationAndNotFou
 			path:   "/connections/authzen-pdp",
 			body: string(mustJSON(map[string]interface{}{
 				"name":          "Invalid Mapping Type PDP",
+				"ouId":          s.ouID,
 				"endpoint":      s.pdpServer.URL + "/access/v1/evaluation",
 				"batchEndpoint": s.pdpServer.URL + "/access/v1/evaluations",
 				"subjectAttributeMappings": []authZENPDPSubjectAttributeMapping{{
@@ -1048,8 +1058,22 @@ func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionValidationAndNotFou
 			_ = response.Body.Close()
 			s.Require().NoError(readErr)
 			s.Equal(test.status, response.StatusCode, string(body))
+			if test.method == http.MethodPost && response.StatusCode == http.StatusCreated {
+				var created authZENPDPConnectionResponse
+				s.Require().NoError(json.Unmarshal(body, &created))
+				s.deleteAuthZENPDPConnection(created.ID)
+			}
 		})
 	}
+}
+
+func (s *AuthZENPDPIntegrationSuite) deleteAuthZENPDPConnection(id string) {
+	request, err := http.NewRequest(http.MethodDelete, testutils.TestServerURL+"/connections/authzen-pdp/"+id, nil)
+	s.Require().NoError(err)
+	response, err := testutils.GetHTTPClient().Do(request)
+	s.Require().NoError(err)
+	_ = response.Body.Close()
+	s.Equal(http.StatusNoContent, response.StatusCode)
 }
 
 func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionListSupportsCategoryAndPagination() {
@@ -1153,6 +1177,7 @@ func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionEndpointChangeRequi
 func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionExportImportRoundTrip() {
 	payload := mustJSON(map[string]interface{}{
 		"name":          "Declarative AuthZEN PDP",
+		"ouId":          s.ouID,
 		"description":   "AuthZEN PDP declarative round trip",
 		"endpoint":      s.pdpServer.URL + "/access/v1/evaluation",
 		"batchEndpoint": s.pdpServer.URL + "/access/v1/evaluations",
@@ -1384,6 +1409,7 @@ func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionExportImportRoundTr
 func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPUnusedConnectionCanBeDeleted() {
 	payload := mustJSON(map[string]interface{}{
 		"name":          "Unused AuthZEN PDP",
+		"ouId":          s.ouID,
 		"endpoint":      s.pdpServer.URL + "/access/v1/evaluation",
 		"batchEndpoint": s.pdpServer.URL + "/access/v1/evaluations",
 	})
@@ -1555,6 +1581,7 @@ func (s *AuthZENPDPIntegrationSuite) TestResourceServerWithoutAuthZENPDPUsesDefa
 func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionRejectsInvalidEndpoint() {
 	payload := mustJSON(map[string]interface{}{
 		"name":          "Invalid AuthZEN PDP",
+		"ouId":          s.ouID,
 		"endpoint":      "not-an-absolute-url",
 		"batchEndpoint": s.pdpServer.URL + "/access/v1/evaluations",
 	})
@@ -1576,6 +1603,7 @@ func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionRejectsInvalidEndpo
 func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionRejectsUnsupportedEndpointScheme() {
 	payload := mustJSON(map[string]interface{}{
 		"name":          "Unsupported Scheme AuthZEN PDP",
+		"ouId":          s.ouID,
 		"endpoint":      "ftp://pdp.example.com/access/v1/evaluation",
 		"batchEndpoint": s.pdpServer.URL + "/access/v1/evaluations",
 	})

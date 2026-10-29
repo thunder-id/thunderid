@@ -5,4 +5,5 @@
  * Agents Pages Index
  */
 
-export { AgentOnboardingPage } from "./agent-onboarding.page";
+export { AgentsPage } from "./agents.page";
+export { AgentDetailsPage } from "./agent-details.page";

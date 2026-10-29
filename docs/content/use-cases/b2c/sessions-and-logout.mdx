@@ -53,8 +53,9 @@ may not all come from your own code.
 
 Deleting the session stops the next sign-in from being silent. It does not clear what each application remembers.
 
-- **Use back-channel logout** when more than one application shares a session. The message still arrives if the browser
-  is closed, if frames are blocked, or if an administrator ended the session.
+- **Use [back-channel logout](../../../guides/protocols/oauth-oidc/backchannel-logout)** when more than one application
+  shares a session. The message still arrives if the browser is closed, if frames are blocked, or if an administrator
+  ended the session.
 - **Rely on short application sessions** only when one application shares the sign-in.
 - Do not rely on the browser to pass a logout between applications. It fails exactly when someone walks away from a
   shared computer.

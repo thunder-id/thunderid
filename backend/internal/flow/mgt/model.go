@@ -19,6 +19,8 @@ type FlowDefinition struct {
 	FlowType     providers.FlowType                `json:"flowType"                                             jsonschema:"Type of flow: 'AUTHENTICATION' for login flows or 'REGISTRATION' for signup flows"                                                        validate:"required"`
 	Interceptors []providers.InterceptorDefinition `json:"interceptors,omitempty" yaml:"interceptors,omitempty" jsonschema:"Optional array of interceptor declarations for cross-cutting concerns (e.g., CAPTCHA, rate limiting)."`
 	Nodes        []providers.NodeDefinition        `json:"nodes"                                                jsonschema:"Array of nodes defining the flow steps. Must include START and END nodes. Use get_flow on existing flows to see node structure examples." validate:"required"`
+	OUID         string                            `json:"ouId,omitempty"         yaml:"ouId,omitempty"         jsonschema:"Organization unit that owns the flow. Required on create and update, and cannot be changed afterwards."`
+	OUHandle     string                            `json:"-"                      yaml:"-"`
 }
 
 // FlowDefinitionRequest represents the API request body for create/update flow operations.
@@ -29,6 +31,7 @@ type FlowDefinitionRequest struct {
 	FlowType     providers.FlowType                `json:"flowType"               validate:"required"`
 	Interceptors []providers.InterceptorDefinition `json:"interceptors,omitempty"`
 	Nodes        []providers.NodeDefinition        `json:"nodes"                  validate:"required"`
+	OUID         string                            `json:"ouId,omitempty"`
 }
 
 // BasicFlowDefinition represents basic information about a flow definition.
@@ -41,6 +44,7 @@ type BasicFlowDefinition struct {
 	CreatedAt     string             `json:"createdAt"     jsonschema:"Creation timestamp."`
 	UpdatedAt     string             `json:"updatedAt"     jsonschema:"Last update timestamp."`
 	IsReadOnly    bool               `json:"isReadOnly"    jsonschema:"Whether the flow is immutable (declarative)."`
+	OUID          string             `json:"ouId"          jsonschema:"Organization unit that owns the flow."`
 }
 
 // FlowListResponse represents a paginated list of flow definitions.

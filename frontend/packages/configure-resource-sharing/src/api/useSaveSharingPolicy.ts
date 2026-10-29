@@ -8,6 +8,7 @@ import {useTranslation} from 'react-i18next';
 import ResourceSharingQueryKeys from '../constants/resource-sharing-query-keys';
 import type {SharingPolicySavePlan} from '../models/organization-access';
 import type {SharingPolicyRequest} from '../models/sharing-policy';
+import translateOrganizationAccessWording from '../utils/translateOrganizationAccessWording';
 
 /**
  * Carries out a sharing policy save plan against one shareable resource.
@@ -19,17 +20,19 @@ import type {SharingPolicyRequest} from '../models/sharing-policy';
  * Failures are left to the caller, which shows them beside the save action.
  *
  * @param resourcePath - The resource's path relative to the server URL, e.g. `applications/<id>`
+ * @param wordingNamespace - The i18n namespace holding the resource's own wording, for the success toast
  * @returns TanStack Query mutation that takes a {@link SharingPolicySavePlan}
  *
  * @public
  */
 export default function useSaveSharingPolicy(
   resourcePath: string,
+  wordingNamespace: string | undefined = undefined,
 ): UseMutationResult<void, Error, SharingPolicySavePlan> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient = useQueryClient();
-  const {t} = useTranslation('resourceSharing');
+  const {t} = useTranslation();
   const {showToast} = useToast();
 
   return useMutation<void, Error, SharingPolicySavePlan>({
@@ -65,7 +68,7 @@ export default function useSaveSharingPolicy(
       }
     },
     onSuccess: () => {
-      showToast(t('save.success', 'Organization access updated.'), 'success');
+      showToast(translateOrganizationAccessWording(t, wordingNamespace, 'saved'), 'success');
     },
     onSettled: () => {
       queryClient.invalidateQueries({queryKey: [ResourceSharingQueryKeys.SHARING_POLICIES, resourcePath]}).catch(() => {

@@ -691,9 +691,14 @@ func (suite *SMSOTPAuthTestSuite) sendOTPAndExtract() (string, string) {
 // createNotificationSender creates a custom SMS sender via /connections/sms-gateway. Only the
 // "custom" provider is used by this suite; other providers aren't supported by this helper.
 func (suite *SMSOTPAuthTestSuite) createNotificationSender(sender NotificationSenderRequest) (string, error) {
+	ouID, err := testutils.DefaultConnectionOUID()
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve the connection organization unit: %w", err)
+	}
 	body := map[string]interface{}{
 		"name":        sender.Name,
 		"description": sender.Description,
+		"ouId":        ouID,
 	}
 	for _, prop := range sender.Properties {
 		switch prop.Name {

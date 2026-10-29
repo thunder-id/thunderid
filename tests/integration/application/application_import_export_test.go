@@ -996,3 +996,62 @@ inboundAuthConfig:
 	status, _ = s.sharingRequest(http.MethodGet, path, nil)
 	s.Equal(http.StatusNotFound, status, "the policy is gone")
 }
+
+// A shared application stays in its organization unit: its policies were issued against that unit.
+func (s *ApplicationImportExportSuite) TestSharedApplicationCannotMove() {
+	childOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "app-move-child-" + s.handleSuffix,
+		Name:   "App Move Child " + s.handleSuffix,
+		Parent: &s.ouID,
+	})
+	s.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(childOUID) }()
+
+	app := Application{
+		OUID: s.ouID, Name: "App Move Shared " + s.handleSuffix, Template: "web", AuthFlowID: s.authFlowID,
+	}
+	appID, err := createApplication(app)
+	s.Require().NoError(err)
+	defer func() { _ = deleteApplication(appID) }()
+
+	status, created := s.sharingRequest(http.MethodPost, "/applications/"+appID+"/sharing-policies",
+		map[string]interface{}{"childUnits": allChildUnits()})
+	s.Require().Equal(http.StatusCreated, status, "body: %v", created)
+
+	app.OUID = childOUID
+	err = updateApplication(appID, app)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "got 400")
+	s.Contains(err.Error(), "APP-1061")
+}
+
+// A policy field the format does not declare fails the document rather than being dropped, which
+// would share the application with the unit the document meant to exclude.
+func (s *ApplicationImportExportSuite) TestImportRefusesAMisspelledPolicyField() {
+	yamlContent := fmt.Sprintf(`resource_type: application
+name: App Imp Misspelled %s
+type: m2m
+ouId: %s
+sharingPolicies:
+  - childUnits:
+      mode: all
+      excludeOuIds: [some-unit]
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: app-imp-misspelled-%s
+      clientSecret: app-imp-misspelled-secret-%s
+      grantTypes:
+        - client_credentials
+      tokenEndpointAuthMethod: client_secret_basic
+`, s.handleSuffix, s.ouID, s.handleSuffix, s.handleSuffix)
+
+	imported, err := s.importApps(appImportRequest{
+		Content: yamlContent,
+		Options: appImportOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
+	})
+	s.Require().NoError(err)
+	s.Equal(0, imported.Summary.Imported, "import results: %+v", imported.Results)
+	s.Require().Equal(1, imported.Summary.Failed, "import results: %+v", imported.Results)
+	s.Contains(imported.Results[0].Message, "excludeOuIds")
+}

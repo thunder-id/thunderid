@@ -325,6 +325,28 @@ func (s *CacheBackedStoreTestSuite) TestDeleteEntityTypeByID_ExistsInCache() {
 	s.False(ok)
 }
 
+// TestDeleteEntityTypeByID_InvalidatesCorrectKeyEvenWhenCachedCategoryIsBlank guards against
+// EntityType.Category being tagged json:"-": a value read back from the Redis cache backend has
+// Category == "", so invalidation must key off the category parameter, not the cached value.
+func (s *CacheBackedStoreTestSuite) TestDeleteEntityTypeByID_InvalidatesCorrectKeyEvenWhenCachedCategoryIsBlank() {
+	schema := s.createTestSchema()
+	blankCategorySchema := schema
+	blankCategorySchema.Category = ""
+	s.schemaByIDData[string(TypeCategoryUser)+":"+schema.ID] = &blankCategorySchema
+	s.schemaByHandleData[string(TypeCategoryUser)+":"+schema.Handle] = &blankCategorySchema
+
+	s.mockStore.On("DeleteEntityTypeByID", mock.Anything, mock.Anything, schema.ID).Return(nil).Once()
+
+	err := s.cachedStore.DeleteEntityTypeByID(context.Background(), TypeCategoryUser, schema.ID)
+	s.Nil(err)
+
+	_, ok := s.schemaByIDCache.Get(context.Background(), cacheKeyForID(TypeCategoryUser, schema.ID))
+	s.False(ok, "ID-cache entry should have been invalidated using the category parameter")
+
+	_, ok = s.schemaByHandleCache.Get(context.Background(), cacheKeyForHandle(TypeCategoryUser, schema.Handle))
+	s.False(ok, "handle-cache entry should have been invalidated using the category parameter")
+}
+
 func (s *CacheBackedStoreTestSuite) TestDeleteEntityTypeByID_NotInCache() {
 	schema := s.createTestSchema()
 	s.mockStore.On("GetEntityTypeByID", mock.Anything, mock.Anything, schema.ID).Return(schema, nil).Once()

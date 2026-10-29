@@ -2593,7 +2593,7 @@ export function B2CSolutionPatternsRoadmap() {
 }
 
 interface ArchDecisionCard {
-  id: 'integration' | 'identity-sources' | 'tokens-and-apis' | 'sessions-and-logout' | 'notification' | 'operations';
+  id: 'integration' | 'identity-sources' | 'tokens-and-apis' | 'sessions-and-logout' | 'notification' | 'conditional-journeys' | 'operations';
   title: string;
   question: string;
   href: string;
@@ -2666,6 +2666,22 @@ const b2cArchDecisions: ArchDecisionCard[] = [
       <svg viewBox="0 0 24 24">
         <rect x="2" y="5" width="20" height="14" rx="2" />
         <path d="m2 7 10 6 10-6" />
+      </svg>
+    ),
+  },
+  {
+    id: 'conditional-journeys',
+    title: 'Conditional Journeys',
+    question: 'Where should a journey branch, what decides the path, and what happens when that information is missing?',
+    href: '../conditional-journeys',
+    hiddenInVersions: ['v1.0.x'],
+    icon: (
+      <svg viewBox="0 0 24 24">
+        <circle cx="6" cy="12" r="3" />
+        <circle cx="18" cy="6" r="3" />
+        <circle cx="18" cy="18" r="3" />
+        <path d="M9 12h3l3-6" />
+        <path d="M12 12l3 6" />
       </svg>
     ),
   },

@@ -14,6 +14,7 @@
 
 import type { APIRequestContext } from "@playwright/test";
 import { send, sendOk } from "../api-request";
+import { UserTypesApi } from "../user-types-api";
 
 export type ApiFlow = {
   id: string;
@@ -30,9 +31,26 @@ const maxPageSize = 100;
 export class FlowsApi {
   constructor(private readonly request: APIRequestContext) {}
 
-  /** Create a flow directly via the API. */
+  /**
+   * The organization unit a flow created by a test belongs to: the one that owns the bootstrap
+   * "person" user type, resolved the way the other e2e helpers do rather than hardcoding the
+   * bootstrap-default id.
+   */
+  async defaultOuId(): Promise<string> {
+    const personType = await new UserTypesApi(this.request).findByHandle("person");
+    if (!personType) {
+      throw new Error('GET /user-types returned no "person" user type');
+    }
+    return personType.ouId;
+  }
+
+  /**
+   * Create a flow directly via the API. Every flow needs an owning organization unit, so `ouId`
+   * defaults to {@link defaultOuId} when the caller does not give one.
+   */
   async create(data: Record<string, unknown>): Promise<ApiFlow> {
-    const response = await sendOk(this.request, "POST", "/flows", data);
+    const body = { ...data, ouId: data.ouId ?? (await this.defaultOuId()) };
+    const response = await sendOk(this.request, "POST", "/flows", body);
     return (await response.json()) as ApiFlow;
   }
 

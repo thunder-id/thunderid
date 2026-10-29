@@ -672,7 +672,38 @@ func (s *FlowMgtHandlerTestSuite) TestSanitizeFlowDefinitionRequest() {
 
 	result := sanitizeFlowDefinitionRequest(input)
 
+	s.Empty(result.OUID)
 	s.Equal("Test Flow", result.Name)
 	s.Equal(providers.FlowTypeAuthentication, result.FlowType)
 	s.Len(result.Nodes, 1)
+}
+
+func (s *FlowMgtHandlerTestSuite) TestSanitizeFlowDefinitionRequest_CarriesTheOrganizationUnit() {
+	result := sanitizeFlowDefinitionRequest(&FlowDefinitionRequest{
+		Handle: "test-handle", Name: "Test Flow", FlowType: providers.FlowTypeAuthentication, OUID: "  ou-1 ",
+		Nodes: []providers.NodeDefinition{{ID: "start", Type: "START"}},
+	})
+
+	s.Equal("ou-1", result.OUID)
+}
+
+func (s *FlowMgtHandlerTestSuite) TestCreateFlow_OwnedByTheOUInTheBody() {
+	body := &FlowDefinitionRequest{
+		Handle: "new-flow-handle", Name: "New Flow", FlowType: providers.FlowTypeAuthentication, OUID: "ou-child",
+		Nodes: []providers.NodeDefinition{{ID: "start", Type: "START"}},
+	}
+	s.mockService.EXPECT().CreateFlow(mock.Anything, mock.MatchedBy(func(def *FlowDefinition) bool {
+		return def.OUID == "ou-child" && def.Handle == "new-flow-handle"
+	})).Return(&providers.CompleteFlowDefinition{ID: testFlowIDHandler, OUID: "ou-child"}, nil)
+	payload, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/flows", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	s.handler.createFlow(w, req)
+
+	s.Equal(http.StatusCreated, w.Code)
+	var response providers.CompleteFlowDefinition
+	s.NoError(json.Unmarshal(w.Body.Bytes(), &response))
+	s.Equal("ou-child", response.OUID)
 }

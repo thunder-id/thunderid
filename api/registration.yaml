@@ -95,6 +95,13 @@ paths:
                     description:
                       key: "error.authnservice.assertion_subject_mismatch_description"
                       defaultValue: "The subject in the assertion does not match the authenticated user"
+        "401":
+          description: >
+            Unauthorized: The account is suspended (`AUTHN-1012`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "500":
           description: 'Internal Server Error: An unexpected error occurred while processing the request'
           content:
@@ -150,6 +157,13 @@ paths:
                     description:
                       key: "error.authnservice.passkey_enrollment_failed_description"
                       defaultValue: "The passkey enrollment attempt failed"
+        "401":
+          description: >
+            Unauthorized: The account is suspended (`AUTHN-1012`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "500":
           description: 'Internal Server Error: An unexpected error occurred while processing the request'
           content:
@@ -468,7 +482,8 @@ components:
           type: string
           description: >
             Error code. Client-side passkey registration failures (both start and finish) surface as
-            AUTHN-PSK-XXXX codes; server errors use the SSE-XXXX convention.
+            AUTHN-PSK-XXXX codes; server errors use the SSE-XXXX convention. A suspended account is
+            refused with an AUTHN-XXXX code.
           example: "AUTHN-PSK-1002"
         message:
           $ref: '#/components/schemas/I18nMessage'

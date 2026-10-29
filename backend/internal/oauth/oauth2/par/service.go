@@ -118,7 +118,7 @@ func (s *parService) HandlePushedAuthorizationRequest(
 	// when the pushed request is redeemed at the authorization endpoint, so both standard and
 	// PAR-based requests bind identically.
 	if _, errResp := resourceindicators.ResolveAudienceBinding(
-		ctx, s.resourceService, resources, nonOidcScopes); errResp != nil {
+		ctx, s.resourceService, resources, nonOidcScopes, false); errResp != nil {
 		return nil, errResp.Error, errResp.ErrorDescription
 	}
 

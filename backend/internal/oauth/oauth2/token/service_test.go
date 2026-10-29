@@ -1,10 +1,11 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package token
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
@@ -317,6 +318,86 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_Success() {
 	assert.Equal(suite.T(), "Bearer", tokenResp.TokenType)
 	assert.Equal(suite.T(), int64(3600), tokenResp.ExpiresIn)
 	assert.Equal(suite.T(), "openid profile", tokenResp.Scope)
+}
+
+func (suite *TokenServiceTestSuite) TestProcessTokenRequest_AuthorizationDetailsRejectedForTokenExchange() {
+	req := &model.TokenRequest{
+		ClientID:             "test-client-id",
+		GrantType:            string(providers.GrantTypeTokenExchange),
+		SubjectToken:         "subject-token",
+		AuthorizationDetails: `[{"type":"payment_initiation"}]`,
+	}
+	app := suite.defaultApp()
+	app.GrantTypes = []providers.GrantType{providers.GrantTypeTokenExchange}
+	suite.mockGrantProvider.EXPECT().GetGrantHandler(providers.GrantTypeTokenExchange).
+		Return(suite.mockGrantHandler, nil).Maybe()
+
+	svc := suite.newService()
+	tokenResp, errResp := svc.ProcessTokenRequest(context.Background(), req, app)
+
+	assert.Nil(suite.T(), tokenResp)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidAuthorizationDetails, errResp.Error)
+	suite.mockGrantHandler.AssertNotCalled(suite.T(), "ValidateGrant", mock.Anything, mock.Anything, mock.Anything)
+	suite.mockGrantHandler.AssertNotCalled(suite.T(), "HandleGrant", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *TokenServiceTestSuite) TestProcessTokenRequest_AuthorizationDetailsRejectedForJWTBearer() {
+	req := &model.TokenRequest{
+		ClientID:             "test-client-id",
+		GrantType:            string(providers.GrantTypeJWTBearer),
+		Assertion:            "assertion",
+		AuthorizationDetails: `[{"type":"payment_initiation"}]`,
+	}
+	app := suite.defaultApp()
+	app.GrantTypes = []providers.GrantType{providers.GrantTypeJWTBearer}
+	suite.mockGrantProvider.EXPECT().GetGrantHandler(providers.GrantTypeJWTBearer).
+		Return(suite.mockGrantHandler, nil).Maybe()
+
+	svc := suite.newService()
+	tokenResp, errResp := svc.ProcessTokenRequest(context.Background(), req, app)
+
+	assert.Nil(suite.T(), tokenResp)
+	suite.Require().NotNil(errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidAuthorizationDetails, errResp.Error)
+	suite.mockGrantHandler.AssertNotCalled(suite.T(), "ValidateGrant", mock.Anything, mock.Anything, mock.Anything)
+	suite.mockGrantHandler.AssertNotCalled(suite.T(), "HandleGrant", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *TokenServiceTestSuite) TestProcessTokenRequest_ClientCredentials_ReturnsAuthorizationDetails() {
+	req := &model.TokenRequest{
+		ClientID:             "test-client-id",
+		GrantType:            string(providers.GrantTypeClientCredentials),
+		AuthorizationDetails: `[{"type":"payment_initiation"}]`,
+	}
+	app := &providers.OAuthClient{
+		ClientID:   "test-client-id",
+		GrantTypes: []providers.GrantType{providers.GrantTypeClientCredentials},
+	}
+	granted := json.RawMessage(`[{"type":"payment_initiation","amount":10}]`)
+
+	suite.mockGrantProvider.ExpectedCalls = nil
+	suite.mockGrantProvider.
+		On("GetGrantHandler", providers.GrantTypeClientCredentials).
+		Return(suite.mockGrantHandler, nil)
+	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, req, app).Return(nil)
+	suite.mockScopeValidator.On("ValidateScopes", mock.Anything, "", "test-client-id").Return("", nil)
+	suite.mockGrantHandler.On("HandleGrant", mock.Anything, req, app).Return(&model.TokenResponseDTO{
+		AccessToken: model.TokenDTO{
+			Token:                "access-token-123",
+			TokenType:            "Bearer",
+			ExpiresIn:            3600,
+			AuthorizationDetails: granted,
+		},
+	}, nil)
+
+	svc := suite.newService()
+	tokenResp, errResp := svc.ProcessTokenRequest(context.Background(), req, app)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), tokenResp)
+	assert.Equal(suite.T(), "access-token-123", tokenResp.AccessToken)
+	assert.Equal(suite.T(), granted, tokenResp.AuthorizationDetails)
 }
 
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_DPoPProof_Verified_PropagatesJktToHandler() {

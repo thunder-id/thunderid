@@ -421,7 +421,7 @@ func promptNoneParams() *oauth2model.OAuthParameters {
 func (suite *AuthorizeServiceTestSuite) TestTryCompleteWithSSOSession_FlowNeedsUser() {
 	svc := suite.newService()
 	suite.mockFlowExecService.EXPECT().Execute(mock.Anything, promptNoneAppID, "exec-1",
-		string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "").
+		string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "", mock.Anything).
 		Return(&flowexec.FlowStep{Status: providers.FlowStatusIncomplete}, nil)
 	suite.mockAuthReqStore.EXPECT().ClearRequest(mock.Anything, "auth-1").Return(nil)
 
@@ -448,7 +448,7 @@ func (suite *AuthorizeServiceTestSuite) TestTryCompleteWithSSOSession_ExecuteFai
 			svc := suite.newService()
 			svc.cfg.OAuth.SendServerErrorsToClient = new(enabled)
 			suite.mockFlowExecService.EXPECT().Execute(mock.Anything, promptNoneAppID, "exec-1",
-				string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "").
+				string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "", mock.Anything).
 				Return(nil, &tidcommon.ServiceError{Code: "FES-1001"})
 			suite.mockAuthReqStore.EXPECT().ClearRequest(mock.Anything, "auth-1").Return(nil)
 
@@ -477,7 +477,7 @@ func (suite *AuthorizeServiceTestSuite) TestTryCompleteWithSSOSession_ServerErro
 			svc := suite.newService()
 			svc.cfg.OAuth.SendServerErrorsToClient = new(enabled)
 			suite.mockFlowExecService.EXPECT().Execute(mock.Anything, promptNoneAppID, "exec-1",
-				string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "").
+				string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "", mock.Anything).
 				Return(&flowexec.FlowStep{ErrorAssertion: errAssertionServerError},
 					&tidcommon.ServiceError{Code: "FES-1001"})
 			suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, errAssertionServerError, "", "").Return(nil)
@@ -505,7 +505,7 @@ func (suite *AuthorizeServiceTestSuite) TestTryCompleteWithSSOSession_ServerErro
 func (suite *AuthorizeServiceTestSuite) TestTryCompleteWithSSOSession_UnverifiableErrorAssertion() {
 	svc := suite.newService()
 	suite.mockFlowExecService.EXPECT().Execute(mock.Anything, promptNoneAppID, "exec-1",
-		string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "").
+		string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "", mock.Anything).
 		Return(&flowexec.FlowStep{Status: providers.FlowStatusError, ErrorAssertion: "not-a-jwt"}, nil)
 	suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, "not-a-jwt", "", "").
 		Return(&tidcommon.ServiceError{Code: "JWT-1001"})
@@ -533,7 +533,7 @@ func (suite *AuthorizeServiceTestSuite) TestTryCompleteWithSSOSession_CallbackSe
 			svc := suite.newService()
 			svc.cfg.OAuth.SendServerErrorsToClient = new(enabled)
 			suite.mockFlowExecService.EXPECT().Execute(mock.Anything, promptNoneAppID, "exec-1",
-				string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "").
+				string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "", mock.Anything).
 				Return(&flowexec.FlowStep{Status: providers.FlowStatusComplete, Assertion: svcJWTWithIat}, nil)
 			suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, svcJWTWithIat, "", "").Return(nil)
 			suite.mockAuthReqStore.EXPECT().GetRequest(mock.Anything, testAuthID).Return(true, authRequestContext{
@@ -563,7 +563,7 @@ func (suite *AuthorizeServiceTestSuite) TestTryCompleteWithSSOSession_CallbackSe
 func (suite *AuthorizeServiceTestSuite) TestTryCompleteWithSSOSession_FlowFails() {
 	svc := suite.newService()
 	suite.mockFlowExecService.EXPECT().Execute(mock.Anything, promptNoneAppID, "exec-1",
-		string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "").
+		string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "", mock.Anything).
 		Return(&flowexec.FlowStep{Status: providers.FlowStatusError, ErrorAssertion: errAssertionEndUser}, nil)
 	suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, errAssertionEndUser, "", "").Return(nil)
 	suite.mockAuthReqStore.EXPECT().
@@ -583,7 +583,7 @@ func (suite *AuthorizeServiceTestSuite) TestTryCompleteWithSSOSession_FlowFails(
 func (suite *AuthorizeServiceTestSuite) TestTryCompleteWithSSOSession_CallbackFails() {
 	svc := suite.newService()
 	suite.mockFlowExecService.EXPECT().Execute(mock.Anything, promptNoneAppID, "exec-1",
-		string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "").
+		string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "", mock.Anything).
 		Return(&flowexec.FlowStep{Status: providers.FlowStatusComplete, Assertion: "not-a-jwt"}, nil)
 	suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, "not-a-jwt", "", "").
 		Return(&tidcommon.ServiceError{Code: "JWT-1001"})
@@ -612,7 +612,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Pr
 	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
 	suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).Return("exec-1", nil)
 	suite.mockFlowExecService.EXPECT().Execute(mock.Anything, promptNoneAppID, "exec-1",
-		string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "").
+		string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "", mock.Anything).
 		Return(&flowexec.FlowStep{Status: providers.FlowStatusComplete, Assertion: svcJWTWithIat}, nil)
 
 	suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, svcJWTWithIat, "", "").Return(nil)
@@ -652,7 +652,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Pr
 	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
 	suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).Return("exec-1", nil)
 	suite.mockFlowExecService.EXPECT().Execute(mock.Anything, promptNoneAppID, "exec-1",
-		string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "").
+		string(providers.FlowTypeAuthentication), false, "", mock.Anything, "", "", "", mock.Anything).
 		Return(&flowexec.FlowStep{Status: providers.FlowStatusIncomplete}, nil)
 	suite.mockAuthReqStore.EXPECT().ClearRequest(mock.Anything, testAuthID).Return(nil)
 

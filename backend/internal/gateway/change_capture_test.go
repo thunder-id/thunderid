@@ -85,6 +85,7 @@ func TestAChangeToTheConfigurationIsCaptured(t *testing.T) {
 		{http.MethodPost, "/applications", http.StatusCreated, true},
 		{http.MethodPut, "/organization-units/ou-1", http.StatusOK, true},
 		{http.MethodDelete, "/design/themes/t-1", http.StatusNoContent, true},
+		{http.MethodPost, "/notification-templates/email/templates", http.StatusCreated, true},
 		{http.MethodGet, "/applications", http.StatusOK, false},
 		{http.MethodPost, "/applications", http.StatusBadRequest, false},
 		{http.MethodPost, "/gateways", http.StatusCreated, false},

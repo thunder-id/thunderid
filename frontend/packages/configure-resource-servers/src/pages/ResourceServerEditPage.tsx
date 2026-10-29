@@ -40,6 +40,7 @@ import SetDefaultResourceServerDialog from '../components/SetDefaultResourceServ
 import {getResourceServerTypeLabel} from '../config/resource-server-types';
 import useResourceServerRoutes from '../hooks/useResourceServerRoutes';
 import {AuthorizationEngines, isDefaultEligibleType, type AuthorizationEngine} from '../models/resource-server';
+import {isValidMcpServerIdentifier} from '../utils/isValidMcpServerIdentifier';
 
 interface EditedFields {
   name: string;
@@ -129,6 +130,15 @@ export default function ResourceServerEditPage(): JSX.Element {
       ([key, value]) => !isEqualIgnoringEmpty(norm(value), norm(originalOf[key])),
     );
   }, [editedFields, resourceServer]);
+
+  // An MCP identifier must be an http or https URL. Like the backend, only check a value the user changed,
+  // so a saved identifier from before the rule keeps the server editable.
+  const editedIdentifier = editedFields.identifier?.trim() ?? '';
+  const isIdentifierInvalid =
+    resourceServer?.type === 'MCP' &&
+    editedIdentifier.length > 0 &&
+    editedIdentifier !== (resourceServer.identifier ?? '').trim() &&
+    !isValidMcpServerIdentifier(editedIdentifier);
 
   const handleSave = (): void => {
     if (!resourceServer) return;
@@ -438,6 +448,7 @@ export default function ResourceServerEditPage(): JSX.Element {
           pdpConnectionId={
             editedFields.pdpConnectionId ?? resourceServer.authorizationEngine?.properties?.pdpConnectionId ?? ''
           }
+          isIdentifierInvalid={isIdentifierInvalid}
           onIdentifierChange={(v) => handleFieldChange('identifier', v)}
           onAuthorizationEngineChange={(v) => handleFieldChange('authorizationEngine', v)}
           onPDPConnectionChange={(v) => handleFieldChange('pdpConnectionId', v)}
@@ -498,7 +509,7 @@ export default function ResourceServerEditPage(): JSX.Element {
           saveLabel={t('common:save', 'Save')}
           savingLabel={t('common:saving', 'Saving…')}
           isSaving={updateRs.isPending}
-          saveDisabled={resourceServer.isReadOnly}
+          saveDisabled={Boolean(resourceServer.isReadOnly) || isIdentifierInvalid}
           error={
             updateRs.error
               ? getErrorMessage(updateRs.error, tForErrors, 'edit.saveError', 'Failed to save changes.')

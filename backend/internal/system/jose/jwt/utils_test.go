@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package jwt
@@ -161,6 +161,28 @@ func (suite *JWTUtilsTestSuite) TestDecodeJWT() {
 			}
 		})
 	}
+}
+
+func (suite *JWTUtilsTestSuite) TestDecodeJWTClaim() {
+	payload := base64.RawURLEncoding.EncodeToString(
+		[]byte(`{"sub":"u","details":[{"amount":9007199254740995,"fee":45.00}]}`))
+	token := "e30." + payload + ".sig"
+
+	claim, ok, err := DecodeJWTClaim(token, "details")
+	suite.Require().NoError(err)
+	suite.True(ok)
+	suite.Equal(`[{"amount":9007199254740995,"fee":45.00}]`, string(claim), "numbers are kept exactly")
+
+	_, ok, err = DecodeJWTClaim(token, "missing")
+	suite.NoError(err)
+	suite.False(ok)
+
+	_, _, err = DecodeJWTClaim("not-a-jwt", "details")
+	suite.Error(err)
+	_, _, err = DecodeJWTClaim("e30.%%%.sig", "details")
+	suite.Error(err)
+	_, _, err = DecodeJWTClaim("e30."+base64.RawURLEncoding.EncodeToString([]byte("[]"))+".sig", "details")
+	suite.Error(err)
 }
 
 func (suite *JWTUtilsTestSuite) TestParseJWTClaims() {

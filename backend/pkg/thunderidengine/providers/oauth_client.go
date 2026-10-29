@@ -75,7 +75,7 @@ func (o *OAuthClient) ShouldAppendActorClaim() bool {
 }
 
 // UserAccessTokenConfig returns the access token sub-config for user-subject tokens
-// (authorization_code, refresh_token, token_exchange, ciba), or nil if unset.
+// (authorization_code, refresh_token, token_exchange, ciba, jwt-bearer), or nil if unset.
 func (o *OAuthClient) UserAccessTokenConfig() *AccessTokenSubConfig {
 	if o == nil || o.Token == nil || o.Token.AccessToken == nil {
 		return nil

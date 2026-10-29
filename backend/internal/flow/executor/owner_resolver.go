@@ -13,8 +13,6 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-const ownerResolverLoggerComponentName = "OwnerResolver"
-
 // ownerResolver offers an owner for an entity being provisioned. The input is optional: with none
 // submitted no owner reaches runtime data and the management provider falls back to the caller.
 //
@@ -34,7 +32,7 @@ func newOwnerResolver(
 	entityProvider entityprovider.EntityProviderInterface,
 ) *ownerResolver {
 	logger := log.GetLogger().With(
-		log.String(log.LoggerKeyComponentName, ownerResolverLoggerComponentName),
+		log.String(log.LoggerKeyComponentName, "OwnerResolver"),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameOwnerResolver))
 
 	defaultInputs := []providers.Input{

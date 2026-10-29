@@ -17,36 +17,43 @@ import (
 // entityTypeCandidateLimit bounds the candidate list a resolver considers.
 const entityTypeCandidateLimit = 100
 
-// entityTypeResolutionInterface defines the resolution steps the per-category resolvers delegate
-// to. They embed it, so the steps are reached on the resolver itself.
-type entityTypeResolutionInterface interface {
-	resolve(ctx *providers.NodeContext, category entitytype.TypeCategory, allowedTypes []string,
-		defaultInputs []providers.Input, execResp *providers.ExecutorResponse,
-		logger *log.Logger) (*providers.ExecutorResponse, error)
-	entityTypeAndOU(ctx context.Context, category entitytype.TypeCategory, name string,
-		logger *log.Logger) (*entitytype.EntityType, string, error)
-	promptOptions(ctx context.Context, execResp *providers.ExecutorResponse, options []string,
-		defaultInputs []providers.Input, logger *log.Logger)
-}
-
 // entityTypeResolution resolves the entity type to provision as, for any category. The
-// per-category resolvers own the flow-type handling and delegate the resolution here.
+// per-category resolvers embed it, pick the flow handler for the flow type, and pass their category.
 //
 // The outcome follows the number of candidates that survive filtering: none fails, one is taken
 // without asking, several are offered as a choice.
 type entityTypeResolution struct {
+	// base is the resolver's own executor, which declares the type input.
+	base              providers.Executor
 	entityTypeService entitytype.EntityTypeServiceInterface
 	ouService         providers.OrganizationUnitProvider
 }
 
-var _ entityTypeResolutionInterface = (*entityTypeResolution)(nil)
+// resolveAuthFlow admits authentication only when the application allows at least one type of the
+// category.
+func (r *entityTypeResolution) resolveAuthFlow(ctx *providers.NodeContext, category entitytype.TypeCategory,
+	execResp *providers.ExecutorResponse,
+) *providers.ExecutorResponse {
+	if len(traitsFor(category).applicationAllowedTypes(ctx)) == 0 {
+		execResp.Status = providers.ExecFailure
+		execResp.Error = &ErrAuthNotAvailableForApp
+		return execResp
+	}
 
-// resolve runs the resolution for a category. defaultInputs carries the input to offer when there
-// is a choice, and allowedTypes narrows the candidates.
-func (r *entityTypeResolution) resolve(ctx *providers.NodeContext, category entitytype.TypeCategory,
-	allowedTypes []string, defaultInputs []providers.Input, execResp *providers.ExecutorResponse,
-	logger *log.Logger,
+	execResp.Status = providers.ExecComplete
+	return execResp
+}
+
+// resolveOnboardingFlow resolves the type for an administrator-driven flow. The candidates come from
+// the type catalog, narrowed by the node's allowed types and by the selected organization unit. The
+// application's allowed types are not consulted: they govern which types may authenticate to an
+// application, not which an administrator may create.
+func (r *entityTypeResolution) resolveOnboardingFlow(ctx *providers.NodeContext, category entitytype.TypeCategory,
+	execResp *providers.ExecutorResponse, logger *log.Logger,
 ) (*providers.ExecutorResponse, error) {
+	allowedTypes := allowedTypesFromProperties(ctx, traitsFor(category).allowedTypesProperty)
+	defaultInputs := r.base.GetDefaultInputs()
+
 	// The first default input is the type input, the same one promptOptions offers the choice on.
 	var submitted string
 	if len(defaultInputs) > 0 {
@@ -65,7 +72,7 @@ func (r *entityTypeResolution) resolve(ctx *providers.NodeContext, category enti
 	}
 
 	if len(candidates) == 1 {
-		return r.accept(ctx, candidates[0].Handle, candidates[0].OUID, execResp, logger), nil
+		return r.accept(ctx, category, candidates[0].Handle, candidates[0].OUID, execResp, logger), nil
 	}
 
 	options := make([]string, 0, len(candidates))
@@ -90,7 +97,7 @@ func (r *entityTypeResolution) resolveSubmitted(ctx *providers.NodeContext,
 		return execResp, nil
 	}
 
-	entityType, ouID, err := r.entityTypeAndOU(ctx.Context, category, selected, logger)
+	entityType, ouID, err := r.entityTypeAndOU(ctx.Context, category, selected)
 	if err != nil {
 		execResp.Status = providers.ExecFailure
 		execResp.Error = errForEntityCategory(ErrInvalidUserType, category)
@@ -116,7 +123,7 @@ func (r *entityTypeResolution) resolveSubmitted(ctx *providers.NodeContext,
 	logger.Debug(ctx.Context, "Entity type resolved from input", log.String(categoryTypeKey, selected),
 		log.String(ouIDKey, entityType.OUID))
 
-	return r.accept(ctx, selected, ouID, execResp, logger), nil
+	return r.accept(ctx, category, selected, ouID, execResp, logger), nil
 }
 
 // candidates lists the types the node may resolve to, narrowed by the allowed list and by the
@@ -162,12 +169,87 @@ func (r *entityTypeResolution) candidates(ctx *providers.NodeContext,
 	return candidates, true, nil
 }
 
-// accept records the resolved type handle and the organization unit it lives in.
-func (r *entityTypeResolution) accept(ctx *providers.NodeContext, handle, ouID string,
-	execResp *providers.ExecutorResponse, logger *log.Logger,
+// resolveRegistrationFlow resolves the type an entity registers itself as. The candidates are the
+// application's allowed types for the category, narrowed by the node's allowed types, and only a type
+// open to self-registration is accepted.
+func (r *entityTypeResolution) resolveRegistrationFlow(ctx *providers.NodeContext,
+	category entitytype.TypeCategory, execResp *providers.ExecutorResponse, logger *log.Logger,
+) (*providers.ExecutorResponse, error) {
+	allowed := traitsFor(category).applicationAllowedTypes(ctx)
+	if len(allowed) == 0 {
+		// TODO: This should be improved to fallback to the application's ou when the support is available.
+		//  A type has an attached ou. Need to find the type from the application's ou.
+		//  Also should check if self registration is enabled for the type when the support is available.
+		execResp.Status = providers.ExecFailure
+		execResp.Error = &ErrSelfRegNotAvailableForApp
+		return execResp, nil
+	}
+
+	if nodeAllowed := allowedTypesFromProperties(ctx, traitsFor(category).allowedTypesProperty); len(nodeAllowed) > 0 {
+		allowed = slices.DeleteFunc(slices.Clone(allowed), func(handle string) bool {
+			return !slices.Contains(nodeAllowed, handle)
+		})
+		if len(allowed) == 0 {
+			execResp.Status = providers.ExecFailure
+			execResp.Error = errForEntityCategory(ErrNoValidUserTypes, category)
+			return execResp, nil
+		}
+	}
+
+	defaultInputs := r.base.GetDefaultInputs()
+	if r.base.HasRequiredInputs(ctx, execResp) {
+		var selected string
+		if len(defaultInputs) > 0 {
+			selected = ctx.UserInputs[defaultInputs[0].Identifier]
+		}
+		if !slices.Contains(allowed, selected) {
+			execResp.Status = providers.ExecFailure
+			execResp.Error = errForEntityCategory(ErrUserTypeNotAllowed, category)
+			return execResp, nil
+		}
+		allowed = []string{selected}
+	}
+
+	selfRegEnabled := make([]*entitytype.EntityType, 0, len(allowed))
+	for _, handle := range allowed {
+		entityType, _, err := r.entityTypeAndOU(ctx.Context, category, handle)
+		if err != nil {
+			return execResp, err
+		}
+		if entityType.AllowSelfRegistration {
+			selfRegEnabled = append(selfRegEnabled, entityType)
+		}
+	}
+
+	switch len(selfRegEnabled) {
+	case 0:
+		execResp.Status = providers.ExecFailure
+		// A single named type reports that its own self-registration is off.
+		execResp.Error = &ErrSelfRegNotAvailableForApp
+		if len(allowed) == 1 {
+			execResp.Error = &ErrSelfRegDisabledForUserType
+		}
+		return execResp, nil
+	case 1:
+		return r.accept(ctx, category, selfRegEnabled[0].Handle, selfRegEnabled[0].OUID, execResp, logger), nil
+	}
+
+	options := make([]string, 0, len(selfRegEnabled))
+	for _, entityType := range selfRegEnabled {
+		options = append(options, entityType.Handle)
+	}
+	r.prompt(ctx, category, options, defaultInputs, execResp, logger)
+
+	return execResp, nil
+}
+
+// accept records the resolved type handle, its category and the organization unit it lives in.
+func (r *entityTypeResolution) accept(ctx *providers.NodeContext, category entitytype.TypeCategory,
+	handle, ouID string, execResp *providers.ExecutorResponse, logger *log.Logger,
 ) *providers.ExecutorResponse {
 	logger.Debug(ctx.Context, "Entity type resolved", log.String(categoryTypeKey, handle),
 		log.String(ouIDKey, ouID))
+	execResp.RuntimeData[categoryNameKey] = string(category)
 	execResp.RuntimeData[categoryTypeKey] = handle
 	execResp.RuntimeData[defaultOUIDKey] = ouID
 	execResp.Status = providers.ExecComplete
@@ -175,22 +257,14 @@ func (r *entityTypeResolution) accept(ctx *providers.NodeContext, handle, ouID s
 	return execResp
 }
 
-// prompt offers the surviving candidates as a choice.
+// prompt offers the options on the executor's first declared input, forwarding it so a prompt node
+// renders the same choice.
 func (r *entityTypeResolution) prompt(ctx *providers.NodeContext, category entitytype.TypeCategory,
 	options []string, defaultInputs []providers.Input, execResp *providers.ExecutorResponse,
 	logger *log.Logger,
 ) {
 	logger.Debug(ctx.Context, "Prompting for entity type selection",
 		log.String("category", string(category)), log.Any("options", options))
-	r.promptOptions(ctx.Context, execResp, options, defaultInputs, logger)
-}
-
-// promptOptions offers the options on the executor's first declared input, forwarding it so a
-// prompt node renders the same choice.
-func (r *entityTypeResolution) promptOptions(ctx context.Context, execResp *providers.ExecutorResponse,
-	options []string, defaultInputs []providers.Input, logger *log.Logger,
-) {
-	logger.Debug(ctx, "Prompting for type selection", log.Any("options", options))
 
 	execResp.Status = providers.ExecUserInputRequired
 	if len(defaultInputs) > 0 {
@@ -203,7 +277,7 @@ func (r *entityTypeResolution) promptOptions(ctx context.Context, execResp *prov
 
 // entityTypeAndOU reads a type by handle and the organization unit it lives in.
 func (r *entityTypeResolution) entityTypeAndOU(ctx context.Context, category entitytype.TypeCategory,
-	handle string, logger *log.Logger,
+	handle string,
 ) (*entitytype.EntityType, string, error) {
 	entityType, svcErr := r.entityTypeService.GetEntityTypeByHandle(ctx, category, handle)
 	if svcErr != nil {

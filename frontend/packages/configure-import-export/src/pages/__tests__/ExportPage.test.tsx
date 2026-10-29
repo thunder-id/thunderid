@@ -63,6 +63,8 @@ describe('ExportPage', () => {
           applications: ['*'],
           connections: ['*'],
           flows: ['*'],
+          organizationUnits: ['*'],
+          projects: ['*'],
           groups: ['*'],
           agents: ['*'],
           serverConfigs: ['*'],
