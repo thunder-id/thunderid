@@ -155,6 +155,46 @@ describe('DeployPage', () => {
     expect(within(prod).getByRole('button', {name: 'Rollback'})).toBeDisabled();
   });
 
+  it('shows a version a gateway holds in part as partly applied, with how many resources it holds', async () => {
+    routes['GET /gateways/gw-prod/applied-version'] = {
+      gatewayId: 'gw-prod',
+      appliedVersion: versions[1].version,
+      complete: false,
+      resourcesHeld: 2,
+      resourcesTotal: 3,
+    };
+    http = fakeHttp(routes);
+    render(<DeployPage />);
+
+    const prod = await screen.findByTestId('deploy-stage-gw-prod');
+    expect(await within(prod).findByTestId('stage-partial')).toHaveTextContent('partly applied: 2 of 3 resources');
+    expect(within(screen.getByTestId('deploy-stage-gw-dev')).queryByTestId('stage-partial')).toBeNull();
+  });
+
+  it('keeps a version deployable while a gateway that runs it holds it only in part', async () => {
+    const running = (complete: boolean) => ({
+      gatewayId: 'gw-prod',
+      appliedVersion: versions[0].version,
+      complete,
+    });
+    const deployOf = async (): Promise<HTMLElement> =>
+      within(await screen.findByTestId(`deploy-version-${versions[0].version}`)).getByRole('button', {
+        name: 'Deploy',
+      });
+
+    routes['GET /gateways/gw-prod/applied-version'] = running(true);
+    http = fakeHttp(routes);
+    const {unmount} = render(<DeployPage />);
+    await waitFor(async () => expect(await deployOf()).toBeDisabled());
+    unmount();
+
+    routes['GET /gateways/gw-prod/applied-version'] = running(false);
+    http = fakeHttp(routes);
+    render(<DeployPage />);
+    await within(await screen.findByTestId('deploy-stage-gw-prod')).findByTestId('stage-partial');
+    expect(await deployOf()).toBeEnabled();
+  });
+
   it('lists the newest versions and every deployed one, and folds the rest away', async () => {
     const many = Array.from({length: 9}, (_, i) => ({
       version: `${String(9 - i).repeat(7)}${'c'.repeat(57)}`,
@@ -265,7 +305,11 @@ describe('DeployPage', () => {
     );
     expect(writes.map((call: Call) => [call.method, call.url.replace(SERVER, ''), call.data])).toEqual([
       ['PUT', '/gateways/gw-prod/variables/APP_ORDERS_CLIENT_ID', {value: 'orders', description: undefined}],
-      ['POST', '/gateways/gw-prod/apply', {version: versions[0].version, selection: ['application/app-1']}],
+      [
+        'POST',
+        '/gateways/gw-prod/apply',
+        {version: versions[0].version, selection: ['application/app-1'], leaveOut: ['flow/f-1']},
+      ],
     ]);
   });
 
@@ -275,10 +319,18 @@ describe('DeployPage', () => {
       summary: {added: 0, updated: 0, deleted: 0, unchanged: 3},
       changes: [{key: 'flow/f-1', resourceType: 'flow', id: 'f-1', name: 'Sign in', change: 'unchanged'}],
     };
+    // A secret the flow refers to was set again on Dev: the flow is offered as changed for its value.
+    const owed = {
+      ...unchanged,
+      summary: {added: 0, updated: 1, deleted: 0, unchanged: 2},
+      changes: [
+        {key: 'flow/f-1', resourceType: 'flow', id: 'f-1', name: 'Sign in', change: 'updated', valueChanged: true},
+      ],
+    };
     routes['POST /gateways/gw-dev/apply'] = (call: Call) =>
       (call.data as {dryRun?: boolean}).dryRun
-        ? {gatewayId: 'gw-dev', dryRun: true, diff: unchanged, changed: {secrets: ['APP_SECRET']}}
-        : {gatewayId: 'gw-dev', dryRun: false, diff: unchanged, recorded: true};
+        ? {gatewayId: 'gw-dev', dryRun: true, diff: owed, changed: {secrets: ['APP_SECRET']}}
+        : {gatewayId: 'gw-dev', dryRun: false, diff: owed, recorded: true};
     routes['POST /gateways/gw-prod/apply'] = () => ({gatewayId: 'gw-prod', dryRun: true, diff: unchanged});
     render(<DeployPage />);
 
@@ -299,6 +351,9 @@ describe('DeployPage', () => {
     await userEvent.click(redeploy);
 
     const panel = await screen.findByTestId('deploy-apply-panel');
+    expect(
+      within(await within(panel).findByTestId('change-flow/f-1')).getByTestId('change-value-changed'),
+    ).toHaveTextContent('Value changed');
     const submit = within(panel).getByRole('button', {name: 'Deploy'});
     await waitFor(() => expect(submit).toBeEnabled());
     await userEvent.click(submit);
@@ -308,7 +363,7 @@ describe('DeployPage', () => {
       (call: Call) => call.method !== 'GET' && !(call.data as {dryRun?: boolean})?.dryRun,
     );
     expect(writes.map((call: Call) => [call.method, call.url.replace(SERVER, ''), call.data])).toEqual([
-      ['POST', '/gateways/gw-dev/apply', {version: versions[0].version, selection: []}],
+      ['POST', '/gateways/gw-dev/apply', {version: versions[0].version, selection: ['flow/f-1']}],
     ]);
   });
 
@@ -356,52 +411,288 @@ describe('DeployPage', () => {
     expect(navigate).toHaveBeenCalledWith('/home');
   });
 
-  it('shows what a gateway holds back, unticked, and deploys exactly what is ticked', async () => {
-    const heldBack = {
-      key: 'application/app-2',
-      resourceType: 'application',
-      id: 'app-2',
-      name: 'Billing',
-      change: 'updated',
-      excluded: true,
+  it('shows what a gateway refused, ticks everything, and deploys what is ticked with what it needs', async () => {
+    routes['GET /gateways/gw-dev/master'] = {
+      gatewayId: 'gw-dev',
+      number: 2,
+      master: 'm-2',
+      summary: {deployed: 1, failed: 1, removed: 0},
+      entries: [
+        {key: 'application/app-1', resourceType: 'application', id: 'app-1', name: 'Orders', state: 'deployed'},
+        {
+          key: 'application/app-2',
+          resourceType: 'application',
+          id: 'app-2',
+          name: 'Billing',
+          state: 'failed',
+          failure: {code: 'APP-1001', message: 'refused'},
+        },
+      ],
     };
     routes['POST /gateways/gw-dev/apply'] = (call: Call) => ({
       gatewayId: 'gw-dev',
       dryRun: Boolean((call.data as {dryRun?: boolean}).dryRun),
       diff: {
+        fromMaster: 'm-2',
         toVersion: versions[0].version,
-        summary: {added: 0, updated: 2, deleted: 0, unchanged: 0},
+        summary: {added: 1, updated: 2, deleted: 0, unchanged: 0},
         changes: [
-          {key: 'application/app-1', resourceType: 'application', id: 'app-1', name: 'Orders', change: 'updated'},
-          heldBack,
+          {
+            key: 'application/app-1',
+            resourceType: 'application',
+            id: 'app-1',
+            name: 'Orders',
+            change: 'updated',
+            needs: ['flow/f-1'],
+          },
+          {
+            key: 'application/app-2',
+            resourceType: 'application',
+            id: 'app-2',
+            name: 'Billing',
+            change: 'updated',
+            failed: true,
+          },
+          {key: 'flow/f-1', resourceType: 'flow', id: 'f-1', name: 'Sign in', change: 'added'},
         ],
       },
     });
     http = fakeHttp(routes);
     render(<DeployPage />);
 
-    // Dev's card says what it holds back of the version it runs.
+    // Dev's card says what it refused of the version it runs.
     const dev = await screen.findByTestId('deploy-stage-gw-dev');
-    expect(await within(dev).findByTestId('stage-held-back')).toHaveTextContent('1 held back, not running');
+    expect(await within(dev).findByTestId('stage-refused')).toHaveTextContent('1 refused, not running');
 
     await userEvent.click(
       within(await screen.findByTestId(`deploy-version-${versions[0].version}`)).getByRole('button', {name: 'Deploy'}),
     );
     const panel = await screen.findByTestId('deploy-apply-panel');
     const billing = await within(panel).findByRole('checkbox', {name: /Billing/});
-    // What Dev holds back starts unticked and says so; ticking it deploys it again.
-    expect(billing).not.toBeChecked();
+    // Everything starts ticked, and what Dev refused says so.
+    expect(billing).toBeChecked();
     expect(
-      within(within(panel).getByTestId('change-application/app-2')).getByTestId('change-held-back'),
-    ).toHaveTextContent('Held back on Dev');
+      within(within(panel).getByTestId('change-application/app-2')).getByTestId('change-refused'),
+    ).toHaveTextContent('Refused by Dev last time');
+
+    // The flow Orders needs stays ticked when unticked by hand, marked as needed, and is left to the
+    // control plane to bring along: only what was ticked is sent.
+    await userEvent.click(billing);
+    await userEvent.click(within(panel).getByRole('checkbox', {name: /Sign in/}));
+    expect(within(panel).getByRole('checkbox', {name: /Sign in/})).toBeChecked();
+    expect(within(within(panel).getByTestId('change-flow/f-1')).getByTestId('change-needed-by')).toHaveTextContent(
+      'Needed by Orders',
+    );
     await userEvent.click(within(panel).getByRole('button', {name: 'Deploy'}));
     await waitFor(() => expect(screen.queryByTestId('deploy-apply-panel')).not.toBeInTheDocument());
     const write = http.calls.find(
       (call: Call) =>
         call.method === 'POST' && call.url.endsWith('/gw-dev/apply') && !(call.data as {dryRun?: boolean}).dryRun,
     );
-    // The selection is always sent, so the gateway does exactly what was ticked.
-    expect(write?.data).toEqual({version: versions[0].version, selection: ['application/app-1']});
+    expect(write?.data).toEqual({
+      version: versions[0].version,
+      selection: ['application/app-1'],
+      leaveOut: ['application/app-2'],
+    });
+  });
+
+  it('retries what a gateway refused: ticks only that, says why, and sets a value it uses first', async () => {
+    routes['GET /gateways/gw-dev/master'] = {
+      gatewayId: 'gw-dev',
+      number: 2,
+      master: 'm-2',
+      summary: {deployed: 1, failed: 1, removed: 0},
+      entries: [
+        {key: 'application/app-1', resourceType: 'application', id: 'app-1', name: 'Orders', state: 'deployed'},
+        {
+          key: 'application/app-2',
+          resourceType: 'application',
+          id: 'app-2',
+          name: 'Billing',
+          state: 'failed',
+          failure: {code: 'APP-1022', message: 'Client ID already in use'},
+        },
+      ],
+    };
+    routes[`GET /configuration-versions/${versions[0].version}`] = {
+      ...versions[0],
+      references: [
+        {name: 'A', kind: 'variable', resourceType: 'application', resourceId: 'app-2', field: 'clientId'},
+        {name: 'S', kind: 'secret', resourceType: 'application', resourceId: 'app-2', field: 'clientSecret'},
+        {name: 'B', kind: 'variable', resourceType: 'application', resourceId: 'app-1', field: 'clientId'},
+      ],
+    };
+    routes['PUT /gateways/gw-dev/variables/A'] = {name: 'A', value: 'billing'};
+    routes['POST /gateways/gw-dev/apply'] = (call: Call) => ({
+      gatewayId: 'gw-dev',
+      dryRun: Boolean((call.data as {dryRun?: boolean}).dryRun),
+      diff: {
+        fromMaster: 'm-2',
+        toVersion: versions[0].version,
+        summary: {added: 0, updated: 2, deleted: 0, unchanged: 0},
+        changes: [
+          {key: 'application/app-1', resourceType: 'application', id: 'app-1', name: 'Orders', change: 'updated'},
+          {
+            key: 'application/app-2',
+            resourceType: 'application',
+            id: 'app-2',
+            name: 'Billing',
+            change: 'updated',
+            failed: true,
+          },
+        ],
+      },
+    });
+    http = fakeHttp(routes);
+    render(<DeployPage />);
+
+    const dev = await screen.findByTestId('deploy-stage-gw-dev');
+    await userEvent.click(await within(dev).findByTestId('stage-retry-refused'));
+    const panel = await screen.findByTestId('deploy-apply-panel');
+
+    // Only what Dev refused starts ticked, with what Dev answered and the values it uses, as Dev holds them.
+    expect(await within(panel).findByRole('checkbox', {name: /Billing/})).toBeChecked();
+    expect(within(panel).getByRole('checkbox', {name: /Orders/})).not.toBeChecked();
+    const fix = await within(panel).findByTestId('refused-fix-application/app-2');
+    expect(within(fix).getByTestId('refused-fix-reason')).toHaveTextContent('APP-1022: Client ID already in use');
+    const clientId = await within(fix).findByDisplayValue('1');
+    expect(within(fix).getByLabelText(/^S/)).toHaveValue('');
+    expect(within(fix).queryByLabelText(/^B/)).not.toBeInTheDocument();
+
+    // A value set right is written before the deploy; a secret left empty is left as it is.
+    await userEvent.clear(clientId);
+    await userEvent.type(clientId, 'billing');
+    await userEvent.click(within(panel).getByRole('button', {name: 'Deploy'}));
+    await waitFor(() => expect(screen.queryByTestId('deploy-apply-panel')).not.toBeInTheDocument());
+    const puts = http.calls.filter((call: Call) => call.method === 'PUT');
+    expect(puts.map((call: Call) => [call.url.replace(SERVER, ''), (call.data as {value: string}).value])).toEqual([
+      ['/gateways/gw-dev/variables/A', 'billing'],
+    ]);
+    const write = http.calls.find(
+      (call: Call) =>
+        call.method === 'POST' && call.url.endsWith('/gw-dev/apply') && !(call.data as {dryRun?: boolean}).dryRun,
+    );
+    expect(write?.data).toEqual({version: versions[0].version, selection: ['application/app-2']});
+  });
+
+  it('starts what an earlier deploy left out unticked, and warns of what the gateway would refuse', async () => {
+    routes['POST /gateways/gw-dev/apply'] = (call: Call) => ({
+      gatewayId: 'gw-dev',
+      dryRun: Boolean((call.data as {dryRun?: boolean}).dryRun),
+      diff: {
+        fromMaster: 'm-2',
+        toVersion: versions[0].version,
+        summary: {added: 0, updated: 2, deleted: 0, unchanged: 0},
+        changes: [
+          {key: 'application/app-1', resourceType: 'application', id: 'app-1', name: 'Orders', change: 'updated'},
+          {
+            key: 'application/app-2',
+            resourceType: 'application',
+            id: 'app-2',
+            name: 'Billing',
+            change: 'updated',
+            heldBack: true,
+          },
+        ],
+      },
+      import: {
+        summary: {totalDocuments: 1, imported: 0, failed: 1},
+        results: [
+          {
+            resourceType: 'application',
+            resourceId: 'app-1',
+            status: 'failed',
+            code: 'APP-1022',
+            message: 'Invalid configuration',
+            description: "Field 'clientId' is already in use",
+          },
+        ],
+      },
+    });
+    http = fakeHttp(routes);
+    render(<DeployPage />);
+
+    await userEvent.click(
+      within(await screen.findByTestId(`deploy-version-${versions[0].version}`)).getByRole('button', {name: 'Deploy'}),
+    );
+    const panel = await screen.findByTestId('deploy-apply-panel');
+
+    // What an earlier deploy left out starts unticked and says so; the rest starts ticked.
+    expect(await within(panel).findByRole('checkbox', {name: /Billing/})).not.toBeChecked();
+    expect(within(within(panel).getByTestId('change-application/app-2')).getByTestId('change-held-back')).toBeVisible();
+    expect(within(panel).getByRole('checkbox', {name: /Orders/})).toBeChecked();
+    // What the check says the gateway would refuse is named before the deploy, with what was refused.
+    const fix = await within(panel).findByTestId('refused-fix-application/app-1');
+    expect(within(fix).getByTestId('refused-fix-predicted')).toHaveTextContent(
+      "Would be refused: APP-1022: Field 'clientId' is already in use",
+    );
+
+    await userEvent.click(within(panel).getByRole('button', {name: 'Deploy'}));
+    await waitFor(() => expect(screen.queryByTestId('deploy-apply-panel')).not.toBeInTheDocument());
+    const write = http.calls.find(
+      (call: Call) =>
+        call.method === 'POST' && call.url.endsWith('/gw-dev/apply') && !(call.data as {dryRun?: boolean}).dryRun,
+    );
+    expect(write?.data).toEqual({
+      version: versions[0].version,
+      selection: ['application/app-1'],
+      leaveOut: ['application/app-2'],
+    });
+  });
+
+  it('offers no retry when the gateway refused nothing', async () => {
+    render(<DeployPage />);
+
+    const dev = await screen.findByTestId('deploy-stage-gw-dev');
+    await within(dev).findByTestId('stage-deployed');
+    expect(within(dev).queryByTestId('stage-retry-refused')).not.toBeInTheDocument();
+  });
+
+  it('deploys without what the selection needs when asked, and says so to the control plane', async () => {
+    routes['POST /gateways/gw-dev/apply'] = (call: Call) => ({
+      gatewayId: 'gw-dev',
+      dryRun: Boolean((call.data as {dryRun?: boolean}).dryRun),
+      diff: {
+        toVersion: versions[0].version,
+        summary: {added: 2, updated: 0, deleted: 0, unchanged: 0},
+        changes: [
+          {
+            key: 'application/app-1',
+            resourceType: 'application',
+            id: 'app-1',
+            name: 'Orders',
+            change: 'added',
+            needs: ['flow/f-1'],
+          },
+          {key: 'flow/f-1', resourceType: 'flow', id: 'f-1', name: 'Sign in', change: 'added'},
+        ],
+      },
+    });
+    http = fakeHttp(routes);
+    render(<DeployPage />);
+
+    await userEvent.click(
+      within(await screen.findByTestId(`deploy-version-${versions[0].version}`)).getByRole('button', {name: 'Deploy'}),
+    );
+    const panel = await screen.findByTestId('deploy-apply-panel');
+    await within(panel).findByRole('checkbox', {name: /Sign in/});
+    await userEvent.click(within(panel).getByRole('checkbox', {name: /Sign in/}));
+    expect(within(panel).getByRole('checkbox', {name: /Sign in/})).toBeChecked();
+    await userEvent.click(within(panel).getByTestId('deploy-include-needed'));
+    expect(within(panel).getByRole('checkbox', {name: /Sign in/})).not.toBeChecked();
+    await userEvent.click(within(panel).getByRole('button', {name: 'Deploy'}));
+    await waitFor(() => expect(screen.queryByTestId('deploy-apply-panel')).not.toBeInTheDocument());
+
+    const write = http.calls.find(
+      (call: Call) =>
+        call.method === 'POST' && call.url.endsWith('/gw-dev/apply') && !(call.data as {dryRun?: boolean}).dryRun,
+    );
+    expect(write?.data).toEqual({
+      version: versions[0].version,
+      selection: ['application/app-1'],
+      leaveOut: ['flow/f-1'],
+      withDependencies: false,
+    });
   });
 
   it('rolls a gateway back after showing what that changes', async () => {
@@ -584,17 +875,7 @@ describe('DeployPage: apply safety', () => {
     routes['POST /gateways/gw-dev/revert'] = (call: Call) => {
       const data = call.data as {dryRun?: boolean; confirmRemovals?: boolean};
       if (data.dryRun) {
-        // A deletion the gateway holds back is not sent, so it is not counted as a removal.
-        const heldBack = {
-          key: 'role/r-2',
-          resourceType: 'role',
-          id: 'r-2',
-          name: 'Ops',
-          change: 'deleted',
-          excluded: true,
-        };
-        const diff = {...dryRunWithRemovals.diff, changes: [...dryRunWithRemovals.diff.changes, heldBack]};
-        return {...dryRunWithRemovals, gatewayId: 'gw-dev', diff, changed: undefined};
+        return {...dryRunWithRemovals, gatewayId: 'gw-dev', diff: {...dryRunWithRemovals.diff}, changed: undefined};
       }
       if (!data.confirmRemovals) return refusal('GTW-1030');
       return {gatewayId: 'gw-dev', dryRun: false, diff: {...dryRunWithRemovals.diff}};

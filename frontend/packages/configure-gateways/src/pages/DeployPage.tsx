@@ -24,7 +24,10 @@ import {versionLabel} from '../utils/format';
 /** How many stages sit beside the versions card before the rest wrap to another row. */
 const STAGES_PER_ROW = 3;
 
-type Open = {kind: 'apply'; version: Version; gatewayId?: string} | {kind: 'revert'; gateway: Gateway} | null;
+type Open =
+  | {kind: 'apply'; version: Version; gatewayId?: string; only?: string[]}
+  | {kind: 'revert'; gateway: Gateway}
+  | null;
 
 /**
  * The Deploy page: the captured versions and every gateway, with the way to deploy any version to
@@ -48,6 +51,16 @@ export default function DeployPage(): JSX.Element {
     for (const gateway of list) {
       const hash = applied.byGateway[gateway.id]?.appliedVersion;
       if (hash) byVersion[hash] = [...(byVersion[hash] ?? []), gateway.name];
+    }
+    return byVersion;
+  }, [list, applied.byGateway]);
+  // The gateways that hold the version they run only in part, by its hash, so it stays deployable to them.
+  const partlyRunners = useMemo(() => {
+    const byVersion: Record<string, string[]> = {};
+    for (const gateway of list) {
+      const entry = applied.byGateway[gateway.id];
+      if (entry?.appliedVersion && entry.complete === false)
+        byVersion[entry.appliedVersion] = [...(byVersion[entry.appliedVersion] ?? []), gateway.name];
     }
     return byVersion;
   }, [list, applied.byGateway]);
@@ -95,6 +108,13 @@ export default function DeployPage(): JSX.Element {
     if (running) setOpen({kind: 'apply', version: running, gatewayId: gateway.id});
   };
 
+  // Retrying deploys the version the gateway runs again with only what it refused ticked, so the values
+  // those use can be set right first.
+  const retryRefused = (gateway: Gateway, keys: string[]): void => {
+    const running = all.find((version: Version) => version.version === applied.byGateway[gateway.id]?.appliedVersion);
+    if (running) setOpen({kind: 'apply', version: running, gatewayId: gateway.id, only: keys});
+  };
+
   const stage = (gateway: Gateway): JSX.Element => (
     <Fragment key={gateway.id}>
       <PathConnector variant="deploy" testId={`deploy-connector-${gateway.id}`} />
@@ -106,6 +126,7 @@ export default function DeployPage(): JSX.Element {
         onConfigure={() => void navigate(routes.deploy.values(gateway.id))}
         onRevert={() => setOpen({kind: 'revert', gateway})}
         onRedeploy={() => redeploy(gateway)}
+        onRetryRefused={(keys: string[]) => retryRefused(gateway, keys)}
       />
     </Fragment>
   );
@@ -166,6 +187,7 @@ export default function DeployPage(): JSX.Element {
                       onDeploy={(version: Version) => setOpen({kind: 'apply', version})}
                       deploying={open?.kind === 'apply' ? open.version.version : undefined}
                       runners={runners}
+                      partlyRunners={partlyRunners}
                       targets={list.map((gateway: Gateway) => gateway.name)}
                     />
                   ) : (
@@ -181,6 +203,7 @@ export default function DeployPage(): JSX.Element {
                 label={labelOf(open.version.version)}
                 gateways={list}
                 gatewayId={open.gatewayId}
+                only={open.only}
                 onClose={() => setOpen(null)}
                 onDeployed={deployed}
               />

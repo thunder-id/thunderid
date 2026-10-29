@@ -10,7 +10,7 @@ import {useTranslation} from 'react-i18next';
 import {useNavigate, useParams} from 'react-router';
 import useGateways from '../api/useGateways';
 import {useAppliedConfiguration, useRunningReferences} from '../api/useGatewayVersions';
-import useHeldBack from '../api/useHeldBack';
+import {useMaster, useResourceHistory} from '../api/useMaster';
 import {useSetStoredValue, useStoredValues} from '../api/useStoredValues';
 import {useVersions} from '../api/useVersions';
 import ExplorerCanvas from '../components/explorer/ExplorerCanvas';
@@ -20,7 +20,7 @@ import FullScreenHeader from '../components/FullScreenHeader';
 import {buildGraph, type GraphNode, type Label} from '../explorer/model';
 import useDeployRoutes from '../hooks/useDeployRoutes';
 import useGatewayErrorTranslator from '../hooks/useGatewayErrorTranslator';
-import type {Change, StoredValue, ValueReference, Version} from '../models/deploy';
+import type {MasterEntry, StoredValue, ValueReference, Version} from '../models/deploy';
 import type {Gateway} from '../models/gateway';
 import {versionLabel} from '../utils/format';
 import {fromListText, toListText} from '../utils/listValue';
@@ -39,10 +39,15 @@ export default function GatewayExplorerPage(): JSX.Element {
   const gateways = useGateways();
   const gateway = gateways.data?.find((entry: Gateway) => entry.id === gatewayId);
   const configuration = useAppliedConfiguration(gatewayId);
-  const heldBackChanges = useHeldBack(gatewayId, configuration.data?.version);
-  const heldBack = useMemo(
-    () => new Set(heldBackChanges.map((change: Change) => `${change.resourceType}/${change.id ?? ''}`)),
-    [heldBackChanges],
+  const master = useMaster(gatewayId);
+  const refused = useMemo(
+    () =>
+      new Set(
+        (master.data?.entries ?? [])
+          .filter((entry: MasterEntry) => entry.state === 'failed')
+          .map((entry: MasterEntry) => entry.key),
+      ),
+    [master.data],
   );
   const versions = useVersions(gatewayId);
   const references = useRunningReferences(gatewayId);
@@ -72,6 +77,11 @@ export default function GatewayExplorerPage(): JSX.Element {
     () => graph.nodes.find((entry: GraphNode) => entry.key === selected) ?? null,
     [graph, selected],
   );
+  const entry: MasterEntry | undefined = useMemo(
+    () => (master.data?.entries ?? []).find((candidate: MasterEntry) => candidate.key === node?.key),
+    [master.data, node],
+  );
+  const history = useResourceHistory(gatewayId, node?.key ?? null);
   const held = useMemo(
     () =>
       new Map(
@@ -226,7 +236,7 @@ export default function GatewayExplorerPage(): JSX.Element {
           selected={selected}
           onSelect={setSelected}
           labelFor={labelFor}
-          heldBack={heldBack}
+          refused={refused}
           fullscreen={fullscreen}
           onToggleFullscreen={toggleFullscreen}
         />
@@ -236,6 +246,8 @@ export default function GatewayExplorerPage(): JSX.Element {
           version={running}
           counts={counts}
           selected={node}
+          entry={entry}
+          history={history.data?.history}
           onSelect={setSelected}
           labelFor={labelFor}
           variables={held}
