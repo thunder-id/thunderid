@@ -5,17 +5,19 @@ package authz
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
-	idTokenAlgClientID       = "id_token_alg_test_client"
+	idTokenAlgClientIDPrefix = "id_token_alg_test_client"
 	idTokenAlgClientSecret   = "id_token_alg_test_secret"
 	idTokenAlgRedirectURI    = "https://localhost:3000/id-token-alg-callback"
 	idTokenAlgResourceServer = "https://id-token-alg.example.com"
@@ -108,6 +110,7 @@ var idTokenAlgFlow = testutils.Flow{
 type IDTokenSigningAlgTestSuite struct {
 	suite.Suite
 	applicationID    string
+	clientID         string
 	authFlowID       string
 	ouID             string
 	userSchemaID     string
@@ -257,7 +260,7 @@ func (ts *IDTokenSigningAlgTestSuite) obtainIDToken() string {
 	ts.Require().NoError(err, "authorization code must be in the redirect")
 
 	tokenResult, err := testutils.RequestTokenWithResource(
-		idTokenAlgClientID, idTokenAlgClientSecret, code, idTokenAlgRedirectURI,
+		ts.clientID, idTokenAlgClientSecret, code, idTokenAlgRedirectURI,
 		"authorization_code", idTokenAlgResourceServer)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusOK, tokenResult.StatusCode, "token exchange should succeed")
@@ -267,10 +270,14 @@ func (ts *IDTokenSigningAlgTestSuite) obtainIDToken() string {
 	return tokenResult.Token.IDToken
 }
 
-// createApplication registers the test application, configuring signingAlg when one is given.
+// createApplication registers the test application, configuring signingAlg when one is given. Each
+// registration takes a client id of its own: deleting an application revokes what its client id
+// issued up to the deletion and for a grace past it, so the next test must not reuse the id or its
+// first tokens would fall within the revoked span.
 func (ts *IDTokenSigningAlgTestSuite) createApplication(signingAlg string) {
+	ts.clientID = fmt.Sprintf("%s_%d", idTokenAlgClientIDPrefix, time.Now().UnixNano())
 	oauthConfig := map[string]interface{}{
-		"clientId":                idTokenAlgClientID,
+		"clientId":                ts.clientID,
 		"clientSecret":            idTokenAlgClientSecret,
 		"redirectUris":            []string{idTokenAlgRedirectURI},
 		"grantTypes":              []string{"authorization_code"},
@@ -289,7 +296,7 @@ func (ts *IDTokenSigningAlgTestSuite) createApplication(signingAlg string) {
 		IsRegistrationFlowEnabled: false,
 		OUID:                      ts.ouID,
 		AuthFlowID:                ts.authFlowID,
-		ClientID:                  idTokenAlgClientID,
+		ClientID:                  ts.clientID,
 		ClientSecret:              idTokenAlgClientSecret,
 		RedirectURIs:              []string{idTokenAlgRedirectURI},
 		AllowedUserTypes:          []string{idTokenAlgUserSchema.Handle},
@@ -355,7 +362,7 @@ func (ts *IDTokenSigningAlgTestSuite) getJSON(url string, target interface{}) {
 
 func (ts *IDTokenSigningAlgTestSuite) initiateAuthorize() (*http.Response, error) {
 	params := url.Values{}
-	params.Set("client_id", idTokenAlgClientID)
+	params.Set("client_id", ts.clientID)
 	params.Set("redirect_uri", idTokenAlgRedirectURI)
 	params.Set("response_type", "code")
 	params.Set("scope", "openid")

@@ -23,11 +23,13 @@ type applicationValidator func(ctx context.Context, appID string) (
 	*appmodel.ApplicationArtifactProfile, *tidcommon.ServiceError)
 
 // applicationAction is what the validator does for one revocation mode: which validation runs, which
-// reason is recorded, and which refusal is reported when the validator names none.
+// reason is recorded, which when the node bounds the revocation, and which refusal is reported when the
+// validator names none.
 type applicationAction struct {
-	validate func(applicationAdminProvider) applicationValidator
-	reason   revocation.Reason
-	notFound tidcommon.ServiceError
+	validate      func(applicationAdminProvider) applicationValidator
+	reason        revocation.Reason
+	boundedReason revocation.Reason
+	notFound      tidcommon.ServiceError
 }
 
 // applicationActionsByMode maps the node's revocation mode to the action it prepares. The mode states
@@ -36,9 +38,10 @@ type applicationAction struct {
 // what was issued before the rotation.
 var applicationActionsByMode = map[revocation.Mode]applicationAction{
 	revocation.ModeAll: {
-		validate: func(p applicationAdminProvider) applicationValidator { return p.ValidateDeleteApplication },
-		reason:   revocation.ReasonApplicationDeleted,
-		notFound: ErrApplicationDeletionNotAllowed,
+		validate:      func(p applicationAdminProvider) applicationValidator { return p.ValidateDeleteApplication },
+		reason:        revocation.ReasonApplicationDeleted,
+		boundedReason: revocation.ReasonApplicationRemoved,
+		notFound:      ErrApplicationDeletionNotAllowed,
 	},
 	revocation.ModeBeforeAction: {
 		validate: func(p applicationAdminProvider) applicationValidator {
@@ -47,8 +50,9 @@ var applicationActionsByMode = map[revocation.Mode]applicationAction{
 				return p.ValidateCredentialAction(ctx, appID, appmodel.CredentialActionRegenerate)
 			}
 		},
-		reason:   revocation.ReasonApplicationSecretRegenerated,
-		notFound: ErrSecretRegenerationNotAllowed,
+		reason:        revocation.ReasonApplicationSecretRegenerated,
+		boundedReason: revocation.ReasonApplicationSecretRegenerated,
+		notFound:      ErrSecretRegenerationNotAllowed,
 	},
 }
 
@@ -79,6 +83,9 @@ func newApplicationActionValidator(
 		}, nil, &providers.ExecutorMeta{
 			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeAdministration, providers.FlowTypeSystem},
 			SupportedModes:     modes,
+			SupportedProperties: []providers.ExecutorSupportedProperties{
+				{Property: common.NodePropertyCutoffGraceSeconds},
+			},
 		})
 	return &applicationActionValidator{Executor: base}
 }
@@ -132,12 +139,52 @@ func (e *applicationActionValidator) Execute(ctx *providers.NodeContext) (
 		return execResp, nil
 	}
 
-	plan, err := encodeRevocationPlan(e.buildPlan(mode, action.reason, appID, profile))
+	grace, bounded, err := cutoffGraceOf(ctx.NodeProperties)
+	if err != nil {
+		return nil, err
+	}
+	built := e.buildPlan(mode, action.reason, appID, profile)
+	if bounded {
+		built = boundPlan(built, action.boundedReason, grace)
+	}
+	plan, err := encodeRevocationPlan(built)
 	if err != nil {
 		return nil, err
 	}
 	execResp.SharedRuntimeData = map[string]string{common.RuntimeKeyRevocationPlan: plan}
 	return execResp, nil
+}
+
+// cutoffGraceOf reads the node's cutoffGraceSeconds, reporting whether the node sets it.
+func cutoffGraceOf(properties map[string]interface{}) (time.Duration, bool, error) {
+	value, ok := properties[common.NodePropertyCutoffGraceSeconds]
+	if !ok {
+		return 0, false, nil
+	}
+	var seconds float64
+	switch v := value.(type) {
+	case float64:
+		seconds = v
+	case int:
+		seconds = float64(v)
+	default:
+		return 0, false, fmt.Errorf("%s must be a number", common.NodePropertyCutoffGraceSeconds)
+	}
+	if seconds < 0 {
+		return 0, false, fmt.Errorf("%s must not be negative", common.NodePropertyCutoffGraceSeconds)
+	}
+	return time.Duration(seconds * float64(time.Second)), true, nil
+}
+
+// boundPlan bounds a plan at now plus grace, so what is issued during the action is revoked and what
+// follows it stands.
+func boundPlan(plan revocationPlan, reason revocation.Reason, grace time.Duration) revocationPlan {
+	plan.Mode = revocation.ModeBeforeAction
+	plan.Reason = reason
+	if !plan.NothingToRevoke {
+		plan.Cutoff = time.Now().UTC().Add(grace)
+	}
+	return plan
 }
 
 // buildPlan records the trusted intent for this action. An application with no OAuth client

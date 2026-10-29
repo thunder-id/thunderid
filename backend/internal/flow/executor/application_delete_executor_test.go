@@ -6,6 +6,7 @@ package executor
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -47,12 +48,11 @@ func (s *ApplicationDeleteExecutorTestSuite) nodeContext(inputs, shared map[stri
 	}
 }
 
-// modeContext is nodeContext for the validator, whose action the node's revocation mode selects. It is
+// deletionContext is nodeContext for the validator of a deletion. It is
 // always the first node in its flow, so it carries no shared runtime data.
-func (s *ApplicationDeleteExecutorTestSuite) modeContext(
-	mode revocation.Mode, inputs map[string]string) *providers.NodeContext {
+func (s *ApplicationDeleteExecutorTestSuite) deletionContext(inputs map[string]string) *providers.NodeContext {
 	ctx := s.nodeContext(inputs, nil)
-	ctx.ExecutorMode = string(mode)
+	ctx.ExecutorMode = string(revocation.ModeAll)
 	return ctx
 }
 
@@ -76,7 +76,7 @@ func (s *ApplicationDeleteExecutorTestSuite) TestApplicationDeletionFlow() {
 	s.apps.EXPECT().ValidateDeleteApplication(mock.Anything, "app-1").Return(
 		&appmodel.ApplicationArtifactProfile{ClientKey: "client-1", MaxLifetimeSeconds: 2592000}, nil)
 	pre, err := s.validator().Execute(
-		s.modeContext(revocation.ModeAll, map[string]string{revocationInputApplication: "app-1"}))
+		s.deletionContext(map[string]string{revocationInputApplication: "app-1"}))
 	s.Require().NoError(err)
 	s.Equal(providers.ExecComplete, pre.Status)
 	s.NotEmpty(pre.SharedRuntimeData[common.RuntimeKeyRevocationPlan])
@@ -117,7 +117,7 @@ func (s *ApplicationDeleteExecutorTestSuite) TestDeletion_WithoutOAuthComponentS
 	s.apps.EXPECT().ValidateDeleteApplication(mock.Anything, "app-embedded").Return(
 		&appmodel.ApplicationArtifactProfile{}, nil)
 	pre, err := s.validator().Execute(
-		s.modeContext(revocation.ModeAll, map[string]string{revocationInputApplication: "app-embedded"}))
+		s.deletionContext(map[string]string{revocationInputApplication: "app-embedded"}))
 	s.Require().NoError(err)
 	s.Equal(providers.ExecComplete, pre.Status)
 
@@ -157,4 +157,50 @@ func (s *ApplicationDeleteExecutorTestSuite) TestActingNode_UnresolvedProviderFa
 	_, err := newApplicationDeleteExecutor(s.factory).Execute(s.nodeContext(nil, map[string]string{}))
 
 	s.Require().Error(err)
+}
+
+// The system deletion flow bounds its revocation through the node's cutoffGraceSeconds: what was
+// issued until a moment past the deletion is revoked under a boundary reason, so an application
+// registered again under the same client id stands once that moment has passed, and the session node
+// still detaches the application. Without the property the console's deletion stays terminal, as the
+// test above shows.
+func (s *ApplicationDeleteExecutorTestSuite) TestSystemDeletionFlowIsBoundedPastTheDeletion() {
+	s.apps.EXPECT().ValidateDeleteApplication(mock.Anything, "app-1").Return(
+		&appmodel.ApplicationArtifactProfile{ClientKey: "client-1", MaxLifetimeSeconds: 3600}, nil)
+	ctx := s.deletionContext(map[string]string{revocationInputApplication: "app-1"})
+	ctx.NodeProperties = map[string]interface{}{common.NodePropertyCutoffGraceSeconds: float64(30)}
+	before := time.Now().UTC()
+	pre, err := s.validator().Execute(ctx)
+	after := time.Now().UTC()
+	s.Require().NoError(err)
+
+	revoker := revocationmock.NewCriteriaRevokerInterfaceMock(s.T())
+	revoker.EXPECT().RevokeCriteriaBatch(mock.Anything, mock.MatchedBy(
+		func(batch []revocation.CriteriaRevocation) bool {
+			return len(batch) == 1 && batch[0].Mode == revocation.ModeBeforeAction &&
+				batch[0].Reason == revocation.ReasonApplicationRemoved &&
+				!batch[0].Cutoff.Before(before.Add(30*time.Second)) &&
+				!batch[0].Cutoff.After(after.Add(30*time.Second))
+		})).Return(nil)
+	_, err = newCriteriaRevocationExecutor(s.factory, revoker).Execute(s.nodeContext(nil, pre.SharedRuntimeData))
+	s.Require().NoError(err)
+
+	sessions := sessionmock.NewServiceMock(s.T())
+	sessions.EXPECT().DetachApplication(mock.Anything, "app-1").Return(nil)
+	_, err = newSessionRevocationExecutor(s.factory, sessions).Execute(s.nodeContext(nil, pre.SharedRuntimeData))
+	s.Require().NoError(err)
+}
+
+// A cutoffGraceSeconds that is not a non-negative number is a fault in the flow, not a refusal.
+func (s *ApplicationDeleteExecutorTestSuite) TestAnInvalidCutoffGraceFails() {
+	for _, grace := range []interface{}{"30", float64(-1)} {
+		s.apps.EXPECT().ValidateDeleteApplication(mock.Anything, "app-1").Return(
+			&appmodel.ApplicationArtifactProfile{ClientKey: "client-1"}, nil).Once()
+		ctx := s.deletionContext(map[string]string{revocationInputApplication: "app-1"})
+		ctx.NodeProperties = map[string]interface{}{common.NodePropertyCutoffGraceSeconds: grace}
+
+		_, err := s.validator().Execute(ctx)
+
+		s.Error(err, "%v", grace)
+	}
 }

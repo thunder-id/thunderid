@@ -7,7 +7,7 @@ description: RFC 7009 token revocation in {{ProductName}}, from revoking a singl
 
 # Token Revocation
 
-**Token Revocation** ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)) lets a client tell <ProductName /> that a token should stop working before it expires. <ProductName /> extends this with broader scopes, so an operational event such as a sign-out, a user deletion, or an account suspension can invalidate many tokens at once.
+**Token Revocation** ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)) lets a client tell <ProductName /> that a token should stop working before it expires. <ProductName /> extends this with broader scopes, so an operational event such as a sign-out, a user deletion, an account suspension, or an application deletion can invalidate many tokens at once.
 
 Access tokens are self-contained JWTs, so a resource server that validates them locally has no way to know a token was revoked. <ProductName /> solves this with a denylist that both the authorization server and resource servers consult. The scopes below differ only in what goes on that list.
 
@@ -18,7 +18,7 @@ Access tokens are self-contained JWTs, so a resource server that validates them 
 | **Single token** | One token, by its `jti` | A client calls `/oauth2/revoke`; a refresh token is rotated |
 | **Grant** | Every token of one authorization grant, by its `tfid` | Sign-out, refresh-token replay, authorization-code replay |
 | **Subject** | Every token issued to one user, agent, or application, by its `sub` | A user is deleted; a user, agent, or application is suspended |
-| **Client** | Every token issued through one OAuth client, by its client ID | An application, or an agent with an OAuth client, is suspended |
+| **Client** | Every token issued through one OAuth client, by its client ID | An application, or an agent with an OAuth client, is suspended; an application is deleted or its client secret is replaced |
 
 A token is rejected if **any** of these matches.
 
@@ -106,6 +106,23 @@ The suspend flow revokes tokens for the target subject and ends its sessions bef
 The revocation cutoff is the time **Validate and Plan Suspension** runs, plus `jwt.leeway`. Matching tokens issued at or before that cutoff are rejected. Unsuspending does not remove these revocation records. See [Suspend an Account](../../../account-protection/suspend-and-restore-accounts#suspend-an-account) for the administration steps.
 
 An automatic account lock revokes nothing: it refuses new sign-ins only.
+
+## Application Deletion and Secret Regeneration
+
+Deleting an application revokes every token issued to it and detaches it from the sessions it took part in, and then removes the record. This happens whichever way the application is deleted: from the Console, through the `DELETE /applications/{id}` API, through the import API, or when a configuration version that no longer has the application is applied to a gateway.
+
+Updating an application with a different client secret, through the API or the import API, revokes the tokens issued before the change in the same way, so a secret that leaked takes what it issued with it. An update that carries the secret the application already has changes nothing and revokes nothing. Every apply of a configuration version is such an update.
+
+The revocation always runs before the change is written, and if it fails nothing is written. Outside the Console's administration flows, its reach ends a little past the moment it runs, so a token issued while the change is being written is covered too:
+
+| Change | Revokes tokens issued up to | Effect after the change |
+|---|---|---|
+| Application deleted | 30 seconds past the revocation | An application registered later under the same client ID, as a rollback to a configuration version that still has it does, is a new application. The tokens it issues are valid once those 30 seconds have passed. |
+| Client secret replaced | 5 seconds past the revocation | A token obtained with the new secret within those 5 seconds is revoked as well. A client that requests a token in the same moment it receives the new secret requests it again. |
+
+The Console's administration flows keep their own behavior. Its application deletion flow revokes every token the client ID ever carried, so an application registered again under that client ID issues valid tokens only once the longest-lived token of the deleted one would have expired. Its secret regeneration flow revokes until the new secret is written, so every token the new secret issues is valid.
+
+The revocation runs as a **system flow**: a flow built into the <ProductName /> binary, which a service runs before it writes the change. It is not a resource: it is never stored, it cannot be edited or started through any API, it never asks for input, and a failure in it leaves the application as it was.
 
 ## Where Revocation Is Enforced
 

@@ -23,6 +23,9 @@ var catalog = map[string]providers.ExecutorMeta{
 	ExecutorNameApplicationActionValidator: {
 		SupportedModes:     []string{"revoke_all", "revoke_before_action"},
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "SYSTEM"},
+		SupportedProperties: []providers.ExecutorSupportedProperties{
+			{Property: "cutoffGraceSeconds"},
+		},
 	},
 	ExecutorNameApplicationDelete: {
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},

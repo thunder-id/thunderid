@@ -82,6 +82,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // observabilitySvc is the observability service instance. This is used for graceful shutdown.
@@ -347,6 +348,10 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		mux, mcpServer, entityService, inboundClientService, ouService, i18nService,
 		runtimeCryptoSvc, serverConfigService, nil, sharingService, valueCapture, governanceService)
 	fatalOnError(ctx, logger, err, "Failed to initialize ApplicationService")
+	// This plane issues no tokens and holds no sessions, so a change here invalidates nothing; the
+	// gateway a version is applied to revokes when its own import makes the change. Set explicitly:
+	// a service with no executor refuses the change.
+	applicationService.SetSystemFlowExecutor(noSystemFlow)
 	exporters = append(exporters, applicationExporter)
 
 	agentService, agentExporter, err := agent.Initialize(mux, entityService, inboundClientService, ouService,
@@ -518,4 +523,9 @@ func buildHashConfig() (cryptolib.HashConfig, error) {
 	default:
 		return cryptolib.HashConfig{}, fmt.Errorf("unrecognized password hashing algorithm %q", cfg.Algorithm)
 	}
+}
+
+// noSystemFlow runs no system flow, for a plane that issues no tokens and holds no sessions.
+func noSystemFlow(context.Context, string, map[string]string) *tidcommon.ServiceError {
+	return nil
 }

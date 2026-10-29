@@ -945,6 +945,46 @@ func (_c *ApplicationServiceInterfaceMock_SetDependencyRegistry_Call) RunAndRetu
 	return _c
 }
 
+// SetSystemFlowExecutor provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) SetSystemFlowExecutor(execute func(ctx context.Context, handle string, inputs map[string]string) *common.ServiceError) {
+	_mock.Called(execute)
+	return
+}
+
+// ApplicationServiceInterfaceMock_SetSystemFlowExecutor_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetSystemFlowExecutor'
+type ApplicationServiceInterfaceMock_SetSystemFlowExecutor_Call struct {
+	*mock.Call
+}
+
+// SetSystemFlowExecutor is a helper method to define mock.On call
+//   - execute func(ctx context.Context, handle string, inputs map[string]string) *common.ServiceError
+func (_e *ApplicationServiceInterfaceMock_Expecter) SetSystemFlowExecutor(execute any) *ApplicationServiceInterfaceMock_SetSystemFlowExecutor_Call {
+	return &ApplicationServiceInterfaceMock_SetSystemFlowExecutor_Call{Call: _e.mock.On("SetSystemFlowExecutor", execute)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_SetSystemFlowExecutor_Call) Run(run func(execute func(ctx context.Context, handle string, inputs map[string]string) *common.ServiceError)) *ApplicationServiceInterfaceMock_SetSystemFlowExecutor_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 func(ctx context.Context, handle string, inputs map[string]string) *common.ServiceError
+		if args[0] != nil {
+			arg0 = args[0].(func(ctx context.Context, handle string, inputs map[string]string) *common.ServiceError)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_SetSystemFlowExecutor_Call) Return() *ApplicationServiceInterfaceMock_SetSystemFlowExecutor_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_SetSystemFlowExecutor_Call) RunAndReturn(run func(execute func(ctx context.Context, handle string, inputs map[string]string) *common.ServiceError)) *ApplicationServiceInterfaceMock_SetSystemFlowExecutor_Call {
+	_c.Run(run)
+	return _c
+}
+
 // UpdateApplication provides a mock function for the type ApplicationServiceInterfaceMock
 func (_mock *ApplicationServiceInterfaceMock) UpdateApplication(ctx context.Context, appID string, app *model.ApplicationDTO) (*model.ApplicationDTO, *common.ServiceError) {
 	ret := _mock.Called(ctx, appID, app)

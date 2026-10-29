@@ -123,6 +123,8 @@ const (
 const DefaultHTTPTimeout = 5 * time.Second
 
 const (
+	// NodePropertyCutoffGraceSeconds bounds an application revocation at its cutoff plus this many seconds.
+	NodePropertyCutoffGraceSeconds = "cutoffGraceSeconds"
 	// NodePropertyAllowAuthenticationWithoutLocalUser indicates whether authentication is allowed without a local user
 	NodePropertyAllowAuthenticationWithoutLocalUser = "allowAuthenticationWithoutLocalUser"
 	// NodePropertyAllowRegistrationWithExistingUser indicates whether registration is allowed with an existing user

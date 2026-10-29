@@ -62,5 +62,6 @@ func (e *sessionRevocationExecutor) Execute(ctx *providers.NodeContext) (*provid
 // isApplicationDeletionPlan reports whether the plan deletes an application, the only case that detaches
 // session participation. A secret regeneration does not: the session is still legitimately the user's.
 func isApplicationDeletionPlan(plan revocationPlan) bool {
-	return plan.TargetID != "" && plan.Reason == revocation.ReasonApplicationDeleted
+	return plan.TargetID != "" && (plan.Reason == revocation.ReasonApplicationDeleted ||
+		plan.Reason == revocation.ReasonApplicationRemoved)
 }

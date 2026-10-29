@@ -159,6 +159,10 @@ func (suite *ServiceTestSuite) setupTestService() (
 	mockEntityService.On("UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything).Maybe().Return(noEPErr)
 	mockEntityService.On("UpdateSystemCredentials", mock.Anything, mock.Anything, mock.Anything).
 		Maybe().Return(noEPErr)
+	// No client secret so far: an update that supplies one sets it rather than rotating it. A test
+	// about rotation resets this and says what is stored.
+	mockEntityService.On("GetCredentialsByType", mock.Anything, mock.Anything, mock.Anything).
+		Maybe().Return([]entity.StoredCredential{}, noEPErr)
 	mockStore.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Maybe().Return(nil)
 	mockStore.On("ResolveInboundAuthProfileHandles", mock.Anything, mock.Anything).Maybe().Return(nil)
@@ -187,6 +191,7 @@ func (suite *ServiceTestSuite) setupTestService() (
 		dependencyRegistry:   noopDepRegistry{},
 		sharingService:       mockSharing,
 		governance:           governance,
+		executeSystemFlow:    suite.systemFlows(nil, nil).execute,
 	}
 	return service, mockStore
 }
@@ -199,6 +204,44 @@ func activeReads(_ context.Context, entities []providers.Entity) []identitygover
 	}
 	return reads
 }
+
+// withMutableRuntime initializes a server runtime without declarative resources for the test.
+func (suite *ServiceTestSuite) withMutableRuntime() {
+	config.ResetServerRuntime()
+	err := config.InitializeServerRuntime("/tmp/test", &config.Config{
+		DeclarativeResources: config.DeclarativeResources{Enabled: false},
+	})
+	require.NoError(suite.T(), err)
+	suite.T().Cleanup(config.ResetServerRuntime)
+}
+
+// systemFlowRuns stands in for the execution service's ExecuteSystemFlow. It records each run and
+// answers with err.
+type systemFlowRuns struct {
+	handles []string
+	inputs  []map[string]string
+	err     *tidcommon.ServiceError
+	order   *[]string
+}
+
+func (r *systemFlowRuns) execute(_ context.Context, handle string,
+	inputs map[string]string) *tidcommon.ServiceError {
+	r.handles = append(r.handles, handle)
+	r.inputs = append(r.inputs, inputs)
+	if r.order != nil {
+		*r.order = append(*r.order, "flow")
+	}
+	return r.err
+}
+
+// systemFlows records the system flows a service runs, answering each with err and appending "flow" to
+// order when it is given.
+func (suite *ServiceTestSuite) systemFlows(err *tidcommon.ServiceError, order *[]string) *systemFlowRuns {
+	return &systemFlowRuns{err: err, order: order}
+}
+
+// applicationInput is the input a system flow names the application by.
+var applicationInput = map[string]string{systemFlowInputApplication: testServiceAppID}
 
 // noopDepRegistry is a no-op resourcedependency.Registry for tests that don't exercise cascade.
 type noopDepRegistry struct{ cascadeErr error }
@@ -1137,6 +1180,63 @@ func (suite *ServiceTestSuite) TestDeleteApplication_Success() {
 	assert.Nil(suite.T(), svcErr)
 }
 
+// An application that exists has issued tokens and taken part in sessions, so its deletion runs the
+// deletion system flow, with the application as the target, before anything of it is removed.
+func (suite *ServiceTestSuite) TestDeleteApplication_RunsTheDeletionSystemFlowFirst() {
+	suite.withMutableRuntime()
+	service, mockStore := suite.setupTestService()
+	ep := resetEntityServiceMethod(service, "GetEntityProfile")
+	ep.On("GetEntityProfile", mock.Anything, testServiceAppID).
+		Return(&providers.Entity{ID: testServiceAppID, Category: providers.EntityCategoryApp}, nil)
+	var order []string
+	flows := suite.systemFlows(nil, &order)
+	service.SetSystemFlowExecutor(flows.execute)
+	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).
+		Run(func(mock.Arguments) { order = append(order, "client") }).Return(nil)
+	resetEntityServiceMethod(service, "DeleteEntity").On("DeleteEntity", mock.Anything, testServiceAppID).
+		Run(func(mock.Arguments) { order = append(order, "entity") }).Return(nil)
+
+	svcErr := service.DeleteApplication(context.Background(), testServiceAppID)
+
+	assert.Nil(suite.T(), svcErr)
+	assert.Equal(suite.T(), []string{systemFlowApplicationDelete}, flows.handles)
+	assert.Equal(suite.T(), []map[string]string{applicationInput}, flows.inputs)
+	assert.Equal(suite.T(), []string{"flow", "client", "entity"}, order, "something was removed before the revocation")
+}
+
+// A system flow that refuses leaves the application as it was, and its refusal is what the caller
+// gets: a declared application, say, is reported as such rather than as a failed delete.
+func (suite *ServiceTestSuite) TestDeleteApplication_RefusedWhenTheSystemFlowRefuses() {
+	suite.withMutableRuntime()
+	service, mockStore := suite.setupTestService()
+	ep := resetEntityServiceMethod(service, "GetEntityProfile")
+	ep.On("GetEntityProfile", mock.Anything, testServiceAppID).
+		Return(&providers.Entity{ID: testServiceAppID, Category: providers.EntityCategoryApp}, nil)
+	service.SetSystemFlowExecutor(suite.systemFlows(&ErrorCannotModifyDeclarativeResource, nil).execute)
+
+	svcErr := service.DeleteApplication(context.Background(), testServiceAppID)
+
+	assert.Equal(suite.T(), &ErrorCannotModifyDeclarativeResource, svcErr)
+	mockStore.AssertNotCalled(suite.T(), "DeleteInboundClient", mock.Anything, mock.Anything)
+	ep.AssertNotCalled(suite.T(), "DeleteEntity", mock.Anything, mock.Anything)
+}
+
+// A server that never wired an executor refuses to delete rather than deleting with the application's
+// tokens left valid.
+func (suite *ServiceTestSuite) TestDeleteApplication_RefusedWithoutASystemFlowExecutor() {
+	suite.withMutableRuntime()
+	service, mockStore := suite.setupTestService()
+	ep := resetEntityServiceMethod(service, "GetEntityProfile")
+	ep.On("GetEntityProfile", mock.Anything, testServiceAppID).
+		Return(&providers.Entity{ID: testServiceAppID, Category: providers.EntityCategoryApp}, nil)
+	service.SetSystemFlowExecutor(nil)
+
+	svcErr := service.DeleteApplication(context.Background(), testServiceAppID)
+
+	assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
+	mockStore.AssertNotCalled(suite.T(), "DeleteInboundClient", mock.Anything, mock.Anything)
+}
+
 // Deletion must stay idempotent. On a retry after a partial delete the entity is already gone, and
 // an entity-not-found must not abort the call, otherwise deleteLocalizedVariants never runs and the
 // application is left with orphaned localized variants.
@@ -1152,6 +1252,8 @@ func (suite *ServiceTestSuite) TestDeleteApplication_MissingEntityIsNonFatal() {
 	defer config.ResetServerRuntime()
 
 	service, mockStore := suite.setupTestService()
+	flows := suite.systemFlows(nil, nil)
+	service.SetSystemFlowExecutor(flows.execute)
 	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).Return(nil)
 
 	ep := resetEntityServiceMethod(service, "DeleteEntity")
@@ -1161,6 +1263,7 @@ func (suite *ServiceTestSuite) TestDeleteApplication_MissingEntityIsNonFatal() {
 
 	assert.Nil(suite.T(), svcErr, "a missing entity must not fail the delete")
 	ep.AssertExpectations(suite.T())
+	assert.Empty(suite.T(), flows.handles)
 }
 
 // TestDeleteApplication_OAuthCertError verifies that when the inbound-client layer reports an
@@ -4359,7 +4462,7 @@ func (suite *ServiceTestSuite) TestUpdateEntityDataForApplicationUpdate_UpdateSy
 	ep.On("UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything).
 		Return(errors.New("internal error"))
 
-	svcErr := service.updateEntityDataForApplicationUpdate(context.Background(), testServiceAppID, app, nil)
+	svcErr := service.updateEntityDataForApplicationUpdate(context.Background(), testServiceAppID, app, nil, true)
 
 	assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
 }
@@ -4373,7 +4476,7 @@ func (suite *ServiceTestSuite) TestUpdateEntityDataForApplicationUpdate_FlowSecr
 	ep.On("UpdateSystemCredentials", mock.Anything, mock.Anything, mock.Anything).
 		Return(errors.New("internal error"))
 
-	svcErr := service.updateEntityDataForApplicationUpdate(context.Background(), testServiceAppID, app, nil)
+	svcErr := service.updateEntityDataForApplicationUpdate(context.Background(), testServiceAppID, app, nil, true)
 
 	assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
 }
@@ -4396,7 +4499,7 @@ func (suite *ServiceTestSuite) TestUpdateEntityDataForApplicationUpdate_NoFlowSe
 	ep := service.entityService.(*entitymock.EntityServiceInterfaceMock)
 
 	svcErr := service.updateEntityDataForApplicationUpdate(
-		context.Background(), testServiceAppID, app, inboundAuthConfig)
+		context.Background(), testServiceAppID, app, inboundAuthConfig, true)
 
 	assert.Nil(suite.T(), svcErr)
 	ep.AssertNotCalled(suite.T(), "UpdateSystemCredentials", mock.Anything, mock.Anything)
@@ -4419,7 +4522,7 @@ func (suite *ServiceTestSuite) TestUpdateEntityDataForApplicationUpdate_UpdateCr
 		Return(errors.New("internal error"))
 
 	svcErr := service.updateEntityDataForApplicationUpdate(
-		context.Background(), testServiceAppID, app, inboundAuthConfig)
+		context.Background(), testServiceAppID, app, inboundAuthConfig, true)
 
 	assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
 }
@@ -4672,6 +4775,7 @@ func (suite *ServiceTestSuite) newFlowTargetTestService(entity *providers.Entity
 		inboundClientService: mockStore,
 		entityService:        mockEntityService,
 		dependencyRegistry:   noopDepRegistry{},
+		executeSystemFlow:    suite.systemFlows(nil, nil).execute,
 	}
 	return service, mockStore
 }

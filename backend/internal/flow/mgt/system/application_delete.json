@@ -16,7 +16,10 @@
         "name": "ApplicationActionValidator",
         "mode": "revoke_all"
       },
-      "onSuccess": "revoke_tokens"
+      "onSuccess": "revoke_tokens",
+      "properties": {
+        "cutoffGraceSeconds": 30
+      }
     },
     {
       "id": "revoke_tokens",
