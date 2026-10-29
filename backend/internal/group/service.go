@@ -19,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -82,6 +83,7 @@ type groupService struct {
 	transactioner      providers.Transactioner
 	authzService       sysauthz.SystemAuthorizationServiceInterface
 	dependencyRegistry resourcedependency.Registry
+	sharingService     sharing.SharingServiceInterface
 }
 
 // newGroupServiceWithStore creates a new instance of GroupService with an externally provided store.
@@ -92,7 +94,8 @@ func newGroupServiceWithStore(
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
 	transactioner providers.Transactioner,
-) GroupServiceInterface {
+	sharingService sharing.SharingServiceInterface,
+) *groupService {
 	return &groupService{
 		groupStore:        store,
 		ouService:         ouService,
@@ -100,6 +103,7 @@ func newGroupServiceWithStore(
 		entityTypeService: entityTypeService,
 		authzService:      authzService,
 		transactioner:     transactioner,
+		sharingService:    sharingService,
 	}
 }
 
@@ -313,7 +317,7 @@ func (gs *groupService) CreateGroup(ctx context.Context, request CreateGroupRequ
 		return nil, err
 	}
 
-	if err := gs.validateEntityMembers(ctx, request.Members, security.ActionCreateGroup); err != nil {
+	if err := gs.validateEntityMembers(ctx, request.Members, security.ActionCreateGroup, request.OUID); err != nil {
 		return nil, err
 	}
 
@@ -328,6 +332,10 @@ func (gs *groupService) CreateGroup(ctx context.Context, request CreateGroupRequ
 		if err := gs.ValidateGroupIDs(ctx, groupIDs); err != nil {
 			return nil, err
 		}
+	}
+
+	if err := gs.validateMembersInGroupOU(ctx, request.OUID, request.Members); err != nil {
+		return nil, err
 	}
 
 	request.Members = normalizeMembers(request.Members)
@@ -541,6 +549,11 @@ func (gs *groupService) UpdateGroup(
 			); err != nil {
 				capturedSvcErr = err
 				return errors.New("rollback for unauthorized access to target OU")
+			}
+
+			if err := gs.validateGroupOUChange(txCtx, groupID); err != nil {
+				capturedSvcErr = err
+				return errors.New("rollback for group with memberships")
 			}
 		}
 
@@ -816,7 +829,7 @@ func (gs *groupService) AddGroupMembers(
 	ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError) {
 	log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)).
 		Debug(ctx, "Adding members to group", log.String("id", groupID))
-	return gs.modifyGroupMembers(ctx, groupID, members,
+	return gs.modifyGroupMembers(ctx, groupID, members, true,
 		gs.groupStore.AddGroupMembers,
 		"Failed to add members to group",
 		"Successfully added members to group",
@@ -828,7 +841,7 @@ func (gs *groupService) RemoveGroupMembers(
 	ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError) {
 	log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)).
 		Debug(ctx, "Removing members from group", log.String("id", groupID))
-	return gs.modifyGroupMembers(ctx, groupID, members,
+	return gs.modifyGroupMembers(ctx, groupID, members, false,
 		gs.groupStore.RemoveGroupMembers,
 		"Failed to remove members from group",
 		"Successfully removed members from group",
@@ -843,10 +856,13 @@ func (gs *groupService) ValidateRemoveGroupMembers(
 
 // modifyGroupMembers is the shared implementation for AddGroupMembers and RemoveGroupMembers.
 // It validates, normalizes, and applies storeOp inside a transaction, then resolves member types.
+// isMemberOUCheckRequired refuses members the group's organization unit neither owns nor has shared
+// with it.
 func (gs *groupService) modifyGroupMembers(
 	ctx context.Context,
 	groupID string,
 	members []Member,
+	isMemberOUCheckRequired bool,
 	storeOp func(context.Context, string, []Member) error,
 	errMsg, successMsg string,
 ) (*Group, *tidcommon.ServiceError) {
@@ -889,6 +905,13 @@ func (gs *groupService) modifyGroupMembers(
 		); svcErr != nil {
 			capturedSvcErr = svcErr
 			return errors.New("rollback for disallowed grant")
+		}
+
+		if isMemberOUCheckRequired {
+			if svcErr := gs.validateMembersInGroupOU(txCtx, existingGroupDAO.OUID, members); svcErr != nil {
+				capturedSvcErr = svcErr
+				return errors.New("rollback for members outside group OU")
+			}
 		}
 
 		if err := storeOp(txCtx, groupID, members); err != nil {
@@ -962,7 +985,8 @@ func (gs *groupService) validateMembershipChange(
 		return svcErr
 	}
 
-	if svcErr := gs.validateEntityMembers(ctx, members, security.ActionUpdateGroup); svcErr != nil {
+	if svcErr := gs.validateEntityMembers(
+		ctx, members, security.ActionUpdateGroup, existingGroup.OUID); svcErr != nil {
 		return svcErr
 	}
 
@@ -1020,9 +1044,10 @@ func validateMemberTypes(members []Member) *tidcommon.ServiceError {
 
 // validateEntityMembers validates user/app members before normalization.
 // It checks existence, verifies the claimed type matches the actual entity category,
-// and applies OU-scope access checking for user-category entities using the given action.
+// and applies OU-scope access checking for user-category entities using the given action. A user
+// shared with the group's organization unit passes, since the caller already holds access there.
 func (gs *groupService) validateEntityMembers(
-	ctx context.Context, members []Member, action security.Action,
+	ctx context.Context, members []Member, action security.Action, groupOUID string,
 ) *tidcommon.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
@@ -1055,7 +1080,9 @@ func (gs *groupService) validateEntityMembers(
 	}
 
 	var userIDs []string
-	for _, e := range entities {
+	usersByID := make(map[string]*providers.Entity)
+	for i := range entities {
+		e := &entities[i]
 		claimed := typeByID[e.ID]
 		actual := MemberType(e.Category)
 		if claimed != actual {
@@ -1065,6 +1092,7 @@ func (gs *groupService) validateEntityMembers(
 		}
 		if e.Category == providers.EntityCategoryUser {
 			userIDs = append(userIDs, e.ID)
+			usersByID[e.ID] = e
 		}
 	}
 
@@ -1087,10 +1115,17 @@ func (gs *groupService) validateEntityMembers(
 		return &tidcommon.InternalServerError
 	}
 
-	if len(outOfScopeIDs) > 0 {
-		logger.Debug(ctx, "User IDs outside accessible OUs",
-			log.MaskedStrings("outOfScopeIDs", outOfScopeIDs))
-		return &tidcommon.ErrorUnauthorized
+	for _, id := range outOfScopeIDs {
+		shared, sharingErr := gs.isSharedWithOU(ctx, usersByID[id], groupOUID)
+		if sharingErr != nil {
+			logger.Error(ctx, "Failed to check user sharing", log.Error(sharingErr))
+			return &tidcommon.InternalServerError
+		}
+		if !shared {
+			logger.Debug(ctx, "User IDs outside accessible OUs",
+				log.MaskedStrings("outOfScopeIDs", outOfScopeIDs))
+			return &tidcommon.ErrorUnauthorized
+		}
 	}
 
 	return nil
@@ -1107,6 +1142,125 @@ func normalizeMembers(members []Member) []Member {
 		normalized[i] = Member{ID: m.ID, Type: t}
 	}
 	return normalized
+}
+
+// splitMemberIDs separates member IDs into entity member IDs and group member IDs.
+func splitMemberIDs(members []Member) (entityIDs, groupIDs []string) {
+	for _, m := range members {
+		if m.Type == MemberTypeGroup {
+			groupIDs = append(groupIDs, m.ID)
+		} else {
+			entityIDs = append(entityIDs, m.ID)
+		}
+	}
+	return entityIDs, groupIDs
+}
+
+// validateMembersInGroupOU rejects members that the group's organization unit neither owns nor has
+// shared with it.
+func (gs *groupService) validateMembersInGroupOU(
+	ctx context.Context, ouID string, members []Member) *tidcommon.ServiceError {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+
+	entityIDs, groupIDs := splitMemberIDs(members)
+	unavailableIDs, err := gs.findMembersNotAvailableInOU(ctx, ouID, entityIDs, groupIDs)
+	if err != nil {
+		logger.Error(ctx, "Failed to check member organization units", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+
+	if len(unavailableIDs) > 0 {
+		return &ErrorMemberOUMismatch
+	}
+	return nil
+}
+
+// validateGroupOUChange rejects moving a group that has members or that another group contains.
+func (gs *groupService) validateGroupOUChange(ctx context.Context, groupID string) *tidcommon.ServiceError {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+
+	memberCount, err := gs.groupStore.GetGroupMemberCount(ctx, groupID)
+	if err != nil {
+		logger.Error(ctx, "Failed to get group member count", log.String("groupID", groupID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+
+	parentIDs, err := gs.groupStore.GetDirectGroupParents(ctx, []string{groupID})
+	if err != nil {
+		logger.Error(ctx, "Failed to get parent groups", log.String("groupID", groupID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+
+	if memberCount > 0 || len(parentIDs) > 0 {
+		return &ErrorGroupOUChangeNotAllowed
+	}
+	return nil
+}
+
+// findMembersNotAvailableInOU returns the IDs of the given entities and groups that ouID neither owns
+// nor has shared with it. Groups are never shared, so a group is available only when ouID owns it. IDs
+// that no longer resolve are skipped.
+func (gs *groupService) findMembersNotAvailableInOU(
+	ctx context.Context, ouID string, entityIDs, groupIDs []string) ([]string, error) {
+	var unavailableIDs []string
+
+	if len(entityIDs) > 0 {
+		entities, err := gs.entityService.GetEntitiesByIDs(ctx, entityIDs)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get member entities: %w", err)
+		}
+		for i := range entities {
+			if entities[i].OUID == ouID {
+				continue
+			}
+			shared, sharingErr := gs.isSharedWithOU(ctx, &entities[i], ouID)
+			if sharingErr != nil {
+				return nil, sharingErr
+			}
+			if !shared {
+				unavailableIDs = append(unavailableIDs, entities[i].ID)
+			}
+		}
+	}
+
+	if len(groupIDs) > 0 {
+		groups, err := gs.groupStore.GetGroupsByIDs(ctx, groupIDs)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get member groups: %w", err)
+		}
+		for _, g := range groups {
+			if g.OUID != ouID {
+				unavailableIDs = append(unavailableIDs, g.ID)
+			}
+		}
+	}
+
+	return unavailableIDs, nil
+}
+
+// isSharedWithOU reports whether a sharing policy reaches ouID with the entity. Sharing policies are
+// recorded under the category's resource type name. A category no sharing is registered for has no
+// policies, so its entities are never shared.
+func (gs *groupService) isSharedWithOU(ctx context.Context, e *providers.Entity, ouID string) (bool, error) {
+	if gs.sharingService == nil {
+		return false, nil
+	}
+	var rt sharing.ResourceType
+	switch e.Category {
+	case providers.EntityCategoryUser:
+		rt = resourcedependency.ResourceTypeUser
+	case providers.EntityCategoryApp:
+		rt = resourcedependency.ResourceTypeApplication
+	case providers.EntityCategoryAgent:
+		rt = resourcedependency.ResourceTypeAgent
+	default:
+		return false, nil
+	}
+	visible, svcErr := gs.sharingService.IsVisible(ctx, rt, e.ID, ouID)
+	if svcErr != nil {
+		return false, fmt.Errorf("failed to check entity sharing: %s", svcErr.Error.DefaultValue)
+	}
+	return visible, nil
 }
 
 // isOrganizationUnitChanged checks if the organization unit of the group has changed during an update.

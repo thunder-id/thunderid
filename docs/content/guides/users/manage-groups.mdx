@@ -8,7 +8,7 @@ description: Create and manage groups to organize users and simplify role assign
 # Groups
 
 A group is a named collection of members within an **Organization Unit (OU)**. Members can be users, applications, agents, or other groups. You can use groups to organize members and assign roles to them at once rather than assigning roles individually.
-Every group belongs to exactly one OU. 
+Every group belongs to exactly one OU. A member must be owned by that OU or shared with it. See [Organization Unit Boundary for Members](#organization-unit-boundary-for-members).
 
 :::note
 A group's OU cannot be changed after creation. If you need to move a group to a different OU, delete it and recreate it under the correct OU.
@@ -60,6 +60,19 @@ When a group is nested inside another group, role assignments resolve transitive
 :::note
 A group nesting chain must stay within a single source. Mixing declarative (YAML-defined) groups and runtime (UI/API-managed) groups in the same chain, for example a declarative group whose member is a runtime group, or vice versa, is not supported. Such a chain is only partially resolved, so inherited roles may not be granted as expected. Keep nested groups within the same source.
 :::
+
+### Organization Unit Boundary for Members
+
+A group accepts a member only when the member is available in the group's OU, in one of two ways:
+
+| Member is | Example |
+|---|---|
+| **Owned by** the group's OU | A user created in the `acme` OU joins a group in `acme`. |
+| **Shared with** the group's OU | A user owned by the `acme` OU, with a sharing policy that reaches the `acme-sales` OU, joins a group in `acme-sales`. |
+
+Groups are never shared, so a nested group must be owned by the same OU as the group that contains it.
+
+This rule does not apply when you remove a member.
 
 ### Remove Members
 

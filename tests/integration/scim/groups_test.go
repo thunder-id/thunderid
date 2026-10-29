@@ -21,7 +21,6 @@ import (
 // covered by SCIMUsersTestSuite.
 type SCIMGroupsTestSuite struct {
 	suite.Suite
-	ouID            string
 	entityTypeID    string
 	entityTypeName  string
 	extensionURN    string
@@ -36,13 +35,10 @@ func TestSCIMGroupsTestSuite(t *testing.T) {
 
 // SetupSuite initializes the test suite environment.
 func (ts *SCIMGroupsTestSuite) SetupSuite() {
-	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
-		Handle:      "scim-it-groups-ou",
-		Name:        "SCIM Groups Integration Test OU",
-		Description: "Organization unit for SCIM Groups endpoint tests",
-	})
-	ts.Require().NoError(err, "failed to create test organization unit")
-	ts.ouID = ouID
+	// SCIM creates groups in the caller's OU, which is the bootstrap OU here. A group holds members
+	// only from its own OU, so the member's type lives there too.
+	ouID, err := testutils.FindBootstrapOUID()
+	ts.Require().NoError(err, "failed to resolve the bootstrap organization unit")
 
 	ts.entityTypeName = "scim-it-groups-person"
 	entityTypeID, err := testutils.CreateUserType(testutils.UserType{
@@ -86,9 +82,6 @@ func (ts *SCIMGroupsTestSuite) TearDownSuite() {
 	}
 	if ts.entityTypeID != "" {
 		_ = testutils.DeleteUserType(ts.entityTypeID)
-	}
-	if ts.ouID != "" {
-		_ = testutils.DeleteOrganizationUnit(ts.ouID)
 	}
 }
 

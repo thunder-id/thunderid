@@ -182,6 +182,36 @@ var (
 			DefaultValue: "The filter must be a single ouId eq expression with a quoted organization unit ID",
 		},
 	}
+	// ErrorMemberOUMismatch is the error returned when the group's organization unit neither owns a
+	// member nor has the member shared with it.
+	ErrorMemberOUMismatch = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GRP-1019",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.groupservice.member_ou_mismatch",
+			DefaultValue: "Member not available in the group's organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.groupservice.member_ou_mismatch_description",
+			DefaultValue: "One or more members are neither owned by the group's organization unit " +
+				"nor shared with it",
+		},
+	}
+	// ErrorGroupOUChangeNotAllowed is the error returned when moving a group that has members, or
+	// belongs to other groups.
+	ErrorGroupOUChangeNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GRP-1020",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.groupservice.group_ou_change_not_allowed",
+			DefaultValue: "Cannot change the group's organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.groupservice.group_ou_change_not_allowed_description",
+			DefaultValue: "The group has members or belongs to other groups. " +
+				"Remove its members and its memberships in other groups before moving it",
+		},
+	}
 )
 
 // Declarative mode errors for group management operations.

@@ -195,6 +195,16 @@ paths:
                     description:
                       key: "error.groupservice.invalid_group_member_id_description"
                       defaultValue: "One or more group member IDs in the request do not exist"
+                member-ou-mismatch:
+                  summary: Member not available in the group's organization unit
+                  value:
+                    code: "GRP-1019"
+                    message:
+                      key: "error.groupservice.member_ou_mismatch"
+                      defaultValue: "Member not available in the group's organization unit"
+                    description:
+                      key: "error.groupservice.member_ou_mismatch_description"
+                      defaultValue: "One or more members are neither owned by the group's organization unit nor shared with it"
                 ou-not-found:
                   summary: Organization unit not found
                   value:
@@ -292,6 +302,9 @@ paths:
       tags:
         - Groups
       summary: Update a group by id
+      description: |
+        Updates a group's name, description, and organization unit. A group can be moved to another
+        organization unit only when it has no members and no other group contains it.
       parameters:
         - in: path
           name: id
@@ -358,6 +371,16 @@ paths:
                     description:
                       key: "error.groupservice.invalid_ou_id_description"
                       defaultValue: "Organization unit does not exists"
+                group-ou-change-not-allowed:
+                  summary: Group has members or belongs to other groups
+                  value:
+                    code: "GRP-1020"
+                    message:
+                      key: "error.groupservice.group_ou_change_not_allowed"
+                      defaultValue: "Cannot change the group's organization unit"
+                    description:
+                      key: "error.groupservice.group_ou_change_not_allowed_description"
+                      defaultValue: "The group has members or belongs to other groups. Remove its members and its memberships in other groups before moving it"
         "404":
           description: Group not found
           content:
@@ -539,6 +562,9 @@ paths:
       tags:
         - Groups
       summary: Add members to a group
+      description: |
+        Adds members to a group. Every member must be owned by the group's organization unit or shared
+        with it. Only users and applications can be shared.
       parameters:
         - in: path
           name: id
@@ -627,6 +653,16 @@ paths:
                     description:
                       key: "error.groupservice.invalid_group_member_id_description"
                       defaultValue: "One or more group member IDs in the request do not exist"
+                member-ou-mismatch:
+                  summary: Member not available in the group's organization unit
+                  value:
+                    code: "GRP-1019"
+                    message:
+                      key: "error.groupservice.member_ou_mismatch"
+                      defaultValue: "Member not available in the group's organization unit"
+                    description:
+                      key: "error.groupservice.member_ou_mismatch_description"
+                      defaultValue: "One or more members are neither owned by the group's organization unit nor shared with it"
         "403":
           description: Forbidden
           content:
@@ -988,6 +1024,16 @@ paths:
                     description:
                       key: "error.groupservice.invalid_group_member_id_description"
                       defaultValue: "One or more group member IDs in the request do not exist"
+                member-ou-mismatch:
+                  summary: Member not available in the group's organization unit
+                  value:
+                    code: "GRP-1019"
+                    message:
+                      key: "error.groupservice.member_ou_mismatch"
+                      defaultValue: "Member not available in the group's organization unit"
+                    description:
+                      key: "error.groupservice.member_ou_mismatch_description"
+                      defaultValue: "One or more members are neither owned by the group's organization unit nor shared with it"
         "404":
           description: Organization unit not found
           content:
@@ -1155,6 +1201,7 @@ components:
           format: uuid
         members:
           type: array
+          description: "Members of the group. Every member must be owned by the organization unit given in `ouId` or shared with it."
           items:
             $ref: '#/components/schemas/Member'
 
@@ -1232,7 +1279,7 @@ components:
           example: "Group for sports activities and events"
         members:
           type: array
-          description: "Optional list of initial members (users and groups)"
+          description: "Optional list of initial members. Every member must be owned by the organization unit at the given path or shared with it."
           items:
             $ref: '#/components/schemas/Member'
 

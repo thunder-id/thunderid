@@ -10,6 +10,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -26,6 +27,7 @@ func Initialize(
 	entityService entity.EntityServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
+	sharingService sharing.SharingServiceInterface,
 ) (GroupServiceInterface, oupkg.OUGroupResolver, declarativeresource.ResourceExporter, error) {
 	// Step 1: Initialize store and transactioner based on store mode (no declarative loading yet).
 	store, transactioner, fileStore, dbStore, err := initializeGroupStore(dbProvider)
@@ -35,12 +37,12 @@ func Initialize(
 
 	// Step 2: Create service with store.
 	groupService := newGroupServiceWithStore(
-		store, ouService, entityService, entityTypeService, authzService, transactioner,
+		store, ouService, entityService, entityTypeService, authzService, transactioner, sharingService,
 	)
 
 	// Step 3: Load declarative resources into file store (if applicable).
 	if fileStore != nil {
-		if err := loadDeclarativeResources(fileStore, dbStore, ouService); err != nil {
+		if err := loadDeclarativeResources(fileStore, dbStore, ouService, groupService); err != nil {
 			return nil, nil, nil, err
 		}
 	}

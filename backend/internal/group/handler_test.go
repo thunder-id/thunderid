@@ -1716,6 +1716,28 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleErrorClientError() {
 	require.Equal(t, ErrorGroupNameConflict.Code, body.Code)
 }
 
+func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleErrorMemberOUErrors() {
+	cases := []struct {
+		svcErr     *tidcommon.ServiceError
+		wantStatus int
+	}{
+		{&ErrorMemberOUMismatch, http.StatusBadRequest},
+		{&ErrorGroupOUChangeNotAllowed, http.StatusBadRequest},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.svcErr.Code, func() {
+			rr := httptest.NewRecorder()
+
+			newGroupHandler(nil).handleError(context.Background(), rr, tc.svcErr)
+
+			suite.Equal(tc.wantStatus, rr.Code)
+			var body apierror.ErrorResponse
+			suite.Require().NoError(json.Unmarshal(rr.Body.Bytes(), &body))
+			suite.Equal(tc.svcErr.Code, body.Code)
+		})
+	}
+}
+
 func (suite *GroupHandlerTestSuite) TestGroupHandler_ValidationError_NameTooLong() {
 	serviceMock := NewGroupServiceInterfaceMock(suite.T())
 	handler := newGroupHandler(serviceMock)

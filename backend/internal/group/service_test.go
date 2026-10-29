@@ -20,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -31,6 +32,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/transactionmock"
 )
@@ -608,11 +610,92 @@ func (suite *GroupServiceTestSuite) TestGroupService_CreateGroup() {
 					Return(true, nil).
 					Once()
 
+				args.store.On("GetGroupsByIDs", mock.Anything, []string{"grp-002"}).
+					Return([]GroupBasicDAO{{ID: "grp-002", OUID: "ou-001"}}, nil).
+					Once()
+
 				args.entity.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001"}).
-					Return([]providers.Entity{{ID: "usr-001", Category: providers.EntityCategoryUser}}, nil).
-					Times(2)
+					Return([]providers.Entity{
+						{ID: "usr-001", Category: providers.EntityCategoryUser, OUID: "ou-001"}}, nil).
+					Times(3)
 			},
 			expectRes: true,
+		},
+		{
+			name: "user member outside group OU",
+			request: CreateGroupRequest{
+				Name:    "engineering",
+				OUID:    "ou-001",
+				Members: []Member{{ID: "usr-001", Type: MemberTypeUser}},
+			},
+			setup: func(args *setupArgs) {
+				args.ou.On("IsOrganizationUnitExists", mock.Anything, "ou-001").
+					Return(true, nil).
+					Once()
+				args.entity.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001"}).
+					Return([]providers.Entity{
+						{ID: "usr-001", Category: providers.EntityCategoryUser, OUID: "ou-002"}}, nil).
+					Times(2)
+			},
+			expectErr: &ErrorMemberOUMismatch,
+		},
+		{
+			name: "app member outside group OU",
+			request: CreateGroupRequest{
+				Name:    "engineering",
+				OUID:    "ou-001",
+				Members: []Member{{ID: "app-001", Type: MemberTypeApp}},
+			},
+			setup: func(args *setupArgs) {
+				args.ou.On("IsOrganizationUnitExists", mock.Anything, "ou-001").
+					Return(true, nil).
+					Once()
+				args.entity.On("GetEntitiesByIDs", mock.Anything, []string{"app-001"}).
+					Return([]providers.Entity{
+						{ID: "app-001", Category: providers.EntityCategoryApp, OUID: "ou-002"}}, nil).
+					Times(2)
+			},
+			expectErr: &ErrorMemberOUMismatch,
+		},
+		{
+			name: "group member outside group OU",
+			request: CreateGroupRequest{
+				Name:    "engineering",
+				OUID:    "ou-001",
+				Members: []Member{{ID: "grp-002", Type: MemberTypeGroup}},
+			},
+			setup: func(args *setupArgs) {
+				args.ou.On("IsOrganizationUnitExists", mock.Anything, "ou-001").
+					Return(true, nil).
+					Once()
+				args.store.On("ValidateGroupIDs", mock.Anything, []string{"grp-002"}).
+					Return([]string{}, nil).
+					Once()
+				args.store.On("GetGroupsByIDs", mock.Anything, []string{"grp-002"}).
+					Return([]GroupBasicDAO{{ID: "grp-002", OUID: "ou-002"}}, nil).
+					Once()
+			},
+			expectErr: &ErrorMemberOUMismatch,
+		},
+		{
+			name: "member OU check error",
+			request: CreateGroupRequest{
+				Name:    "engineering",
+				OUID:    "ou-001",
+				Members: []Member{{ID: "grp-002", Type: MemberTypeGroup}},
+			},
+			setup: func(args *setupArgs) {
+				args.ou.On("IsOrganizationUnitExists", mock.Anything, "ou-001").
+					Return(true, nil).
+					Once()
+				args.store.On("ValidateGroupIDs", mock.Anything, []string{"grp-002"}).
+					Return([]string{}, nil).
+					Once()
+				args.store.On("GetGroupsByIDs", mock.Anything, []string{"grp-002"}).
+					Return(nil, errors.New("db failure")).
+					Once()
+			},
+			expectErr: &tidcommon.InternalServerError,
 		},
 		{
 			name: "invalid organization unit",
@@ -1140,6 +1223,10 @@ func (suite *GroupServiceTestSuite) TestGroupService_UpdateGroup() {
 					Return(GroupDAO{ID: "grp-001", Name: "old", Description: "legacy",
 						OUID: "ou-old"}, nil).
 					Once()
+				args.store.On("GetGroupMemberCount", mock.Anything, "grp-001").Return(0, nil).Once()
+				args.store.On("GetDirectGroupParents", mock.Anything, []string{"grp-001"}).
+					Return([]string{}, nil).
+					Once()
 				args.store.On("CheckGroupNameConflictForUpdate", mock.Anything, "new-name", "ou-new", "grp-001").
 					Return(nil).
 					Once()
@@ -1155,6 +1242,73 @@ func (suite *GroupServiceTestSuite) TestGroupService_UpdateGroup() {
 			expectGroup: true,
 		},
 		{
+			name:    "move rejected for group with members",
+			groupID: "grp-001",
+			request: UpdateGroupRequest{Name: "old", OUID: "ou-new"},
+			setup: func(args *setupArgs) {
+				args.store.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
+				args.store.On("GetGroup", mock.Anything, "grp-001").
+					Return(GroupDAO{ID: "grp-001", Name: "old", OUID: "ou-old"}, nil).
+					Once()
+				args.ou.On("IsOrganizationUnitExists", mock.Anything, "ou-new").Return(true, nil).Once()
+				args.store.On("GetGroupMemberCount", mock.Anything, "grp-001").Return(2, nil).Once()
+				args.store.On("GetDirectGroupParents", mock.Anything, []string{"grp-001"}).
+					Return([]string{}, nil).
+					Once()
+			},
+			expectErr: &ErrorGroupOUChangeNotAllowed,
+		},
+		{
+			name:    "move rejected for group inside another group",
+			groupID: "grp-001",
+			request: UpdateGroupRequest{Name: "old", OUID: "ou-new"},
+			setup: func(args *setupArgs) {
+				args.store.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
+				args.store.On("GetGroup", mock.Anything, "grp-001").
+					Return(GroupDAO{ID: "grp-001", Name: "old", OUID: "ou-old"}, nil).
+					Once()
+				args.ou.On("IsOrganizationUnitExists", mock.Anything, "ou-new").Return(true, nil).Once()
+				args.store.On("GetGroupMemberCount", mock.Anything, "grp-001").Return(0, nil).Once()
+				args.store.On("GetDirectGroupParents", mock.Anything, []string{"grp-001"}).
+					Return([]string{"grp-parent"}, nil).
+					Once()
+			},
+			expectErr: &ErrorGroupOUChangeNotAllowed,
+		},
+		{
+			name:    "move member count error",
+			groupID: "grp-001",
+			request: UpdateGroupRequest{Name: "old", OUID: "ou-new"},
+			setup: func(args *setupArgs) {
+				args.store.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
+				args.store.On("GetGroup", mock.Anything, "grp-001").
+					Return(GroupDAO{ID: "grp-001", Name: "old", OUID: "ou-old"}, nil).
+					Once()
+				args.ou.On("IsOrganizationUnitExists", mock.Anything, "ou-new").Return(true, nil).Once()
+				args.store.On("GetGroupMemberCount", mock.Anything, "grp-001").
+					Return(0, errors.New("db error")).
+					Once()
+			},
+			expectErr: &tidcommon.InternalServerError,
+		},
+		{
+			name:    "move parent fetch error",
+			groupID: "grp-001",
+			request: UpdateGroupRequest{Name: "old", OUID: "ou-new"},
+			setup: func(args *setupArgs) {
+				args.store.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
+				args.store.On("GetGroup", mock.Anything, "grp-001").
+					Return(GroupDAO{ID: "grp-001", Name: "old", OUID: "ou-old"}, nil).
+					Once()
+				args.ou.On("IsOrganizationUnitExists", mock.Anything, "ou-new").Return(true, nil).Once()
+				args.store.On("GetGroupMemberCount", mock.Anything, "grp-001").Return(0, nil).Once()
+				args.store.On("GetDirectGroupParents", mock.Anything, []string{"grp-001"}).
+					Return(nil, errors.New("db error")).
+					Once()
+			},
+			expectErr: &tidcommon.InternalServerError,
+		},
+		{
 			name:    "name conflict",
 			groupID: "grp-001",
 			request: UpdateGroupRequest{
@@ -1165,6 +1319,10 @@ func (suite *GroupServiceTestSuite) TestGroupService_UpdateGroup() {
 				args.store.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
 				args.store.On("GetGroup", mock.Anything, "grp-001").
 					Return(GroupDAO{ID: "grp-001", Name: "old", OUID: "ou-old"}, nil).
+					Once()
+				args.store.On("GetGroupMemberCount", mock.Anything, "grp-001").Return(0, nil).Once()
+				args.store.On("GetDirectGroupParents", mock.Anything, []string{"grp-001"}).
+					Return([]string{}, nil).
 					Once()
 				args.store.On("CheckGroupNameConflictForUpdate", mock.Anything, "new-name", "ou-new", "grp-001").
 					Return(ErrGroupNameConflict).
@@ -2027,7 +2185,8 @@ func (suite *GroupServiceTestSuite) TestGroupService_AddMembersToGroups() {
 				storeMock.On("GetGroup", mock.Anything, "grp-001").
 					Return(GroupDAO{ID: "grp-001", OUID: testOUID1, Name: "g1"}, nil)
 				entityMock.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001"}).
-					Return([]providers.Entity{{ID: "usr-001", Category: providers.EntityCategoryUser}}, nil)
+					Return([]providers.Entity{
+						{ID: "usr-001", Category: providers.EntityCategoryUser, OUID: testOUID1}}, nil)
 				storeMock.On("AddGroupMembers", mock.Anything, "grp-001", mock.Anything).
 					Return(nil).Once()
 			},
@@ -2045,7 +2204,8 @@ func (suite *GroupServiceTestSuite) TestGroupService_AddMembersToGroups() {
 				storeMock.On("GetGroup", mock.Anything, "grp-002").
 					Return(GroupDAO{ID: "grp-002", OUID: testOUID1, Name: "g2"}, nil)
 				entityMock.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001"}).
-					Return([]providers.Entity{{ID: "usr-001", Category: providers.EntityCategoryUser}}, nil)
+					Return([]providers.Entity{
+						{ID: "usr-001", Category: providers.EntityCategoryUser, OUID: testOUID1}}, nil)
 				storeMock.On("AddGroupMembers", mock.Anything, "grp-001", mock.Anything).Return(nil).Once()
 				storeMock.On("AddGroupMembers", mock.Anything, "grp-002", mock.Anything).Return(nil).Once()
 			},
@@ -2216,11 +2376,10 @@ func (suite *GroupServiceTestSuite) TestGroupService_AddGroupMembers() {
 			members: []Member{{ID: "usr-001", Type: MemberTypeUser}},
 			setup: func(storeMock *groupStoreInterfaceMock, entityServiceMock *entitymock.EntityServiceInterfaceMock) {
 				storeMock.On("GetGroup", mock.Anything, "grp-001").
-					Return(GroupDAO{ID: "grp-001", Name: "test"}, nil).Once()
+					Return(GroupDAO{ID: "grp-001", Name: "test", OUID: testOUID1}, nil).Twice()
 				entityServiceMock.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001"}).
-					Return([]providers.Entity{{ID: "usr-001", Category: providers.EntityCategoryUser}}, nil).Once()
-				storeMock.On("GetGroup", mock.Anything, "grp-001").
-					Return(GroupDAO{ID: "grp-001", Name: "test"}, nil).Once()
+					Return([]providers.Entity{
+						{ID: "usr-001", Category: providers.EntityCategoryUser, OUID: testOUID1}}, nil).Twice()
 				storeMock.On("AddGroupMembers", mock.Anything, "grp-001", mock.Anything).
 					Return(errors.New("db error")).Once()
 			},
@@ -2232,14 +2391,55 @@ func (suite *GroupServiceTestSuite) TestGroupService_AddGroupMembers() {
 			members: []Member{{ID: "usr-001", Type: MemberTypeUser}},
 			setup: func(storeMock *groupStoreInterfaceMock, entityServiceMock *entitymock.EntityServiceInterfaceMock) {
 				storeMock.On("GetGroup", mock.Anything, "grp-001").
-					Return(GroupDAO{ID: "grp-001", Name: "test"}, nil)
+					Return(GroupDAO{ID: "grp-001", Name: "test", OUID: testOUID1}, nil)
 				entityServiceMock.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001"}).
-					Return([]providers.Entity{{ID: "usr-001", Category: providers.EntityCategoryUser}}, nil).Once()
+					Return([]providers.Entity{
+						{ID: "usr-001", Category: providers.EntityCategoryUser, OUID: testOUID1}}, nil).Twice()
 				storeMock.On("AddGroupMembers", mock.Anything, "grp-001",
 					[]Member{{ID: "usr-001", Type: memberTypeEntity}}).
 					Return(nil).Once()
 			},
 			wantErr: nil,
+		},
+		{
+			name:    "user member outside group OU",
+			groupID: "grp-001",
+			members: []Member{{ID: "usr-001", Type: MemberTypeUser}},
+			setup: func(storeMock *groupStoreInterfaceMock, entityServiceMock *entitymock.EntityServiceInterfaceMock) {
+				storeMock.On("GetGroup", mock.Anything, "grp-001").
+					Return(GroupDAO{ID: "grp-001", Name: "test", OUID: testOUID1}, nil).Twice()
+				entityServiceMock.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001"}).
+					Return([]providers.Entity{
+						{ID: "usr-001", Category: providers.EntityCategoryUser, OUID: testOUID2}}, nil).Twice()
+			},
+			wantErr: &ErrorMemberOUMismatch,
+		},
+		{
+			name:    "agent member outside group OU",
+			groupID: "grp-001",
+			members: []Member{{ID: "agt-001", Type: MemberTypeAgent}},
+			setup: func(storeMock *groupStoreInterfaceMock, entityServiceMock *entitymock.EntityServiceInterfaceMock) {
+				storeMock.On("GetGroup", mock.Anything, "grp-001").
+					Return(GroupDAO{ID: "grp-001", Name: "test", OUID: testOUID1}, nil).Twice()
+				entityServiceMock.On("GetEntitiesByIDs", mock.Anything, []string{"agt-001"}).
+					Return([]providers.Entity{
+						{ID: "agt-001", Category: providers.EntityCategoryAgent, OUID: testOUID2}}, nil).Twice()
+			},
+			wantErr: &ErrorMemberOUMismatch,
+		},
+		{
+			name:    "nested group outside group OU",
+			groupID: "grp-001",
+			members: []Member{{ID: "grp-002", Type: MemberTypeGroup}},
+			setup: func(storeMock *groupStoreInterfaceMock, _ *entitymock.EntityServiceInterfaceMock) {
+				storeMock.On("GetGroup", mock.Anything, "grp-001").
+					Return(GroupDAO{ID: "grp-001", Name: "test", OUID: testOUID1}, nil).Twice()
+				storeMock.On("ValidateGroupIDs", mock.Anything, []string{"grp-002"}).
+					Return([]string{}, nil).Once()
+				storeMock.On("GetGroupsByIDs", mock.Anything, []string{"grp-002"}).
+					Return([]GroupBasicDAO{{ID: "grp-002", OUID: testOUID2}}, nil).Once()
+			},
+			wantErr: &ErrorMemberOUMismatch,
 		},
 		{
 			name:    "access denied",
@@ -2334,6 +2534,22 @@ func (suite *GroupServiceTestSuite) TestGroupService_RemoveGroupMembers() {
 					Return(GroupDAO{ID: "grp-001", Name: "test"}, nil)
 				entityServiceMock.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001"}).
 					Return([]providers.Entity{{ID: "usr-001", Category: providers.EntityCategoryUser}}, nil).Once()
+				storeMock.On("RemoveGroupMembers", mock.Anything, "grp-001",
+					[]Member{{ID: "usr-001", Type: memberTypeEntity}}).
+					Return(nil).Once()
+			},
+			wantErr: nil,
+		},
+		{
+			name:    "success for member outside group OU",
+			groupID: "grp-001",
+			members: []Member{{ID: "usr-001", Type: MemberTypeUser}},
+			setup: func(storeMock *groupStoreInterfaceMock, entityServiceMock *entitymock.EntityServiceInterfaceMock) {
+				storeMock.On("GetGroup", mock.Anything, "grp-001").
+					Return(GroupDAO{ID: "grp-001", Name: "test", OUID: testOUID1}, nil)
+				entityServiceMock.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001"}).
+					Return([]providers.Entity{
+						{ID: "usr-001", Category: providers.EntityCategoryUser, OUID: testOUID2}}, nil).Once()
 				storeMock.On("RemoveGroupMembers", mock.Anything, "grp-001",
 					[]Member{{ID: "usr-001", Type: memberTypeEntity}}).
 					Return(nil).Once()
@@ -2948,7 +3164,7 @@ func TestValidateEntityMembers_GetEntitiesError(t *testing.T) {
 	}
 
 	err := service.validateEntityMembers(context.Background(),
-		[]Member{{ID: "usr-001", Type: MemberTypeUser}}, security.ActionCreateGroup)
+		[]Member{{ID: "usr-001", Type: MemberTypeUser}}, security.ActionCreateGroup, "ou-1")
 	require.NotNil(t, err)
 	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
 }
@@ -2964,9 +3180,166 @@ func TestValidateEntityMembers_TypeMismatch(t *testing.T) {
 	}
 
 	err := service.validateEntityMembers(context.Background(),
-		[]Member{{ID: "usr-001", Type: MemberTypeUser}}, security.ActionCreateGroup)
+		[]Member{{ID: "usr-001", Type: MemberTypeUser}}, security.ActionCreateGroup, "ou-1")
 	require.NotNil(t, err)
 	require.Equal(t, ErrorInvalidMemberID.Code, err.Code)
+}
+
+const (
+	testUserSharingType  sharing.ResourceType = "user"
+	testAppSharingType   sharing.ResourceType = "application"
+	testAgentSharingType sharing.ResourceType = "agent"
+)
+
+// newSharingAwareService returns a service that checks sharing through the given mock.
+func newSharingAwareService(
+	entitySvc *entitymock.EntityServiceInterfaceMock, sharingSvc *sharingmock.SharingServiceInterfaceMock,
+) *groupService {
+	return &groupService{
+		entityService:  entitySvc,
+		sharingService: sharingSvc,
+	}
+}
+
+func (suite *GroupServiceTestSuite) TestFindMembersNotAvailableInOU_SharedEntitiesAreInside() {
+	t := suite.T()
+	entitySvcMock := entitymock.NewEntityServiceInterfaceMock(t)
+	sharingSvcMock := sharingmock.NewSharingServiceInterfaceMock(t)
+	entitySvcMock.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001", "app-001", "usr-002"}).
+		Return([]providers.Entity{
+			{ID: "usr-001", Category: providers.EntityCategoryUser, OUID: "ou-2"},
+			{ID: "app-001", Category: providers.EntityCategoryApp, OUID: "ou-2"},
+			{ID: "usr-002", Category: providers.EntityCategoryUser, OUID: "ou-1"},
+		}, nil).Once()
+	sharingSvcMock.On("IsVisible", mock.Anything, testUserSharingType, "usr-001", "ou-1").
+		Return(true, (*tidcommon.ServiceError)(nil)).Once()
+	sharingSvcMock.On("IsVisible", mock.Anything, testAppSharingType, "app-001", "ou-1").
+		Return(true, (*tidcommon.ServiceError)(nil)).Once()
+
+	outside, err := newSharingAwareService(entitySvcMock, sharingSvcMock).findMembersNotAvailableInOU(
+		context.Background(), "ou-1", []string{"usr-001", "app-001", "usr-002"}, nil)
+
+	require.NoError(t, err)
+	require.Empty(t, outside)
+}
+
+func (suite *GroupServiceTestSuite) TestFindMembersNotAvailableInOU_NotShared() {
+	t := suite.T()
+	entitySvcMock := entitymock.NewEntityServiceInterfaceMock(t)
+	sharingSvcMock := sharingmock.NewSharingServiceInterfaceMock(t)
+	entitySvcMock.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001", "agt-001"}).
+		Return([]providers.Entity{
+			{ID: "usr-001", Category: providers.EntityCategoryUser, OUID: "ou-2"},
+			{ID: "agt-001", Category: providers.EntityCategoryAgent, OUID: "ou-2"},
+		}, nil).Once()
+	sharingSvcMock.On("IsVisible", mock.Anything, testUserSharingType, "usr-001", "ou-1").
+		Return(false, (*tidcommon.ServiceError)(nil)).Once()
+	sharingSvcMock.On("IsVisible", mock.Anything, testAgentSharingType, "agt-001", "ou-1").
+		Return(false, (*tidcommon.ServiceError)(nil)).Once()
+
+	outside, err := newSharingAwareService(entitySvcMock, sharingSvcMock).findMembersNotAvailableInOU(
+		context.Background(), "ou-1", []string{"usr-001", "agt-001"}, nil)
+
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"usr-001", "agt-001"}, outside)
+}
+
+func (suite *GroupServiceTestSuite) TestFindMembersNotAvailableInOU_SharedAgentIsInside() {
+	t := suite.T()
+	entitySvcMock := entitymock.NewEntityServiceInterfaceMock(t)
+	sharingSvcMock := sharingmock.NewSharingServiceInterfaceMock(t)
+	entitySvcMock.On("GetEntitiesByIDs", mock.Anything, []string{"agt-001"}).
+		Return([]providers.Entity{{ID: "agt-001", Category: providers.EntityCategoryAgent, OUID: "ou-2"}}, nil).
+		Once()
+	sharingSvcMock.On("IsVisible", mock.Anything, testAgentSharingType, "agt-001", "ou-1").
+		Return(true, (*tidcommon.ServiceError)(nil)).Once()
+
+	outside, err := newSharingAwareService(entitySvcMock, sharingSvcMock).findMembersNotAvailableInOU(
+		context.Background(), "ou-1", []string{"agt-001"}, nil)
+
+	require.NoError(t, err)
+	require.Empty(t, outside)
+}
+
+func (suite *GroupServiceTestSuite) TestFindMembersNotAvailableInOU_SharingLookupError() {
+	t := suite.T()
+	entitySvcMock := entitymock.NewEntityServiceInterfaceMock(t)
+	sharingSvcMock := sharingmock.NewSharingServiceInterfaceMock(t)
+	entitySvcMock.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001"}).
+		Return([]providers.Entity{{ID: "usr-001", Category: providers.EntityCategoryUser, OUID: "ou-2"}}, nil).
+		Once()
+	sharingSvcMock.On("IsVisible", mock.Anything, testUserSharingType, "usr-001", "ou-1").
+		Return(false, &tidcommon.InternalServerError).Once()
+
+	_, err := newSharingAwareService(entitySvcMock, sharingSvcMock).findMembersNotAvailableInOU(
+		context.Background(), "ou-1", []string{"usr-001"}, nil)
+
+	require.Error(t, err)
+}
+
+func (suite *GroupServiceTestSuite) TestValidateEntityMembers_UserSharedWithGroupOU() {
+	cases := []struct {
+		name    string
+		shared  bool
+		wantErr *tidcommon.ServiceError
+	}{
+		{name: "shared user passes", shared: true},
+		{name: "unshared user is refused", shared: false, wantErr: &tidcommon.ErrorUnauthorized},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			t := suite.T()
+			entitySvcMock := entitymock.NewEntityServiceInterfaceMock(t)
+			sharingSvcMock := sharingmock.NewSharingServiceInterfaceMock(t)
+			authzSvcMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+			entitySvcMock.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001"}).
+				Return([]providers.Entity{
+					{ID: "usr-001", Category: providers.EntityCategoryUser, OUID: "ou-2"}}, nil).Once()
+			authzSvcMock.On("GetAccessibleResources", mock.Anything, security.ActionUpdateGroup,
+				security.ResourceTypeOU).
+				Return(&sysauthz.AccessibleResources{IDs: []string{"ou-1"}}, (*tidcommon.ServiceError)(nil)).Once()
+			entitySvcMock.On("ValidateEntityIDsInOUs", mock.Anything, []string{"usr-001"}, []string{"ou-1"}).
+				Return([]string{"usr-001"}, nil).Once()
+			sharingSvcMock.On("IsVisible", mock.Anything, testUserSharingType, "usr-001", "ou-1").
+				Return(tc.shared, (*tidcommon.ServiceError)(nil)).Once()
+			service := newSharingAwareService(entitySvcMock, sharingSvcMock)
+			service.authzService = authzSvcMock
+
+			err := service.validateEntityMembers(context.Background(),
+				[]Member{{ID: "usr-001", Type: MemberTypeUser}}, security.ActionUpdateGroup, "ou-1")
+
+			if tc.wantErr == nil {
+				require.Nil(t, err)
+			} else {
+				require.NotNil(t, err)
+				require.Equal(t, tc.wantErr.Code, err.Code)
+			}
+		})
+	}
+}
+
+func (suite *GroupServiceTestSuite) TestValidateEntityMembers_SharingLookupError() {
+	t := suite.T()
+	entitySvcMock := entitymock.NewEntityServiceInterfaceMock(t)
+	sharingSvcMock := sharingmock.NewSharingServiceInterfaceMock(t)
+	authzSvcMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	entitySvcMock.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001"}).
+		Return([]providers.Entity{{ID: "usr-001", Category: providers.EntityCategoryUser, OUID: "ou-2"}}, nil).
+		Once()
+	authzSvcMock.On("GetAccessibleResources", mock.Anything, security.ActionUpdateGroup, security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{IDs: []string{"ou-1"}}, (*tidcommon.ServiceError)(nil)).Once()
+	entitySvcMock.On("ValidateEntityIDsInOUs", mock.Anything, []string{"usr-001"}, []string{"ou-1"}).
+		Return([]string{"usr-001"}, nil).Once()
+	sharingSvcMock.On("IsVisible", mock.Anything, testUserSharingType, "usr-001", "ou-1").
+		Return(false, &tidcommon.InternalServerError).Once()
+	service := newSharingAwareService(entitySvcMock, sharingSvcMock)
+	service.authzService = authzSvcMock
+
+	err := service.validateEntityMembers(context.Background(),
+		[]Member{{ID: "usr-001", Type: MemberTypeUser}}, security.ActionUpdateGroup, "ou-1")
+
+	require.NotNil(t, err)
+	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
 }
 
 func TestGetGroupsByIDs_StoreError(t *testing.T) {

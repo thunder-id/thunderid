@@ -706,6 +706,7 @@ func (suite *ServiceTestSuite) TestMapGroupServiceErrorToSCIM() {
 		{"declarative readonly", &group.ErrorImmutableGroup, scim.ErrorMutabilityViolation.Code},
 		{"invalid member id", &group.ErrorInvalidMemberID, scim.ErrorInvalidGroupMember.Code},
 		{"invalid group member id", &group.ErrorInvalidGroupMemberID, scim.ErrorInvalidGroupMember.Code},
+		{"member outside group OU", &group.ErrorMemberOUMismatch, scim.ErrorInvalidGroupMember.Code},
 		{"unauthorized passthrough", &tidcommon.ErrorUnauthorized, tidcommon.ErrorUnauthorized.Code},
 		{"server error maps to internal", &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "GRP-9999"},
 			tidcommon.InternalServerError.Code},
