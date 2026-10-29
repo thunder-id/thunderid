@@ -43,14 +43,16 @@ type fakeVersionStore struct {
 	onSettle  func()
 	// settled are the versions an apply sent, which stay current but are not replaced in place.
 	settled map[int]bool
-	// excluded is what each gateway is set to leave alone; excludeErr fails keeping it.
-	excluded   map[string]map[string]excludedResource
-	excludeErr error
+	// excluded is what each gateway was set to leave alone before masters were recorded.
+	excluded map[string]map[string]excludedResource
 	// leases are the gateways' apply leases; leaseErr fails every lease call.
 	leases   map[string]*applyLease
 	leaseErr error
 	// onSetApplied runs once a version is recorded as applied, with its number.
 	onSetApplied func(applied int)
+	// masters are each gateway's masters in order; masterErr fails every master call.
+	masters   map[string][]Master
+	masterErr error
 }
 
 func (f *fakeVersionStore) GetLease(_ context.Context, gatewayID string) (*applyLease, error) {
@@ -315,35 +317,65 @@ func (f *fakeVersionStore) GetExcluded(_ context.Context, gatewayID string) ([]e
 	return excluded, nil
 }
 
-func (f *fakeVersionStore) SetExcluded(_ context.Context, gatewayID string, exclude []excludedResource,
-	include []string) error {
-	if f.excludeErr != nil {
-		return f.excludeErr
-	}
-	if f.excluded == nil {
-		f.excluded = map[string]map[string]excludedResource{}
-	}
-	if f.excluded[gatewayID] == nil {
-		f.excluded[gatewayID] = map[string]excludedResource{}
-	}
-	// As the store does: the include keys come off first, then each exclude is written, and one
-	// already held keeps its row with ONCE = held ONCE AND new ONCE, as the upsert's conflict clause.
-	for _, key := range include {
-		delete(f.excluded[gatewayID], key)
-	}
-	for _, resource := range exclude {
-		if held, ok := f.excluded[gatewayID][resource.Key]; ok {
-			held.Once = held.Once && resource.Once
-			f.excluded[gatewayID][resource.Key] = held
-			continue
-		}
-		f.excluded[gatewayID][resource.Key] = resource
-	}
+func (f *fakeVersionStore) DeleteExcluded(_ context.Context, gatewayID string) error {
+	delete(f.excluded, gatewayID)
 	return nil
 }
 
-func (f *fakeVersionStore) DeleteExcluded(_ context.Context, gatewayID string) error {
-	delete(f.excluded, gatewayID)
+func (f *fakeVersionStore) AddMaster(_ context.Context, master Master) (*Master, error) {
+	if f.masterErr != nil {
+		return nil, f.masterErr
+	}
+	if f.masters == nil {
+		f.masters = map[string][]Master{}
+	}
+	kept := master
+	kept.Seq = len(f.masters[master.GatewayID]) + 1
+	kept.CreatedAt = testCreatedAt
+	f.masters[master.GatewayID] = append(f.masters[master.GatewayID], kept)
+	return &kept, nil
+}
+
+func (f *fakeVersionStore) GetMaster(_ context.Context, gatewayID string) (*Master, error) {
+	if f.masterErr != nil {
+		return nil, f.masterErr
+	}
+	kept := f.masters[gatewayID]
+	if len(kept) == 0 {
+		return nil, nil
+	}
+	master := kept[len(kept)-1]
+	return &master, nil
+}
+
+func (f *fakeVersionStore) ListMasters(_ context.Context, gatewayID string) ([]Master, error) {
+	if f.masterErr != nil {
+		return nil, f.masterErr
+	}
+	kept := f.masters[gatewayID]
+	listed := make([]Master, 0, len(kept))
+	for i := len(kept) - 1; i >= 0; i-- {
+		master := kept[i]
+		master.Resources = ""
+		listed = append(listed, master)
+	}
+	return listed, nil
+}
+
+func (f *fakeVersionStore) PruneMasters(_ context.Context, gatewayID string, through int) error {
+	kept := f.masters[gatewayID]
+	pruned := kept[:0]
+	for _, master := range kept {
+		if master.Seq > through {
+			pruned = append(pruned, master)
+		}
+	}
+	f.masters[gatewayID] = pruned
+	return nil
+}
+
+func (f *fakeVersionStore) DeleteMasters(_ context.Context, gatewayID string) error {
+	delete(f.masters, gatewayID)
 	return nil
 }
 
@@ -1316,6 +1348,8 @@ func TestAVersionAGatewayRunsStaysSettled(t *testing.T) {
 	require.Nil(t, svcErr)
 	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 	require.Nil(t, svcErr)
+	// As if the gateway had refused the unit, so the next apply has something to send.
+	f.versions.masters["gw-1"][0].Entries[0].State = EntryFailed
 	f.client.err = errImportNotWritten
 
 	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
@@ -1412,6 +1446,7 @@ func TestAnApplyHoldsTheGatewaysLeaseWhileItRuns(t *testing.T) {
 	lease, _ := f.versions.GetLease(context.Background(), "gw-1")
 	assert.Empty(t, lease.Token, "the lease was not given back")
 
+	f.capture(t, "ou-a", "ou-b")
 	f.client.err = errors.New("down")
 	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 	require.NotNil(t, svcErr)
@@ -1585,9 +1620,9 @@ func TestOnlyAPlainApplyOfLatestIsQueued(t *testing.T) {
 	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{ConfirmRemovals: true})
 	require.NotNil(t, svcErr)
 	assert.Equal(t, ErrorApplyInProgress.Code, svcErr.Code, "a confirmed apply was queued")
-	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: "latest", Skip: []string{"x"}})
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: "latest", Selection: &[]string{}})
 	require.NotNil(t, svcErr)
-	assert.Equal(t, ErrorApplyInProgress.Code, svcErr.Code, "an apply skipping changes was queued")
+	assert.Equal(t, ErrorApplyInProgress.Code, svcErr.Code, "an apply with a selection was queued")
 	result, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: "latest"})
 	require.Nil(t, svcErr)
 	assert.True(t, result.Queued)

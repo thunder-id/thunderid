@@ -126,7 +126,8 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *common.Serv
 	if svcErr.Type == common.ClientErrorType {
 		statusCode = http.StatusBadRequest
 	}
-	if svcErr.Code == ErrorGatewayNotFound.Code || svcErr.Code == ErrorVersionNotFound.Code {
+	if svcErr.Code == ErrorGatewayNotFound.Code || svcErr.Code == ErrorVersionNotFound.Code ||
+		svcErr.Code == ErrorResourceNotDeployed.Code {
 		statusCode = http.StatusNotFound
 	}
 	if svcErr.Code == ErrorGatewayUnreachable.Code || svcErr.Code == ErrorGatewayPrivateAddress.Code {
@@ -138,7 +139,8 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *common.Serv
 	if svcErr.Code == ErrorGatewayLimitReached.Code || svcErr.Code == ErrorGatewayNameTaken.Code ||
 		svcErr.Code == ErrorGatewayAlreadyRegistered.Code || svcErr.Code == ErrorMissingValues.Code ||
 		svcErr.Code == ErrorVersionRemoved.Code || svcErr.Code == ErrorAppliedChanged.Code ||
-		svcErr.Code == ErrorApplyInProgress.Code || svcErr.Code == ErrorRemovalsNeedConfirmation.Code {
+		svcErr.Code == ErrorApplyInProgress.Code || svcErr.Code == ErrorRemovalsNeedConfirmation.Code ||
+		svcErr.Code == ErrorDependencyNotDeployed.Code || svcErr.Code == ErrorRemovalInUse.Code {
 		statusCode = http.StatusConflict
 	}
 

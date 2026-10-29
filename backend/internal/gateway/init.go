@@ -65,7 +65,9 @@ func Initialize(mux *http.ServeMux, exporter export.ExportServiceInterface,
 		changes.bind(versions)
 	}
 	registerRoutes(mux, h)
-	registerVersionRoutes(mux, newVersionHandler(versions))
+	versionRoutes := newVersionHandler(versions)
+	registerVersionRoutes(mux, versionRoutes)
+	registerMasterRoutes(mux, versionRoutes)
 	registerAppliedConfigurationRoutes(mux,
 		newAppliedConfigurationHandler(newAppliedConfigurationService(versions, exporters)))
 	registerStoreRoutes(mux, newStoreHandler(stores))
