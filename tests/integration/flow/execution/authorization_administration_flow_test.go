@@ -67,6 +67,8 @@ const (
 	scopeRetired                 = "retired"
 	scopeRetiredNeighbor         = "retired-neighbor"
 	scopeUntouchedByRoleDeletion = "untouched-by-role-deletion"
+	scopeRoleDeletedThroughAPI   = "role-deleted-through-api"
+	scopeGroupDeletedThroughAPI  = "group-deleted-through-api"
 	scopeUntouchedByPermEdit     = "untouched-by-perm-edit"
 	scopeUntouchedByGroupDelete  = "untouched-by-group-delete"
 	scopeSharedByMembers         = "shared-by-members"
@@ -126,7 +128,8 @@ var authzFlowResourceScopes = []string{
 	scopeDoomedRole, scopeDoomedPermission, scopeDoomedGroup,
 	scopeRefusedPermEdit, scopeRefusedMemberRemoval,
 	scopeHeldThroughNesting, scopeHeldTwice, scopeNestedGroupDeletion, scopeNestedMemberRemoval,
-	scopeReachedSeveralWays, scopeNothingDropped, scopeHeldBeyondDescentLimit,
+	scopeReachedSeveralWays, scopeNothingDropped, scopeHeldBeyondDescentLimit, scopeRoleDeletedThroughAPI,
+	scopeGroupDeletedThroughAPI,
 }
 
 var authzFlowActionScopes = []string{scopeRetired, scopeRetiredNeighbor}
@@ -343,6 +346,26 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestRoleDeletionFlow_Revokes
 	ts.False(ts.roleExists(roleID), "The role must be deleted")
 }
 
+// Deleting a role through the management API revokes what it granted, as the deletion flow does: the
+// service runs the same revocation before the role is removed, whichever entry point asked.
+func (ts *AuthorizationAdministrationFlowTestSuite) TestDeleteRoleThroughTheAPI_RevokesTokenAndDeletesRole() {
+	roleID := ts.createRole("Authz API Deleted Administrator", []string{scopeRoleDeletedThroughAPI},
+		testutils.Assignment{ID: ts.appID, Type: "app"})
+	token := grantedToken(&ts.Suite, authzFlowClient, scopeRoleDeletedThroughAPI)
+
+	// Straight to the endpoint: testutils.DeleteRole removes the assignments first.
+	req, err := http.NewRequest(http.MethodDelete, testServerURL+"/roles/"+roleID, nil)
+	ts.Require().NoError(err)
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err, "Failed to delete the role")
+	resp.Body.Close()
+	ts.Require().Equal(http.StatusNoContent, resp.StatusCode)
+
+	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, token),
+		"The token carrying the deleted role's scope must be rejected")
+	ts.False(ts.roleExists(roleID), "The role must be deleted")
+}
+
 func (ts *AuthorizationAdministrationFlowTestSuite) TestRoleDeletionFlow_UnknownRoleCarriesValidatorCode() {
 	step := executeAsAdmin(&ts.Suite, ts.flowIDs[roleDeletionFlowHandle], map[string]string{
 		roleTargetInput: "01900000-0000-7000-8000-0000000000fe",
@@ -417,6 +440,27 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestGroupDeletionFlow_Revoke
 	step := executeAsAdmin(&ts.Suite, ts.flowIDs[groupDeletionFlowHandle], map[string]string{groupTargetInput: groupID})
 
 	requireCompleted(&ts.Suite, step)
+	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, token),
+		"The member's token must be rejected: the group was the only path to the scope")
+	ts.False(ts.groupExists(groupID), "The group must be deleted")
+}
+
+// Deleting a group through the management API revokes what it passed to its members, as the deletion
+// flow does.
+func (ts *AuthorizationAdministrationFlowTestSuite) TestDeleteGroupThroughTheAPI_RevokesMemberTokenAndDeletesGroup() {
+	groupID := ts.createGroup("Authz API Deleted Group",
+		testutils.Member{Id: ts.appID, Type: "app"})
+	ts.createRole("Authz API Group Deletion Administrator", []string{scopeGroupDeletedThroughAPI},
+		testutils.Assignment{ID: groupID, Type: "group"})
+	token := grantedToken(&ts.Suite, authzFlowClient, scopeGroupDeletedThroughAPI)
+
+	req, err := http.NewRequest(http.MethodDelete, testServerURL+"/groups/"+groupID, nil)
+	ts.Require().NoError(err)
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err, "Failed to delete the group")
+	resp.Body.Close()
+	ts.Require().Equal(http.StatusNoContent, resp.StatusCode)
+
 	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, token),
 		"The member's token must be rejected: the group was the only path to the scope")
 	ts.False(ts.groupExists(groupID), "The group must be deleted")

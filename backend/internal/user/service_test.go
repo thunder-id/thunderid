@@ -950,6 +950,8 @@ func TestUserService_DeleteUser(t *testing.T) {
 		authzService:       newAllowAllAuthz(t),
 		dependencyRegistry: newNoBlockingDepsRegistry(),
 		sharingService:     newPurgingSharing(t, userID),
+
+		executeSystemFlow: (&systemFlowRuns{}).execute,
 	}
 
 	err := service.DeleteUser(context.Background(), userID)
@@ -2146,6 +2148,8 @@ func TestUserService_MoreErrorCases(t *testing.T) {
 		authzService:       authzMock,
 		dependencyRegistry: newNoBlockingDepsRegistry(),
 		sharingService:     newPurgingSharing(t, "u1"),
+
+		executeSystemFlow: (&systemFlowRuns{}).execute,
 	}
 	ctx := context.Background()
 
@@ -3205,6 +3209,8 @@ func TestUserService_DeleteUser_AllowedWhenOnlyNonBlockingDependencies(t *testin
 		authzService:       newAllowAllAuthz(t),
 		dependencyRegistry: registry,
 		sharingService:     newPurgingSharing(t, userID),
+
+		executeSystemFlow: (&systemFlowRuns{}).execute,
 	}
 
 	err := service.DeleteUser(context.Background(), userID)
@@ -3859,6 +3865,8 @@ func TestUserService_DeleteUser_NotFoundOnDelete(t *testing.T) {
 		authzService:       newAllowAllAuthz(t),
 		dependencyRegistry: newNoBlockingDepsRegistry(),
 		sharingService:     newPurgingSharing(t, userID),
+
+		executeSystemFlow: (&systemFlowRuns{}).execute,
 	}
 
 	err := service.DeleteUser(context.Background(), userID)
@@ -4667,6 +4675,8 @@ func TestUserService_DeleteUser_AbortedWhenSharingPurgeFails(t *testing.T) {
 		authzService:       newAllowAllAuthz(t),
 		dependencyRegistry: newNoBlockingDepsRegistry(),
 		sharingService:     sharingMock,
+
+		executeSystemFlow: (&systemFlowRuns{}).execute,
 	}
 
 	err := service.DeleteUser(context.Background(), userID)

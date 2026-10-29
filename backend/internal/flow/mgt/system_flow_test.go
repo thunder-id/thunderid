@@ -57,8 +57,13 @@ func (s *SystemFlowTestSuite) TestBuiltInSystemFlowsAreValid() {
 	flows, err := loadSystemFlows(context.Background(), systemFlowFiles, validator)
 
 	s.Require().NoError(err)
-	s.Contains(flows, "system-application-delete")
-	s.Contains(flows, "system-application-secret-rotate")
+	for _, handle := range []string{
+		"system-application-delete", "system-application-secret-rotate", "system-user-delete",
+		"system-role-delete", "system-role-assignment-removal", "system-role-permission-removal",
+		"system-group-delete", "system-group-membership-removal", "system-action-delete",
+	} {
+		s.Contains(flows, handle)
+	}
 }
 
 // Each system flow is validated as one, and is kept by its handle.
