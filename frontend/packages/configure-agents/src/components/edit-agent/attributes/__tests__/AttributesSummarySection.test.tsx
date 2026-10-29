@@ -113,6 +113,33 @@ describe('AttributesSummarySection', () => {
       expect(screen.getByText('No attributes available.')).toBeInTheDocument();
     });
 
+    it('adds a chip for when the lifespan ends, once one is set', () => {
+      const validUntil = '2027-01-27T08:30:00Z';
+      render(<AttributesSummarySection agent={{...baseAgent, validUntil}} variant="bare" />);
+
+      const expected = new Date(validUntil).toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'short'});
+      expect(screen.getByText(`Valid Until: ${expected}`)).toBeInTheDocument();
+      expect(screen.getByText('email: a@b.com')).toBeInTheDocument();
+    });
+
+    it('shows no lifespan chip for an agent that does not expire', () => {
+      render(<AttributesSummarySection agent={baseAgent} variant="bare" />);
+
+      expect(screen.queryByText(/^Valid Until:/)).not.toBeInTheDocument();
+    });
+
+    it('shows the lifespan chip instead of the empty state when there are no attribute values', () => {
+      render(
+        <AttributesSummarySection
+          agent={{...baseAgent, attributes: {}, validUntil: '2027-01-27T08:30:00Z'}}
+          variant="bare"
+        />,
+      );
+
+      expect(screen.getByText(/^Valid Until:/)).toBeInTheDocument();
+      expect(screen.queryByText('No attributes available.')).not.toBeInTheDocument();
+    });
+
     it('still shows a loading spinner while the schema is loading', () => {
       mockUseGetAgentType.mockReturnValue({data: undefined, isLoading: true});
       render(<AttributesSummarySection agent={baseAgent} variant="bare" />);

@@ -125,4 +125,13 @@ describe('AccessStatusBanner', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent('cannot authenticate until an administrator unsuspends it.');
   });
+
+  it('warns that an agent has expired', () => {
+    render(<AccessStatusBanner status={report('EXPIRED')} category="agent" />);
+
+    const banner = screen.getByTestId('access-status-banner');
+    expect(within(banner).getByText('Expired')).toBeInTheDocument();
+    expect(banner).toHaveTextContent(/Set a later end date to restore access\./);
+    expect(banner.className).toMatch(/Warning/);
+  });
 });

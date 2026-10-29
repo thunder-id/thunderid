@@ -18,6 +18,10 @@ export interface AccessStatusIndicatorProps {
    */
   category?: LifecycleCategory;
   /**
+   * Replaces the status's own hover text, for a page that knows more, such as when an agent's lifespan ends.
+   */
+  hint?: string;
+  /**
    * Tab order of the indicator. A DataGrid cell passes its own, for the grid's roving focus. Defaults to `0`.
    */
   tabIndex?: number;
@@ -25,6 +29,7 @@ export interface AccessStatusIndicatorProps {
 
 const DOT_COLOR: Record<AccessStatus, string> = {
   ACTIVE: 'success.main',
+  EXPIRED: 'text.disabled',
   LOCKED: 'warning.main',
   SUSPENDED: 'error.main',
 };
@@ -36,6 +41,7 @@ const DOT_COLOR: Record<AccessStatus, string> = {
 export default function AccessStatusIndicator({
   status = undefined,
   category = 'user',
+  hint: hintOverride = undefined,
   tabIndex = 0,
 }: AccessStatusIndicatorProps): JSX.Element | null {
   const {t} = useTranslation('common');
@@ -45,7 +51,8 @@ export default function AccessStatusIndicator({
     return null;
   }
 
-  const hint = description.operatorNote ? `${description.hint} ${description.operatorNote}` : description.hint;
+  const baseHint = hintOverride ?? description.hint;
+  const hint = description.operatorNote ? `${baseHint} ${description.operatorNote}` : baseHint;
 
   return (
     // Focusable so the hint reaches keyboard users; the hint describes rather than names it.

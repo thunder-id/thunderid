@@ -175,4 +175,23 @@ describe('describeAccessStatus', () => {
     expect(description?.hint).toBe(describe_({value: 'LOCKED'}).description?.hint);
     expect(keys).toContain('common:accountStatus.locked.hint.user');
   });
+
+  it("says when an agent's lifespan ended", () => {
+    const {description, keys} = describe_(
+      {details: {reason: 'LIFESPAN_ENDED', since: EXPIRES_AT}, value: 'EXPIRED'},
+      'agent',
+    );
+
+    expect(description?.label).toBe('Expired');
+    expect(description?.hint).toBe(
+      `The agent's lifespan ended on ${EXPIRES_AT_TEXT}, so it cannot authenticate. Set a later end date to restore access.`,
+    );
+    expect(keys).toContain('common:accountStatus.expired.hint.agentSince');
+  });
+
+  it('describes an expired agent without the end when the read does not carry it', () => {
+    const {description} = describe_({value: 'EXPIRED'}, 'agent');
+
+    expect(description?.hint).toMatch(/^The agent's lifespan has ended/);
+  });
 });

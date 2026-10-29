@@ -130,6 +130,7 @@ export default function AgentEditPage(): JSX.Element {
   );
   const hasAnyOtherValidationError = Object.values(validationErrorSources).some(Boolean);
   const [backchannelLogoutUriInvalid, setBackchannelLogoutUriInvalid] = useState(false);
+  const [lifespanInvalid, setLifespanInvalid] = useState(false);
 
   const handleBack = async () => {
     await navigate(routes.agents.list());
@@ -170,6 +171,7 @@ export default function AgentEditPage(): JSX.Element {
       });
       setEditedAgent({});
       await refetch();
+      setLifespanInvalid(false);
       setSectionResetKey((key) => key + 1);
     } catch (err) {
       logger.error('Failed to update agent', {error: err});
@@ -260,7 +262,8 @@ export default function AgentEditPage(): JSX.Element {
     isMissingRedirectUri ||
     isMissingAllowedUserType ||
     isMissingCertificate ||
-    isInvalidBackchannelLogoutUri;
+    isInvalidBackchannelLogoutUri ||
+    lifespanInvalid;
 
   // ResourceAvatar opens its picker on any avatar click while onSelect is set, so a read-only
   // agent has to withhold the callback rather than rely on `editable` alone.
@@ -284,6 +287,9 @@ export default function AgentEditPage(): JSX.Element {
     validationIssues.push(
       t('agents:edit.page.validation.invalidBackchannelLogoutUri', 'fix the back-channel logout URI'),
     );
+  }
+  if (lifespanInvalid) {
+    validationIssues.push(t('agents:edit.page.validation.invalidLifespan', 'choose a lifespan end in the future'));
   }
   if (hasAnyOtherValidationError) {
     validationIssues.push(t('agents:edit.page.validation.tokenSettings', 'fix the token settings'));
@@ -329,6 +335,7 @@ export default function AgentEditPage(): JSX.Element {
           agent={agent}
           editedAgent={editedAgent}
           onFieldChange={handleFieldChange}
+          onLifespanValidationChange={setLifespanInvalid}
         />
       ),
     },
@@ -568,6 +575,7 @@ export default function AgentEditPage(): JSX.Element {
               updateAgent.reset(); // a save error is stale once the form resets
             }
             setEditedAgent({});
+            setLifespanInvalid(false);
             setSectionResetKey((key) => key + 1);
           }}
           onSave={() => {

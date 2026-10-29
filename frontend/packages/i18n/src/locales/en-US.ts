@@ -15,6 +15,13 @@ const translations = {
     'accountStatus.active.hint.user': 'This account can sign in normally.',
     'accountStatus.active.hint.agent': 'This agent can authenticate normally.',
     'accountStatus.active.hint.application': 'This application can authenticate normally.',
+    'accountStatus.expired.label': 'Expired',
+    'accountStatus.expired.hint.agent':
+      "The agent's lifespan has ended, so it cannot authenticate. Set a later end date to restore access.",
+    'accountStatus.expired.hint.agentSince':
+      "The agent's lifespan ended on {{since}}, so it cannot authenticate. Set a later end date to restore access.",
+    'accountStatus.expired.hint.other':
+      'The lifespan has ended, so access is refused. Set a later end date to restore access.',
     'accountStatus.locked.label': 'Locked',
     'accountStatus.locked.hint.user':
       'The account is locked and cannot sign in. The user can complete account recovery, or an administrator can unlock the account.',
@@ -1414,6 +1421,7 @@ const translations = {
     'edit.page.validation.missingCertificate': 'add a certificate',
     'edit.page.validation.invalidBackchannelLogoutUri': 'fix the back-channel logout URI',
     'edit.page.validation.tokenSettings': 'fix the token settings',
+    'edit.page.validation.invalidLifespan': 'choose a lifespan end in the future',
     'edit.page.reset': 'Reset',
     'edit.page.save': 'Save',
     'edit.page.saving': 'Saving…',
@@ -1434,6 +1442,15 @@ const translations = {
     'edit.general.sections.owner.description': 'The user accountable for this agent.',
     'edit.general.sections.owner.label': 'Owner',
     'edit.general.owner.empty': 'No owner assigned',
+    'edit.attributes.lifespan.title': 'Lifespan',
+    'edit.attributes.lifespan.description':
+      'When this agent stops being able to authenticate. Tokens issued to it expire no later than this.',
+    'edit.attributes.lifespan.label': 'Valid Until',
+    'edit.attributes.lifespan.unbounded': 'No expiry date. Set one to end its access automatically.',
+    'edit.attributes.lifespan.mustBeFuture': 'Choose a date and time in the future.',
+    'lifespan.expiresIn': 'Expires {{relative}}',
+    'lifespan.expiredAgo': 'Expired {{relative}}',
+    'lifespan.noExpiry': 'No expiry date',
     'edit.general.sections.attributes.title': 'Attributes',
     'edit.general.sections.attributes.description':
       "A preview of this agent's attribute values. Manage them from the Attributes tab.",
@@ -1629,6 +1646,8 @@ const translations = {
       'The subject attribute mapping must reference an attribute that is unique, required, and string typed in an allowed agent type.',
     'errors.AGT-1044':
       'A delegated agent needs at least one grant type that lets it act for a signed-in user, such as authorization code.',
+    'errors.AGT-1045': 'The lifespan end must be a valid date and time.',
+    'errors.AGT-1046': 'The lifespan end must be in the future.',
   },
 
   // ============================================================================
