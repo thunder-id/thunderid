@@ -80,6 +80,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/openid4vci"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
+	sharedrevocation "github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/runtimestore"
 	"github.com/thunder-id/thunderid/internal/scim"
@@ -117,6 +118,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/variablestore"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -618,6 +620,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		graphBuilder, jwtService, runtimeStoreProvider, transactioner, serverConfigService, ssoTransport,
 		governanceProvider, flowConfig)
 	fatalOnError(ctx, logger, err, "Failed to initialize flow execution service")
+	// The services that revoke before they write run system flows, and the engine exists only now.
+	userService.SetSystemFlowExecutor(systemFlowRunner(flowExecService, revocationSvc))
+	roleService.SetSystemFlowExecutor(systemFlowRunner(flowExecService, revocationSvc))
 
 	// Initialize OAuth services.
 	tokenValidator, dispatcher, err := oauth.Initialize(mux, actorProvider, authnProvider, jwtService, jweService,
@@ -832,5 +837,30 @@ func buildHashConfig() (cryptolib.HashConfig, error) {
 			Parallelism: cfg.Argon2ID.Parallelism, KeySize: cfg.Argon2ID.KeySize}, nil
 	default:
 		return cryptolib.HashConfig{}, fmt.Errorf("unrecognized password hashing algorithm %q", cfg.Algorithm)
+	}
+}
+
+// systemFlowRunner runs a system flow by handle on the flow engine, for a service that cannot import it.
+// The flow revokes before the service writes its change, so what it returns finishes the revocation
+// once the change is written: a revocation bounded by a cutoff is recorded again with the cutoff moved
+// to then, as advance_cutoff does in an administration flow, so a token issued in between is caught too.
+func systemFlowRunner(flowExecService flowexec.FlowExecServiceInterface,
+	revoker sharedrevocation.CriteriaRevoker) func(ctx context.Context, handle string,
+	inputs map[string]string) (func(context.Context) *tidcommon.ServiceError, *tidcommon.ServiceError) {
+	return func(ctx context.Context, handle string, inputs map[string]string) (
+		func(context.Context) *tidcommon.ServiceError, *tidcommon.ServiceError) {
+		result, svcErr := flowExecService.ExecuteSystemFlow(ctx,
+			&flowexec.SystemFlowContext{Handle: handle, Inputs: inputs})
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		return func(ctx context.Context) *tidcommon.ServiceError {
+			if err := executor.AdvanceRevocationCutoff(ctx, revoker, result.SharedRuntimeData); err != nil {
+				log.GetLogger().Error(ctx, "Failed to finish the revocation of a system flow",
+					log.String("handle", handle), log.Error(err))
+				return &tidcommon.InternalServerError
+			}
+			return nil
+		}, nil
 	}
 }
