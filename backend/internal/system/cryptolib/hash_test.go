@@ -1137,6 +1137,48 @@ func (suite *HashServiceTestSuite) TestUnsupportedAlgorithmVerify_Failure() {
 	assert.False(suite.T(), ok)
 }
 
+func (suite *HashServiceTestSuite) TestVerifyAfterAlgorithmChange() {
+	configs := map[CredAlgorithm]HashConfig{
+		SHA256: {Algorithm: SHA256, SaltSize: defaultSaltSize},
+		PBKDF2: {
+			Algorithm: PBKDF2, SaltSize: defaultSaltSize,
+			Iterations: defaultPBKDF2Iterations, KeySize: defaultPBKDF2KeySize,
+		},
+		ARGON2ID: {
+			Algorithm: ARGON2ID, SaltSize: defaultSaltSize, Memory: defaultArgon2idMemory,
+			Iterations: defaultArgon2idIterations, Parallelism: defaultArgon2idParallelism,
+			KeySize: defaultArgon2idKeySize,
+		},
+	}
+
+	for storedAlgo, storedCfg := range configs {
+		oldService, err := Initialize(storedCfg)
+		require.NoError(suite.T(), err)
+		storedCred, err := oldService.Generate(suite.input)
+		require.NoError(suite.T(), err)
+		require.Equal(suite.T(), storedAlgo, storedCred.Algorithm)
+
+		for activeAlgo, activeCfg := range configs {
+			suite.T().Run(string(storedAlgo)+"_verified_by_"+string(activeAlgo), func(t *testing.T) {
+				newService, err := Initialize(activeCfg)
+				require.NoError(t, err)
+
+				ok, err := newService.Verify(suite.input, storedCred)
+				assert.NoError(t, err)
+				assert.True(t, ok)
+
+				ok, err = newService.Verify([]byte("wrongPassword"), storedCred)
+				assert.NoError(t, err)
+				assert.False(t, ok)
+
+				newCred, err := newService.Generate(suite.input)
+				require.NoError(t, err)
+				assert.Equal(t, activeAlgo, newCred.Algorithm)
+			})
+		}
+	}
+}
+
 type InitTestSuite struct {
 	suite.Suite
 }
