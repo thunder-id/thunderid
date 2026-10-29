@@ -58,6 +58,17 @@ func (s *stubVersionService) Revert(context.Context, string, RevertRequest) (*Ap
 	return &ApplyResult{}, s.err
 }
 func (s *stubVersionService) Forget(_ context.Context, id string) { s.forgot = id }
+func (s *stubVersionService) GetMaster(_ context.Context, id string) (*Master, *tidcommon.ServiceError) {
+	return &Master{GatewayID: id}, s.err
+}
+func (s *stubVersionService) ListMasters(context.Context, string) ([]Master, *tidcommon.ServiceError) {
+	return []Master{}, s.err
+}
+func (s *stubVersionService) GetResourceHistory(_ context.Context, id,
+	key string) (*ResourceHistory, *tidcommon.ServiceError) {
+	s.lastRef = key
+	return &ResourceHistory{GatewayID: id, Key: key}, s.err
+}
 func serveVersions(stub *stubVersionService, method, path, body string) *httptest.ResponseRecorder {
 	mux := http.NewServeMux()
 	registerVersionRoutes(mux, newVersionHandler(stub))

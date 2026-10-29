@@ -236,4 +236,13 @@ var (
 				"control plane captures it, is not YAML until its values are filled in.",
 		},
 	}
+	// ErrorResourceNotDeployed names a resource no master of the gateway records.
+	ErrorResourceNotDeployed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1031",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.resource_not_deployed",
+			DefaultValue: "No apply to this gateway has recorded the resource",
+		},
+	}
 )

@@ -123,6 +123,10 @@ type ApplyRequest struct {
 	// deployment's threshold; without it such an apply is refused, so a rollback that would empty
 	// a gateway is seen before it is sent.
 	ConfirmRemovals bool `json:"confirmRemovals,omitempty"`
+	// Origin is a label for where the version came from, recorded as given on each resource the
+	// apply writes to the gateway's master. A caller promoting another environment's configuration
+	// names that environment here.
+	Origin string `json:"origin,omitempty"`
 }
 
 // RevertRequest is the body of a revert.
@@ -198,6 +202,9 @@ type ApplyResult struct {
 	// Recorded reports whether the gateway's applied version moved, which every completed apply does
 	// and a dry run never does. Import says which resources, if any, the gateway refused.
 	Recorded bool `json:"recorded"`
+	// Master is the hash of the master the gateway holds after the apply, which records each resource
+	// as the gateway accepted or refused it. A dry run writes none.
+	Master string `json:"master,omitempty"`
 	// Missing lists the values the version refers to that the gateway does not hold. Only a dry run
 	// reports them: an apply that would leave one unset is refused instead.
 	Missing *MissingValues `json:"missing,omitempty"`
