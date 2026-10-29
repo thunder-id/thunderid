@@ -179,8 +179,11 @@ type InterceptorResponse struct {
 	Status InterceptorStatus       `json:"status"`
 	Error  *tidcommon.ServiceError `json:"error,omitempty"`
 
-	// EngineOutputs passes data from interceptors back to the engine.
+	// EngineOutputs passes data from interceptors back to the engine's runtime data.
 	EngineOutputs map[string]string `json:"engineOutputs,omitempty"`
+
+	// SharedRuntimeOutputs sets shared runtime data (survives sub-flows, unlike EngineOutputs).
+	SharedRuntimeOutputs map[string]string `json:"sharedRuntimeOutputs,omitempty"`
 
 	// Flow step data returned to the client.
 	ChallengeToken string       `json:"challengeToken,omitempty"`

@@ -474,7 +474,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			IdentityGovernance:  governanceProvider,
 			ArtifactLifetime:    artifactLifetime,
 		},
-		interceptor.InterceptorDependencies{},
+		interceptor.InterceptorDependencies{I18nService: i18nService},
 		flowConfig,
 	)
 

@@ -116,6 +116,58 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_UserInviteTemplate_Suc
 	suite.Equal(dataValueTrue, resp.AdditionalData[common.DataEmailSent])
 }
 
+// The flow locale in shared runtime data is passed to the renderer so the template is localized.
+func (suite *EmailExecutorTestSuite) TestExecute_SendMode_PassesFlowLocaleToRenderer() {
+	ctx := &providers.NodeContext{
+		ExecutionID:  "test-execution-id",
+		FlowType:     providers.FlowTypeUserOnboarding,
+		ExecutorMode: ExecutorModeSend,
+		NodeInputs: []providers.Input{
+			{Identifier: "email", Type: providers.InputTypeEmail, Required: true},
+		},
+		UserInputs: map[string]string{
+			"email": "user@example.com",
+		},
+		RuntimeData: map[string]string{
+			common.RuntimeKeyInviteLink: "https://localhost:5190/gate/invite?executionId=test&inviteToken=abc",
+		},
+		SharedRuntimeData: map[string]string{
+			common.RuntimeKeyEffectiveLocale: "fr-FR",
+		},
+		NodeProperties: map[string]interface{}{
+			"emailTemplate": emailUserInviteProperty,
+		},
+	}
+
+	suite.mockTemplateRenderer.On("Resolve",
+		ctx.Context,
+		notificationtemplate.ChannelTypeEmail,
+		emailUserInviteHandle,
+		notificationtemplate.RenderInput{
+			Locale: "fr-FR",
+			Data: map[string]string{
+				common.RuntimeKeyInviteLink: "https://localhost:5190/gate/invite?executionId=test&inviteToken=abc",
+			},
+		},
+	).Return(&notificationtemplate.ResolvedContent{
+		Subject: "Vous êtes invité",
+		Body:    "<html><body>Terminer l'inscription</body></html>",
+	}, nil)
+
+	suite.mockNotifSenderSvc.On("SendEmail", mock.Anything, "", notifcm.EmailData{
+		To:      []string{"user@example.com"},
+		Subject: "Vous êtes invité",
+		Body:    "<html><body>Terminer l'inscription</body></html>",
+		IsHTML:  true,
+	}).Return((*tidcommon.ServiceError)(nil))
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal(dataValueTrue, resp.AdditionalData[common.DataEmailSent])
+}
+
 func (suite *EmailExecutorTestSuite) TestExecute_SendMode_SelfRegistration_InviteLinkNotExposed() {
 	ctx := &providers.NodeContext{
 		ExecutionID:  "test-execution-id",

@@ -188,6 +188,14 @@ const (
 	RuntimeKeyRequiredOptionalAttributes = "required_optional_attributes"
 	// RuntimeKeyRequiredLocales holds the space-separated locales requested for claims.
 	RuntimeKeyRequiredLocales = "required_locales"
+	// InputKeyFormLocale is a locale a flow explicitly collects (e.g. an invite form's language
+	// dropdown for the recipient). It takes priority over the operator's UI language.
+	InputKeyFormLocale = "preferred_locale"
+	// InputKeyCurrentLocale carries the client's UI language (routed from the request's locale field).
+	// The interceptor updates RuntimeKeyEffectiveLocale from it when a valid, supported value arrives.
+	InputKeyCurrentLocale = "__current_locale"
+	// RuntimeKeyEffectiveLocale is the flow's locale (BCP 47) in shared runtime data; read by the renderer.
+	RuntimeKeyEffectiveLocale = "locale"
 	// RuntimeKeyConsentID holds the consent record ID after consent has been recorded.
 	RuntimeKeyConsentID = "consent_id"
 	// RuntimeKeyStepTimeout holds the expiry timestamp for the current flow step.

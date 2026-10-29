@@ -56,6 +56,13 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 	verbose := flowR.Verbose
 	action := sysutils.SanitizeString(flowR.Action)
 	inputs := sysutils.SanitizeStringMap(flowR.Inputs)
+	// Route the request's locale to the locale interceptor's reserved input key.
+	if locale := sysutils.SanitizeString(flowR.Locale); locale != "" {
+		if inputs == nil {
+			inputs = make(map[string]string)
+		}
+		inputs[common.InputKeyCurrentLocale] = locale
+	}
 	challengeToken := sysutils.SanitizeString(flowR.ChallengeToken)
 	flowSecret := sysutils.SanitizeString(r.Header.Get(serverconst.FlowSecretHeaderName))
 	attestationToken := sysutils.SanitizeString(r.Header.Get(serverconst.AttestationTokenHeaderName))

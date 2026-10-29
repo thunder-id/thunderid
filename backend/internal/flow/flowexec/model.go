@@ -284,6 +284,8 @@ type FlowRequest struct {
 	ChallengeToken string            `json:"challengeToken,omitempty"`
 	Action         string            `json:"action"`
 	Inputs         map[string]string `json:"inputs"`
+	// Locale is the client's current UI language (BCP 47); the locale interceptor resolves it.
+	Locale string `json:"locale,omitempty"`
 }
 
 // FlowInitContext represents the context for initiating a new flow with runtime data
