@@ -9,6 +9,8 @@ import type {
   AppliedVersion,
   ApplyRequest,
   ApplyResult,
+  Master,
+  ResourceHistory,
   StoredValue,
   ValueKind,
   ValueReference,
@@ -46,6 +48,14 @@ export default function useGatewaySource(): DeploySource {
       appliedVersion,
       appliedConfiguration: (targetId: string): Promise<AppliedConfiguration> =>
         request<AppliedConfiguration>('GET', `${gateway(targetId)}/applied-configuration`),
+      master: (targetId: string): Promise<Master> => request<Master>('GET', `${gateway(targetId)}/master`),
+      masterHistory: (targetId: string): Promise<Master[]> =>
+        request<Master[]>('GET', `${gateway(targetId)}/master/history`),
+      resourceHistory: (targetId: string, key: string): Promise<ResourceHistory> =>
+        request<ResourceHistory>(
+          'GET',
+          `${gateway(targetId)}/master/resources/${key.split('/').map(encodeURIComponent).join('/')}`,
+        ),
       applyCheck: (targetId: string, ref: string): Promise<ApplyResult> =>
         request<ApplyResult>('POST', `${gateway(targetId)}/apply`, {
           version: ref,

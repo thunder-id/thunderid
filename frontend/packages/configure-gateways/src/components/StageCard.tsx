@@ -11,19 +11,22 @@ import DeployCard from './DeployCard';
 import Timestamp from './Timestamp';
 import VersionName from './VersionName';
 import {changedCount} from '../api/useChangedValues';
-import type {Actor, Change, ChangedValues} from '../models/deploy';
+import type {Actor, ChangedValues, MasterEntry} from '../models/deploy';
+import {versionLabel} from '../utils/format';
 
 export interface StageCardProps {
   name: string;
   url?: string;
   /** The version the stage runs, with when it was captured, or absent while it runs none. */
   version?: {number?: number; hash?: string; capturedAt?: string};
+  /** How much of the version the stage holds, when a deploy applied it only in part. */
+  partial?: {held: number; total: number};
   /** When the stage came to run it, which is not when the version was captured. */
   deployedAt?: string;
   /** Who deployed it, promoted it there or rolled the stage back to it. */
   deployedBy?: Actor;
-  /** The changes of its version the stage holds back, so it does not run them. */
-  heldBack?: Change[];
+  /** The resources the stage refused on their last deploy, so it does not run them as the version has them. */
+  refused?: MasterEntry[];
   /** Opens the stage's explorer. */
   onExplore: () => void;
   /** Opens the stage's variables and secrets. */
@@ -55,9 +58,10 @@ export default function StageCard({
   name,
   url = undefined,
   version = undefined,
+  partial = undefined,
   deployedAt = undefined,
   deployedBy = undefined,
-  heldBack = [],
+  refused = [],
   onExplore,
   onConfigure,
   onRevert = undefined,
@@ -199,6 +203,15 @@ export default function StageCard({
           {version ? (
             <Stack spacing={0.5} sx={{mt: 0.25}}>
               <VersionName number={version.number} hash={version.hash} variant="h6" />
+              {partial && (
+                <Typography variant="caption" color="warning.main" data-testid="stage-partial">
+                  {t('stage.partlyApplied', '{{version}} partly applied: {{held}} of {{total}} resources', {
+                    version: versionLabel(version.hash, version.number),
+                    held: partial.held,
+                    total: partial.total,
+                  })}
+                </Typography>
+              )}
               <Timestamp value={version.capturedAt} />
             </Stack>
           ) : (
@@ -239,12 +252,12 @@ export default function StageCard({
                   </Typography>
                 </Tooltip>
               )}
-              {heldBack.length > 0 && (
-                <Tooltip title={heldBack.map((change: Change) => change.name ?? change.id ?? change.key).join(', ')}>
+              {refused.length > 0 && (
+                <Tooltip title={refused.map((entry: MasterEntry) => entry.name ?? entry.id ?? entry.key).join(', ')}>
                   <Typography
                     variant="caption"
-                    color="text.secondary"
-                    data-testid="stage-held-back"
+                    color="error.main"
+                    data-testid="stage-refused"
                     sx={{
                       width: 'fit-content',
                       cursor: 'help',
@@ -253,7 +266,7 @@ export default function StageCard({
                       borderColor: 'divider',
                     }}
                   >
-                    {t('stage.heldBack', '{{count}} held back, not running', {count: heldBack.length})}
+                    {t('stage.refused', '{{count}} refused, not running', {count: refused.length})}
                   </Typography>
                 </Tooltip>
               )}

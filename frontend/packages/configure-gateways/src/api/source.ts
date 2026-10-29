@@ -8,6 +8,8 @@ import type {
   AppliedVersion,
   ApplyRequest,
   ApplyResult,
+  Master,
+  ResourceHistory,
   StoredValue,
   ValueKind,
   ValueReference,
@@ -45,6 +47,12 @@ export interface DeploySource {
   appliedVersion(targetId: string): Promise<AppliedVersion>;
   /** Everything a target runs, each resource as its own read returns it. */
   appliedConfiguration(targetId: string): Promise<AppliedConfiguration>;
+  /** What a target holds, resource by resource, as the target last accepted each: its master. */
+  master(targetId: string): Promise<Master>;
+  /** A target's masters, newest first, without their entries. */
+  masterHistory(targetId: string): Promise<Master[]>;
+  /** One resource's entry across a target's masters, newest first. */
+  resourceHistory(targetId: string, key: string): Promise<ResourceHistory>;
   /** What applying a version would change on a target, and what it lacks for it. Nothing is written. */
   applyCheck(targetId: string, version: string): Promise<ApplyResult>;
   /** Applies a version to a target, or works out what it would do when `dryRun` is set. */
