@@ -113,7 +113,7 @@ export default function RegenerateSecretDialog({
         <Alert severity="warning" sx={{mb: 2}}>
           {t(
             'regenerateSecret.dialog.disclaimer',
-            'Warning: Regenerating the client secret will invalidate the current secret and the application may stop working until the new client secret is updated in its configuration.',
+            'Warning: Regenerating the client secret revokes every token issued with the current secret, and the application may stop working until the new client secret is updated in its configuration.',
           )}
         </Alert>
         {error && (

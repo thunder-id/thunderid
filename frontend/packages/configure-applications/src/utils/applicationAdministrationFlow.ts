@@ -29,7 +29,10 @@ export async function deleteApplicationNatively(
 /**
  * Deletes an application through the configured deletion flow, falling back to the native endpoint.
  *
- * Only the flow revokes the application's tokens; a configured flow that cannot be resolved refuses.
+ * Either path revokes the application's tokens and detaches its sessions: the server runs that
+ * revocation before it removes the record, whichever entry point asked. The flow is still preferred
+ * because a deployment may have added steps of its own around the deletion, which is also why a
+ * configured flow that cannot be resolved refuses rather than falls back.
  */
 export async function deleteApplicationViaFlow(
   http: HttpLike,

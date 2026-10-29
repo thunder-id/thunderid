@@ -18,7 +18,7 @@ vi.mock('react-i18next', () => ({
         'delete.title': 'Delete Application',
         'delete.message': 'Are you sure you want to delete this application? This action cannot be undone.',
         'delete.disclaimer':
-          'Warning: All associated data, configurations, and access tokens will be permanently removed.',
+          'Warning: All associated data and configurations will be permanently removed, every token issued to this application will be revoked, and its sessions will be detached.',
         'delete.error': 'Failed to delete application. Please try again.',
         'errors.APP-1030': 'This application is managed declaratively and cannot be edited or deleted.',
         'common:actions.cancel': 'Cancel',
@@ -84,7 +84,7 @@ describe('ApplicationDeleteDialog', () => {
       ).toBeInTheDocument();
       expect(
         screen.getByText(
-          'Warning: All associated data, configurations, and access tokens will be permanently removed.',
+          'Warning: All associated data and configurations will be permanently removed, every token issued to this application will be revoked, and its sessions will be detached.',
         ),
       ).toBeInTheDocument();
     });
