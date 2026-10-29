@@ -123,3 +123,39 @@ func (suite *DefaultGuardTestSuite) TestDefaultGuard_ConfiguredAudienceDrivesGua
 	suite.Equal(testConfiguredIdentifier, metadata.Resource)
 	suite.Equal(testConfiguredIdentifier, suite.audienceReachingVerification(guard, accessToken()))
 }
+
+// A token from the trusted issuer reaches a tool only when it was issued for the MCP resource the
+// metadata advertises, not for the audience the REST API accepts (thunder-id/thunderid#6037).
+func (suite *DefaultGuardTestSuite) TestDefaultGuard_ChecksATrustedIssuerTokenAgainstTheMCPResource() {
+	const issuer, restAudience = "https://a.example.com", "https://localhost:8090"
+	config.ResetServerRuntime()
+	cfg := &config.Config{}
+	cfg.Server.Hostname = testHostname
+	cfg.Server.Port = testPort
+	cfg.Server.SecurityConfig.TrustedIssuer = engineconfig.TrustedIssuerConfig{
+		Issuer: issuer, JWKSURL: issuer + "/oauth2/jwks", Audience: restAudience,
+	}
+	suite.Require().NoError(config.InitializeServerRuntime("", cfg))
+
+	header, _ := json.Marshal(map[string]any{"alg": "RS256", "typ": jwt.TokenTypeAccessToken})
+	payload, _ := json.Marshal(map[string]any{
+		"sub": "user123", "iss": issuer, "exp": float64(time.Now().Add(time.Hour).Unix()),
+		"scope": security.GetSystemRootPermission(),
+	})
+	token := base64.RawURLEncoding.EncodeToString(header) + "." +
+		base64.RawURLEncoding.EncodeToString(payload) + ".signature"
+	var observed string
+	suite.mockJWT.On("VerifyJWTWithJWKS", mock.Anything, token, issuer+"/oauth2/jwks", mock.Anything, issuer).
+		Run(func(args mock.Arguments) { observed = args.String(3) }).Return(nil)
+
+	guard, metadata := DefaultGuard(suite.mockJWT, &fakeRevocationEnforcer{})
+	req := httptest.NewRequest(http.MethodPost, MCPEndpointPath, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	reached := false
+	guard(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached = true })).
+		ServeHTTP(httptest.NewRecorder(), req)
+
+	suite.True(reached)
+	suite.Equal(testDerivedIdentifier, metadata.Resource)
+	suite.Equal(metadata.Resource, observed, "the token must be checked against the advertised resource")
+}
