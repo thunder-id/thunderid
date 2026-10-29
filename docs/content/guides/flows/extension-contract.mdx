@@ -1,0 +1,179 @@
+---
+title: Extension Request and Response
+docType: reference
+sidebar_position: 11
+persona: developer
+description: The JSON request an Extension step sends to your service, the response your service must return, the limits that apply, and the errors a flow can report.
+---
+
+# Extension Request and Response
+
+An **Extension** step sends your service one HTTPS `POST` per execution and acts on the JSON object your service answers with. This page defines both, for contract version `1`. To configure the step, see [Call Your Own Service from a Flow](./call-your-service.mdx).
+
+## Request
+
+<ProductName /> sends these headers, in addition to the headers and credential of the [service endpoint connection](../integrations/service-endpoints.mdx):
+
+| Header | Value |
+|--------|-------|
+| `Content-Type` | `application/json` |
+| `X-Correlation-ID` | The flow's trace ID, unless the connection sets a header of that name. |
+
+The body mirrors the step's flow context:
+
+```json
+{
+  "version": "1",
+  "executionId": "019a1b2c-3d4e-7f60-8a9b-0c1d2e3f4a5b",
+  "flowType": "AUTHENTICATION",
+  "currentNodeId": "risk_check",
+  "userInputs": { "username": "emily@example.com" },
+  "runtimeData": { "userID": "cea777f1-0000-4000-8000-000000000001" },
+  "application": {
+    "id": "019a0f11-0000-7000-8000-000000000001",
+    "ouId": "019a0e00-0000-7000-8000-000000000001",
+    "name": "Sample App",
+    "type": "browser"
+  },
+  "authUser": {
+    "default": {
+      "entityReference": {
+        "entityId": "cea777f1-0000-4000-8000-000000000001",
+        "entityCategory": "user",
+        "entityType": "customer",
+        "ouId": "019a0e00-0000-7000-8000-000000000001"
+      }
+    }
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `version` | The contract version, `"1"`. An incompatible format uses a new value, and <ProductName /> never changes the meaning of a published version. |
+| `executionId` | The flow execution. It is the same on every call within one sign-in, including the call made when a redirected user returns. |
+| `flowType` | The kind of flow, such as `AUTHENTICATION` or `REGISTRATION`. |
+| `currentAction` | The action the user chose. Omitted when there is none. |
+| `currentNodeId` | The node ID of the step that is calling. |
+| `userInputs` | Only the inputs named in **Inputs to send** that the flow holds. `{}` by default. |
+| `runtimeData` | By default only `userID`. With **Runtime data to send**, only the named keys the flow holds. Engine state is never included. |
+| `application` | The application's `id`, `ouId`, `name`, and `type`. Client secrets and other configuration are never included. |
+| `authUser` | For each authentication provider that has signed the user in, the user's `entityReference`. `{}` before anyone is signed in. Tokens and attributes are never included. |
+
+The HTTP client uses the server's TLS settings and does not follow HTTP redirects. A `3xx` response is treated like any other unexpected status, because following it would resend the connection's credential to another host.
+
+## Response
+
+Answer with an HTTP status in the `2xx` range and a JSON object of at most 64 KiB (65 536 bytes).
+
+| Field | When | Description |
+|-------|------|-------------|
+| `actionStatus` | Always | `SUCCESS`, `FAILED`, `INCOMPLETE`, or `ERROR`. The value is case-sensitive. |
+| `failureReason` | With `FAILED` or `INCOMPLETE`, optional | A machine-readable code of up to 64 characters from `A-Z`, `a-z`, `0-9`, `_`, `.`, and `-`. Passed to the client application as `params.reason`. A value outside that form is dropped. |
+| `failureDescription` | With `FAILED` or `INCOMPLETE`, optional | Text for the user. Shown as plain text, cut to 256 characters, with control characters and Unicode format characters, such as zero-width and bidirectional override characters, removed. |
+| `redirectUrl` | With `INCOMPLETE`, optional | An absolute `http` or `https` URL to send the user's browser to. |
+| Any other top-level field | Optional | Data for later steps. Stored as text under `extension.<nodeId>.<field>`. |
+
+### Examples
+
+Allow the user through, and give later steps data:
+
+```json
+{ "actionStatus": "SUCCESS", "riskScore": "12", "riskReason": "known_device" }
+```
+
+Refuse, with a message for the user:
+
+```json
+{ "actionStatus": "FAILED", "failureReason": "high_risk", "failureDescription": "Sign-in blocked. Contact support." }
+```
+
+Ask for more input through the step's `onIncomplete` prompt:
+
+```json
+{ "actionStatus": "INCOMPLETE", "failureReason": "otp_required", "failureDescription": "Enter the code we sent you." }
+```
+
+Send the user to your own page:
+
+```json
+{ "actionStatus": "INCOMPLETE", "redirectUrl": "https://pin.example.com/entry?flowId=019a1b2c-3d4e-7f60-8a9b-0c1d2e3f4a5b" }
+```
+
+Report that the service could not decide. The user sees a generic error only:
+
+```json
+{ "actionStatus": "ERROR", "failureReason": "upstream_unavailable" }
+```
+
+### How Answers Are Evaluated
+
+The outcome is `ERROR` when any of these hold, checked in this order:
+
+1. The status code is outside `200` to `299`, including any `3xx`.
+2. The body is empty, is not a single JSON object, or is larger than 64 KiB.
+3. `actionStatus` is missing, is not a string, or is not one of the four values.
+4. `actionStatus` is `INCOMPLETE` and `redirectUrl` is set but is not an absolute `http` or `https` URL.
+
+A timeout, an unreachable service, and a transport failure are also `ERROR`. Otherwise the outcome is the value of `actionStatus`.
+
+On `ERROR`, nothing from the response reaches the client. `failureReason` appears only in the audit event, and `failureDescription` is not recorded.
+
+### How Stored Values Are Rendered
+
+- Strings are stored as they are, and numbers keep their exact text.
+- Booleans, objects, and arrays are stored as compact JSON, so a boolean becomes `true` or `false`.
+- `null` values are skipped.
+- `actionStatus`, `failureReason`, `failureDescription`, and `redirectUrl` are never stored as data.
+
+### Credential Failures
+
+When `failureReason` is `invalid_credentials` or `user_not_found`, with `FAILED` or `INCOMPLETE`, the user sees <ProductName />'s own invalid-credentials error with no params, whatever text the service sent. This is the error the built-in credential steps return, so a service cannot reveal which accounts exist. The reason is kept only in the audit event.
+
+## Send the User to Your Page
+
+A service that collects input on its own page, such as a PIN pad or a document upload, asks for the user's browser by answering `INCOMPLETE` with `redirectUrl`.
+
+1. The user's browser goes to `redirectUrl`, with a `state` parameter added.
+2. When the user finishes, send the browser to the <ProductName /> gate's callback: `<gate>/callback?code=<value>&state=<the same state>`. With the default gate path, `<gate>` is `https://<host>:<port>/gate`.
+3. The step runs again and calls your service with the same `executionId`. Answer with the outcome you recorded for that execution. Answer `SUCCESS` or `FAILED` once per execution.
+
+While the flow waits for the return, it pauses on the step. The step's `onIncomplete` path is not followed for a redirect, and the redirect does not count as an attempt.
+
+- `redirectUrl` must be an absolute `http` or `https` URL. `javascript:` and `data:` URLs, relative URLs, and non-string values make the outcome `ERROR`. An empty or `null` value means no redirect. <ProductName /> accepts any `http` or `https` destination, because an administrator configures the service and services often host their page on another origin.
+- `redirectUrl` is never stored as data, and is ignored with any status other than `INCOMPLETE`.
+
+### Verify the Return
+
+The outcome your service returns on the second call must describe the person who completed your page, not merely whoever holds the `executionId`.
+
+<ProductName /> always forwards the `code` from the browser's return to your service as `userInputs.code`. It forwards `code` whatever **Inputs to send** names, and removes it from the flow's user inputs so no later step receives it. **Your service must check that it issued that `code` to the browser that completed its page.** <ProductName /> does not verify the value.
+
+A return without a `code` is refused with `FET-1126`. The service is not called, the step keeps waiting, and the refusal counts toward **Max attempts**. A copied execution ID and challenge value alone therefore cannot resume the step.
+
+## Errors
+
+A flow that fails in an Extension step reports one of these errors to the client application. They are returned in the flow execution response.
+
+| Code | Name | When | Client sees |
+|------|------|------|-------------|
+| `FET-1115` | `ErrExtensionCallFailed` | The outcome is `ERROR`. | "Extension call failed". Description: "The step could not get a valid answer from the external service". |
+| `FET-1116` | `ErrExtensionActionFailed` | The outcome is `FAILED`. | "Request rejected". The description is "The external service rejected the request", or the cleaned `failureDescription` when sent. `params.reason` carries `failureReason`. |
+| `FET-1117` | `ErrExtensionInputRequired` | The outcome is `INCOMPLETE` with a `failureDescription`. | "Additional input required". The description is "The external service needs more information to continue", or the cleaned `failureDescription`. |
+| `FET-1118` | `ErrExtensionAttemptsExceeded` | The step reached **Max attempts** in this execution. | "Too many attempts". |
+| `FET-1125` | `ErrExtensionAuthResolverConfigInvalid` | An Extension Auth Resolver has an unusable property, such as a missing `sourceKey`. | "Configuration error". |
+| `FET-1126` | `ErrExtensionReturnNotVerified` | The flow resumed after a redirect without a `code`. | "Return not verified". Description: "Continue in the browser that completed the external service's page". |
+| `FET-1001` | `ErrEntityNotFound` | An Extension Auth Resolver finds no usable user: no match, a non-user entity, an inactive user, or a user the application does not allow. | "The user could not be found". |
+| `FET-1004` | `ErrUserNotAuthenticated` | A step that needs an authenticated user runs without one, such as **Authorization** straight after an Extension step. | "User is not authenticated". |
+| `FET-1006` | `ErrEntityAuthFailed` | The authentication provider refuses the resolved user, for example a locked or suspended account. | "Failed to authenticate the user". |
+| `FLM-1023` | `ErrorInvalidExecutorConfig` | Flow save refused an Extension step or an Extension Auth Resolver property. | "Invalid executor configuration". `propertyKey` names the property. |
+
+The service's text keeps the error's message key. A client that localizes by message key shows the fixed description, not the service's text.
+
+For the connection errors, see [Service Endpoint Connections](../integrations/service-endpoints.mdx#errors).
+
+## Next Steps
+
+- [Call Your Own Service from a Flow](./call-your-service.mdx)
+- [Add Custom Authentication](./custom-authentication.mdx)
+- [Service Endpoint Connections](../integrations/service-endpoints.mdx)

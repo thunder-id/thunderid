@@ -427,6 +427,9 @@ Configure rate limits at the API gateway, ingress, or front door for:
 - Passkey registration under `/register/passkey/**`.
 - Authorization and token operations under `/oauth2/**`.
 - AuthZEN evaluations under `/access/**`.
+- Flow execution under `/flow/execute`.
+
+<ProductName /> does not rate limit `/flow/execute` either. The route is public, and every request to it can run a flow step. A flow with an [Extension step](../guides/flows/call-your-service.mdx) turns each request into a call to a service you run, so an unlimited caller can drive load to that service, and a custom authentication service can be used to enumerate accounts. The step's **Max attempts** bounds rejected answers within one flow execution only, so a caller can start new executions. A service that verifies a secret must also enforce its own lockout.
 
 Use separate policies for operations with different costs and risks. Where supported, evaluate the client IP address, client identifier, account identifier, and tenant context. Avoid applying one global threshold to every route.
 
@@ -617,6 +620,7 @@ Alert on:
 - Sustained latency or resource saturation.
 - PostgreSQL or Redis connection failures.
 - Front-door rate-limit and WAF activity.
+- Extension step outcomes, through the `EXTENSION_CALL` events, when [observability](../observability) is enabled. Observability is disabled in the default configuration, so enable it to publish them.
 - TLS certificates approaching expiry.
 - Failed backups or restore tests.
 - Loss of log or trace delivery.

@@ -1,0 +1,116 @@
+---
+title: Call Your Own Service from a Flow
+docType: guide
+sidebar_position: 9
+persona: iam
+description: Add an Extension step to a flow so that ThunderID calls a service your organization runs, then continue the flow on the path the service's answer selects.
+---
+
+# Call Your Own Service from a Flow
+
+An **Extension** step lets a flow consult a service your organization runs, such as a risk engine, an internal allow list, or a system that holds data <ProductName /> does not. The step sends the service the parts of the flow you choose, and the flow continues on the path the service's answer selects.
+
+An Extension step only adds data to the flow. It never signs a user in or changes who the user is. To let a service authenticate users, follow [Add Custom Authentication](./custom-authentication.mdx) after this guide.
+
+## Prerequisites
+
+- <ProductName /> is running. See [Get Started](../../getting-started/get-thunderid.mdx).
+- You can sign in to the <ProductName /> Console.
+- A service that accepts an HTTPS `POST` with a JSON body and answers in the format in [Extension Request and Response](./extension-contract.mdx).
+
+## Create a Service Endpoint Connection
+
+An Extension step calls your service only through a **Service endpoint** connection. The connection holds the URL, the timeout, the headers, and the credential, so every flow that calls the service shares one definition and the credential is stored once. An Extension step has no URL of its own.
+
+Create the connection first. See [Service Endpoint Connections](../integrations/service-endpoints.mdx).
+
+## Add the Extension Step
+
+1. Open the flow in the Flow Builder.
+2. From **Executors**, click **+** next to **Extension** to add the step where the flow should consult the service.
+3. Click the configure icon on the **Extension** node, then select your connection under **Connection**. The flow cannot be saved without one.
+4. Connect the step's success output to the next step. Connect the failure output to a step that denies or explains the failure, and connect the incomplete output to a prompt if the service can ask the user for more input.
+5. Set the optional properties in the following table, then save the flow.
+
+| Property | Console label | Default | Description |
+|----------|---------------|---------|-------------|
+| `connectionId` | **Connection** | Required | The service endpoint connection to call. |
+| `inputKeys` | **Inputs to send** | None | The user inputs sent to the service. Name a password or code only when the service needs it. |
+| `runtimeDataKeys` | **Runtime data to send** | `userID` | The runtime data sent to the service. Only `userID` and keys that start with `extension.` are accepted. |
+| `responseKeys` | **Stored response fields** | All fields | The top-level response fields kept for later steps. |
+| `maxAttempts` | **Max attempts** | `5` | A whole number from `1` to `20`. See [Limit Attempts](#limit-attempts). |
+
+Flow save refuses a step with no connection, a connection that does not exist, an empty list, a blank name, or a `runtimeDataKeys` name other than `userID` or a key that starts with `extension.`. The error is `FLM-1023`, and its `propertyKey` names the property.
+
+### What the Service Receives
+
+The request carries the flow's identifiers, the application's `id`, `ouId`, `name`, and `type`, and a reference to each signed-in user. It carries user inputs and runtime data only as follows:
+
+- **User inputs.** Only the inputs named in **Inputs to send**. With none named, the service receives no user input, even when the flow holds a password.
+- **Runtime data.** Only `userID`, or the keys named in **Runtime data to send**. Engine state such as one-time code sessions, OAuth state, and session handles is never sent.
+- **Return code.** When the user returns from your service's page, the browser's `code` is always sent as `userInputs.code`. See [Send the User to Your Page](./extension-contract.mdx#send-the-user-to-your-page).
+
+Client secrets, provider tokens, and user attributes are never sent. For the full body, see [Extension Request and Response](./extension-contract.mdx).
+
+### What Is Stored
+
+Every top-level field of a response, except `actionStatus`, `failureReason`, `failureDescription`, and `redirectUrl`, is stored in the flow's runtime data under `extension.<nodeId>.<field>`. `<nodeId>` is the step's node ID in the flow. A field named `riskScore` returned by the step `risk_check` is stored as `extension.risk_check.riskScore`.
+
+- The hint under **Stored response fields** shows the prefix with the step's node ID.
+- A returned field never reaches an engine key, a profile attribute, or a credential, whatever its name. A field named `userID`, `groups`, or `password` is stored as `extension.<nodeId>.userID`, and so on, and is never read as the user's identity, groups, or credential.
+- Each call replaces the step's earlier answer. The namespace always holds the latest answer.
+- Set **Stored response fields** to keep only the fields later steps need. Fields outside the list are dropped without an error.
+- Extension data is never copied into the Single Sign-On session. Another application that joins the session does not receive it.
+
+A later step reads extension data only when you name the full key. A later Extension step names it in **Runtime data to send**, and the Extension Auth Resolver names it in **Source key**. Data an earlier Extension step stored never reaches a later one unless you name it, so one service cannot read another service's answers by default.
+
+## How the Flow Continues
+
+| The service answers | The flow continues at |
+|---------------------|-----------------------|
+| `SUCCESS` | `onSuccess`, with the stored fields available. |
+| `FAILED` | `onFailure`, or the flow ends with the error when none is set. The user sees the service's `failureDescription`. Nothing from the answer is stored. |
+| `INCOMPLETE` | `onIncomplete`, which must lead to a prompt. With `redirectUrl`, the user's browser goes to the service's page instead and returns to the same step. |
+| `ERROR`, or an answer that breaks the format | `onFailure`, with a generic error. Nothing from the answer is shown or stored. |
+
+A timeout, an unreachable service, an unexpected status code, a body larger than 64 KiB, and a redirect from the service are all treated as `ERROR`. The step does not follow redirects and does not retry.
+
+An `INCOMPLETE` answer without `onIncomplete` ends the flow with <ProductName />'s internal server error.
+
+A failure inside <ProductName /> is not an answer from your service, so it does not continue at `onFailure`. The flow ends with the internal server error. This covers a connection that does not exist or cannot be resolved, and a step property that is unusable at run time. A flow that routes `onFailure` past a non-critical Extension step therefore never lets a user through because of a <ProductName /> misconfiguration.
+
+## Limit Attempts
+
+The step counts the `FAILED` and `INCOMPLETE` answers it receives in one flow execution. An `INCOMPLETE` answer that only sends the browser to your service's page is not counted, and neither are `SUCCESS` and `ERROR`.
+
+When the count reaches **Max attempts**, the step fails with `FET-1118` without calling your service. The flow continues at `onFailure`, or ends with that error when none is set.
+
+The limit bounds guessing within one flow execution only. A service that verifies a secret, such as a PIN or a one-time code, must also enforce its own lockout across executions.
+
+## Audit the Calls
+
+When [observability](../../deployment/observability.mdx) is enabled, each execution of the step publishes one `EXTENSION_CALL` event in the flows category. Observability is disabled in the default configuration, so no event is published until you enable it.
+
+The event carries the execution ID, node ID, flow type, connection ID, outcome, duration, and the HTTP status when the service responded. It also carries the `failureReason` when your service sent one, and an error kind for `ERROR` outcomes. It never carries URLs, header values, request or response bodies, user inputs, runtime data values, or `failureDescription`.
+
+| `outcome` | Meaning |
+|-----------|---------|
+| `SUCCESS`, `FAILED`, `INCOMPLETE`, `ERROR` | The service's answer, or `ERROR` for a failed call. |
+| `ATTEMPTS_EXCEEDED` | The step stopped at **Max attempts** without calling the service. |
+| `CONFIG_ERROR` | The step's connection does not exist, or its properties were unusable at run time. |
+| `RETURN_REFUSED` | The user returned from your service's page without a `code`. |
+
+The `error_kind` of an `ERROR` outcome is `timeout`, `transport`, `status`, `body`, `contract`, or `internal`. `internal` marks a failure inside <ProductName />, such as a connection that cannot be resolved.
+
+## Limitations
+
+- An Extension step cannot run in the embedded engine. A flow that reaches one there ends with the internal server error.
+- A connection that sends a credential refuses an `http` URL. Use `http` only for a local development service with authentication set to **None**.
+- Private and loopback addresses are allowed as endpoints, because only administrators set them.
+- Branching on values the service returns is not supported. Routing depends on `actionStatus` only.
+
+## Next Steps
+
+- [Extension Request and Response](./extension-contract.mdx)
+- [Add Custom Authentication](./custom-authentication.mdx)
+- [Service Endpoint Connections](../integrations/service-endpoints.mdx)

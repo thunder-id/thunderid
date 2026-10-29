@@ -1,0 +1,164 @@
+---
+title: Add Custom Authentication
+docType: guide
+sidebar_position: 10
+persona: iam
+description: Sign users in with an authentication method your organization runs, such as a PIN service, for existing users, for users created on first sign-in, or as a second factor after a password.
+---
+
+# Add Custom Authentication
+
+Use custom authentication when users must sign in with a method <ProductName /> does not provide, such as a PIN service or an internal verification system. Your service checks the user. An **Extension** step calls it, and an **Extension Auth Resolver** step signs in the local user the service verified.
+
+This guide builds three flows:
+
+- [Users who already exist in <ProductName />](#users-who-already-exist)
+- [Users created on their first sign-in](#users-created-on-their-first-sign-in)
+- [Your service as a second factor after a password](#second-factor-after-a-password)
+
+## Prerequisites
+
+- A service endpoint connection to your service. See [Call Your Own Service from a Flow](./call-your-service.mdx).
+- A service that answers in the format in [Extension Request and Response](./extension-contract.mdx). If it collects input on its own page, it answers `INCOMPLETE` with `redirectUrl` and returns the browser to the gate's callback.
+
+:::warning Trust
+A flow that uses an Extension Auth Resolver signs in whichever local user your service names. Protect the service and its connection credential as you would a password store, and use an `https` URL.
+:::
+
+## How the Resolver Works
+
+The Extension step never signs a user in. The **Extension Auth Resolver** is the step that does, and the order matters:
+
+```text
+Extension (success) → Extension Auth Resolver → Authorization → Auth Assertion Generator
+```
+
+The **Authorization** step needs an authenticated user and fails with `FET-1004` without one. An Extension step followed directly by **Authorization** therefore fails there, and no session is created.
+
+The resolver has these properties:
+
+| Property | Console label | Default | Description |
+|----------|---------------|---------|-------------|
+| `sourceKey` | **Source key** | Required | The full key that holds the identifier your service verified, `extension.<nodeId>.<field>`. `<nodeId>` is the Extension step that routes to the resolver. |
+| `matchAttribute` | **Match attribute** | `username` | The local user attribute to match: `username` or `userID`. `userID` matches by user ID. |
+| `allowAuthenticationWithoutLocalUser` | **Allow authentication without a local user** | Off | When no local user matches, continue so that a **Provision User** step can create the user. |
+| `attributeMapping` | **Attribute mapping** | Empty | For provisioning only. Maps a local attribute name to an `extension.` key. |
+
+Flow save refuses a resolver unless:
+
+- Its only route in is the success output of an Extension step.
+- `sourceKey` is in that step's namespace, and every `attributeMapping` value starts with `extension.`.
+- `matchAttribute` is `username` or `userID`. Other attributes are refused because users can change them through `PUT /users/me`, and could set their own to the value your service verifies for someone else.
+
+The error is `FLM-1023`, and its `propertyKey` names the property.
+
+At run time the resolver signs in a user only when all of these hold:
+
+- Exactly one local user matches the identifier.
+- The entity is a user in the `ACTIVE` state.
+- The user's type is one the application allows. An application with no allowed user types allows no one.
+- The user is in the application's organization unit or a descendant of it.
+
+Any other result fails with `FET-1001`, the same not-found error that credential authentication returns, so the resolver cannot be used to discover which accounts exist. A locked or suspended refusal from the authentication provider fails with `FET-1006`.
+
+A resolver with a missing or invalid property fails with `FET-1125`.
+
+## Users Who Already Exist
+
+Your service answers `SUCCESS` with an identifier of a user who exists in <ProductName />.
+
+| # | Step | Configuration | Next |
+|---|------|---------------|------|
+| 1 | **Extension**, node ID `pin_check` | **Connection**: your service. **Stored response fields**: `verifiedUserId` | Success: step 2. Failure: a prompt that shows the error. |
+| 2 | **Extension Auth Resolver** | **Source key**: `extension.pin_check.verifiedUserId`. **Match attribute**: **User ID** | Success: step 3. Failure: a prompt that shows the error. |
+| 3 | **Authorization** | Defaults | Step 4 |
+| 4 | **Auth Assertion Generator** | Defaults | End |
+
+Your service answers:
+
+```json
+{ "actionStatus": "SUCCESS", "verifiedUserId": "cea777f1-0000-4000-8000-000000000001" }
+```
+
+The field can have any name, because it is stored under the step's namespace. Use a name such as `verifiedUserId` rather than `userID`, so that nobody configuring the flow confuses it with <ProductName />'s own `userID`.
+
+If your service knows users by username, store `username` instead. Set **Source key** to `extension.pin_check.username` and **Match attribute** to **Username**.
+
+## Users Created on Their First Sign-In
+
+Your service knows users that <ProductName /> does not. The first time a user signs in, <ProductName /> creates the user from the attributes your service returns. After that, it signs the user in like any other user.
+
+| # | Step | Configuration | Next |
+|---|------|---------------|------|
+| 1 | **Extension**, node ID `pin_check` | **Connection**: your service. **Stored response fields**: `username, email, given_name, family_name` | Success: step 2. Failure: a prompt that shows the error. |
+| 2 | **Extension Auth Resolver** | **Source key**: `extension.pin_check.username`. **Match attribute**: **Username**. **Allow authentication without a local user**: selected. **Attribute mapping**: `username`, `email`, `given_name`, and `family_name` to the `extension.pin_check.` keys of the same field names | Success: step 3. Failure: a prompt that shows the error. |
+| 3 | **Provision User** | Defaults. Optionally **Assign group** or **Assign role** | Step 4 |
+| 4 | **Authorization** | Defaults | Step 5 |
+| 5 | **Auth Assertion Generator** | Defaults | End |
+
+Your service answers with the user's attributes as top-level fields:
+
+```json
+{ "actionStatus": "SUCCESS", "username": "peter@example.com", "email": "peter@example.com", "given_name": "Peter", "family_name": "Parker" }
+```
+
+- On the first sign-in, the resolver finds no local user and marks the user for provisioning. **Provision User** creates the user and signs them in. On later sign-ins, the resolver signs in the existing user and provisioning does nothing. Either way it is one sign-in.
+- **Provision User** takes attributes from the extension only through **Attribute mapping**. They reach it as external-identity claims, so a credential can never be mapped. It asks the user for any required attribute that is missing.
+- The application needs an allowed user type whose schema has `username`.
+- This works only in an authentication flow. Only a lookup by attribute that matches no entity at all qualifies for provisioning. A match that is not a user, an ambiguous match, and a lookup by user ID still fail.
+- Store only the attributes the user needs. Name your service's own user ID something other than `userID`, such as `serviceUserId`, and leave it out of **Stored response fields**.
+
+:::warning Existing accounts
+If your service returns a username that a local user already has, the resolver signs in that local user. When your service's users and local users could share names, match on an attribute that only your service assigns.
+:::
+
+## Second Factor After a Password
+
+The user signs in with a password, and your service then checks a second factor for that same user.
+
+| # | Step | Configuration | Next |
+|---|------|---------------|------|
+| 1 | **Prompt** | Inputs `username` and `password`, with a submit action | Step 2 |
+| 2 | **Identifier + Password** | Defaults | Success: step 3. Failure: step 1. |
+| 3 | **Extension** | **Connection**: your service. **Inputs to send**: empty | Success: step 4. Failure: a prompt that shows the error, or a step that denies. |
+| 4 | **Authorization** | Defaults | Step 5 |
+| 5 | **Auth Assertion Generator** | Defaults | End |
+
+- There is no Extension Auth Resolver in this flow. Step 2 has already signed the user in, and your service's `SUCCESS` only lets the flow continue. Your service cannot change who is signed in.
+- Your service reads the signed-in user from `runtimeData.userID`, which the default selection sends, or from `authUser.<provider>.entityReference.entityId`, and checks the second factor for that user. With no signed-in user it answers `ERROR`.
+- The password is not sent. **Inputs to send** names nothing, and the engine has already cleared it. Only the return `code` is sent.
+- The fields your service returns are stored under the step's namespace, which no later step reads unless it names those keys. They never change the signed-in user's claims.
+- `FAILED` and `ERROR` both continue at the failure path. Route it to a step that denies.
+
+## The Service's Side of the Redirect
+
+In all three flows, the service answers the first call for an `executionId` with `INCOMPLETE` and `redirectUrl`, which points to its own page. Its page sends the browser to the gate's callback with `code` and the `state` the SDK added. The step then calls the service again with the same `executionId`, and the service answers `SUCCESS` or `FAILED` once.
+
+```json
+{ "actionStatus": "INCOMPLETE", "redirectUrl": "https://pin.example.com/entry?flowId=019a1b2c-3d4e-7f60-8a9b-0c1d2e3f4a5b" }
+```
+
+When the PIN does not match, the service answers:
+
+```json
+{ "actionStatus": "FAILED", "failureReason": "pin_mismatch", "failureDescription": "The PIN did not match." }
+```
+
+Your service must do these things for the flow to be safe:
+
+- Verify that it issued the `code` it receives as `userInputs.code` to the browser that completed its page. <ProductName /> forwards the `code` but cannot check it. See [Verify the Return](./extension-contract.mdx#verify-the-return).
+- Enforce its own lockout across executions. **Max attempts** bounds rejected answers within one flow execution only.
+- Use `failureReason` `invalid_credentials` or `user_not_found` when a user is wrong or unknown, so that <ProductName /> returns its own generic message.
+
+## Limitations
+
+- **No authentication record.** A sign-in through the resolver claims no authentication method and no assurance level. It claims nothing stronger than the flow recorded. The flow node events carry `executor_name` and `executor_type` naming the resolver.
+- **Match attributes.** The resolver matches by `username` or `userID` only.
+- **Root organization units.** The user must be in the application's organization unit or a descendant of it. An application owned by a root organization unit can refuse a user of a different root organization unit, even when you intend that user to sign in.
+- **Return `code`.** <ProductName /> always forwards the `code`, whatever **Inputs to send** names, and your service must verify it. A service that ignores `code` cannot tell the person who completed its page from someone who copied the execution ID.
+- **Reserved credential type.** A **Credentials** step cannot declare the internal `extensionVerifiedEntityID` credential type as an input, and the credentials API rejects it.
+
+## Next Steps
+
+- [Extension Request and Response](./extension-contract.mdx)
+- [Build a Flow](./build-a-flow.mdx)

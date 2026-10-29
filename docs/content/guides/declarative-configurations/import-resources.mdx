@@ -223,13 +223,13 @@ isRegistrationFlowEnabled: true
 
 ### Connections and Organization Units
 
-A `connection` document for an identity provider, an SMS or email provider, or an AuthZEN PDP connection must carry `ouId` or `ouHandle`, because every connection belongs to exactly one organization unit. A document with neither fails to import, and a dry run reports the same failure. The same rule applies to connection files loaded at startup: the server fails to load a file with no owner. HTTP endpoint connections are not declarative resources and cannot be imported. The error code of a missing owner depends on the kind of connection:
+A `connection` document for an identity provider, an SMS or email provider, an AuthZEN PDP connection, or a service endpoint connection must carry `ouId` or `ouHandle`, because every connection belongs to exactly one organization unit. A document with neither fails to import, and a dry run reports the same failure. The same rule applies to connection files loaded at startup: the server fails to load a file with no owner. The error code of a missing owner depends on the kind of connection:
 
 | Connection kind | Error code |
 |---|---|
 | Identity provider | `IDP-1016` |
 | SMS or email provider | `MNS-1020` |
-| AuthZEN PDP | `CON-1025` |
+| AuthZEN PDP or service endpoint | `CON-1025` |
 
 When a connection document has both `ouId` and `ouHandle`, `ouId` wins. <ProductName /> logs a warning and does not check that the two name the same organization unit. An export writes `ouId` for each connection, not `ouHandle`.
 

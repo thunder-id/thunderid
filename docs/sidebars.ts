@@ -725,6 +725,11 @@ const sidebars: SidebarsConfig = {
               ],
             },
             {
+              type: 'doc',
+              id: 'guides/integrations/service-endpoints',
+              label: 'Service Endpoints',
+            },
+            {
               type: 'category',
               label: 'APIM Gateways',
               collapsed: true,
@@ -812,6 +817,21 @@ const sidebars: SidebarsConfig = {
               type: 'doc',
               id: 'guides/flows/advanced-configurations',
               label: 'Advanced Configurations',
+            },
+            {
+              type: 'doc',
+              id: 'guides/flows/call-your-service',
+              label: 'Call Your Own Service',
+            },
+            {
+              type: 'doc',
+              id: 'guides/flows/custom-authentication',
+              label: 'Add Custom Authentication',
+            },
+            {
+              type: 'doc',
+              id: 'guides/flows/extension-contract',
+              label: 'Extension Request and Response',
             },
           ],
         },

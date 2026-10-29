@@ -1,0 +1,197 @@
+---
+title: Service Endpoint Connections
+docType: guide
+sidebar_position: 5
+persona: iam
+description: Create and manage a service endpoint connection, which holds the URL, timeout, headers, and credential ThunderID uses to call a service your organization runs from a flow.
+---
+
+# Service Endpoint Connections
+
+A service endpoint connection holds where a service your organization runs is and how <ProductName /> authenticates to it: the URL, a timeout, plain headers, and an optional credential. An **Extension** step in a flow calls the service through the connection, so every flow that uses the service shares one definition and the credential is stored once.
+
+In the Console the connection type is **Service endpoint**. In the Connections API its type is `http` and its routes are under `/connections/http`.
+
+## Prerequisites
+
+- <ProductName /> is running. See [Get Started](../../getting-started/get-thunderid.mdx).
+- A service that accepts an HTTPS `POST` with a JSON body. See [Extension Request and Response](../flows/extension-contract.mdx).
+- For the API calls, an access token with the `system` scope.
+
+## Connection Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Display name. Unique in the deployment, at most 255 characters. |
+| `description` | No | Free text, at most 500 characters. |
+| `ouId` | Yes, on create | ID of the organization unit that owns the connection. The organization unit must exist. It cannot change afterwards: on update, leave it out or send the current value. |
+| `url` | Yes | An absolute `http` or `https` URL with a valid host, a port from `1` to `65535`, and no user name or password. It must be `https` when `authentication.type` is not `none`. <ProductName /> stores it with the scheme and host in lower case and the default port removed. |
+| `timeoutMs` | No | From `1` to `20000` milliseconds. `0` or omitted means `10000`. A call that takes longer is treated as an `ERROR` answer. |
+| `headers` | No | A list of `name` and `value` pairs sent on every call. A `PUT` replaces the whole list, so an omitted list means none. |
+| `authentication` | No | How <ProductName /> authenticates to the service. Omitted means `none`, on update as much as on create. See [Authentication](#authentication). |
+
+The URL, including its query string, is not secret. <ProductName /> stores and returns it in clear, so never put a credential in it.
+
+### Headers
+
+Plain header values are stored, returned, and exported in clear. A credential belongs only in `authentication`, where it is encrypted and masked, so <ProductName /> refuses these header names, in any case:
+
+- Names that commonly carry credentials: `Authorization`, `Proxy-Authorization`, `Cookie`, `X-Api-Key`, `Api-Key`, `X-Auth-Token`, and `X-Access-Token`.
+- Names the HTTP client manages: `Host`, `Content-Length`, `Content-Type`, `Transfer-Encoding`, `Connection`, `TE`, `Trailer`, `Upgrade`, `Keep-Alive`, and `Expect`.
+- A name the connection's authentication method sets.
+
+Header names must be valid, unique without regard to case, and values cannot contain line breaks. A refused header fails the request with `CON-1020`.
+
+## Create a Connection in the Console
+
+1. Sign in to the <ProductName /> Console.
+2. Navigate to **Connections**.
+3. Click the **Add custom connection** card.
+4. On the **Connection type** step, select **Service endpoint**, then click **Continue**.
+5. On the **Details** step, enter a **Connection name**, then click **Continue**.
+6. On the **Configure** step, enter the **Endpoint URL**, and choose an **Authentication method**. The default is **None**.
+7. Click **Create connection**.
+
+The Console creates the connection in the organization unit named by the `ouId` claim of your token. If your session does not name one, sign out and sign in again.
+
+The connection starts with a timeout of `10000` ms and no headers. Open the connection to edit the **Timeout in milliseconds** and **HTTP headers**, or to change the authentication. The **General** tab shows the owning organization unit, which you cannot edit. The **Usages** section lists the flows that use the connection.
+
+## Create a Connection With the API
+
+Send a `POST` request to `/connections/http`. Replace `<organization-unit-id>` with the `id` of the owning organization unit, which you can read from `GET /organization-units`:
+
+```bash
+curl -k -X POST https://localhost:8090/connections/http \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Risk Engine",
+    "ouId": "<organization-unit-id>",
+    "url": "https://risk.example.com/evaluate",
+    "timeoutMs": 5000,
+    "headers": [{"name": "X-Tenant", "value": "acme"}],
+    "authentication": {
+      "type": "bearer",
+      "properties": {"token": "<token>"}
+    }
+  }'
+```
+
+The response carries the connection's `id`, which flows reference as `connectionId`. The other routes are `GET /connections/http`, `GET`, `PUT`, and `DELETE /connections/http/{id}`, and `GET /connections/http/{id}/usages`. `GET /connections?category=http` lists them with the standard paginated list. See the [Connections API](../../../apis).
+
+A request without `ouId` fails with `CON-1025`. An `ouId` that does not exist fails with `CON-1023`, and a different `ouId` on update fails with `CON-1024`.
+
+## Authentication
+
+| `authentication.type` | Console label | `properties` | What <ProductName /> sends |
+|-----------------------|---------------|--------------|----------------------------|
+| `none` | **None** | None | No credential. |
+| `basic` | **Username and Password** | `username`, `password` | `Authorization: Basic <base64 of username:password>`. The username cannot contain a colon. |
+| `bearer` | **Bearer token** | `token` | `Authorization: Bearer <token>`. |
+| `api_key` | **API key** | One or more header name and value pairs | Each configured header, with its value. |
+
+Plain headers are applied first, then the credential. A connection with any type other than `none` requires an `https` URL. Use `http` only for a service that receives no credential, such as a local development service.
+
+An unsupported type fails with `CON-1012`. A method with a missing required field, or a `basic` username that contains a colon, fails with `CON-1021`.
+
+### Secrets
+
+The secrets of a connection are the `basic` password, the `bearer` token, and every `api_key` header value.
+
+- **Storage.** <ProductName /> encrypts each secret with the server's configuration key and never stores it in plain text.
+- **Reads.** Every read returns each secret as `******`. The `basic` username and the `api_key` header names are returned in clear. The Console shows a stored secret as set and lets you replace it.
+- **The mask is never stored.** A `basic` password or `bearer` token sent as `******` is refused with `CON-1021`. To keep a secret on update, omit it. An `api_key` header value sent as `******` on update keeps the stored value of that header, and is refused on create.
+- **A changed target drops the secret.** An omitted secret keeps its stored value only while the credential's target is unchanged: the same authentication type, the same username, and the same URL origin (scheme, host, and port). Otherwise the stored secret is dropped, and you must send it again or the update fails with `CON-1021`. This stops an editor from pointing a connection at their own server and collecting its stored password.
+
+In the Console, when you edit the URL's origin, **Save changes** stays disabled until every secret field of the current method holds a new value.
+
+## Delete a Connection
+
+A connection that a flow uses cannot be deleted. The request fails with `CON-1026` while any flow has an Extension step that names the connection, and also while <ProductName /> cannot determine the usages. Remove or reassign the flows first. `GET /connections/http/{id}/usages` lists them.
+
+Deleting a connection that does not exist returns `204`, so a repeated delete is not an error. Requesting the usages of a connection that does not exist returns `404` with `CON-1015`.
+
+An organization unit that still owns a connection cannot be deleted. The request fails with `OU-1006`.
+
+## Declare a Connection as a Resource
+
+You can define a service endpoint connection as a declarative resource, so that it is created with the rest of your configuration. Use `resource_type: connection` and `type: http`, with the same fields as the API request body plus a fixed `id`. Place the file in the `connections` directory of your declarative resources. The document must name the owning organization unit with `ouId` or `ouHandle`. If you give both, `ouId` wins.
+
+```yaml
+resource_type: connection
+id: 0199d1f4-6a1e-7c3b-9f2a-1b2c3d4e5f60
+name: Risk Engine
+ouHandle: default
+type: http
+url: https://risk.example.com/evaluate
+timeoutMs: 5000
+headers:
+  - name: X-Tenant
+    value: acme
+authentication:
+  type: bearer
+  properties:
+    token: "{{.CONNECTION_RISK_ENGINE_TOKEN}}"
+```
+
+Use a template variable for each secret to keep it out of the file, and supply its value in the environment file you load with the resources. The server checks a declarative connection as the API does, so an invalid document, or one with no owner, stops the server from loading it.
+
+A connection loaded from a file is read-only through the API: updates and deletes are refused. To learn how to load declarative resources, see [Declarative Resources](../../deployment/configuration.mdx#declarative-resources).
+
+### Choose the Storage Mode
+
+The `http_connection.store` setting controls where service endpoint connections are read from:
+
+| Value | Behavior |
+|-------|----------|
+| `composite` | The default. Files and the database are both read. Listings merge the two, creates write to the database, and a connection declared in a file is read-only. |
+| `mutable` | The database alone. Connection files are not read. |
+| `declarative` | Files alone. Creates are refused, after the request is validated, so an invalid request still gets its validation error. |
+
+An unrecognized value stops the server from starting.
+
+## Export and Import
+
+An export writes each secret of a service endpoint connection as a template variable in the YAML, and the value in the `.env` file that accompanies it. The variable name is derived from the connection's name and the property, such as `CONNECTION_RISK_ENGINE_TOKEN`. This includes every `api_key` header value. See [Export Resources](../resource-export.mdx).
+
+- An `api_key` header name that contains a dot, or two header names that derive the same variable name, cannot be written as distinct variables. The export refuses that connection with an error that names it and the headers, never a value.
+- An import accepts the same shape. A document for an existing connection is applied as an update under the same rules as the API: an omitted secret is kept only for the same target, and an `api_key` header sent as `******` keeps its stored value. A document for a new connection must carry every secret. A dry run applies the same rules without writing.
+- Header names from imported and declared connections are stored in a canonical form.
+
+See [Import Resources](../declarative-configurations/import-resources.mdx).
+
+## Manage Connections With MCP Tools
+
+<ProductName />'s MCP server offers four tools: `thunderid_list_http_connections`, `thunderid_get_http_connection_by_id`, `thunderid_create_http_connection`, and `thunderid_update_http_connection`. They use the same validation, `https` rule, refused header names, secret retention, and secret masking as the API. No tool deletes a connection, and no tool output contains a secret.
+
+## Errors
+
+| Code | When |
+|------|------|
+| `CON-1012` | The authentication type is not one the server supports. |
+| `CON-1015` | The connection does not exist. Also returned for its usages. |
+| `CON-1016` | Another service endpoint connection has the same name. |
+| `CON-1017` | The name is missing or longer than 255 characters. |
+| `CON-1018` | The URL is not an absolute `http` or `https` URL with a valid host and port and no user name or password, or it is not `https` while the connection sends a credential. |
+| `CON-1019` | `timeoutMs` is outside `1` to `20000`. |
+| `CON-1020` | A header is malformed, repeated, refused, or set by the authentication method. |
+| `CON-1021` | The authentication is invalid for its method, a password or token is `******`, or a changed method, username, or URL origin needs each secret again. |
+| `CON-1022` | The description is longer than 500 characters. |
+| `CON-1023` | The `ouId` does not name an existing organization unit. |
+| `CON-1024` | An update tries to change `ouId`. |
+| `CON-1025` | `ouId` is missing on create. |
+| `CON-1026` | The connection cannot be deleted because a resource uses it. |
+| `CON-1027` | In composite mode, the stored and declared connections together exceed the list limit. |
+
+## Limitations
+
+- **Gateway secret copies.** On a control plane, <ProductName /> writes the value each secret's export reference stands for to the default gateway's store, and removes that copy when the connection is deleted or an update drops the secret, unless another stored connection still refers to the same name. This release applies only to service endpoint connections. The copies of other connection types and variable copies are not released, so deleting those connections leaves their copies in the gateway's store. See [Value References](../declarative-configurations/value-references.mdx).
+- **Gateway import of API key headers.** A gateway import does not accept a `sec:` reference at an `api_key` header value.
+- **Authentication methods.** OAuth client credentials and mutual TLS are not available on the back channel.
+- **Plain headers are not secret.** Do not put a credential in a plain header, the URL, or its query string.
+
+## Next Steps
+
+- [Call Your Own Service from a Flow](../flows/call-your-service.mdx)
+- [Extension Request and Response](../flows/extension-contract.mdx)
+- [Add Custom Authentication](../flows/custom-authentication.mdx)
