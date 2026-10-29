@@ -355,6 +355,16 @@ func resolveAndSetMappedAuthorizationTargets(
 	setMappedAuthorizationTargets(execResp, targets)
 }
 
+// setSyncModes records the connection's sync modes as runtime data for later executors.
+func setSyncModes(execResp *providers.ExecutorResponse, idpDTO *providers.IDPDTO) {
+	var sync *providers.SyncConfiguration
+	if idpDTO.AttributeConfiguration != nil {
+		sync = idpDTO.AttributeConfiguration.Sync
+	}
+	execResp.RuntimeData[common.RuntimeKeyAttributesSyncMode] = string(sync.AttributesMode())
+	execResp.RuntimeData[common.RuntimeKeyGroupsAndRolesSyncMode] = string(sync.GroupsAndRolesMode())
+}
+
 // setMappedAuthorizationTargets splits resolved authorization mapping targets (rule-based or direct)
 // by kind and stores them as runtime data for later executors. Always writes all three keys, even when
 // empty.

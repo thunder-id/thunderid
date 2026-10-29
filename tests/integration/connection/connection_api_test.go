@@ -1206,6 +1206,7 @@ func (s *ConnectionAPITestSuite) validAttributeConfig() *testutils.AttributeConf
 			},
 		}},
 		AccountLinking: &testutils.AccountLinking{Attributes: []string{"email"}},
+		Sync:           &testutils.SyncConfiguration{Attributes: "no_sync", GroupsAndRoles: "session_only"},
 	}
 }
 
@@ -1714,6 +1715,20 @@ func (s *ConnectionAPITestSuite) invalidAttributeConfigs() []invalidAttributeCon
 					TargetType: "not_a_real_type",
 				}}},
 			},
+		},
+		{
+			name: "attributes_sync_override_all",
+			config: &testutils.AttributeConfiguration{
+				Sync: &testutils.SyncConfiguration{Attributes: "override_all"},
+			},
+			wantErrorKey: "error.idpservice.attribute_configuration_invalid_sync_mode_description",
+		},
+		{
+			name: "groups_and_roles_sync_override_received",
+			config: &testutils.AttributeConfiguration{
+				Sync: &testutils.SyncConfiguration{GroupsAndRoles: "override_received"},
+			},
+			wantErrorKey: "error.idpservice.attribute_configuration_invalid_sync_mode_description",
 		},
 	}
 }
