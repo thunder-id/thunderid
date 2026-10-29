@@ -95,9 +95,23 @@ For these, <ProductName /> revokes by **subject**: every token issued to that us
 
 <ProductName /> ships an administration flow that runs when a user is deleted from the Console. It checks the caller's permission, revokes the user's tokens by subject, terminates their sessions, and then removes the record. `flow.userDeletionFlow.defaultHandle` names the flow to run. Pointing it at a different administration flow replaces the shipped one.
 
-:::warning
-Deleting a user through the `DELETE /users/{id}` API removes the record only. It does not run the deletion flow, so the user's tokens stay valid until they expire. To revoke tokens as part of deletion, delete from the Console, or run the deletion flow directly from automation.
-:::
+Deleting a user through the `DELETE /users/{id}` API revokes the same way. The server runs a system flow, built into the server, that revokes the user's tokens by subject and terminates their sessions before the record goes. If the revocation fails, the user is not deleted.
+
+### Role Deletion
+
+Deleting a role revokes the tokens its holders carry with the role's permissions, for every user, group member, and application the role is assigned to, and then removes the role. This happens whichever way the role is deleted: from the Console, or through the `DELETE /roles/{id}` API. If the revocation fails, the role is not deleted.
+
+### Role Assignment Removal
+
+Removing a role from a user, group, or application revokes the tokens that assignee carries with the role's permissions; for a group, the tokens of its members. This happens whichever way the assignment is removed: from the Console, or through the `POST /roles/{id}/assignments/remove` API. Removing an assignment the role does not have revokes nothing. If the revocation fails, no assignment is removed.
+
+### Group Deletion
+
+Deleting a group revokes the tokens its members carry with the permissions of the roles assigned to the group, and then removes the group, its role assignments, and its memberships. This happens whichever way the group is deleted: from the Console, through the `DELETE /groups/{id}` API, or through SCIM. If the revocation fails, the group is not deleted.
+
+### Group Membership Removal
+
+Removing a member from a group revokes the tokens the member carries with the permissions of the roles assigned to the group; for a member group, the tokens of its members. This happens whichever way the member is removed: from the Console, through the `POST /groups/{id}/members/remove` API, or through SCIM. Removing a user or group that is not a member revokes nothing. If the revocation fails, no member is removed.
 
 ### Account Suspension
 

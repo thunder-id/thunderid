@@ -1083,7 +1083,8 @@ func (s *flowExecService) ExecuteSystemFlow(ctx context.Context, sysCtx *SystemF
 	}
 	switch flowStep.Status {
 	case providers.FlowStatusComplete:
-		return &SystemFlowResult{ExecutionID: engineCtx.ExecutionID}, nil
+		return &SystemFlowResult{ExecutionID: engineCtx.ExecutionID,
+			SharedRuntimeData: engineCtx.sharedRuntimeData}, nil
 	case providers.FlowStatusError:
 		if flowStep.Error != nil {
 			return nil, flowStep.Error

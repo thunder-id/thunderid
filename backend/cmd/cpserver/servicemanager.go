@@ -82,6 +82,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // observabilitySvc is the observability service instance. This is used for graceful shutdown.
@@ -248,12 +249,17 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		valueCapture,
 	)
 	fatalOnError(ctx, logger, err, "Failed to initialize UserService")
+	// This plane issues no tokens and holds no sessions, so a change here invalidates nothing; the
+	// gateway a version is applied to revokes when its own import makes the change. Set explicitly:
+	// a service with no executor refuses the change.
+	userService.SetSystemFlowExecutor(noSystemFlow)
 	exporters = append(exporters, userExporter)
 
 	groupService, ouGroupResolver, groupExporter, err := group.Initialize(
 		mux, dbprovider.GetDBProvider(), ouService, entityService, entityTypeService, ouAuthzService,
 	)
 	fatalOnError(ctx, logger, err, "Failed to initialize GroupService")
+	groupService.SetSystemFlowExecutor(noSystemFlow)
 	exporters = append(exporters, groupExporter)
 
 	httpConnectionService, err := httpconnection.Initialize(runtime.Config.HTTPConnection, ouService)
@@ -263,6 +269,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		mux, entityService, groupService, ouService, resourceService, entityTypeService, ouAuthzService,
 	)
 	fatalOnError(ctx, logger, err, "Failed to initialize RoleService")
+	roleService.SetSystemFlowExecutor(noSystemFlow)
+	roleAssignmentService.SetSystemFlowExecutor(noSystemFlow)
 	exporters = append(exporters, roleExporter)
 
 	// Two-phase initialization: inject user/group/role resolvers into OU service.
@@ -518,4 +526,10 @@ func buildHashConfig() (cryptolib.HashConfig, error) {
 	default:
 		return cryptolib.HashConfig{}, fmt.Errorf("unrecognized password hashing algorithm %q", cfg.Algorithm)
 	}
+}
+
+// noSystemFlow runs no system flow, for a plane that issues no tokens and holds no sessions.
+func noSystemFlow(context.Context, string, map[string]string) (func(context.Context) *tidcommon.ServiceError,
+	*tidcommon.ServiceError) {
+	return func(context.Context) *tidcommon.ServiceError { return nil }, nil
 }

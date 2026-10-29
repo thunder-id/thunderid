@@ -108,7 +108,7 @@ func newAccessChangeValidator(factory core.FlowFactoryInterface, roles roleAdmin
 	assignments roleAssignmentAdminProvider, resources resourceAdminProvider) *accessChangeValidator {
 	base := factory.CreateExecutor(ExecutorNameAccessChangeValidator, providers.ExecutorTypeUtility, nil, nil,
 		&providers.ExecutorMeta{
-			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeAdministration},
+			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeAdministration, providers.FlowTypeSystem},
 			SupportedModes:     slices.Sorted(maps.Keys(accessChangesByMode)),
 		})
 	return &accessChangeValidator{

@@ -1,0 +1,35 @@
+{
+  "id": "019a1f40-6a1c-7000-8000-5e5713d00007",
+  "handle": "system-group-delete",
+  "name": "Group deletion",
+  "flowType": "SYSTEM",
+  "nodes": [
+    {
+      "id": "start",
+      "type": "START",
+      "onSuccess": "pre_group_deletion"
+    },
+    {
+      "id": "pre_group_deletion",
+      "type": "TASK_EXECUTION",
+      "executor": {
+        "name": "AccessChangeValidator",
+        "mode": "group_deletion"
+      },
+      "onSuccess": "revoke_scopes"
+    },
+    {
+      "id": "revoke_scopes",
+      "type": "TASK_EXECUTION",
+      "executor": {
+        "name": "CriteriaRevocationExecutor",
+        "mode": "revoke"
+      },
+      "onSuccess": "end"
+    },
+    {
+      "id": "end",
+      "type": "END"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "id": "019a1f40-6a1c-7000-8000-5e5713d00008",
+  "handle": "system-group-membership-removal",
+  "name": "Group membership removal",
+  "flowType": "SYSTEM",
+  "nodes": [
+    {
+      "id": "start",
+      "type": "START",
+      "onSuccess": "pre_group_membership_removal"
+    },
+    {
+      "id": "pre_group_membership_removal",
+      "type": "TASK_EXECUTION",
+      "executor": {
+        "name": "AccessChangeValidator",
+        "mode": "group_membership_removal"
+      },
+      "onSuccess": "revoke_scopes"
+    },
+    {
+      "id": "revoke_scopes",
+      "type": "TASK_EXECUTION",
+      "executor": {
+        "name": "CriteriaRevocationExecutor",
+        "mode": "revoke"
+      },
+      "onSuccess": "end"
+    },
+    {
+      "id": "end",
+      "type": "END"
+    }
+  ]
+}

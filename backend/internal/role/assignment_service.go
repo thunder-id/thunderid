@@ -42,7 +42,16 @@ type RoleAssignmentServiceInterface interface {
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	CascadeDeleteDependencies(ctx context.Context, resourceType, id string) (int, error)
+	// SetSystemFlowExecutor injects what runs the system flows a change needs before it is written.
+	SetSystemFlowExecutor(execute func(ctx context.Context, handle string, inputs map[string]string) (
+		func(context.Context) *tidcommon.ServiceError, *tidcommon.ServiceError))
 }
+
+// The system flow removing a role assignment runs, and the input naming the assignee it acts on.
+const (
+	systemFlowRoleAssignmentRemoval = "system-role-assignment-removal"
+	systemFlowInputAssignee         = "targetAssigneeId"
+)
 
 // roleAssignmentService is the default implementation of RoleAssignmentServiceInterface.
 type roleAssignmentService struct {
@@ -53,6 +62,10 @@ type roleAssignmentService struct {
 	resourceService   resourcepkg.ResourceServiceInterface
 	transactioner     providers.Transactioner
 	authzService      sysauthz.SystemAuthorizationServiceInterface
+	// executeSystemFlow runs a system flow to completion with the given inputs, and returns what finishes
+	// its revocation once the change is written.
+	executeSystemFlow func(ctx context.Context, handle string, inputs map[string]string) (
+		func(context.Context) *tidcommon.ServiceError, *tidcommon.ServiceError)
 }
 
 // newRoleAssignmentService creates a new instance of roleAssignmentService.
@@ -249,7 +262,7 @@ func (as *roleAssignmentService) getAssignmentsByEntityCategory(
 // Assignments can be added to both mutable (DB-backed) and declarative (file-backed) roles.
 func (as *roleAssignmentService) AddAssignments(
 	ctx context.Context, id string, assignments []RoleAssignment) *tidcommon.ServiceError {
-	return as.modifyAssignments(ctx, id, assignments,
+	return as.modifyAssignments(ctx, id, assignments, nil,
 		as.roleStore.AddAssignments,
 		"add assignments to role", "added assignments to role")
 }
@@ -258,9 +271,90 @@ func (as *roleAssignmentService) AddAssignments(
 // Assignments can be removed from both mutable (DB-backed) and declarative (file-backed) roles.
 func (as *roleAssignmentService) RemoveAssignments(
 	ctx context.Context, id string, assignments []RoleAssignment) *tidcommon.ServiceError {
-	return as.modifyAssignments(ctx, id, assignments,
+	return as.modifyAssignments(ctx, id, assignments, as.revokeRemovedAssignments,
 		as.roleStore.RemoveAssignments,
 		"remove assignments from role", "removed assignments from role")
+}
+
+// SetSystemFlowExecutor injects what runs the system flows a change needs before it is written. Called
+// by servicemanager once the flow engine exists, which is after this service.
+func (as *roleAssignmentService) SetSystemFlowExecutor(execute func(ctx context.Context, handle string,
+	inputs map[string]string) (func(context.Context) *tidcommon.ServiceError, *tidcommon.ServiceError)) {
+	as.executeSystemFlow = execute
+}
+
+// revokeRemovedAssignments revokes what each removed assignment granted before the removal is written,
+// whichever entry point asked: the tokens its assignee carries with the role's permissions. An
+// assignment the role does not hold changes nothing, so it revokes nothing. A refusal leaves every
+// assignment as it was. What it returns finishes each revocation once the removal is written.
+func (as *roleAssignmentService) revokeRemovedAssignments(ctx context.Context, id string,
+	assignments []RoleAssignment) (func(context.Context) *tidcommon.ServiceError, *tidcommon.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, assignmentLoggerComponentName))
+	held, svcErr := as.heldAssignments(ctx, id, assignments, logger)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if len(held) == 0 {
+		return nil, nil
+	}
+	if as.executeSystemFlow == nil {
+		logger.Error(ctx, "System flow executor not set; refusing the change",
+			log.String("handle", systemFlowRoleAssignmentRemoval))
+		return nil, &tidcommon.InternalServerError
+	}
+	finishes := make([]func(context.Context) *tidcommon.ServiceError, 0, len(held))
+	for _, assigneeID := range held {
+		finish, svcErr := as.executeSystemFlow(ctx, systemFlowRoleAssignmentRemoval, map[string]string{
+			systemFlowInputRole: id, systemFlowInputAssignee: assigneeID,
+		})
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		finishes = append(finishes, finish)
+	}
+	return func(ctx context.Context) *tidcommon.ServiceError {
+		for _, finish := range finishes {
+			if svcErr := finish(ctx); svcErr != nil {
+				return svcErr
+			}
+		}
+		return nil
+	}, nil
+}
+
+// heldAssignments returns the ids of the given assignees the role holds directly, in the order given.
+func (as *roleAssignmentService) heldAssignments(ctx context.Context, id string, assignments []RoleAssignment,
+	logger *log.Logger) ([]string, *tidcommon.ServiceError) {
+	total, err := as.roleStore.GetRoleAssignmentsCount(ctx, id)
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, &ResultLimitExceededInCompositeMode
+		}
+		logger.Error(ctx, "Failed to get role assignments count", log.String("id", id), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	present := make(map[string]bool, total)
+	for offset := 0; offset < total; offset += serverconst.MaxPageSize {
+		page, err := as.roleStore.GetRoleAssignments(ctx, id, serverconst.MaxPageSize, offset)
+		if err != nil {
+			if errors.Is(err, errResultLimitExceededInCompositeMode) {
+				return nil, &ResultLimitExceededInCompositeMode
+			}
+			logger.Error(ctx, "Failed to get role assignments", log.String("id", id), log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+		for _, assignment := range page {
+			present[assignment.ID] = true
+		}
+	}
+	held := []string{}
+	for _, assignment := range assignments {
+		if present[assignment.ID] {
+			held = append(held, assignment.ID)
+			delete(present, assignment.ID)
+		}
+	}
+	return held, nil
 }
 
 // ValidateRemoveAssignment runs the checks RemoveAssignments runs.
@@ -318,6 +412,8 @@ func (as *roleAssignmentService) modifyAssignments(
 	ctx context.Context,
 	id string,
 	assignments []RoleAssignment,
+	beforeWrite func(context.Context, string, []RoleAssignment) (
+		func(context.Context) *tidcommon.ServiceError, *tidcommon.ServiceError),
 	storeOp func(context.Context, string, []RoleAssignment) error,
 	action, successAction string,
 ) *tidcommon.ServiceError {
@@ -332,6 +428,13 @@ func (as *roleAssignmentService) modifyAssignments(
 	normalized, svcErr := as.prepareAssignments(ctx, id, assignments)
 	if svcErr != nil {
 		return svcErr
+	}
+	// What beforeWrite returns, if anything, is run once the write has committed.
+	var afterWrite func(context.Context) *tidcommon.ServiceError
+	if beforeWrite != nil {
+		if afterWrite, svcErr = beforeWrite(ctx, id, normalized); svcErr != nil {
+			return svcErr
+		}
 	}
 
 	var capturedSvcErr *tidcommon.ServiceError
@@ -352,6 +455,11 @@ func (as *roleAssignmentService) modifyAssignments(
 		logger.Error(ctx, "Failed to modify role assignments",
 			log.String("action", action), log.String("id", id), log.Error(err))
 		return &tidcommon.InternalServerError
+	}
+	if afterWrite != nil {
+		if svcErr := afterWrite(ctx); svcErr != nil {
+			return svcErr
+		}
 	}
 
 	logger.Debug(ctx, "Successfully modified role assignments",

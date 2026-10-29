@@ -662,8 +662,9 @@ func (ts *RefreshSecurityTestSuite) TestRefresh_NoChange_KeepsPermissionScopes()
 	ts.Assert().Contains(scopes, "write", "refreshed token should retain write")
 }
 
-// Unassigning the role must stop the refresh token minting the permissions it granted.
-func (ts *RefreshSecurityTestSuite) TestRefresh_RoleUnassigned_DropsPermissionScopes() {
+// Unassigning the role revokes the refresh token that carried its permissions, as the Console's
+// assignment removal does, and a new sign-in no longer gets them.
+func (ts *RefreshSecurityTestSuite) TestRefresh_RoleUnassigned_RejectsTokenAndDropsPermissionScopes() {
 	userID := ts.createUser("refresh_sec_unassign")
 	roleID := ts.createRole("RefreshSec_Unassign", userID, []string{"read", "write"})
 
@@ -674,17 +675,19 @@ func (ts *RefreshSecurityTestSuite) TestRefresh_RoleUnassigned_DropsPermissionSc
 		{ID: userID, Type: "user"},
 	}), "Failed to unassign role")
 
-	refreshed, err := testutils.RefreshAccessToken(refreshSecClientID, refreshSecClientSecret, tokens.RefreshToken)
-	ts.Require().NoError(err, "Refresh should still succeed, with narrowed scopes")
+	_, err := testutils.RefreshAccessToken(refreshSecClientID, refreshSecClientSecret, tokens.RefreshToken)
+	ts.Require().Error(err, "The refresh token carried the role's permissions, so it must be revoked")
+	ts.Assert().Contains(err.Error(), "invalid_grant", "Rejection should be invalid_grant")
 
-	scopes := ts.accessTokenScopes(refreshed.AccessToken)
-	ts.Assert().NotContains(scopes, "read", "refreshed token must not carry read after unassignment")
-	ts.Assert().NotContains(scopes, "write", "refreshed token must not carry write after unassignment")
+	fresh := ts.obtainTokens(refreshSecClientID, refreshSecClientSecret, "refresh_sec_unassign", "openid read write")
+	scopes := ts.accessTokenScopes(fresh.AccessToken)
+	ts.Assert().NotContains(scopes, "read", "a new token must not carry read after unassignment")
+	ts.Assert().NotContains(scopes, "write", "a new token must not carry write after unassignment")
 	ts.Assert().Contains(scopes, "openid", "OIDC scopes are not permissions and must survive")
 }
 
 // Deleting the role entirely has the same effect as unassigning it.
-func (ts *RefreshSecurityTestSuite) TestRefresh_RoleDeleted_DropsPermissionScopes() {
+func (ts *RefreshSecurityTestSuite) TestRefresh_RoleDeleted_RejectsTokenAndDropsPermissionScopes() {
 	userID := ts.createUser("refresh_sec_roledelete")
 	roleID := ts.createRole("RefreshSec_RoleDelete", userID, []string{"read", "write"})
 
@@ -693,12 +696,14 @@ func (ts *RefreshSecurityTestSuite) TestRefresh_RoleDeleted_DropsPermissionScope
 
 	ts.Require().NoError(testutils.DeleteRole(roleID), "Failed to delete role")
 
-	refreshed, err := testutils.RefreshAccessToken(refreshSecClientID, refreshSecClientSecret, tokens.RefreshToken)
-	ts.Require().NoError(err, "Refresh should still succeed, with narrowed scopes")
+	_, err := testutils.RefreshAccessToken(refreshSecClientID, refreshSecClientSecret, tokens.RefreshToken)
+	ts.Require().Error(err, "The refresh token carried the role's permissions, so it must be revoked")
+	ts.Assert().Contains(err.Error(), "invalid_grant", "Rejection should be invalid_grant")
 
-	scopes := ts.accessTokenScopes(refreshed.AccessToken)
-	ts.Assert().NotContains(scopes, "read", "refreshed token must not carry read after role deletion")
-	ts.Assert().NotContains(scopes, "write", "refreshed token must not carry write after role deletion")
+	fresh := ts.obtainTokens(refreshSecClientID, refreshSecClientSecret, "refresh_sec_roledelete", "openid read write")
+	scopes := ts.accessTokenScopes(fresh.AccessToken)
+	ts.Assert().NotContains(scopes, "read", "a new token must not carry read after role deletion")
+	ts.Assert().NotContains(scopes, "write", "a new token must not carry write after role deletion")
 }
 
 // Stripping one permission from the role narrows the refreshed token to the permissions that remain.
