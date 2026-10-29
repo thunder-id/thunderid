@@ -108,6 +108,20 @@ func (suite *AgentServiceTestSuite) TestCapture_FallsBackToTheIDWithoutADisplayA
 	assert.Equal(suite.T(), testAgentID, capturer.captured(suite).Display)
 }
 
+// The owner is captured with the agent, since the export refers to it by name.
+func (suite *AgentServiceTestSuite) TestCapture_CarriesTheOwner() {
+	svc, _, _, _, _ := suite.setupService()
+	capturer := &recordingCapturer{}
+	svc.valueCapturer = capturer
+	suite.withDisplayPaths(svc, "")
+
+	svc.captureValues(context.Background(), &model.AgentCompleteResponse{
+		ID: testAgentID, Type: testAgentType, Owner: "owner-1",
+	})
+
+	assert.Equal(suite.T(), "owner-1", capturer.captured(suite).Owner)
+}
+
 // A create that fails captures nothing.
 func (suite *AgentServiceTestSuite) TestCreateAgent_FailureCapturesNothing() {
 	svc, _, _, _, _ := suite.setupService()

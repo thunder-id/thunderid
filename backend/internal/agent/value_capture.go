@@ -27,6 +27,7 @@ func (s *agentService) captureValues(ctx context.Context, agent *model.AgentComp
 		OUID:              agent.OUID,
 		Type:              agent.Type,
 		Display:           sysutils.ResolveDisplay(agent.ID, agent.Type, agent.Attributes, displayPaths),
+		Owner:             agent.Owner,
 		InboundAuthConfig: agent.InboundAuthConfig,
 	})
 }

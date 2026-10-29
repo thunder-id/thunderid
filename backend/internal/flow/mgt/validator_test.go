@@ -1492,6 +1492,38 @@ func (s *ValidatorTestSuite) TestValidateModeFlowTypes_IdentityGovernance() {
 	}
 }
 
+// The owner resolver asks for an owner only where someone can answer, and takes the caller only in a
+// system flow.
+func (s *ValidatorTestSuite) TestValidateModeFlowTypes_OwnerResolver() {
+	cases := []struct {
+		mode     string
+		flowType providers.FlowType
+		allowed  bool
+	}{
+		{executor.ExecutorModeOwnerSelect, providers.FlowTypeAdministration, true},
+		{executor.ExecutorModeOwnerSelect, providers.FlowTypeRegistration, true},
+		{executor.ExecutorModeOwnerSelect, providers.FlowTypeSystem, false},
+		{executor.ExecutorModeOwnerCaller, providers.FlowTypeSystem, true},
+		{executor.ExecutorModeOwnerCaller, providers.FlowTypeAdministration, false},
+		{executor.ExecutorModeOwnerCaller, providers.FlowTypeRegistration, false},
+	}
+	for _, tc := range cases {
+		s.Run(tc.mode+"/"+string(tc.flowType), func() {
+			nodes := companionNodes(executor.ExecutorNameOwnerResolver)
+			nodes[1].Executor.Mode = tc.mode
+
+			err := s.v.validateModeFlowTypes(tc.flowType, nodes)
+
+			if tc.allowed {
+				s.Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Tests for validateCompanionExecutors
 // ---------------------------------------------------------------------------

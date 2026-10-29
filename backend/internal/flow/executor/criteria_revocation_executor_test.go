@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -99,6 +100,53 @@ func (s *CriteriaRevocationExecutorTestSuite) TestAdvanceCutoff_SkipsTerminalPla
 	s.Require().NoError(err)
 	s.Equal(providers.ExecComplete, resp.Status)
 	revoker.AssertNotCalled(s.T(), "RevokeCriteriaBatch", mock.Anything, mock.Anything)
+}
+
+// A service that writes its change after the system flow advances a before-action plan's cutoff to now.
+func (s *CriteriaRevocationExecutorTestSuite) TestAdvanceRevocationCutoff_AdvancesABeforeActionPlan() {
+	revoker := revocationmock.NewCriteriaRevokerInterfaceMock(s.T())
+	plan := roleDeletionPlan()
+	plan.Cutoff = time.Now().UTC().Add(-time.Hour)
+	revoker.On("RevokeCriteriaBatch", mock.Anything,
+		mock.MatchedBy(func(batch []revocation.CriteriaRevocation) bool {
+			return len(batch) == 1 && batch[0].Cutoff.After(plan.Cutoff) &&
+				batch[0].Mode == revocation.ModeBeforeAction && batch[0].Criterion == plan.Criteria[0]
+		})).Return(nil).Once()
+
+	err := AdvanceRevocationCutoff(context.Background(), revoker,
+		withRevocationPlan(s.T(), "", plan).SharedRuntimeData)
+
+	s.NoError(err)
+}
+
+// A plan that revokes everything has no cutoff to advance, and one that revokes nothing writes nothing.
+func (s *CriteriaRevocationExecutorTestSuite) TestAdvanceRevocationCutoff_WritesNothingWithoutABoundedPlan() {
+	for name, plan := range map[string]revocationPlan{
+		"revoke all": {Mode: revocation.ModeAll, Reason: revocation.ReasonApplicationDeleted,
+			Criteria: []revocation.Criterion{{Type: revocation.CriterionTypeApplicationKey, Value: "client-1"}}},
+		"nothing to revoke": {Mode: revocation.ModeBeforeAction, Reason: revocation.ReasonRoleDeleted,
+			NothingToRevoke: true},
+	} {
+		s.Run(name, func() {
+			revoker := revocationmock.NewCriteriaRevokerInterfaceMock(s.T())
+
+			err := AdvanceRevocationCutoff(context.Background(), revoker,
+				withRevocationPlan(s.T(), "", plan).SharedRuntimeData)
+
+			s.NoError(err)
+		})
+	}
+}
+
+// Without a plan, or when the revocation cannot be recorded, advancing fails.
+func (s *CriteriaRevocationExecutorTestSuite) TestAdvanceRevocationCutoff_Fails() {
+	s.Error(AdvanceRevocationCutoff(context.Background(), revocationmock.NewCriteriaRevokerInterfaceMock(s.T()),
+		map[string]string{}))
+
+	revoker := revocationmock.NewCriteriaRevokerInterfaceMock(s.T())
+	revoker.On("RevokeCriteriaBatch", mock.Anything, mock.Anything).Return(&tidcommon.InternalServerError).Once()
+	s.Error(AdvanceRevocationCutoff(context.Background(), revoker,
+		withRevocationPlan(s.T(), "", roleDeletionPlan()).SharedRuntimeData))
 }
 
 func (s *CriteriaRevocationExecutorTestSuite) TestRefusesAnUnsupportedMode() {

@@ -24,7 +24,7 @@ Creating an agent gives that agent its own identity in <ProductName />, with its
 2. If the organization hierarchy requires it, choose an **Organization Unit**.
 3. Enter an **Agent name** (type one or pick a suggestion).
 4. If the agent schema defines attributes, fill them in.
-5. Choose an **Owner** (defaults to the creator), the person accountable for the agent throughout its lifecycle.
+5. Optionally, choose an **Owner** (defaults to the creator), the person accountable for the agent throughout its lifecycle. On a control plane the owner has no default: choose a user the control plane holds, or leave the agent without an owner. Each gateway an owned agent is applied to must hold that user, or a value for the agent's `AGENT_<NAME>_OWNER` variable naming one of its own users. See [Agent Owners](../../resource-export#agent-owners).
 6. Click **Create**.
 
 </TabItem>
@@ -42,7 +42,7 @@ curl -X POST https://localhost:8090/agents \
   }'
 ```
 
-`ouId`, `type`, and `name` are required; `owner` and `attributes` are optional. `type` is the agent type's name. <ProductName /> ships a single agent type, `default`, and does not accept others. See the [Agents API Reference](../../../apis#tag/agents) for the create request and all fields.
+`ouId`, `type`, and `name` are required, and `attributes` is optional. `owner` is optional and defaults to the caller, except on a control plane, where an agent created without one has no owner, and an owner given must be a user the control plane holds or the request fails with `AGT-1045`. `type` is the agent type's name. <ProductName /> ships a single agent type, `default`, and does not accept others. See the [Agents API Reference](../../../apis#tag/agents) for the create request and all fields.
 
 </TabItem>
 </Tabs>
@@ -61,7 +61,7 @@ Through the API, update an agent with `PUT /agents/<AGENT_ID>`, sending only the
 
 ### Identifiers and owner
 
-Every agent has an **Agent ID**, its identity in <ProductName />, and an **Owner**, the person accountable for it. The owner is the contact point for what the agent does. Assigning one grants that user no access to the agent.
+Every agent has an **Agent ID**, its identity in <ProductName />, and can have an **Owner**, the person accountable for it. The owner is the contact point for what the agent does. Assigning one grants that user no access to the agent.
 
 - **Console:** the **Overview** tab shows the Agent ID and owner under **Agent details**, and the **Advanced** tab is where the owner is changed.
 - **API:** `GET /agents/<AGENT_ID>` returns both.

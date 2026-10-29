@@ -113,6 +113,8 @@ var defaultMessages = map[string]string{
 	"error.agentservice.none_auth_method_requires_public_client_description": "'none' authentication method requires the client to be a public client",
 	"error.agentservice.organization_unit_not_found": "Organization unit not found",
 	"error.agentservice.organization_unit_not_found_description": "The specified organization unit does not exist",
+	"error.agentservice.owner_not_a_user": "Owner is not a user",
+	"error.agentservice.owner_not_a_user_description": "An agent's owner must be a user this deployment holds",
 	"error.agentservice.owner_not_found": "Owner not found",
 	"error.agentservice.owner_not_found_description": "The specified owner does not match any known user, application, or agent",
 	"error.agentservice.pkce_requires_authorization_code_description": "PKCE can only be enabled when the authorization_code grant type is selected",

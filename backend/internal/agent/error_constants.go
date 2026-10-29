@@ -486,6 +486,20 @@ var (
 		},
 	}
 
+	// ErrorOwnerNotAUser is returned when an agent on a control plane names an owner that is not a user.
+	ErrorOwnerNotAUser = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1045",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.owner_not_a_user",
+			DefaultValue: "Owner is not a user",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.owner_not_a_user_description",
+			DefaultValue: "An agent's owner must be a user this deployment holds",
+		},
+	}
+
 	// ErrorInvalidSubjectAttributeMapping is returned when the subject attribute mapping references an
 	// attribute that is not unique, required, and string-typed in an allowed agent type.
 	ErrorInvalidSubjectAttributeMapping = tidcommon.ServiceError{

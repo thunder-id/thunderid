@@ -77,6 +77,9 @@ const (
 	ExecutorModeRevoke        = "revoke"
 	ExecutorModeAdvanceCutoff = "advance_cutoff"
 
+	ExecutorModeOwnerSelect = "select"
+	ExecutorModeOwnerCaller = "caller"
+
 	ExecutorModeUnlock    = "unlock"
 	ExecutorModeSuspend   = "suspend"
 	ExecutorModeUnsuspend = "unsuspend"

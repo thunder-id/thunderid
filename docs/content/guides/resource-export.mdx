@@ -123,6 +123,27 @@ identifier: {{.RESOURCE_SERVER_ORDERS_API_IDENTIFIER}}
 
 Its resources, actions, and delimiter are exported as they are.
 
+## Agent Owners
+
+An agent's `owner` is a user, and each deployment holds its own users, so an agent's owner is exported
+as a template variable too. An agent named `Course Agent` exports:
+
+```yaml
+owner: {{.AGENT_COURSE_AGENT_OWNER}}
+```
+
+Every deployment the agent is imported into is given the owner it has there. An import whose owner is
+no user that deployment holds is refused with `AGT-1039`. The owner is optional: an agent without one
+exports no `owner`, and a deployment needs no value for it.
+
+On a control plane, an agent created without an owner has none. The control plane's own caller signs
+in through a trusted issuer and is not a user the control plane holds, so an agent is never made the
+caller's, and the caller cannot be named its owner. An owner given must be a user the control plane
+holds; anything else is refused with `AGT-1045`. The control plane captures the owner's ID to its
+default gateway, so apply the user along with the agent. On any other gateway, set the agent's owner
+variable to a user that gateway holds. Configuration imported into a control plane names the owner by
+its reference, which the control plane keeps as it is.
+
 ## Exports From a Control Plane
 
 What an export contains depends on the plane you export from. A data plane holds its own values, so

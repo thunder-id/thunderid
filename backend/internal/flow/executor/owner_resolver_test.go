@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
@@ -52,7 +54,7 @@ func (suite *OwnerResolverTestSuite) SetupTest() {
 }
 
 // An owner picker is offered while an entity is being onboarded, so the executor must be usable in a
-// registration flow as well as an administration one.
+// registration flow as well as an administration one, and a system flow takes the caller as the owner.
 func (suite *OwnerResolverTestSuite) TestSupportedFlowTypes() {
 	mockFactory := coremock.NewFlowFactoryInterfaceMock(suite.T())
 	mockExec := coremock.NewExecutorInterfaceMock(suite.T())
@@ -70,7 +72,60 @@ func (suite *OwnerResolverTestSuite) TestSupportedFlowTypes() {
 	suite.ElementsMatch([]providers.FlowType{
 		providers.FlowTypeAdministration,
 		providers.FlowTypeRegistration,
+		providers.FlowTypeSystem,
 	}, meta.SupportedFlowTypes)
+	suite.Equal(ExecutorModeOwnerSelect, meta.DefaultMode)
+	suite.Equal([]string{ExecutorModeOwnerCaller, ExecutorModeOwnerSelect}, meta.SupportedModes)
+}
+
+// callerNodeContext is a system flow's node in caller mode, run for the given caller.
+func callerNodeContext(caller string) *providers.NodeContext {
+	ctx := context.Background()
+	if caller != "" {
+		ctx = security.WithSecurityContextTest(ctx,
+			security.NewSecurityContextForTest(caller, "", "token", nil, nil))
+	}
+	return &providers.NodeContext{
+		Context:      ctx,
+		ExecutionID:  ownerExecutionID,
+		FlowType:     providers.FlowTypeSystem,
+		ExecutorMode: ExecutorModeOwnerCaller,
+		UserInputs:   map[string]string{},
+		RuntimeData:  map[string]string{},
+	}
+}
+
+// Without an owner supplied, the caller creating the entity owns it, shared with the service that ran
+// the flow rather than asked for.
+func (suite *OwnerResolverTestSuite) TestCallerModeMakesTheCallerTheOwner() {
+	resp, err := suite.executor.Execute(callerNodeContext(testOwnerUserID))
+
+	suite.NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal(map[string]string{common.RuntimeKeyOwner: testOwnerUserID}, resp.SharedRuntimeData)
+	suite.Empty(resp.Inputs, "a system flow has nobody to ask")
+}
+
+// A supplied owner stays the owner, and the service creating the entity verifies it.
+func (suite *OwnerResolverTestSuite) TestCallerModeKeepsASuppliedOwner() {
+	ctx := callerNodeContext(testOwnerUserID)
+	ctx.UserInputs[ownerKey] = testOtherUserID
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Empty(resp.SharedRuntimeData)
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "GetEntityProfile", mock.Anything)
+}
+
+// With no caller either, the entity is created without an owner, as it was before the flow.
+func (suite *OwnerResolverTestSuite) TestCallerModeWithoutACallerLeavesNoOwner() {
+	resp, err := suite.executor.Execute(callerNodeContext(""))
+
+	suite.NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Empty(resp.SharedRuntimeData)
 }
 
 func ownerNodeContext() *providers.NodeContext {

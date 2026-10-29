@@ -19,6 +19,17 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
+// Option configures the agent service for the plane it runs on.
+type Option func(*agentService)
+
+// OwnedByUsersHeld is for a control plane. Its caller signs in through a trusted issuer and is no user
+// any deployment holds, so an owner given must be a user the control plane holds, whose ID each data
+// plane is given through the reference the export writes. An owner that is already such a reference,
+// as configuration imported into the control plane carries, is kept as it is.
+func OwnedByUsersHeld() Option {
+	return func(s *agentService) { s.ownedByUsersHeld = true }
+}
+
 // Initialize wires the agent service, registers HTTP routes and returns the service and exporter.
 //
 // valueCapturer is optional. Given one, the service hands it every agent it creates or changes, so the
@@ -33,9 +44,13 @@ func Initialize(
 	governance identitygovernance.IdentityGovernanceServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	options ...Option,
 ) (AgentServiceInterface, declarativeresource.ResourceExporter, error) {
 	service := newAgentService(authzService, entityService, inboundClientService, ouService, roleService,
 		governance, valueCapturer, entityTypeService)
+	for _, option := range options {
+		option(service)
+	}
 
 	if err := entityService.LoadIndexedAttributes(getAgentIndexedAttributes()); err != nil {
 		return nil, nil, err

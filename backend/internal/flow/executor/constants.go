@@ -90,6 +90,9 @@ const (
 	ExecutorModeRevoke        = executormeta.ExecutorModeRevoke
 	ExecutorModeAdvanceCutoff = executormeta.ExecutorModeAdvanceCutoff
 
+	ExecutorModeOwnerSelect = executormeta.ExecutorModeOwnerSelect
+	ExecutorModeOwnerCaller = executormeta.ExecutorModeOwnerCaller
+
 	ExecutorModeUnlock    = executormeta.ExecutorModeUnlock
 	ExecutorModeSuspend   = executormeta.ExecutorModeSuspend
 	ExecutorModeUnsuspend = executormeta.ExecutorModeUnsuspend

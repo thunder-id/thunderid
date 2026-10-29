@@ -20,6 +20,11 @@ const (
 	fieldClientSecret = authnprovidercm.CredentialTypeClientSecret
 )
 
+// systemFlowAgentCreate is the system flow an agent's creation runs before the agent is written. It
+// takes the requested owner as its fieldOwner input and, when none is requested, shares the owner it
+// resolved under the same key.
+const systemFlowAgentCreate = "system-agent-create"
+
 // propLogoURL is the inbound-client PROPERTIES key holding the agent logo.
 const propLogoURL = "logo_url"
 

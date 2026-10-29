@@ -1,0 +1,26 @@
+{
+  "id": "019a1f40-6a1c-7000-8000-5e5713d0000a",
+  "handle": "system-agent-create",
+  "name": "Agent creation",
+  "flowType": "SYSTEM",
+  "nodes": [
+    {
+      "id": "start",
+      "type": "START",
+      "onSuccess": "resolve_owner"
+    },
+    {
+      "id": "resolve_owner",
+      "type": "TASK_EXECUTION",
+      "executor": {
+        "name": "OwnerResolver",
+        "mode": "caller"
+      },
+      "onSuccess": "end"
+    },
+    {
+      "id": "end",
+      "type": "END"
+    }
+  ]
+}

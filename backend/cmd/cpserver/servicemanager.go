@@ -82,6 +82,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // observabilitySvc is the observability service instance. This is used for graceful shutdown.
@@ -350,9 +351,11 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	exporters = append(exporters, applicationExporter)
 
 	agentService, agentExporter, err := agent.Initialize(mux, entityService, inboundClientService, ouService,
-		roleService, ouAuthzService, governanceService, valueCapture, entityTypeService)
+		roleService, ouAuthzService, governanceService, valueCapture, entityTypeService,
+		agent.OwnedByUsersHeld())
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)
+	agentService.SetSystemFlowExecutor(noAgentCreationFlow)
 
 	// Wire the dependency registry into the consuming services (two-phase init to avoid cyclic
 	// imports). flowMgtService is both a consumer and a provider: it reports which flows reference an
@@ -518,4 +521,12 @@ func buildHashConfig() (cryptolib.HashConfig, error) {
 	default:
 		return cryptolib.HashConfig{}, fmt.Errorf("unrecognized password hashing algorithm %q", cfg.Algorithm)
 	}
+}
+
+// noAgentCreationFlow stands in for the agent creation system flow on a plane that runs no flows, and
+// resolves no owner. The control plane's caller signs in through a trusted issuer and is no user any
+// deployment holds, so an agent created without an owner is left without one.
+func noAgentCreationFlow(context.Context, string, map[string]string) (map[string]string,
+	*tidcommon.ServiceError) {
+	return nil, nil
 }

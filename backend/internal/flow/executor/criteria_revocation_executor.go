@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -76,24 +77,49 @@ func (e *criteriaRevocationExecutor) advanceCutoff(ctx *providers.NodeContext) (
 // write records every criterion of the plan with the given cutoff.
 func (e *criteriaRevocationExecutor) write(ctx *providers.NodeContext, plan revocationPlan,
 	cutoff time.Time) (*providers.ExecutorResponse, error) {
-	if len(plan.Criteria) > 0 {
-		ttl := time.Duration(plan.TTLSeconds) * time.Second
-		revocations := make([]revocation.CriteriaRevocation, len(plan.Criteria))
-		for i, criterion := range plan.Criteria {
-			revocations[i] = revocation.CriteriaRevocation{
-				Criterion: criterion,
-				Mode:      plan.Mode,
-				Cutoff:    cutoff,
-				Reason:    plan.Reason,
-				TTL:       ttl,
-			}
+	if svcErr := writeRevocationPlan(ctx.Context, e.revoker, plan, cutoff); svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return nil, fmt.Errorf("failed to revoke tokens by criteria: %s", svcErr.Error.DefaultValue)
 		}
-		if svcErr := e.revoker.RevokeCriteriaBatch(ctx.Context, revocations); svcErr != nil {
-			if svcErr.Type == tidcommon.ServerErrorType {
-				return nil, fmt.Errorf("failed to revoke tokens by criteria: %s", svcErr.Error.DefaultValue)
-			}
-			return &providers.ExecutorResponse{Status: providers.ExecFailure, Error: svcErr}, nil
-		}
+		return &providers.ExecutorResponse{Status: providers.ExecFailure, Error: svcErr}, nil
 	}
 	return &providers.ExecutorResponse{Status: providers.ExecComplete}, nil
+}
+
+// AdvanceRevocationCutoff does what the advance_cutoff mode does, for a change its service writes after
+// the system flow that planned the revocation: a before-action plan's criteria are recorded again with a
+// cutoff of now, so a token issued while the change was being written loses what the change removed too.
+func AdvanceRevocationCutoff(ctx context.Context, revoker revocation.CriteriaRevoker,
+	sharedRuntimeData map[string]string) error {
+	plan, err := decodeRevocationPlan(sharedRuntimeData)
+	if err != nil {
+		return err
+	}
+	if plan.Mode != revocation.ModeBeforeAction {
+		return nil
+	}
+	if svcErr := writeRevocationPlan(ctx, revoker, plan, time.Now().UTC()); svcErr != nil {
+		return fmt.Errorf("failed to revoke tokens by criteria: %s", svcErr.Error.DefaultValue)
+	}
+	return nil
+}
+
+// writeRevocationPlan records every criterion of the plan with the given cutoff.
+func writeRevocationPlan(ctx context.Context, revoker revocation.CriteriaRevoker, plan revocationPlan,
+	cutoff time.Time) *tidcommon.ServiceError {
+	if len(plan.Criteria) == 0 {
+		return nil
+	}
+	ttl := time.Duration(plan.TTLSeconds) * time.Second
+	revocations := make([]revocation.CriteriaRevocation, len(plan.Criteria))
+	for i, criterion := range plan.Criteria {
+		revocations[i] = revocation.CriteriaRevocation{
+			Criterion: criterion,
+			Mode:      plan.Mode,
+			Cutoff:    cutoff,
+			Reason:    plan.Reason,
+			TTL:       ttl,
+		}
+	}
+	return revoker.RevokeCriteriaBatch(ctx, revocations)
 }

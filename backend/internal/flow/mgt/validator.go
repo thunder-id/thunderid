@@ -224,7 +224,13 @@ var companionExecutors = map[string][]companionExecutor{
 
 // modeFlowTypes limits an executor mode to fewer flow types than the executor supports. Identity
 // governance suspends and unsuspends only in an administration flow; a recovery flow runs only unlock.
+// The owner resolver asks for an owner only where someone can answer, and takes the caller as the
+// owner only in a system flow, whose caller is the one creating the entity.
 var modeFlowTypes = map[string]map[string][]providers.FlowType{
+	executormeta.ExecutorNameOwnerResolver: {
+		executormeta.ExecutorModeOwnerSelect: {providers.FlowTypeAdministration, providers.FlowTypeRegistration},
+		executormeta.ExecutorModeOwnerCaller: {providers.FlowTypeSystem},
+	},
 	executormeta.ExecutorNameIdentityGovernance: {
 		executormeta.ExecutorModeSuspend:   {providers.FlowTypeAdministration},
 		executormeta.ExecutorModeUnsuspend: {providers.FlowTypeAdministration},
