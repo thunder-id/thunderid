@@ -19,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/revocation"
+	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
@@ -1042,4 +1043,54 @@ assignments:
 		s.Equal(revocation.AudienceScope{Audience: californiaAud, Scope: "license"}, scope)
 	}
 	s.Equal([]string{targetUserID}, target.EntityIDs)
+}
+
+// AddAssigneeToExistingRoles Tests
+
+func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneeToExistingRoles_SkipsMissingRoles() {
+	useMutableStore(suite.T())
+	assignment := RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}
+	normalized := []RoleAssignment{{ID: testUserID1, Type: assigneeTypeEntity}}
+
+	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil).Twice()
+	suite.mockStore.On("IsRoleExist", mock.Anything, "deleted-role").Return(false, nil).Once()
+	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
+		Return([]providers.Entity{{ID: testUserID1, Category: providers.EntityCategoryUser}}, nil).Once()
+	suite.mockStore.On("AddAssignments", mock.Anything, "role1", normalized).Return(nil).Once()
+
+	err := suite.service.AddAssigneeToExistingRoles(
+		context.Background(), assignment, []string{"role1", "deleted-role"})
+
+	suite.Nil(err)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneeToExistingRoles_NoRoleExists() {
+	useMutableStore(suite.T())
+	assignment := RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}
+	suite.mockStore.On("IsRoleExist", mock.Anything, "deleted-role").Return(false, nil).Once()
+
+	err := suite.service.AddAssigneeToExistingRoles(context.Background(), assignment, []string{"deleted-role"})
+
+	suite.Nil(err)
+	suite.mockStore.AssertNotCalled(suite.T(), "AddAssignments", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestAddAssigneeToExistingRoles_StoreError() {
+	useMutableStore(suite.T())
+	assignment := RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}
+	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(false, errors.New("db down")).Once()
+
+	err := suite.service.AddAssigneeToExistingRoles(context.Background(), assignment, []string{"role1"})
+
+	suite.NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+// useMutableStore runs the test with a mutable store, since another test may leave the runtime in
+// declarative mode.
+func useMutableStore(t *testing.T) {
+	t.Helper()
+	config.ResetServerRuntime()
+	require.NoError(t, config.InitializeServerRuntime("/tmp/test", &config.Config{}))
+	t.Cleanup(config.ResetServerRuntime)
 }

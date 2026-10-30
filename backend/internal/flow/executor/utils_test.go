@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -15,6 +16,7 @@ import (
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -1017,4 +1019,28 @@ func (s *UtilsTestSuite) TestStatedDecision_StatesOnlyANamedHold() {
 	s.Equal(&ErrAccountLocked, statedDecision(providers.AccessDecision{Reason: providers.AccessRefusalReasonLocked}))
 	s.Equal(&ErrAccountSuspended,
 		statedDecision(providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended}))
+}
+
+// The connection's sync modes are recorded with the mapped targets, defaulting when unset.
+func (s *UtilsTestSuite) TestResolveAndSetMappedAuthorizationTargets_RecordsSyncModes() {
+	idpService := idpmock.NewIDPServiceInterfaceMock(s.T())
+	idpService.On("GetDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, (*tidcommon.ServiceError)(nil))
+
+	execResp := &providers.ExecutorResponse{RuntimeData: map[string]string{}}
+	resolveAndSetMappedAuthorizationTargets(context.Background(), execResp, idpService,
+		&providers.IDPDTO{ID: "idp-1"}, nil, log.GetLogger())
+	s.Equal(string(providers.SyncModeOverrideReceived), execResp.RuntimeData[common.RuntimeKeyAttributesSyncMode])
+	s.Equal(string(providers.SyncModeNoSync), execResp.RuntimeData[common.RuntimeKeyGroupsAndRolesSyncMode])
+
+	execResp = &providers.ExecutorResponse{RuntimeData: map[string]string{}}
+	resolveAndSetMappedAuthorizationTargets(context.Background(), execResp, idpService,
+		&providers.IDPDTO{ID: "idp-1", AttributeConfiguration: &providers.AttributeConfiguration{
+			Sync: &providers.SyncConfiguration{
+				Attributes:     providers.SyncModeSessionOnly,
+				GroupsAndRoles: providers.SyncModeSessionOnly,
+			},
+		}}, nil, log.GetLogger())
+	s.Equal(string(providers.SyncModeSessionOnly), execResp.RuntimeData[common.RuntimeKeyAttributesSyncMode])
+	s.Equal(string(providers.SyncModeSessionOnly), execResp.RuntimeData[common.RuntimeKeyGroupsAndRolesSyncMode])
 }

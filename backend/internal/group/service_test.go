@@ -3467,3 +3467,40 @@ func (suite *GroupServiceTestSuite) TestGetDirectGroupMember_CarriesTheReadError
 	suite.Equal(ErrorGroupNotFound.Code, svcErr.Code)
 	suite.Nil(member)
 }
+
+func TestAddMemberToExistingGroups_SkipsMissingGroups(t *testing.T) {
+	useMutableStore(t)
+	storeMock := newGroupStoreInterfaceMock(t)
+	storeMock.On("GetGroupsByIDs", mock.Anything, []string{"deleted-group"}).
+		Return([]GroupBasicDAO{}, nil).Once()
+	service := &groupService{groupStore: storeMock}
+
+	svcErr := service.AddMemberToExistingGroups(context.Background(),
+		Member{ID: "user-1", Type: MemberTypeUser}, []string{"deleted-group"})
+
+	require.Nil(t, svcErr)
+	storeMock.AssertNotCalled(t, "AddGroupMembers", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestAddMemberToExistingGroups_StoreError(t *testing.T) {
+	useMutableStore(t)
+	storeMock := newGroupStoreInterfaceMock(t)
+	storeMock.On("GetGroupsByIDs", mock.Anything, []string{"group-1"}).
+		Return(nil, errors.New("db down")).Once()
+	service := &groupService{groupStore: storeMock}
+
+	svcErr := service.AddMemberToExistingGroups(context.Background(),
+		Member{ID: "user-1", Type: MemberTypeUser}, []string{"group-1"})
+
+	require.NotNil(t, svcErr)
+	require.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// useMutableStore runs the test with a mutable store, since another test may leave the runtime in
+// declarative mode.
+func useMutableStore(t *testing.T) {
+	t.Helper()
+	config.ResetServerRuntime()
+	require.NoError(t, config.InitializeServerRuntime("/tmp/test", &config.Config{}))
+	t.Cleanup(config.ResetServerRuntime)
+}
