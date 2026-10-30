@@ -179,6 +179,8 @@ const (
 	// RuntimeKeyProvenSubject holds the identity whose control was proven in this execution. The
 	// credential setter writes it after a credential write; a node acting on proof reads it here.
 	RuntimeKeyProvenSubject = "provenSubject"
+	// RuntimeKeyOwner holds the owner a system flow resolved for the entity its caller is creating.
+	RuntimeKeyOwner = "owner"
 	// RuntimeKeyClientID holds the OAuth client ID for the current flow execution, if applicable.
 	RuntimeKeyClientID = "clientId"
 	// RuntimeKeyRequestedPermissions holds the space-separated permission scopes requested by the OAuth client.

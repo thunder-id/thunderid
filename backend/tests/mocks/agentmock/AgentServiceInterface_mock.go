@@ -622,6 +622,46 @@ func (_c *AgentServiceInterfaceMock_SetDependencyRegistry_Call) RunAndReturn(run
 	return _c
 }
 
+// SetSystemFlowExecutor provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) SetSystemFlowExecutor(execute func(ctx context.Context, handle string, inputs map[string]string) (map[string]string, *common.ServiceError)) {
+	_mock.Called(execute)
+	return
+}
+
+// AgentServiceInterfaceMock_SetSystemFlowExecutor_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetSystemFlowExecutor'
+type AgentServiceInterfaceMock_SetSystemFlowExecutor_Call struct {
+	*mock.Call
+}
+
+// SetSystemFlowExecutor is a helper method to define mock.On call
+//   - execute func(ctx context.Context, handle string, inputs map[string]string) (map[string]string, *common.ServiceError)
+func (_e *AgentServiceInterfaceMock_Expecter) SetSystemFlowExecutor(execute any) *AgentServiceInterfaceMock_SetSystemFlowExecutor_Call {
+	return &AgentServiceInterfaceMock_SetSystemFlowExecutor_Call{Call: _e.mock.On("SetSystemFlowExecutor", execute)}
+}
+
+func (_c *AgentServiceInterfaceMock_SetSystemFlowExecutor_Call) Run(run func(execute func(ctx context.Context, handle string, inputs map[string]string) (map[string]string, *common.ServiceError))) *AgentServiceInterfaceMock_SetSystemFlowExecutor_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 func(ctx context.Context, handle string, inputs map[string]string) (map[string]string, *common.ServiceError)
+		if args[0] != nil {
+			arg0 = args[0].(func(ctx context.Context, handle string, inputs map[string]string) (map[string]string, *common.ServiceError))
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_SetSystemFlowExecutor_Call) Return() *AgentServiceInterfaceMock_SetSystemFlowExecutor_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_SetSystemFlowExecutor_Call) RunAndReturn(run func(execute func(ctx context.Context, handle string, inputs map[string]string) (map[string]string, *common.ServiceError))) *AgentServiceInterfaceMock_SetSystemFlowExecutor_Call {
+	_c.Run(run)
+	return _c
+}
+
 // UpdateAgent provides a mock function for the type AgentServiceInterfaceMock
 func (_mock *AgentServiceInterfaceMock) UpdateAgent(ctx context.Context, agentID string, req *model.UpdateAgentRequest) (*model.AgentCompleteResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, agentID, req)

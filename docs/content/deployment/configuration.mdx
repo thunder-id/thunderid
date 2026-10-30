@@ -523,7 +523,7 @@ Authentication and registration flow settings.
 |---------|---------|-------------|
 | `flow.max_version_history` | `10` | Maximum number of flow versions to retain |
 | `flow.auto_infer_registration` | `true` | If `true`, automatically infers registration from authentication flows |
-| `flow.executors` | *(all built-in executors)* | Whitelist of built-in executor names to register at startup. Omit the key or leave the list empty to register every built-in executor. When set, only the listed executors are available; flows that reference other executors fail validation at startup. Unknown names cause startup to fail. Duplicate names are ignored. The system flows built into the server need `ApplicationActionValidator`, `CriteriaRevocationExecutor`, and `SessionRevocationExecutor`; the server does not start without them. |
+| `flow.executors` | *(all built-in executors)* | Whitelist of built-in executor names to register at startup. Omit the key or leave the list empty to register every built-in executor. When set, only the listed executors are available; flows that reference other executors fail validation at startup. Unknown names cause startup to fail. Duplicate names are ignored. The system flows built into the server need `AccessChangeValidator`, `ApplicationActionValidator`, `CriteriaRevocationExecutor`, `OwnerResolver`, `PreDeleteExecutor`, and `SessionRevocationExecutor`; the server does not start without them. |
 
 ### Built-in Executors
 
@@ -542,15 +542,18 @@ flow:
 
 **Register a subset:**
 
-List only the executor names you need, together with the three the system flows need. Built-in executors not in the list are excluded:
+List only the executor names you need, together with the six the system flows need. Built-in executors not in the list are excluded:
 
 ```yaml
 flow:
   executors:
     - CredentialsAuthExecutor
     - InviteExecutor
+    - AccessChangeValidator
     - ApplicationActionValidator
     - CriteriaRevocationExecutor
+    - OwnerResolver
+    - PreDeleteExecutor
     - SessionRevocationExecutor
 ```
 

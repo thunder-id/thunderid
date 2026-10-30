@@ -1,0 +1,35 @@
+{
+  "id": "019a1f40-6a1c-7000-8000-5e5713d00005",
+  "handle": "system-role-assignment-removal",
+  "name": "Role assignment removal",
+  "flowType": "SYSTEM",
+  "nodes": [
+    {
+      "id": "start",
+      "type": "START",
+      "onSuccess": "pre_role_assignment_removal"
+    },
+    {
+      "id": "pre_role_assignment_removal",
+      "type": "TASK_EXECUTION",
+      "executor": {
+        "name": "AccessChangeValidator",
+        "mode": "role_assignment_removal"
+      },
+      "onSuccess": "revoke_scopes"
+    },
+    {
+      "id": "revoke_scopes",
+      "type": "TASK_EXECUTION",
+      "executor": {
+        "name": "CriteriaRevocationExecutor",
+        "mode": "revoke"
+      },
+      "onSuccess": "end"
+    },
+    {
+      "id": "end",
+      "type": "END"
+    }
+  ]
+}

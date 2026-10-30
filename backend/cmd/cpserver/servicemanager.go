@@ -77,11 +77,13 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/mcp"
 	"github.com/thunder-id/thunderid/internal/system/observability"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/services"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // observabilitySvc is the observability service instance. This is used for graceful shutdown.
@@ -354,6 +356,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		roleService, ouAuthzService, governanceService, valueCapture, entityTypeService)
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)
+	agentService.SetSystemFlowExecutor(callerOwnsAgent)
 
 	// Wire the dependency registry into the consuming services (two-phase init to avoid cyclic
 	// imports). flowMgtService is both a consumer and a provider: it reports which flows reference an
@@ -519,4 +522,11 @@ func buildHashConfig() (cryptolib.HashConfig, error) {
 	default:
 		return cryptolib.HashConfig{}, fmt.Errorf("unrecognized password hashing algorithm %q", cfg.Algorithm)
 	}
+}
+
+// callerOwnsAgent stands in for the agent creation system flow on a plane that runs no flows, resolving
+// the owner the way the flow does: an agent created without one is owned by its caller.
+func callerOwnsAgent(ctx context.Context, _ string, _ map[string]string) (map[string]string,
+	*tidcommon.ServiceError) {
+	return map[string]string{"owner": security.GetSubject(ctx)}, nil
 }

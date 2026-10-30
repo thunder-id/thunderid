@@ -331,6 +331,8 @@ type SystemFlowContext struct {
 type SystemFlowResult struct {
 	// ExecutionID identifies the run in the logs.
 	ExecutionID string
+	// SharedRuntimeData is what the run's steps shared, for a caller that finishes the change after it.
+	SharedRuntimeData map[string]string
 }
 
 // FlowContextDB represents the database row for a flow context.

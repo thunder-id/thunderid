@@ -117,6 +117,10 @@ func (s *InlineStubAgentService) GetResourceDependencies(
 
 func (s *InlineStubAgentService) SetDependencyRegistry(resourcedependency.Registry) {}
 
+func (s *InlineStubAgentService) SetSystemFlowExecutor(func(context.Context, string,
+	map[string]string) (map[string]string, *tidcommon.ServiceError)) {
+}
+
 func TestHandleAgentPostRequest_Success(t *testing.T) {
 	stubService := &InlineStubAgentService{
 		OnCreateAgent: func(

@@ -446,6 +446,30 @@ func (ts *AgentAPITestSuite) TestCreateAgentEntityOnly() {
 	ts.Assert().Empty(fetched.AuthFlowID, "entity-only agent must have no auth flow ID")
 }
 
+// An agent created without an owner is owned by the caller, as the agent creation system flow resolves it.
+func (ts *AgentAPITestSuite) TestCreateAgent_WithoutAnOwnerIsOwnedByTheCaller() {
+	token, err := testutils.GetAccessToken()
+	ts.Require().NoError(err)
+	claims, err := testutils.DecodeJWTPayloadMap(token)
+	ts.Require().NoError(err)
+	caller, _ := claims["sub"].(string)
+	ts.Require().NotEmpty(caller, "the caller's token must name its subject")
+
+	agent := Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs("create-caller-owned", nil)}
+	id, err := createAgent(agent)
+	ts.Require().NoError(err, "agent creation without an owner must succeed")
+	defer func() { _ = deleteAgent(id) }()
+
+	resp, err := doGet(testServerURL + agentBasePath + "/" + id)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var fetched Agent
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&fetched))
+	ts.Assert().Equal(caller, fetched.Owner)
+}
+
 // --- creation mode: entity + inbound ---
 
 func (ts *AgentAPITestSuite) TestCreateAgentWithInboundProfile() {

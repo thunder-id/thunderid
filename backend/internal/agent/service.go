@@ -54,6 +54,8 @@ type AgentServiceInterface interface {
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	SetDependencyRegistry(r resourcedependency.Registry)
+	SetSystemFlowExecutor(execute func(ctx context.Context, handle string,
+		inputs map[string]string) (map[string]string, *tidcommon.ServiceError))
 }
 
 type agentService struct {
@@ -67,6 +69,8 @@ type agentService struct {
 	roleService          role.RoleServiceInterface
 	valueCapturer        declarativeresource.ValueCapturer
 	entityTypeService    entitytype.EntityTypeServiceInterface
+	executeSystemFlow    func(ctx context.Context, handle string,
+		inputs map[string]string) (map[string]string, *tidcommon.ServiceError)
 }
 
 func newAgentService(
@@ -126,10 +130,8 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *providers.Agent) 
 		}
 	}
 
-	owner := agent.Owner
-	if owner == "" {
-		owner = security.GetSubject(ctx)
-	} else if svcErr := s.validateOwnerExists(ctx, owner); svcErr != nil {
+	owner, svcErr := s.resolveCreateOwner(ctx, agent.Owner)
+	if svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -501,6 +503,37 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 // provider services are initialized to avoid a cyclic import.
 func (s *agentService) SetDependencyRegistry(r resourcedependency.Registry) {
 	s.dependencyRegistry = r
+}
+
+// SetSystemFlowExecutor injects what runs the system flows a change needs before it is written, and
+// returns what they shared. Called by servicemanager once the flow engine exists, which is after this
+// service.
+func (s *agentService) SetSystemFlowExecutor(execute func(ctx context.Context, handle string,
+	inputs map[string]string) (map[string]string, *tidcommon.ServiceError)) {
+	s.executeSystemFlow = execute
+}
+
+// resolveCreateOwner returns the owner of an agent being created. The agent creation system flow
+// resolves it when none is requested, making the caller the owner; a requested owner is verified here.
+// Without an executor the creation is refused, so an agent is never written without its flow.
+func (s *agentService) resolveCreateOwner(ctx context.Context, requested string) (
+	string, *tidcommon.ServiceError) {
+	if s.executeSystemFlow == nil {
+		s.logger.Error(ctx, "System flow executor not set; refusing the change",
+			log.String("handle", systemFlowAgentCreate))
+		return "", &tidcommon.InternalServerError
+	}
+	shared, svcErr := s.executeSystemFlow(ctx, systemFlowAgentCreate, map[string]string{fieldOwner: requested})
+	if svcErr != nil {
+		return "", svcErr
+	}
+	if requested == "" {
+		return shared[fieldOwner], nil
+	}
+	if svcErr := s.validateOwnerExists(ctx, requested); svcErr != nil {
+		return "", svcErr
+	}
+	return requested, nil
 }
 
 func (s *agentService) DeleteAgent(ctx context.Context, agentID string) *tidcommon.ServiceError {

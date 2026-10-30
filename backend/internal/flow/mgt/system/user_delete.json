@@ -1,0 +1,43 @@
+{
+  "id": "019a1f40-6a1c-7000-8000-5e5713d00003",
+  "handle": "system-user-delete",
+  "name": "User deletion",
+  "flowType": "SYSTEM",
+  "nodes": [
+    {
+      "id": "start",
+      "type": "START",
+      "onSuccess": "pre_delete"
+    },
+    {
+      "id": "pre_delete",
+      "type": "TASK_EXECUTION",
+      "executor": {
+        "name": "PreDeleteExecutor",
+        "mode": "revoke_all"
+      },
+      "onSuccess": "revoke_tokens"
+    },
+    {
+      "id": "revoke_tokens",
+      "type": "TASK_EXECUTION",
+      "executor": {
+        "name": "CriteriaRevocationExecutor",
+        "mode": "revoke"
+      },
+      "onSuccess": "revoke_sessions"
+    },
+    {
+      "id": "revoke_sessions",
+      "type": "TASK_EXECUTION",
+      "executor": {
+        "name": "SessionRevocationExecutor"
+      },
+      "onSuccess": "end"
+    },
+    {
+      "id": "end",
+      "type": "END"
+    }
+  ]
+}

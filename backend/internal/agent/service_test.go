@@ -153,8 +153,17 @@ func (suite *AgentServiceTestSuite) setupService() (
 		dependencyRegistry:   noopDepRegistry{},
 		roleService:          mockRole,
 		governance:           governance,
+		executeSystemFlow:    systemFlowResolving(""),
 	}
 	return svc, mockEntity, mockInbound, mockOU, mockRole
+}
+
+// systemFlowResolving stands in for the agent creation system flow, sharing the given owner.
+func systemFlowResolving(owner string) func(context.Context, string, map[string]string) (
+	map[string]string, *tidcommon.ServiceError) {
+	return func(context.Context, string, map[string]string) (map[string]string, *tidcommon.ServiceError) {
+		return map[string]string{fieldOwner: owner}, nil
+	}
 }
 
 // activeReads answers a governance read with ACTIVE for every entity.
@@ -1433,6 +1442,90 @@ func (suite *AgentServiceTestSuite) TestValidateOwnerExists_Success() {
 		Return(&providers.Entity{ID: "owner-y"}, nil)
 
 	assert.Nil(suite.T(), svc.validateOwnerExists(context.Background(), "owner-y"))
+}
+
+// An agent created without an owner takes the one the creation system flow resolved, which runs with
+// the requested owner as its input.
+func (suite *AgentServiceTestSuite) TestCreateAgent_OwnerResolvedBySystemFlow() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	var handle string
+	var inputs map[string]string
+	svc.executeSystemFlow = func(_ context.Context, h string, in map[string]string) (
+		map[string]string, *tidcommon.ServiceError) {
+		handle, inputs = h, in
+		return map[string]string{fieldOwner: "caller-1"}, nil
+	}
+	clearMockCalls(mockEntity, "CreateEntity")
+	mockEntity.On("CreateEntity", mock.Anything, mock.MatchedBy(func(e *providers.Entity) bool {
+		_, owner, _ := readSystemAttributes(e.SystemAttributes)
+		return owner == "caller-1"
+	}), mock.Anything, mock.Anything).Return(buildAgentEntityFixture(testAgentName, "", "caller-1", ""), nil)
+
+	resp, svcErr := svc.CreateAgent(context.Background(), &providers.Agent{Type: testAgentType, OUID: testOUID})
+
+	suite.Require().Nil(svcErr)
+	assert.Equal(suite.T(), "caller-1", resp.Owner)
+	assert.Equal(suite.T(), systemFlowAgentCreate, handle)
+	assert.Equal(suite.T(), map[string]string{fieldOwner: ""}, inputs)
+	mockEntity.AssertExpectations(suite.T())
+}
+
+// A requested owner is kept and verified here, whatever the flow shared.
+func (suite *AgentServiceTestSuite) TestCreateAgent_RequestedOwnerIsKept() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	svc.executeSystemFlow = systemFlowResolving("caller-1")
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, "owner-y").Return(&providers.Entity{ID: "owner-y"}, nil)
+	clearMockCalls(mockEntity, "CreateEntity")
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(buildAgentEntityFixture(testAgentName, "", "owner-y", ""), nil)
+
+	resp, svcErr := svc.CreateAgent(context.Background(), &providers.Agent{
+		Type: testAgentType, OUID: testOUID, Owner: "owner-y",
+	})
+
+	suite.Require().Nil(svcErr)
+	assert.Equal(suite.T(), "owner-y", resp.Owner)
+}
+
+// A failed creation flow refuses the agent before anything is written.
+func (suite *AgentServiceTestSuite) TestCreateAgent_SystemFlowFails() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	svc.executeSystemFlow = func(context.Context, string, map[string]string) (
+		map[string]string, *tidcommon.ServiceError) {
+		return nil, &tidcommon.InternalServerError
+	}
+
+	resp, svcErr := svc.CreateAgent(context.Background(), &providers.Agent{Type: testAgentType, OUID: testOUID})
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// Without a system flow executor an agent is not created at all.
+func (suite *AgentServiceTestSuite) TestCreateAgent_WithoutSystemFlowExecutorIsRefused() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	svc.executeSystemFlow = nil
+
+	resp, svcErr := svc.CreateAgent(context.Background(), &providers.Agent{Type: testAgentType, OUID: testOUID})
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// The executor is injected after the service is built.
+func (suite *AgentServiceTestSuite) TestSetSystemFlowExecutor() {
+	svc := &agentService{}
+	svc.SetSystemFlowExecutor(systemFlowResolving("caller-1"))
+
+	shared, svcErr := svc.executeSystemFlow(context.Background(), systemFlowAgentCreate, nil)
+
+	suite.Require().Nil(svcErr)
+	assert.Equal(suite.T(), "caller-1", shared[fieldOwner])
 }
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_OwnerNotFound() {

@@ -175,7 +175,7 @@ var catalog = map[string]providers.ExecutorMeta{
 	ExecutorNamePreDelete: {
 		DefaultMode:        "revoke_all",
 		SupportedModes:     []string{"revoke_all"},
-		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
+		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "SYSTEM"},
 	},
 	ExecutorNamePreSuspend: {
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
@@ -232,7 +232,9 @@ var catalog = map[string]providers.ExecutorMeta{
 		},
 	},
 	ExecutorNameOwnerResolver: {
-		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "REGISTRATION"},
+		DefaultMode:        ExecutorModeOwnerSelect,
+		SupportedModes:     []string{ExecutorModeOwnerCaller, ExecutorModeOwnerSelect},
+		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "REGISTRATION", "SYSTEM"},
 	},
 	ExecutorNameAccessChangeValidator: {
 		SupportedModes: []string{
@@ -243,7 +245,7 @@ var catalog = map[string]providers.ExecutorMeta{
 			ExecutorModeRoleDeletion,
 			ExecutorModeRolePermissionRemoval,
 		},
-		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
+		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "SYSTEM"},
 	},
 	ExecutorNameRole: {
 		SupportedModes: []string{
