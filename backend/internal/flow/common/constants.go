@@ -197,8 +197,6 @@ const (
 	RuntimeKeyRequiredOptionalAttributes = "required_optional_attributes"
 	// RuntimeKeyRequiredLocales holds the space-separated locales requested for claims.
 	RuntimeKeyRequiredLocales = "required_locales"
-	// RuntimeKeyConsentID holds the consent record ID after consent has been recorded.
-	RuntimeKeyConsentID = "consent_id"
 	// RuntimeKeyStepTimeout holds the expiry timestamp for the current flow step.
 	RuntimeKeyStepTimeout = "step_timeout"
 	// RuntimeKeyConsentedAttributes holds a space-separated set of attributes that the user has consented to share.

@@ -1036,6 +1036,22 @@ func (ts *ConsentExecutorFlowTestSuite) TestRecordedGrantIsHonoredOnNextAuthoriz
 		"The attribute consented on the first authorization request should be released on the second")
 }
 
+// TestPreviouslyConsentedAttributeNotRequestedIsNotReleased covers the assertion restriction: an
+// attribute approved in an earlier login is not released once a later request no longer asks for it.
+func (ts *ConsentExecutorFlowTestSuite) TestPreviouslyConsentedAttributeNotRequestedIsNotReleased() {
+	_, executionID, consentStep, purpose := ts.authorizeExpectingConsentPrompt(consentBothAttributesClaimsParam)
+	grantedStep := ts.submitOIDCConsentDecisions(executionID, consentStep.ChallengeToken, purpose, true, true)
+	ts.Require().Equal("COMPLETE", grantedStep.FlowStatus, "Expected flow to complete after granting consent")
+
+	authID, finalStep := ts.authorizeExpectingNoConsentPrompt(consentEmailOnlyClaimsParam)
+
+	idTokenClaims := ts.exchangeAssertionForIDTokenClaims(authID, finalStep.Assertion)
+	ts.Require().Equal(consentTestEmail, idTokenClaims["email"],
+		"The requested and consented attribute should be released")
+	ts.Require().NotContains(idTokenClaims, "given_name",
+		"An attribute consented earlier but not requested now should not be released")
+}
+
 // TestPromptNoneIsRejectedWithLoginRequired covers the prompt=none error path: the server holds no
 // server-side session, so an authorization request that forbids user interaction cannot be satisfied
 // and the client is redirected back with `login_required`.

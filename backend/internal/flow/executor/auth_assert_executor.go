@@ -495,25 +495,37 @@ func (a *authAssertExecutor) extractAuthenticatorReferences(
 }
 
 // getRequiredUserAttributes determines the list of user attribute keys that should be included in the
-// assertion based on runtime and application configuration.
-func (a *authAssertExecutor) getRequiredUserAttributes(ctx *providers.NodeContext) (userAttributes []string) {
+// assertion based on runtime and application configuration. When the consent step ran, the result is
+// the requested attributes restricted to the ones the user consented to.
+func (a *authAssertExecutor) getRequiredUserAttributes(ctx *providers.NodeContext) []string {
 	logger := a.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	// Check if consent was recorded in this flow. If recorded, we should only include consented attributes
-	// We check RuntimeKeyConsentID to determine if the consent executor ran and recorded a consent.
-	if _, consentRecorded := ctx.RuntimeData[common.RuntimeKeyConsentID]; consentRecorded {
-		// Get user attributes from consented attributes if consent was collected in this flow
-		if consentedAttrsStr, exists := ctx.RuntimeData[common.RuntimeKeyConsentedAttributes]; exists {
-			logger.Debug(ctx.Context, "Consent recorded with approved attributes")
-			return strings.Fields(consentedAttrsStr)
-		}
+	requestedAttributes := a.getRequestedUserAttributes(ctx)
 
-		// If consent was recorded but no attributes were approved, attributes are empty
-		logger.Debug(ctx.Context, "Consent recorded but no attributes approved")
-		return []string{}
+	// RuntimeKeyConsentedAttributes is set only when a consent decision was recorded. Without it, all
+	// requested attributes are already consented.
+	consentedAttrsStr, consentRan := ctx.RuntimeData[common.RuntimeKeyConsentedAttributes]
+	if !consentRan {
+		return requestedAttributes
 	}
 
-	// If consent was not recorded in this flow, check for essential/ optional attributes in runtime data.
+	logger.Debug(ctx.Context, "Restricting user attributes to consented attributes")
+	consentedAttributes := strings.Fields(consentedAttrsStr)
+	userAttributes := make([]string, 0, len(requestedAttributes))
+	for _, attr := range requestedAttributes {
+		if slices.Contains(consentedAttributes, attr) && !slices.Contains(userAttributes, attr) {
+			userAttributes = append(userAttributes, attr)
+		}
+	}
+	return userAttributes
+}
+
+// getRequestedUserAttributes determines the list of user attribute keys requested for the assertion
+// from the runtime data, falling back to the application configuration.
+func (a *authAssertExecutor) getRequestedUserAttributes(ctx *providers.NodeContext) (userAttributes []string) {
+	logger := a.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
+
+	// Check for essential/ optional attributes in runtime data.
 	// If present, we should apply attribute filtering based on these attributes
 	_, essentialExists := ctx.RuntimeData[common.RuntimeKeyRequiredEssentialAttributes]
 	_, optionalExists := ctx.RuntimeData[common.RuntimeKeyRequiredOptionalAttributes]
@@ -537,8 +549,7 @@ func (a *authAssertExecutor) getRequiredUserAttributes(ctx *providers.NodeContex
 		return userAttributes
 	}
 
-	// If consent was not recorded and no essential/ optional attributes specified, fallback to
-	// application token config
+	// If no essential/ optional attributes specified, fallback to application token config
 	if ctx.Application.Assertion != nil {
 		logger.Debug(ctx.Context, "Adding application token attributes to user attributes list")
 		return ctx.Application.Assertion.UserAttributes

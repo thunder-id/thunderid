@@ -1628,7 +1628,7 @@ Checks whether the authenticated user has active consent records for the require
 2. Calls the consent enforcer to check existing consent records.
 3. If all consents are active, completes immediately: no prompt is needed.
 4. If any consents are missing, forwards the prompt data to the Consent View and awaits the user's decisions.
-5. After decisions are received, records them and makes `consentId` and `consented_attributes` available for Auth Assertion Generator.
+5. After decisions are received, records them and makes `consented_attributes` available for Auth Assertion Generator.
 
 **Executor properties:**
 
@@ -2228,7 +2228,7 @@ Generates the final authentication assertion, a signed JWT, that <ProductName />
 - **Audience (`aud`):** Set to the application (entity) ID.
 - **Assurance:** Extracted from the flow execution history. Lists which authenticators ran, in which step, and at what time.
 - **Authorized permissions:** Included if the Authorization executor ran.
-- **User attributes:** Resolved from the following sources in priority order: consented attributes (if User Consent ran) → essential/optional attribute lists from application configuration → application assertion configuration. Computed attributes (`groups`, `roles`, `userTypeHandle`, `userTypeName`, `ouId`, `ouName`, `ouHandle`) are derived at assertion time and included only if configured.
+- **User attributes:** Resolved from the following sources in priority order: essential/optional attribute lists from application configuration → application assertion configuration. If User Consent recorded a decision, only the attributes that are both requested and consented are included. An attribute the user approved earlier but the application does not request now is excluded, and if the user consents to no attributes, none are included. Computed attributes (`groups`, `roles`, `userTypeHandle`, `userTypeName`, `ouId`, `ouName`, `ouHandle`) are derived at assertion time and included only if configured.
 - **Token lifetime:** Uses the application's assertion validity period; falls back to the system JWT default.
 
 **Input Configuration:** None. This executor operates entirely on runtime context; it has no configurable node input defaults.

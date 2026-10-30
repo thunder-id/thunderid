@@ -1107,9 +1107,18 @@ type ConsentAuthorization struct {
 	UpdatedTime int64
 }
 
-// ConsentPromptData holds the structured data needed to render a consent prompt for the user.
+// ConsentResolution is the outcome of resolving consent for a user and application.
+type ConsentResolution struct {
+	// Prompt holds the purposes that need user consent and the session token. Nil when no prompt is needed.
+	Prompt *ConsentPrompt
+	// Consent is the user's saved consent for the application, used to restrict the assertion when no
+	// prompt is needed. Optional.
+	Consent *Consent
+}
+
+// ConsentPrompt holds the structured data needed to render a consent prompt for the user.
 // It contains all purposes whose consent is required, with their elements grouped under each purpose.
-type ConsentPromptData struct {
+type ConsentPrompt struct {
 	// Purposes is the list of consent purposes that require user consent, along with their elements
 	Purposes []ConsentPurposePrompt `json:"purposes"`
 	// SessionToken is the signed JWT token that encapsulates the consent session data

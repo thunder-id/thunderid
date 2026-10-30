@@ -56,7 +56,7 @@ func (s *consentEnforcerService) ResolveConsent(ctx context.Context, ouID, appID
 	essentialAttributes, optionalAttributes, authorizedPermissions []string,
 	availableAttributes *providers.AttributesResponse, forceReprompt bool,
 	runtimeMetadata map[string][]string) (
-	*providers.ConsentPromptData, *tidcommon.ServiceError) {
+	*providers.ConsentResolution, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String("appID", appID), log.MaskedString(log.LoggerKeyUserID, userID))
 	logger.Debug(ctx, "Resolving consent for user")
 
@@ -121,19 +121,19 @@ func (s *consentEnforcerService) ResolveConsent(ctx context.Context, ouID, appID
 		return nil, nil
 	}
 
-	promptData := &providers.ConsentPromptData{Purposes: promptPurposes}
+	prompt := &providers.ConsentPrompt{Purposes: promptPurposes}
 
 	// Generate a signed session token capturing the prompted purposes and their elements.
 	// This token should be verified in RecordConsent to ensure the user's decisions match what was prompted
-	sessionToken, err := s.createConsentSessionToken(ctx, promptData)
+	sessionToken, err := s.createConsentSessionToken(ctx, prompt)
 	if err != nil {
 		logger.Error(ctx, "Failed to create consent session token", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
-	promptData.SessionToken = sessionToken
+	prompt.SessionToken = sessionToken
 
 	logger.Debug(ctx, "Consent prompt required", log.Int("purposeCount", len(promptPurposes)))
-	return promptData, nil
+	return &providers.ConsentResolution{Prompt: prompt}, nil
 }
 
 // RecordConsent records the user's consent decisions. It first verifies the session token to
@@ -289,12 +289,12 @@ func (s *consentEnforcerService) createNewConsent(ctx context.Context, appID, us
 // The session captures the purposes and their essential/optional elements from the resolve step,
 // so that the record step can verify completeness and enforce essential attribute rules.
 func (s *consentEnforcerService) createConsentSessionToken(
-	ctx context.Context, promptData *providers.ConsentPromptData,
+	ctx context.Context, prompt *providers.ConsentPrompt,
 ) (string, error) {
 	sessionData := consentSessionData{
-		Purposes: make([]consentSessionPurpose, 0, len(promptData.Purposes)),
+		Purposes: make([]consentSessionPurpose, 0, len(prompt.Purposes)),
 	}
-	for _, p := range promptData.Purposes {
+	for _, p := range prompt.Purposes {
 		sessionData.Purposes = append(sessionData.Purposes, consentSessionPurpose{
 			PurposeName: p.PurposeName,
 			Essential:   elementNames(p.Essential),
