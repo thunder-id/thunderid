@@ -1,0 +1,115 @@
+---
+title: Restrict Account Access with Locks and Suspensions
+docType: use-case
+sidebar_position: 1
+description: Protect users from repeated sign-in attempts, suspend compromised identities, and restore access through account recovery and authorized administration.
+---
+
+# Restrict Account Access with Locks and Suspensions
+
+A customer is booking a flight while someone repeatedly tries passwords against their account. The application needs to limit those attempts without allowing an attacker to interrupt the customer's existing session.
+
+Later, another customer reports a reservation they did not make. This time, support needs to stop further use of the account while the incident is investigated.
+
+Both situations require account protection, but they need different responses:
+
+* **Automatic locks** restrict authentication after repeated failures.
+* **Suspensions** let authorized operators contain an account when compromise or misuse is suspected.
+
+<ProductName /> keeps these controls independent so an authentication attack does not automatically terminate legitimate access, while administrators can still stop account activity when broader containment is required.
+
+## The Problem
+
+Protecting an account involves more than refusing the next sign-in attempt:
+
+* **Repeated attempts should not unnecessarily disrupt legitimate users.** If every password lock terminates existing sessions, an attacker could force a customer out simply by submitting passwords they know are incorrect.
+* **An account can have multiple ways to sign in.** Locking a password should not necessarily prevent authentication with a device-held passkey, a one-time code, or an external login provider.
+* **Existing access can outlive authentication.** Sessions and tokens may remain usable even when new sign-ins are refused.
+* **Security incidents need stronger containment.** When an account is suspected to be compromised, administrators may need to stop sign-in, sessions, token use, and recovery together.
+* **Restoring access needs clear control.** Automatic locks can expire or be cleared through recovery, while suspended accounts must remain restricted until an authorized operator releases them.
+
+The identity layer therefore needs to distinguish between protection against repeated authentication failures and administrative containment.
+
+## How It Works
+
+<ProductName /> applies the restriction according to its scope. By default, a password lock stops
+password sign-in while leaving other methods, existing sessions, and recovery available. A suspension
+applies to the whole account and remains until an authorized operator releases it.
+
+Both restrictions can exist at once. Suspension takes priority, so a lock expiring or an operator
+unlocking the account cannot lift a suspension. Operators can inspect the account's status and reason;
+with the default policy, sign-in failures do not reveal those details.
+
+:::tip Related Use Cases
+
+- For customer registration, sign-in, and recovery, see the consumer application use case,
+  [Understand It](../../b2c/overview).
+- To decide what an authenticated account may do, see [Roles](../../../guides/users/manage-roles).
+
+:::
+
+## Keep Repeated Guesses from Disrupting a Customer
+
+In the travel app, repeated password failures trigger a lock once the configured limit is reached.
+The customer can continue their booking in an existing session. Password and one-time-code failures
+can create automatic locks, with email and SMS codes sharing a counter.
+
+You choose the failure threshold, the counting period, and the lock durations. Repeated lockouts can
+last longer, while a configured quiet period resets that escalation. Further guesses do not extend
+an active lock. A timed lock expires automatically; a non-expiring lock requires recovery or an
+operator's unlock. Entering the correct password alone does not bypass it.
+
+If the deployment needs broader protection, account-wide locking restricts every sign-in method.
+It can also refuse session reuse and new token issuance when explicitly configured. Those additional
+restrictions are off by default, and forming a lock does not revoke sessions or tokens.
+
+## Contain a Compromised Account
+
+The customer who reported an unfamiliar reservation needs a broader response. An authorized operator
+suspends the account and can record the reason. Suspension refuses new sign-ins across methods,
+session reuse, new tokens, token refresh, and self-service recovery. The operator can still update
+the account and replace compromised credentials.
+
+In <ProductName />, **Suspend** runs an administration flow, a workflow reserved for authorized
+operators. The default flow also terminates the account's sessions, revokes its tokens, and includes
+an email notification step.
+
+The travel app's APIs must check whether an existing token has been revoked for this to stop its use.
+An API that checks only a signed token's signature and expiry can continue accepting it until expiry.
+
+These controls also cover the travel app's booking agent and the application itself. Suspending an
+application stops new and continued sign-in flows through it, without suspending its users or revoking
+every user token issued through it. Agents support optional automatic locking, off by default, for
+password and one-time-code authentication. Client-secret failures cannot trigger an automatic lock.
+
+## Return the Account to Its Owner
+
+Once the investigation is complete, the operator **unsuspends** the customer. The account then remains
+locked across all sign-in methods, with no expiry, until the customer completes credential recovery
+or an authorized operator explicitly unlocks it. Releasing the suspension does not immediately
+reopen the account with its existing credentials.
+
+These actions remain independent: unlocking a suspended account does not lift its suspension.
+Unsuspending an agent or application does not add the recovery lock used for human accounts;
+any independent lock on an agent still applies. Revoked sessions and tokens are never restored by
+either action.
+
+The Console and management API show the effective status:
+
+| Status | Meaning |
+| --- | --- |
+| `ACTIVE` | No suspension or live lock applies. |
+| `LOCKED` | A sign-in method or the whole account is locked. |
+| `SUSPENDED` | An administrative hold applies, whether or not a lock also exists. |
+
+The status reflects current restrictions, so an expired lock alone does not leave an account
+showing `LOCKED`.
+
+## Next Steps
+
+Use **Settings > Account lock** to configure automatic protection for users and agents. On an
+identity's edit page, use the available **Suspend**, **Unsuspend**, or **Unlock** actions to respond
+to an incident or help someone regain access. Applications offer suspension and release only.
+
+For the surrounding account and recovery setup, continue with [Users](../../../guides/users/manage-users)
+and the consumer application use case, [Understand It](../../b2c/overview).
