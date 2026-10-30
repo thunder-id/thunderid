@@ -525,9 +525,9 @@ func (us *entityTypeService) DeleteEntityType(ctx context.Context, category Type
 	return nil
 }
 
-// GetResourceDependencies implements resourcedependency.Provider. It reports the user types and agent
-// types that belong to the given organization unit, which block the organization unit's deletion (an
-// entity type cannot exist without its organization unit). Only organization unit targets are handled;
+// GetResourceDependencies implements resourcedependency.Provider. It reports the user, agent and
+// organization unit types that belong to the given organization unit, which block the organization
+// unit's deletion (an entity type cannot exist without its organization unit). Only organization unit targets are handled;
 // other resource types have no entity type dependencies. The number of entity types scanned per
 // category is bounded by MaxCompositeStoreRecords.
 func (us *entityTypeService) GetResourceDependencies(
@@ -542,6 +542,7 @@ func (us *entityTypeService) GetResourceDependencies(
 	}{
 		{TypeCategoryUser, resourcedependency.ResourceTypeUserType},
 		{TypeCategoryAgent, resourcedependency.ResourceTypeAgentType},
+		{TypeCategoryOU, resourcedependency.ResourceTypeOUType},
 	}
 
 	deps := make([]resourcedependency.ResourceDependency, 0)

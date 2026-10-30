@@ -100,3 +100,24 @@ func TestResolveEntityDisplays(t *testing.T) {
 		assert.Equal(t, map[string]string{"u1": "u1", "a1": "a1"}, got)
 	})
 }
+
+func TestTypeCategoryOf(t *testing.T) {
+	cases := []struct {
+		entityCategory providers.EntityCategory
+		want           TypeCategory
+		wantOK         bool
+	}{
+		{providers.EntityCategoryUser, TypeCategoryUser, true},
+		{providers.EntityCategoryAgent, TypeCategoryAgent, true},
+		{providers.EntityCategoryOU, TypeCategoryOU, true},
+		{providers.EntityCategoryApp, "", false},
+	}
+	for _, tc := range cases {
+		t.Run(string(tc.entityCategory), func(t *testing.T) {
+			got, ok := typeCategoryOf(tc.entityCategory)
+			assert.Equal(t, tc.want, got)
+			assert.Equal(t, tc.wantOK, ok)
+		})
+	}
+
+}
