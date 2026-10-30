@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -15,9 +16,12 @@ import (
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
+	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 )
@@ -1017,4 +1021,93 @@ func (s *UtilsTestSuite) TestStatedDecision_StatesOnlyANamedHold() {
 	s.Equal(&ErrAccountLocked, statedDecision(providers.AccessDecision{Reason: providers.AccessRefusalReasonLocked}))
 	s.Equal(&ErrAccountSuspended,
 		statedDecision(providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended}))
+}
+
+// The connection's sync modes are recorded with the mapped targets, defaulting when unset.
+func (s *UtilsTestSuite) TestResolveAndSetMappedAuthorizationTargets_RecordsSyncModes() {
+	idpService := idpmock.NewIDPServiceInterfaceMock(s.T())
+	idpService.On("GetDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, (*tidcommon.ServiceError)(nil))
+
+	execResp := &providers.ExecutorResponse{RuntimeData: map[string]string{}}
+	resolveAndSetMappedAuthorizationTargets(context.Background(), execResp, idpService, nil,
+		&providers.IDPDTO{ID: "idp-1"}, nil, log.GetLogger())
+	s.Equal(string(providers.SyncModeOverrideReceived), execResp.RuntimeData[common.RuntimeKeyAttributesSyncMode])
+	s.Equal(string(providers.SyncModeNoSync), execResp.RuntimeData[common.RuntimeKeyGroupsAndRolesSyncMode])
+
+	execResp = &providers.ExecutorResponse{RuntimeData: map[string]string{}}
+	resolveAndSetMappedAuthorizationTargets(context.Background(), execResp, idpService, nil,
+		&providers.IDPDTO{ID: "idp-1", AttributeConfiguration: &providers.AttributeConfiguration{
+			Sync: &providers.SyncConfiguration{
+				Attributes:     providers.SyncModeSessionOnly,
+				GroupsAndRoles: providers.SyncModeSessionOnly,
+			},
+		}}, nil, log.GetLogger())
+	s.Equal(string(providers.SyncModeSessionOnly), execResp.RuntimeData[common.RuntimeKeyAttributesSyncMode])
+	s.Equal(string(providers.SyncModeSessionOnly), execResp.RuntimeData[common.RuntimeKeyGroupsAndRolesSyncMode])
+}
+
+func (s *UtilsTestSuite) TestResolveAndSetMappedAuthorizationTargets_ExpandsSessionGroups() {
+	idpService := idpmock.NewIDPServiceInterfaceMock(s.T())
+	idpService.On("GetDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
+		Return([]providers.AuthorizationTarget{
+			{Type: providers.AuthorizationTargetGroup, ID: "child"},
+			{Type: providers.AuthorizationTargetRole, ID: "role-1"},
+		}, (*tidcommon.ServiceError)(nil))
+	entityProvider := entityprovidermock.NewEntityProviderInterfaceMock(s.T())
+	entityProvider.On("GetTransitiveGroupAncestors", "child").Return([]string{"parent"}, nil).Once()
+	execResp := &providers.ExecutorResponse{RuntimeData: map[string]string{}}
+
+	resolveAndSetMappedAuthorizationTargets(context.Background(), execResp, idpService, entityProvider,
+		&providers.IDPDTO{ID: "idp-1", AttributeConfiguration: &providers.AttributeConfiguration{
+			Sync: &providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeSessionOnly},
+		}}, nil, log.GetLogger())
+
+	s.Equal("child", execResp.RuntimeData[common.RuntimeKeyMappedGroupIDs])
+	s.Equal("child parent", execResp.RuntimeData[common.RuntimeKeySessionGroupIDs])
+	s.Equal("role-1", execResp.RuntimeData[common.RuntimeKeySessionRoleIDs])
+}
+
+// A declarative-only store can't hold mapped memberships, so outside session only its mapped groups or
+// roles are kept to the session instead.
+func (s *UtilsTestSuite) TestResolveAndSetMappedAuthorizationTargets_DeclarativeStoresKeepToSession() {
+	tests := []struct {
+		name            string
+		groupStore      string
+		roleStore       string
+		expectedGroups  string
+		expectedRoles   string
+		expandsAncestor bool
+	}{
+		{"mutable stores", "mutable", "mutable", "", "", false},
+		{"declarative groups", "declarative", "mutable", "child parent", "", true},
+		{"declarative roles", "mutable", "declarative", "", "role-1", false},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			s.Require().NoError(config.InitializeServerRuntime(s.T().TempDir(), &config.Config{
+				Group: config.GroupConfig{Store: tc.groupStore},
+				Role:  config.RoleConfig{Store: tc.roleStore},
+			}))
+			defer config.ResetServerRuntime()
+
+			idpService := idpmock.NewIDPServiceInterfaceMock(s.T())
+			idpService.On("GetDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
+				Return([]providers.AuthorizationTarget{
+					{Type: providers.AuthorizationTargetGroup, ID: "child"},
+					{Type: providers.AuthorizationTargetRole, ID: "role-1"},
+				}, (*tidcommon.ServiceError)(nil))
+			entityProvider := entityprovidermock.NewEntityProviderInterfaceMock(s.T())
+			if tc.expandsAncestor {
+				entityProvider.On("GetTransitiveGroupAncestors", "child").Return([]string{"parent"}, nil).Once()
+			}
+			execResp := &providers.ExecutorResponse{RuntimeData: map[string]string{}}
+
+			resolveAndSetMappedAuthorizationTargets(context.Background(), execResp, idpService, entityProvider,
+				&providers.IDPDTO{ID: "idp-1"}, nil, log.GetLogger())
+
+			s.Equal(tc.expectedGroups, execResp.RuntimeData[common.RuntimeKeySessionGroupIDs])
+			s.Equal(tc.expectedRoles, execResp.RuntimeData[common.RuntimeKeySessionRoleIDs])
+		})
+	}
 }

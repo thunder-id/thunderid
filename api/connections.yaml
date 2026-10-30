@@ -3760,6 +3760,38 @@ components:
           $ref: '#/components/schemas/AccountLinking'
         authorizationMapping:
           $ref: '#/components/schemas/AuthorizationMapping'
+        sync:
+          $ref: '#/components/schemas/SyncConfiguration'
+
+    SyncConfiguration:
+      type: object
+      description: >
+        How each sign-in through the connection keeps the local account in line with the provider.
+        An unset mode takes its default.
+      properties:
+        attributes:
+          type: string
+          description: >
+            How the account's attributes follow the provider. `no_sync` writes them at account
+            creation only. `session_only` stores only the attributes the account's user type requires
+            and the values the user enters in the flow, and applies the rest to the session and tokens.
+            `override_received` overwrites the attributes the connection's attribute mappings name for
+            the account's user type, when the provider sends them, and keeps the rest.
+            Defaults to `override_received`.
+          enum: [no_sync, session_only, override_received]
+          default: override_received
+          example: override_received
+        groupsAndRoles:
+          type: string
+          description: >
+            How the account's groups and roles follow the connection's authorization mapping.
+            `no_sync` adds them at account creation only. `session_only` applies them to the session
+            and tokens without adding them to the account. `override_all` matches the account's groups
+            and roles to what the authorization mapping resolves, removing the rest, including groups
+            and roles assigned locally. Defaults to `no_sync`.
+          enum: [no_sync, session_only, override_all]
+          default: no_sync
+          example: no_sync
 
     AccountLinking:
       type: object

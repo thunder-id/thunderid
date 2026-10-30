@@ -37,6 +37,8 @@ type RoleAssignmentServiceInterface interface {
 	// ValidateRemoveAssignment reports whether the assignee may be unassigned and what that revokes.
 	ValidateRemoveAssignment(ctx context.Context, id, assigneeID string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
+	AddAssigneeToExistingRoles(ctx context.Context, assignment RoleAssignment,
+		roleIDs []string) *tidcommon.ServiceError
 	AddAssigneesToRoles(ctx context.Context, assignments []RoleAssignment,
 		roleIDs []string) *tidcommon.ServiceError
 	GetResourceDependencies(
@@ -388,6 +390,30 @@ func (as *roleAssignmentService) AddAssigneesToRoles(
 		return &tidcommon.InternalServerError
 	}
 	return nil
+}
+
+// AddAssigneeToExistingRoles assigns the roles in roleIDs that still exist to assignment, skipping the
+// rest. Nothing is written when roles are declarative-only, since the declarative store holds no
+// writable assignments.
+func (as *roleAssignmentService) AddAssigneeToExistingRoles(
+	ctx context.Context, assignment RoleAssignment, roleIDs []string,
+) *tidcommon.ServiceError {
+	if len(roleIDs) == 0 || isDeclarativeModeEnabled() {
+		return nil
+	}
+	existing := make([]string, 0, len(roleIDs))
+	for _, roleID := range roleIDs {
+		exists, err := as.roleStore.IsRoleExist(ctx, roleID)
+		if err != nil {
+			log.GetLogger().With(log.String(log.LoggerKeyComponentName, assignmentLoggerComponentName)).Error(ctx,
+				"Failed to check role existence", log.String("id", roleID), log.Error(err))
+			return &tidcommon.InternalServerError
+		}
+		if exists {
+			existing = append(existing, roleID)
+		}
+	}
+	return as.AddAssigneesToRoles(ctx, []RoleAssignment{assignment}, existing)
 }
 
 // prepareAssignments validates and normalizes assignments before a mutation.

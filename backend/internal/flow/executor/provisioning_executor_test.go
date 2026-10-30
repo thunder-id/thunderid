@@ -575,6 +575,34 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Ext
 	assert.Empty(suite.T(), credentials)
 }
 
+// A connection that keeps attributes to the session stores only the claims the user type requires.
+// Values the user enters are still stored.
+func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_SessionOnlyKeepsRequiredClaims() {
+	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+		Return([]model.AttributeInfo{
+			{Attribute: "username", Type: model.TypeString, Required: true},
+			{Attribute: attributeEmail, Type: model.TypeString},
+			{Attribute: "nickname", Type: model.TypeString},
+		}, nil).Once()
+
+	ctx := &providers.NodeContext{
+		UserInputs: map[string]string{"nickname": "entered"},
+		RuntimeData: map[string]string{
+			categoryTypeKey:                     testUserType,
+			common.RuntimeKeyAttributesSyncMode: string(providers.SyncModeSessionOnly),
+			common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-1", "sub-1",
+				map[string]interface{}{"username": "claimed", attributeEmail: "claimed@example.com"}),
+		},
+		NodeInputs: []providers.Input{},
+	}
+
+	identifying, _, err := suite.executor.getAttributesForProvisioning(ctx, entitytype.TypeCategoryUser)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), map[string]interface{}{"username": "claimed", "nickname": "entered"}, identifying)
+}
+
 // A claim never stands in for a credential, so a password the flow has not collected is still prompted
 // even when the external identity asserts one.
 func (suite *ProvisioningExecutorTestSuite) TestBuildMissingInputs_ExternalClaimDoesNotSatisfyCredential() {
@@ -2669,7 +2697,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_GroupWithExistingMembers
 
 // Seeding is additive: the mapped role/group combine with the fixed assignGroup/assignRole lists,
 // deduplicated, when both flags are enabled.
-func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedGroupsAndRolesFromMapping() {
+func (suite *ProvisioningExecutorTestSuite) TestExecute_MappedGroupsAndRolesStoredOnCreation() {
 	suite.expectSchemaForProvisioning()
 	attrs := map[string]interface{}{"username": "newuser"}
 	attrsJSON, _ := json.Marshal(attrs)
@@ -2681,7 +2709,9 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedGroupsAndRolesFromMa
 	for k, v := range seedMappedAuthorizationTargets(suite.T(), []providers.AuthorizationTarget{
 		{Type: providers.AuthorizationTargetRole, ID: "mapped-role-id"},
 		{Type: providers.AuthorizationTargetGroup, ID: "mapped-group-id"},
-		// A permission target has no seeding equivalent and must be ignored.
+		// A target the flow already assigns is added once, through the flow's assignment.
+		{Type: providers.AuthorizationTargetGroup, ID: "static-group-id"},
+		// A permission target can't be stored and must be ignored.
 		{Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: "read"},
 	}) {
 		runtimeData[k] = v
@@ -2696,10 +2726,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedGroupsAndRolesFromMa
 			{Identifier: "username", Type: "string", Required: true},
 		},
 		NodeProperties: map[string]interface{}{
-			"assignGroup":           "static-group-id",
-			"assignRole":            "static-role-id",
-			"seedGroupsFromMapping": true,
-			"seedRolesFromMapping":  true,
+			"assignGroup": "static-group-id",
+			"assignRole":  "static-role-id",
 		},
 	}
 
@@ -2713,11 +2741,19 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedGroupsAndRolesFromMa
 
 	suite.mockGroupService.On("AddMembersToGroups",
 		mock.Anything, []group.Member{{ID: testNewUserID, Type: group.MemberTypeUser}},
-		[]string{"static-group-id", "mapped-group-id"}).
+		[]string{"static-group-id"}).
 		Return((*tidcommon.ServiceError)(nil))
 	suite.mockRoleAssignmentService.On("AddAssigneesToRoles", mock.Anything,
 		[]role.RoleAssignment{{ID: testNewUserID, Type: role.AssigneeTypeUser}},
-		[]string{"static-role-id", "mapped-role-id"}).
+		[]string{"static-role-id"}).
+		Return((*tidcommon.ServiceError)(nil))
+	suite.mockGroupService.On("AddMemberToExistingGroups",
+		mock.Anything, group.Member{ID: testNewUserID, Type: group.MemberTypeUser},
+		[]string{"mapped-group-id"}).
+		Return((*tidcommon.ServiceError)(nil))
+	suite.mockRoleAssignmentService.On("AddAssigneeToExistingRoles", mock.Anything,
+		role.RoleAssignment{ID: testNewUserID, Type: role.AssigneeTypeUser},
+		[]string{"mapped-role-id"}).
 		Return((*tidcommon.ServiceError)(nil))
 
 	resp, err := suite.executor.Execute(ctx)
@@ -2728,16 +2764,17 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedGroupsAndRolesFromMa
 	suite.mockRoleAssignmentService.AssertExpectations(suite.T())
 }
 
-// Without the seeding flags, mapped targets carried in runtime data are ignored entirely: only the
-// fixed assignGroup/assignRole lists are applied.
-func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedFromMappingDisabled_MappedTargetsIgnored() {
+// When the connection keeps groups and roles to the session, mapped targets carried in runtime data are
+// not stored: only the fixed assignGroup/assignRole lists are applied.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_SessionOnlyGroupsAndRoles_MappedTargetsNotStored() {
 	suite.expectSchemaForProvisioning()
 	attrs := map[string]interface{}{"username": "newuser"}
 	attrsJSON, _ := json.Marshal(attrs)
 
 	runtimeData := map[string]string{
-		ouIDKey:         testOUID,
-		categoryTypeKey: testUserType,
+		ouIDKey:                                 testOUID,
+		categoryTypeKey:                         testUserType,
+		common.RuntimeKeyGroupsAndRolesSyncMode: string(providers.SyncModeSessionOnly),
 	}
 	for k, v := range seedMappedAuthorizationTargets(suite.T(), []providers.AuthorizationTarget{
 		{Type: providers.AuthorizationTargetRole, ID: "mapped-role-id"},

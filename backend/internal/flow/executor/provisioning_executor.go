@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -83,8 +84,6 @@ func newProvisioningExecutor(
 				{Property: propertyKeyMaxDynamicInputsPerPrompt},
 				{Property: propertyKeyAssignGroup},
 				{Property: propertyKeyAssignRole},
-				{Property: propertyKeySeedGroupsFromMapping},
-				{Property: propertyKeySeedRolesFromMapping},
 				{Property: common.NodePropertyAllowCrossOUProvisioning},
 			},
 		})
@@ -892,6 +891,8 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 	}
 
 	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
+	// A connection that keeps attributes to the session stores only the claims the user type requires.
+	sessionOnly := ctx.RuntimeData[common.RuntimeKeyAttributesSyncMode] == string(providers.SyncModeSessionOnly)
 	for _, a := range schemaAttrs {
 		if a.Credential {
 			if value, exists := ctx.UserInputs[a.Attribute]; exists && value != "" {
@@ -906,7 +907,7 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 			} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists && runtimeValue != "" {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(runtimeValue, a.Type)
 			} else if claimValue, exists := extIdentity.Claim(a.Attribute); exists &&
-				claimValue != "" {
+				claimValue != "" && (!sessionOnly || a.Required) {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(claimValue, a.Type)
 			}
 		}
@@ -1177,19 +1178,19 @@ func (p *provisioningExecutor) assignGroupsAndRoles(
 	groupIDs := p.getGroupsToAssign(ctx)
 	roleIDs := p.getRolesToAssign(ctx)
 
-	// Seeding from the authorization mapping (rule-based or direct) is a one-time assignment at
-	// creation, it opts in to whatever the federated login's mapping already resolved for this
-	// entity's claims, alongside the fixed lists above.
-	if isSeedGroupsFromMappingEnabled(ctx) {
-		mappedGroupIDs := systemutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedGroupIDs], " ")
-		groupIDs = systemutils.MergeUniqueStrings(groupIDs, mappedGroupIDs)
-	}
-	if isSeedRolesFromMappingEnabled(ctx) {
-		mappedRoleIDs := systemutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedRoleIDs], " ")
-		roleIDs = systemutils.MergeUniqueStrings(roleIDs, mappedRoleIDs)
+	// Groups and roles the federated login's authorization mapping resolved are stored on the new
+	// entity, alongside the fixed lists above, unless the connection keeps them to the session.
+	var mappedGroupIDs, mappedRoleIDs []string
+	if ctx.RuntimeData[common.RuntimeKeyGroupsAndRolesSyncMode] != string(providers.SyncModeSessionOnly) {
+		mappedGroupIDs = slices.DeleteFunc(
+			systemutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedGroupIDs], " "),
+			func(id string) bool { return slices.Contains(groupIDs, id) })
+		mappedRoleIDs = slices.DeleteFunc(
+			systemutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedRoleIDs], " "),
+			func(id string) bool { return slices.Contains(roleIDs, id) })
 	}
 
-	if len(groupIDs) == 0 && len(roleIDs) == 0 {
+	if len(groupIDs) == 0 && len(roleIDs) == 0 && len(mappedGroupIDs) == 0 && len(mappedRoleIDs) == 0 {
 		logger.Debug(ctx.Context, "No group or role configured for assignment, skipping")
 		return nil
 	}
@@ -1197,47 +1198,44 @@ func (p *provisioningExecutor) assignGroupsAndRoles(
 	logger.Debug(ctx.Context, "Assigning groups and roles to the provisioned entity",
 		log.MaskedString(log.LoggerKeyEntityID, entityID),
 		log.String("groupIDs", strings.Join(groupIDs, ",")),
-		log.String("roleIDs", strings.Join(roleIDs, ",")))
+		log.String("roleIDs", strings.Join(roleIDs, ",")),
+		log.String("mappedGroupIDs", strings.Join(mappedGroupIDs, ",")),
+		log.String("mappedRoleIDs", strings.Join(mappedRoleIDs, ",")))
 
+	member := group.Member{ID: entityID, Type: traitsFor(category).groupMemberType}
 	if len(groupIDs) > 0 {
 		if svcErr := p.groupService.AddMembersToGroups(ctx.Context,
-			[]group.Member{{ID: entityID, Type: traitsFor(category).groupMemberType}}, groupIDs); svcErr != nil {
+			[]group.Member{member}, groupIDs); svcErr != nil {
 			return fmt.Errorf("group assignment failed: %s", svcErr.Error.DefaultValue)
 		}
 	}
 
+	assignee := role.RoleAssignment{ID: entityID, Type: traitsFor(category).roleAssigneeType}
 	if len(roleIDs) > 0 {
 		if svcErr := p.roleAssignmentService.AddAssigneesToRoles(ctx.Context,
-			[]role.RoleAssignment{{ID: entityID, Type: traitsFor(category).roleAssigneeType}}, roleIDs); svcErr != nil {
+			[]role.RoleAssignment{assignee}, roleIDs); svcErr != nil {
 			return fmt.Errorf("role assignment failed: %s", svcErr.Error.DefaultValue)
+		}
+	}
+
+	// Mapped targets skip groups and roles that no longer exist, so a stale mapping doesn't fail the
+	// sign-in.
+	if len(mappedGroupIDs) > 0 {
+		if svcErr := p.groupService.AddMemberToExistingGroups(ctx.Context, member, mappedGroupIDs); svcErr != nil {
+			return fmt.Errorf("mapped group assignment failed: %s", svcErr.Error.DefaultValue)
+		}
+	}
+
+	if len(mappedRoleIDs) > 0 {
+		if svcErr := p.roleAssignmentService.AddAssigneeToExistingRoles(
+			ctx.Context, assignee, mappedRoleIDs); svcErr != nil {
+			return fmt.Errorf("mapped role assignment failed: %s", svcErr.Error.DefaultValue)
 		}
 	}
 
 	logger.Debug(ctx.Context, "Successfully assigned groups and roles",
 		log.MaskedString(log.LoggerKeyEntityID, entityID))
 	return nil
-}
-
-// isSeedGroupsFromMappingEnabled returns the value of the seedGroupsFromMapping node property,
-// defaulting to false if absent or not a bool.
-func isSeedGroupsFromMappingEnabled(ctx *providers.NodeContext) bool {
-	if val, ok := ctx.NodeProperties[propertyKeySeedGroupsFromMapping]; ok {
-		if boolVal, ok := val.(bool); ok {
-			return boolVal
-		}
-	}
-	return false
-}
-
-// isSeedRolesFromMappingEnabled returns the value of the seedRolesFromMapping node property,
-// defaulting to false if absent or not a bool.
-func isSeedRolesFromMappingEnabled(ctx *providers.NodeContext) bool {
-	if val, ok := ctx.NodeProperties[propertyKeySeedRolesFromMapping]; ok {
-		if boolVal, ok := val.(bool); ok {
-			return boolVal
-		}
-	}
-	return false
 }
 
 // getGroupsToAssign parses the assignGroup node property into a slice of group IDs.

@@ -1061,6 +1061,7 @@ var defaultMessages = map[string]string{
 	"error.idpservice.attribute_configuration_duplicate_user_type_description": "user type '{{param(userType)}}' is configured more than once",
 	"error.idpservice.attribute_configuration_empty_claim_description": "attribute mapping must not contain empty attribute names",
 	"error.idpservice.attribute_configuration_entry_user_type_required_description": "each user type attributes entry requires an user type",
+	"error.idpservice.attribute_configuration_invalid_sync_mode_description": "sync mode '{{param(mode)}}' is not supported for '{{param(setting)}}'",
 	"error.idpservice.attribute_configuration_linking_empty_description": "account linking attributes must not be empty",
 	"error.idpservice.attribute_configuration_linking_reserved_description": "'{{param(attribute)}}' is reserved and cannot be used for account linking",
 	"error.idpservice.attribute_configuration_linking_too_many_lookups_description": "account linking attributes combine into {{param(count)}} lookups for user type '{{param(userType)}}', more than the {{param(max)}} allowed",

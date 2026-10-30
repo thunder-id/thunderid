@@ -129,13 +129,12 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 		return nil, errors.Join(errors.New("failed to extract group IDs"), err)
 	}
 
-	// Fold in any roles, groups, and permissions the federated login mapped from IDP claims (via the
-	// authorization mapping, rule-based or direct).
-	mappedRoleIDs := utils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedRoleIDs], " ")
-	mappedGroupIDs := utils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedGroupIDs], " ")
+	// Fold in the federated login's mapped permissions, and its mapped roles and groups that apply to
+	// the session only. The others are stored on the account.
+	mappedRoleIDs := utils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeySessionRoleIDs], " ")
+	groupIDs = utils.MergeUniqueStrings(groupIDs,
+		utils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeySessionGroupIDs], " "))
 	mappedPermissions := extractMappedPermissions(ctx, a.logger)
-	mappedGroupIDs = a.expandMappedGroupAncestors(ctx, mappedGroupIDs)
-	groupIDs = utils.MergeUniqueStrings(groupIDs, mappedGroupIDs)
 
 	logger.Debug(ctx.Context, "Calling authorization service",
 		log.MaskedString(log.LoggerKeyUserID, userID),
@@ -288,25 +287,4 @@ func (a *authorizationExecutor) extractGroupIDs(ctx *providers.NodeContext, user
 
 	// No groups found
 	return []string{}, nil
-}
-
-// expandMappedGroupAncestors adds each mapped group's ancestor groups. Best-effort, like the rest of
-// authorization mapping at login.
-func (a *authorizationExecutor) expandMappedGroupAncestors(
-	ctx *providers.NodeContext, mappedGroupIDs []string,
-) []string {
-	if a.entityProvider == nil || len(mappedGroupIDs) == 0 {
-		return mappedGroupIDs
-	}
-	expanded := mappedGroupIDs
-	for _, groupID := range mappedGroupIDs {
-		ancestors, err := a.entityProvider.GetTransitiveGroupAncestors(groupID)
-		if err != nil {
-			a.logger.Warn(ctx.Context, "Failed to resolve ancestors of a mapped group, continuing without them",
-				log.String("groupId", groupID), log.Error(err))
-			continue
-		}
-		expanded = utils.MergeUniqueStrings(expanded, ancestors)
-	}
-	return expanded
 }
