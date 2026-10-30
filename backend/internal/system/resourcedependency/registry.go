@@ -77,6 +77,7 @@ const (
 	ResourceTypeUser                 = "user"
 	ResourceTypeUserType             = "userType"
 	ResourceTypeAgentType            = "agentType"
+	ResourceTypeOUType               = "organizationUnitType"
 	ResourceTypeApplication          = "application"
 	ResourceTypeAgent                = "agent"
 	ResourceTypeGroup                = "group"
