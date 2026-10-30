@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, QueryErrorNotice, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
@@ -41,8 +41,10 @@ import ReadOnlyCopyField from '../components/ReadOnlyCopyField';
 import ServiceAuthenticationMethods from '../components/ServiceAuthenticationMethods';
 import SetDefaultEmailSenderDialog from '../components/SetDefaultEmailSenderDialog';
 import SubjectMappingSection from '../components/SubjectMappingSection';
+import SyncSection from '../components/SyncSection';
 import {CONNECTION_FORM_FIELDS} from '../config/connectionFormFields';
 import {VENDOR_META_BY_TYPE} from '../config/connectionVendorMeta';
+import ConnectionConstants from '../constants/connection-constants';
 import useConnectionRoutes from '../hooks/useConnectionRoutes';
 import {
   AUTHENTICATION_METHOD_FIELD_NAMES,
@@ -59,6 +61,8 @@ import type {
   OutboundAuthField,
   OutboundAuthMethod,
   SubjectMappingValues,
+  SyncConfiguration,
+  SyncMode,
 } from '../models/connection';
 import {ConnectionTypes} from '../models/connection';
 import {
@@ -92,6 +96,13 @@ function TabPanel({children, value, index}: TabPanelProps): JSX.Element {
       {value === index && <Box sx={{py: 3}}>{children}</Box>}
     </div>
   );
+}
+
+const SYNC_SETTINGS: (keyof SyncConfiguration)[] = ['attributes', 'groupsAndRoles'];
+
+/** The mode a sync setting takes, with an unset one taking its server default. */
+function effectiveSyncMode(sync: SyncConfiguration | undefined, setting: keyof SyncConfiguration): SyncMode {
+  return sync?.[setting] ?? ConnectionConstants.DEFAULT_SYNC_MODES[setting];
 }
 
 /** Canonical serialization of an attribute configuration for dirty-checking (order-independent). */
@@ -150,6 +161,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
   );
   const [directMappingsValid, setDirectMappingsValid] = useState(true);
   const [editedLinking, setEditedLinking] = useState<AccountLinking | undefined | null>(null);
+  const [editedSync, setEditedSync] = useState<SyncConfiguration | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
   const [generalError, setGeneralError] = useState<string | null>(null);
@@ -205,6 +217,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
   const baselineSubjectMapping: SubjectMappingValues = {
     subjectAttributeMappings: normalizeSubjectAttributeMappings(data?.subjectAttributeMappings),
   };
+  const baselineSync: SyncConfiguration | undefined = data?.attributeConfiguration?.sync;
 
   if (!meta) {
     return null;
@@ -227,6 +240,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     setEditedDirectMappings(null);
     setDirectMappingsValid(true);
     setEditedLinking(null);
+    setEditedSync(null);
     setNameError(null);
     setGeneralError(null);
   };
@@ -246,6 +260,11 @@ export default function ConnectionDetailPage(): JSX.Element | null {
   const linkingDirty: boolean =
     editedLinking !== null &&
     JSON.stringify(editedLinking?.attributes ?? []) !== JSON.stringify(baselineLinking?.attributes ?? []);
+  const syncDirty: boolean =
+    editedSync !== null &&
+    SYNC_SETTINGS.some(
+      (setting) => effectiveSyncMode(editedSync, setting) !== effectiveSyncMode(baselineSync, setting),
+    );
   const dirty: boolean =
     formDirty ||
     attrDirty ||
@@ -253,6 +272,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     authzMappingsDirty ||
     directMappingsDirty ||
     linkingDirty ||
+    syncDirty ||
     !authzMappingsValid ||
     !directMappingsValid;
   const selectedAuthenticationScheme =
@@ -406,6 +426,8 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     const hasAuthzMappings = Boolean(effectiveAuthzMappings && effectiveAuthzMappings.length > 0);
     const hasDirectMappings = Boolean(effectiveDirectMappings && effectiveDirectMappings.length > 0);
     const hasLinking = Boolean(effectiveLinking && effectiveLinking.attributes.length > 0);
+    const effectiveSync: SyncConfiguration | undefined = editedSync ?? baselineSync;
+    const hasSync = Boolean(effectiveSync?.attributes ?? effectiveSync?.groupsAndRoles);
     // userTypeResolution is required by the wire type, but a connection may carry only authorization
     // mappings or only account linking (e.g. a token-exchange-only connection with no attribute mapping
     // configured at all). The empty default is inert: GetMappedUserType treats it identically to no
@@ -413,7 +435,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     // conditionally) so clearing either drops it from the payload instead of leaking effectiveAttr's
     // stale value (baselineAttr, when unedited, still carries whatever the server last returned).
     const mergedAttributeConfiguration: AttributeConfiguration | undefined =
-      effectiveAttr || hasAuthzMappings || hasDirectMappings || hasLinking
+      effectiveAttr || hasAuthzMappings || hasDirectMappings || hasLinking || hasSync
         ? {
             userTypeResolution: {default: ''},
             ...effectiveAttr,
@@ -422,6 +444,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                 ? {rules: effectiveAuthzMappings, direct: effectiveDirectMappings}
                 : undefined,
             accountLinking: hasLinking ? effectiveLinking : undefined,
+            sync: hasSync ? effectiveSync : undefined,
           }
         : undefined;
     const authenticationChanged =
@@ -820,6 +843,21 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                   key={`linking-${resolvedId}-${attrsKey}`}
                   initialConfig={baselineLinking}
                   onChange={(linking) => setEditedLinking(linking)}
+                />
+                <SyncSection
+                  sync={editedSync ?? baselineSync}
+                  onChange={(sync) => {
+                    clearSaveError();
+                    // A setting changed back to its stored mode keeps the stored value, so an unset
+                    // mode stays unset instead of being saved as its default.
+                    const normalized: SyncConfiguration = {...sync};
+                    for (const setting of SYNC_SETTINGS) {
+                      if (effectiveSyncMode(sync, setting) === effectiveSyncMode(baselineSync, setting)) {
+                        normalized[setting] = baselineSync?.[setting];
+                      }
+                    }
+                    setEditedSync(normalized);
+                  }}
                 />
               </Stack>
             </TabPanel>

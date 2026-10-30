@@ -32,6 +32,10 @@ var (
 	// ErrBadAttributesInRequest is returned when the attributes in the request are invalid.
 	ErrBadAttributesInRequest = errors.New("failed to marshal attributes")
 
+	// ErrSyncRejected is returned when a federated sync's group or role write is rejected, for example
+	// when the entity may not be granted a mapped group or role.
+	ErrSyncRejected = errors.New("sync rejected")
+
 	// errInvalidAuthenticationMethod is returned when a lock write names a method outside the registry.
 	errInvalidAuthenticationMethod = errors.New("invalid authentication method")
 

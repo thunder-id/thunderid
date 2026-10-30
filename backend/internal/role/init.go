@@ -65,6 +65,7 @@ func Initialize(
 	assignmentService := newRoleAssignmentService(
 		roleStore, entityService, groupService, entityTypeService, resourceService, transactioner, authzService,
 	)
+	entityService.SetRoleMembershipProvider(assignmentService)
 	roleHandler := newRoleHandler(roleService, assignmentService)
 	registerRoutes(mux, roleHandler)
 	exporter := newRoleExporter(roleService, assignmentService, sharingService)

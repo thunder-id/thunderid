@@ -6,6 +6,7 @@ package entityprovider
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -305,6 +306,27 @@ func (suite *DefaultEntityProviderTestSuite) TestUpdateSystemCredentials() {
 	suite.Equal(ErrorCodeInvalidRequestFormat, err.Code)
 }
 
+func (suite *DefaultEntityProviderTestSuite) TestSyncFederatedEntity() {
+	sync := providers.FederatedEntitySync{
+		Link:   providers.LinkedAccount{IdpID: "idp-a", Sub: "sub-1"},
+		Groups: &providers.MembershipSync{IDs: []string{"g1"}},
+	}
+	suite.mockService.On("SyncFederatedEntity", mock.Anything, testEntityID, sync).Return(nil).Once()
+	suite.Nil(suite.provider.SyncFederatedEntity(testEntityID, sync))
+
+	suite.mockService.On("SyncFederatedEntity", mock.Anything, testEntityID, sync).
+		Return(fmt.Errorf("%w: failed to sync roles", entity.ErrSyncRejected)).Once()
+	err := suite.provider.SyncFederatedEntity(testEntityID, sync)
+	suite.NotNil(err)
+	suite.Equal(ErrorCodeSyncRejected, err.Code)
+
+	suite.mockService.On("SyncFederatedEntity", mock.Anything, testEntityID, sync).
+		Return(errors.New("failed to sync groups")).Once()
+	err = suite.provider.SyncFederatedEntity(testEntityID, sync)
+	suite.NotNil(err)
+	suite.Equal(ErrorCodeSystemError, err.Code)
+}
+
 func (suite *DefaultEntityProviderTestSuite) TestMapEntityError() {
 	// Verifies the centralized error mapping helper.
 	cases := []struct {
@@ -317,6 +339,7 @@ func (suite *DefaultEntityProviderTestSuite) TestMapEntityError() {
 		{"SchemaValidationFailed", entity.ErrSchemaValidationFailed, ErrorCodeSchemaValidationFailed},
 		{"InvalidCredential", entity.ErrInvalidCredential, ErrorCodeInvalidRequestFormat},
 		{"BadAttributesInRequest", entity.ErrBadAttributesInRequest, ErrorCodeInvalidRequestFormat},
+		{"SyncRejected", entity.ErrSyncRejected, ErrorCodeSyncRejected},
 		{"Unknown", errors.New("unexpected"), ErrorCodeSystemError},
 	}
 	for _, tc := range cases {

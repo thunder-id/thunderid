@@ -128,7 +128,10 @@ func (s *FederatedMappingSuite) matchingIdentity(email string) (
 	s.T().Helper()
 	user := s.baseUser(s.nextSubject())
 	user.Email = email
-	return user, linkOn([]string{"email"}, pair("email", "email"), pair("email", "username"))
+	config := linkOn([]string{"email"}, pair("email", "email"), pair("email", "username"))
+	// Syncing the email into the other candidate's username would be refused as a duplicate.
+	config.Sync = &testutils.SyncConfiguration{Attributes: "no_sync"}
+	return user, config
 }
 
 // requireLinkingPrompt asserts the step is the prompt the linking node forwarded to, showing the
@@ -306,7 +309,10 @@ func (s *FederatedMappingSuite) splitIdentity(email string) (
 	s.T().Helper()
 	user := s.baseUser(s.nextSubject())
 	user.Email = email
-	return user, linkOn([]string{"email"}, pair("email", "email"), pair("email", "username"))
+	config := linkOn([]string{"email"}, pair("email", "email"), pair("email", "username"))
+	// Syncing the email into the other candidate's username would be refused as a duplicate.
+	config.Sync = &testutils.SyncConfiguration{Attributes: "no_sync"}
+	return user, config
 }
 
 // requireSplitVerification drives the split identity to the password step and asserts it asks who

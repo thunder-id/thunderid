@@ -117,6 +117,13 @@ func (s *cacheBackedEntityStore) UpdateSystemAttributes(ctx context.Context,
 	return s.store.UpdateSystemAttributes(ctx, entityID, attrs)
 }
 
+func (s *cacheBackedEntityStore) UpdateLinkSyncedAt(ctx context.Context,
+	entityID string, attrs json.RawMessage) error {
+	s.invalidateEntityByID(ctx, entityID)
+
+	return s.store.UpdateLinkSyncedAt(ctx, entityID, attrs)
+}
+
 func (s *cacheBackedEntityStore) UpdateCredentials(ctx context.Context,
 	entityID string, creds json.RawMessage) error {
 	s.invalidateEntityByID(ctx, entityID)

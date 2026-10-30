@@ -128,6 +128,12 @@ func (s *CompositeStoreTestSuite) TestUpdateSystemAttributes_Delegates() {
 	s.NoError(s.store.UpdateSystemAttributes(s.ctx, "u1", nil))
 }
 
+func (s *CompositeStoreTestSuite) TestUpdateLinkSyncedAt_Delegates() {
+	s.dbStore.On("UpdateLinkSyncedAt", mock.Anything, "u1", mock.Anything).Return(nil)
+	s.NoError(s.store.UpdateLinkSyncedAt(s.ctx, "u1", nil))
+	s.fileStore.AssertNotCalled(s.T(), "UpdateLinkSyncedAt", mock.Anything, mock.Anything, mock.Anything)
+}
+
 func (s *CompositeStoreTestSuite) TestLockEntity_Delegates() {
 	s.dbStore.On("LockEntity", mock.Anything, "u1").Return(providers.Entity{ID: "u1"}, nil)
 	e, err := s.store.LockEntity(s.ctx, "u1")

@@ -2010,3 +2010,141 @@ func (suite *GroupStoreTestSuite) SetupTest() {
 		Server: engineconfig.ServerConfig{Identifier: testDeploymentID},
 	})
 }
+
+func (suite *GroupStoreTestSuite) TestGetMemberGroupIDs() {
+	suite.Run("returns group IDs", func() {
+		providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
+		dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
+		providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
+		dbClientMock.On("QueryContext", mock.Anything, QueryGetMemberGroupIDs,
+			string(memberTypeEntity), "user-1", testDeploymentID).
+			Return([]map[string]interface{}{{"group_id": "grp-1"}, {"group_id": "grp-2"}}, nil).Once()
+
+		store := &groupStore{dbProvider: providerMock}
+		groupIDs, err := store.GetMemberGroupIDs(context.Background(), string(memberTypeEntity), "user-1")
+
+		require.NoError(suite.T(), err)
+		require.Equal(suite.T(), []string{"grp-1", "grp-2"}, groupIDs)
+	})
+
+	suite.Run("db error is propagated", func() {
+		providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
+		dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
+		providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
+		dbClientMock.On("QueryContext", mock.Anything, QueryGetMemberGroupIDs,
+			string(memberTypeEntity), "user-1", testDeploymentID).Return(nil, errors.New("db error")).Once()
+
+		store := &groupStore{dbProvider: providerMock}
+		_, err := store.GetMemberGroupIDs(context.Background(), string(memberTypeEntity), "user-1")
+
+		require.Error(suite.T(), err)
+	})
+
+	suite.Run("invalid row is rejected", func() {
+		providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
+		dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
+		providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
+		dbClientMock.On("QueryContext", mock.Anything, QueryGetMemberGroupIDs,
+			string(memberTypeEntity), "user-1", testDeploymentID).
+			Return([]map[string]interface{}{{"group_id": 1}}, nil).Once()
+
+		store := &groupStore{dbProvider: providerMock}
+		_, err := store.GetMemberGroupIDs(context.Background(), string(memberTypeEntity), "user-1")
+
+		require.Error(suite.T(), err)
+	})
+
+	suite.Run("db client error is propagated", func() {
+		providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
+		providerMock.On("GetEntityDBClient").Return(nil, errors.New("no client")).Once()
+
+		store := &groupStore{dbProvider: providerMock}
+		_, err := store.GetMemberGroupIDs(context.Background(), string(memberTypeEntity), "user-1")
+
+		require.Error(suite.T(), err)
+	})
+}
+
+func (suite *GroupStoreTestSuite) TestAddMemberToGroups() {
+	member := Member{ID: "user-1", Type: memberTypeEntity}
+
+	suite.Run("adds the member to each group", func() {
+		providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
+		dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
+		providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
+		for _, gid := range []string{"grp-1", "grp-2"} {
+			dbClientMock.On("ExecuteContext", mock.Anything, QueryAddMemberToGroup, gid, memberTypeEntity,
+				"user-1", testDeploymentID, mock.Anything, mock.Anything).Return(int64(1), nil).Once()
+		}
+
+		store := &groupStore{dbProvider: providerMock}
+		err := store.AddMemberToGroups(context.Background(), member, []string{"grp-1", "grp-2"})
+
+		require.NoError(suite.T(), err)
+	})
+
+	suite.Run("db error is propagated", func() {
+		providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
+		dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
+		providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
+		dbClientMock.On("ExecuteContext", mock.Anything, QueryAddMemberToGroup, "grp-1", memberTypeEntity,
+			"user-1", testDeploymentID, mock.Anything, mock.Anything).Return(int64(0), errors.New("db error")).Once()
+
+		store := &groupStore{dbProvider: providerMock}
+		err := store.AddMemberToGroups(context.Background(), member, []string{"grp-1", "grp-2"})
+
+		require.Error(suite.T(), err)
+	})
+
+	suite.Run("db client error is propagated", func() {
+		providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
+		providerMock.On("GetEntityDBClient").Return(nil, errors.New("no client")).Once()
+
+		store := &groupStore{dbProvider: providerMock}
+		err := store.AddMemberToGroups(context.Background(), member, []string{"grp-1"})
+
+		require.Error(suite.T(), err)
+	})
+}
+
+func (suite *GroupStoreTestSuite) TestRemoveMemberFromGroups() {
+	member := Member{ID: "user-1", Type: memberTypeEntity}
+
+	suite.Run("removes the member from each group", func() {
+		providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
+		dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
+		providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
+		for _, gid := range []string{"grp-1", "grp-2"} {
+			dbClientMock.On("ExecuteContext", mock.Anything, QueryDeleteGroupMember, gid, memberTypeEntity,
+				"user-1", testDeploymentID).Return(int64(1), nil).Once()
+		}
+
+		store := &groupStore{dbProvider: providerMock}
+		err := store.RemoveMemberFromGroups(context.Background(), member, []string{"grp-1", "grp-2"})
+
+		require.NoError(suite.T(), err)
+	})
+
+	suite.Run("db error is propagated", func() {
+		providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
+		dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
+		providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
+		dbClientMock.On("ExecuteContext", mock.Anything, QueryDeleteGroupMember, "grp-1", memberTypeEntity,
+			"user-1", testDeploymentID).Return(int64(0), errors.New("db error")).Once()
+
+		store := &groupStore{dbProvider: providerMock}
+		err := store.RemoveMemberFromGroups(context.Background(), member, []string{"grp-1", "grp-2"})
+
+		require.Error(suite.T(), err)
+	})
+
+	suite.Run("db client error is propagated", func() {
+		providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
+		providerMock.On("GetEntityDBClient").Return(nil, errors.New("no client")).Once()
+
+		store := &groupStore{dbProvider: providerMock}
+		err := store.RemoveMemberFromGroups(context.Background(), member, []string{"grp-1"})
+
+		require.Error(suite.T(), err)
+	})
+}

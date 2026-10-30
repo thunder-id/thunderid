@@ -141,6 +141,12 @@ var (
 		ID:    "ASQ-ENTITY_MGT-31",
 		Query: `UPDATE "ENTITY" SET UPDATED_AT = UPDATED_AT WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
+	// QueryUpdateLinkSyncedAt is the query to write system attributes that differ only in a link's last
+	// sync time. It leaves UPDATED_AT unchanged, since a sync that changes nothing else is not an update.
+	QueryUpdateLinkSyncedAt = model.DBQuery{
+		ID:    "ASQ-ENTITY_MGT-36",
+		Query: `UPDATE "ENTITY" SET SYSTEM_ATTRIBUTES = $2 WHERE ID = $1 AND DEPLOYMENT_ID = $3`,
+	}
 )
 
 // appendOUIDsINClause appends an "AND OU_ID IN (...)" condition to a query for the given OU IDs.

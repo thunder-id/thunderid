@@ -584,6 +584,18 @@ Controls declarative configuration support.
 |---------|---------|-------------|
 | `declarative_resources.enabled` | `false` | If `true`, enables declarative resource configuration |
 
+### Store Modes
+
+Each resource type sets its own store mode in `<type>.store`, for example `group.store` and `role.store`.
+
+| Mode | Behavior |
+|------|----------|
+| `mutable` | Resources live in the database and are managed through the Console or API. |
+| `declarative` | Resources come only from declarative files and are read-only. Nothing is written to the database, including group and role memberships. |
+| `composite` | Declarative resources are read-only, and database resources are managed through the Console or API. |
+
+If `group.store` or `role.store` isn't set, that type behaves as `declarative` when `declarative_resources.enabled` is `true`, and as `mutable` otherwise.
+
 ### Resource Loading Precedence
 
 At startup, <ProductName /> resolves declarative resources using the following precedence. Only the first matching source is used. Sources are not merged.

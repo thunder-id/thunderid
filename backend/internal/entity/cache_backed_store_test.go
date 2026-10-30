@@ -257,6 +257,20 @@ func (s *CacheBackedEntityStoreTestSuite) TestUpdateSystemAttributes_Invalidates
 	s.False(ok)
 }
 
+func (s *CacheBackedEntityStoreTestSuite) TestUpdateLinkSyncedAt_InvalidatesEntityCache() {
+	entity := s.makeEntity(testEntityID, "client-1")
+	s.entityByIDData[entity.ID] = &entity
+
+	attrs := json.RawMessage(`{"linkedIds":{"idp-a":{"sub-1":{"lastSyncedAt":"2026-01-02T03:04:05Z"}}}}`)
+	s.mockStore.On("UpdateLinkSyncedAt", mock.Anything, entity.ID, attrs).Return(nil).Once()
+
+	s.Nil(s.cachedStore.UpdateLinkSyncedAt(context.Background(), entity.ID, attrs))
+	s.mockStore.AssertExpectations(s.T())
+
+	_, ok := s.entityByIDCache.Get(context.Background(), cache.CacheKey{Key: entity.ID})
+	s.False(ok)
+}
+
 // GetEntityWithCredentials cache helper edge cases
 
 func (s *CacheBackedEntityStoreTestSuite) TestGetEntityWithCredentials_NilResult_DoesNotCache() {

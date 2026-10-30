@@ -178,6 +178,9 @@ type IDPProvider interface {
 	GetDirectAuthorizationTargets(
 		ctx context.Context, idp *IDPDTO, claims map[string]interface{},
 	) ([]AuthorizationTarget, *common.ServiceError)
+	ResolveDirectAuthorizationTargets(
+		ctx context.Context, idp *IDPDTO, claims map[string]interface{},
+	) ([]AuthorizationTarget, []AuthorizationTarget, *common.ServiceError)
 }
 
 // ConsentProvider provides functionality to resolve consent requirements and

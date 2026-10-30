@@ -16,6 +16,7 @@ import (
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/sharing"
@@ -2450,4 +2451,369 @@ func (s *ServiceTestSuite) TestUpdateSystemAttributes_ValuesAtLimitAccepted() {
 	store.On("UpdateSystemAttributes", mock.Anything, "e1", mock.IsType(json.RawMessage(nil))).Return(nil)
 
 	s.NoError(svc.UpdateSystemAttributes(s.ctx, "e1", attrs))
+}
+
+var syncTestSchema = []entitytype.AttributeInfo{
+	{Attribute: "username"}, {Attribute: "email"}, {Attribute: "age", Type: entitytypemodel.TypeNumber},
+	{Attribute: "verified", Type: entitytypemodel.TypeBoolean}, {Attribute: "tags", Type: entitytypemodel.TypeArray},
+}
+
+var syncTestLink = providers.LinkedAccount{IdpID: "idp-a", Sub: "sub-1"}
+
+const syncTestSystemAttributes = `{"clientId":"c1","linkedIds":{"idp-a":{"sub-1":{},"sub-2":{}},` +
+	`"idp-b":{"sub-9":{"lastSyncedAt":"2020-01-01T00:00:00Z"}}}}`
+
+func (s *ServiceTestSuite) newSyncSvc() (
+	*entityService, *entitytypemock.EntityTypeServiceInterfaceMock, *GroupMembershipProviderMock,
+	*RoleMembershipProviderMock,
+) {
+	svc, ets := s.newSvcWithEntityType()
+	groups := NewGroupMembershipProviderMock(s.T())
+	roles := NewRoleMembershipProviderMock(s.T())
+	svc.SetGroupMembershipProvider(groups)
+	svc.SetRoleMembershipProvider(roles)
+	return svc, ets, groups, roles
+}
+
+func syncTestUser(attributes string) providers.Entity {
+	return providers.Entity{ID: "u1", Category: providers.EntityCategoryUser, Type: "employee",
+		Attributes: json.RawMessage(attributes), SystemAttributes: json.RawMessage(syncTestSystemAttributes)}
+}
+
+// expectSyncEntity stubs the lock and the reads of a stored, writable entity.
+func (s *ServiceTestSuite) expectSyncEntity(e providers.Entity) {
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(e, nil).Once()
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(e, nil)
+}
+
+// expectReadOnlySyncEntity stubs the reads of a declarative entity, which can't be locked.
+func (s *ServiceTestSuite) expectReadOnlySyncEntity(e providers.Entity) {
+	e.IsReadOnly = true
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(providers.Entity{}, ErrEntityNotFound).Once()
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(e, nil).Once()
+}
+
+// expectStamp captures the system attributes written by UpdateLinkSyncedAt.
+func (s *ServiceTestSuite) expectStamp(written *json.RawMessage) {
+	s.store.On("UpdateLinkSyncedAt", mock.Anything, "u1", mock.Anything).
+		Run(func(args mock.Arguments) { *written = args.Get(2).(json.RawMessage) }).Return(nil).Once()
+}
+
+// assertStamped asserts that only syncTestLink's last sync time was set, to a time between before and now.
+func (s *ServiceTestSuite) assertStamped(written json.RawMessage, before time.Time) {
+	var attrs map[string]interface{}
+	s.Require().NoError(json.Unmarshal(written, &attrs))
+	s.Equal("c1", attrs["clientId"])
+	links := attrs[authnprovidercm.SystemAttrLinkedIDs].(map[string]interface{})
+	link := links["idp-a"].(map[string]interface{})["sub-1"].(map[string]interface{})
+	stamped, err := time.Parse(time.RFC3339, link[authnprovidercm.SystemAttrLastSyncedAt].(string))
+	s.Require().NoError(err)
+	s.False(stamped.Before(before.Truncate(time.Second)))
+	s.False(stamped.After(time.Now()))
+	s.Empty(links["idp-a"].(map[string]interface{})["sub-2"])
+	s.Equal(map[string]interface{}{"sub-9": map[string]interface{}{"lastSyncedAt": "2020-01-01T00:00:00Z"}},
+		links["idp-b"])
+}
+
+// expectAttributeWrite stubs the schema lookups and the store write UpdateAttributes performs for
+// written.
+func (s *ServiceTestSuite) expectAttributeWrite(ets *entitytypemock.EntityTypeServiceInterfaceMock, written string) {
+	ets.On("GetAttributes", mock.Anything, mock.Anything, "employee",
+		entitytype.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).Return(syncTestSchema, nil)
+	ets.On("GetAttributes", mock.Anything, mock.Anything, "employee",
+		entitytype.AttributeFilter{AllowCredential: true}).
+		Return([]entitytype.AttributeInfo{}, nil)
+	ets.On("ValidateEntity", mock.Anything, mock.Anything, "employee", mock.Anything, true).Return(true, nil)
+	ets.On("ValidateEntityUniqueness", mock.Anything, mock.Anything, "employee", mock.Anything, mock.Anything).
+		Return(true, nil)
+	s.store.On("UpdateAttributes", mock.Anything, "u1", mock.MatchedBy(func(got json.RawMessage) bool {
+		return s.JSONEq(written, string(got))
+	})).Return(nil).Once()
+}
+
+func (s *ServiceTestSuite) expectSchema(ets *entitytypemock.EntityTypeServiceInterfaceMock) {
+	ets.On("GetAttributes", mock.Anything, mock.Anything, "employee",
+		entitytype.AttributeFilter{AllowNonCredential: true}).Return(syncTestSchema, nil).Once()
+}
+
+func (s *ServiceTestSuite) TestSyncFederatedEntity_WritesChangedAttributesGroupsAndRoles() {
+	svc, ets, groups, roles := s.newSyncSvc()
+	s.expectSyncEntity(syncTestUser(`{"username":"local","email":"old@example.com","age":30}`))
+	s.expectSchema(ets)
+	s.expectAttributeWrite(ets,
+		`{"username":"local","email":"new@example.com","age":30,"verified":true,"tags":["a"]}`)
+	groups.On("ReplaceEntityGroups", mock.Anything, "u1", providers.EntityCategoryUser, []string{"g1"},
+		[]string{"g2"}).Return(nil).Once()
+	roles.On("ReplaceEntityRoles", mock.Anything, "u1", providers.EntityCategoryUser, []string{},
+		[]string{"r2"}).Return(nil).Once()
+	var stamped json.RawMessage
+	s.expectStamp(&stamped)
+	before := time.Now()
+
+	err := svc.SyncFederatedEntity(s.ctx, "u1", providers.FederatedEntitySync{
+		Link: syncTestLink,
+		AttributesByType: map[string]map[string]interface{}{
+			"employee": {
+				"email": "new@example.com", "age": "30", "verified": "true", "tags": []interface{}{"a"},
+				"undeclared": "x", "username": "",
+			},
+			"contractor": {"email": "contractor@example.com", "username": "contractor"},
+		},
+		Groups: &providers.MembershipSync{IDs: []string{"g1"}, RetainIDs: []string{"g2"}},
+		Roles:  &providers.MembershipSync{IDs: []string{}, RetainIDs: []string{"r2"}},
+	})
+	s.NoError(err)
+	s.assertStamped(stamped, before)
+}
+
+func (s *ServiceTestSuite) TestSyncFederatedEntity_UnchangedAttributesOnlyStampTheLink() {
+	svc, ets, _, _ := s.newSyncSvc()
+	s.expectSyncEntity(syncTestUser(`{"email":"same@example.com","age":30}`))
+	s.expectSchema(ets)
+	var stamped json.RawMessage
+	s.expectStamp(&stamped)
+	before := time.Now()
+
+	err := svc.SyncFederatedEntity(s.ctx, "u1", providers.FederatedEntitySync{
+		Link: syncTestLink,
+		AttributesByType: map[string]map[string]interface{}{
+			"employee": {"email": "same@example.com", "age": 30},
+		},
+	})
+	s.NoError(err)
+	s.store.AssertNotCalled(s.T(), "UpdateAttributes", mock.Anything, mock.Anything, mock.Anything)
+	s.assertStamped(stamped, before)
+}
+
+// An entity whose user type has no entry keeps its attributes, even when another type's values were
+// received.
+func (s *ServiceTestSuite) TestSyncFederatedEntity_OtherUserTypeWritesNothing() {
+	svc, _, _, _ := s.newSyncSvc()
+	s.expectSyncEntity(syncTestUser(`{"email":"old@example.com"}`))
+	var stamped json.RawMessage
+	s.expectStamp(&stamped)
+
+	err := svc.SyncFederatedEntity(s.ctx, "u1", providers.FederatedEntitySync{
+		Link:             syncTestLink,
+		AttributesByType: map[string]map[string]interface{}{"contractor": {"email": "new@example.com"}},
+	})
+	s.NoError(err)
+	s.store.AssertNotCalled(s.T(), "UpdateAttributes", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// An entity that doesn't hold the asserted link is left untouched.
+func (s *ServiceTestSuite) TestSyncFederatedEntity_WithoutTheLinkWritesNothing() {
+	cases := []struct {
+		name             string
+		systemAttributes string
+	}{
+		{"no system attributes", ""},
+		{"no links", `{"clientId":"c1"}`},
+		{"other subject of the connection", `{"linkedIds":{"idp-a":{"sub-2":{}}}}`},
+		{"same subject of another connection", `{"linkedIds":{"idp-b":{"sub-1":{}}}}`},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			svc, _, _, _ := s.newSyncSvc()
+			user := syncTestUser(`{"email":"old@example.com"}`)
+			user.SystemAttributes = json.RawMessage(tc.systemAttributes)
+			s.store.On("LockEntity", mock.Anything, "u1").Return(user, nil).Once()
+
+			err := svc.SyncFederatedEntity(s.ctx, "u1", providers.FederatedEntitySync{
+				Link:             syncTestLink,
+				AttributesByType: map[string]map[string]interface{}{"employee": {"email": "new@example.com"}},
+				Groups:           &providers.MembershipSync{IDs: []string{"g1"}},
+				Roles:            &providers.MembershipSync{IDs: []string{"r1"}},
+			})
+			s.NoError(err)
+		})
+	}
+}
+
+func (s *ServiceTestSuite) TestSyncFederatedEntity_MalformedLinksFail() {
+	svc, _, _, _ := s.newSyncSvc()
+	user := syncTestUser(`{}`)
+	user.SystemAttributes = json.RawMessage(`{"linkedIds":"idp-a"}`)
+	s.store.On("LockEntity", mock.Anything, "u1").Return(user, nil).Once()
+
+	s.Error(svc.SyncFederatedEntity(s.ctx, "u1", providers.FederatedEntitySync{Link: syncTestLink}))
+}
+
+func (s *ServiceTestSuite) TestSyncFederatedEntity_EmptyLinkRejected() {
+	for _, link := range []providers.LinkedAccount{{}, {IdpID: "idp-a"}, {Sub: "sub-1"}} {
+		err := s.svc.SyncFederatedEntity(s.ctx, "u1", providers.FederatedEntitySync{
+			Link:   link,
+			Groups: &providers.MembershipSync{IDs: []string{"g1"}},
+		})
+		s.ErrorIs(err, ErrBadAttributesInRequest)
+	}
+	s.store.AssertNotCalled(s.T(), "LockEntity", mock.Anything, mock.Anything)
+}
+
+// A read-only entity keeps its attributes and link, but its memberships are still replaced.
+func (s *ServiceTestSuite) TestSyncFederatedEntity_ReadOnlyEntityKeepsAttributesAndLink() {
+	svc, _, groups, roles := s.newSyncSvc()
+	s.expectReadOnlySyncEntity(syncTestUser(`{"email":"old@example.com"}`))
+	groups.On("ReplaceEntityGroups", mock.Anything, "u1", providers.EntityCategoryUser, []string{"g1"}, []string(nil)).
+		Return(nil).Once()
+	roles.On("ReplaceEntityRoles", mock.Anything, "u1", providers.EntityCategoryUser, []string{"r1"},
+		[]string{"r2"}).Return(nil).Once()
+
+	err := svc.SyncFederatedEntity(s.ctx, "u1", providers.FederatedEntitySync{
+		Link:             syncTestLink,
+		AttributesByType: map[string]map[string]interface{}{"employee": {"email": "new@example.com"}},
+		Groups:           &providers.MembershipSync{IDs: []string{"g1"}},
+		Roles:            &providers.MembershipSync{IDs: []string{"r1"}, RetainIDs: []string{"r2"}},
+	})
+	s.NoError(err)
+	s.store.AssertNotCalled(s.T(), "UpdateAttributes", mock.Anything, mock.Anything, mock.Anything)
+	s.store.AssertNotCalled(s.T(), "UpdateLinkSyncedAt", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestSyncFederatedEntity_RejectedWriteIsMarked() {
+	svc, _, groups, roles := s.newSyncSvc()
+	s.store.On("LockEntity", mock.Anything, "u1").Return(syncTestUser(`{}`), nil).Once()
+	groups.On("ReplaceEntityGroups", mock.Anything, "u1", providers.EntityCategoryUser, []string{"g1"}, []string(nil)).
+		Return(nil).Once()
+	roles.On("ReplaceEntityRoles", mock.Anything, "u1", providers.EntityCategoryUser, []string{"r1"}, []string(nil)).
+		Return(&tidcommon.ErrorUnauthorized).Once()
+
+	err := svc.SyncFederatedEntity(s.ctx, "u1",
+		providers.FederatedEntitySync{
+			Link:   syncTestLink,
+			Groups: &providers.MembershipSync{IDs: []string{"g1"}},
+			Roles:  &providers.MembershipSync{IDs: []string{"r1"}},
+		})
+	s.ErrorIs(err, ErrSyncRejected)
+	s.store.AssertNotCalled(s.T(), "UpdateLinkSyncedAt", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestSyncFederatedEntity_ServerErrorIsNotMarked() {
+	svc, _, groups, _ := s.newSyncSvc()
+	s.store.On("LockEntity", mock.Anything, "u1").Return(syncTestUser(`{}`), nil).Once()
+	groups.On("ReplaceEntityGroups", mock.Anything, "u1", providers.EntityCategoryUser, []string{"g1"}, []string(nil)).
+		Return(&tidcommon.InternalServerError).Once()
+
+	err := svc.SyncFederatedEntity(s.ctx, "u1", providers.FederatedEntitySync{
+		Link: syncTestLink, Groups: &providers.MembershipSync{IDs: []string{"g1"}},
+	})
+	s.Error(err)
+	s.NotErrorIs(err, ErrSyncRejected)
+	s.store.AssertNotCalled(s.T(), "UpdateLinkSyncedAt", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestSyncFederatedEntity_EntityNotFound() {
+	svc, _, _, _ := s.newSyncSvc()
+	s.store.On("LockEntity", mock.Anything, "u1").Return(providers.Entity{}, ErrEntityNotFound).Once()
+	s.store.On("GetEntity", mock.Anything, "u1").Return(providers.Entity{}, ErrEntityNotFound).Once()
+
+	err := svc.SyncFederatedEntity(s.ctx, "u1", providers.FederatedEntitySync{
+		Link: syncTestLink, Groups: &providers.MembershipSync{},
+	})
+	s.ErrorIs(err, ErrEntityNotFound)
+}
+
+func (s *ServiceTestSuite) TestSyncFederatedEntity_LockFails() {
+	svc, _, _, _ := s.newSyncSvc()
+	s.store.On("LockEntity", mock.Anything, "u1").Return(providers.Entity{}, s.testErr).Once()
+
+	err := svc.SyncFederatedEntity(s.ctx, "u1", providers.FederatedEntitySync{Link: syncTestLink})
+	s.ErrorIs(err, s.testErr)
+	s.store.AssertNotCalled(s.T(), "GetEntity", mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestSyncFederatedEntity_SchemaLookupFails() {
+	svc, ets, _, _ := s.newSyncSvc()
+	s.store.On("LockEntity", mock.Anything, "u1").Return(syncTestUser(`{}`), nil).Once()
+	ets.On("GetAttributes", mock.Anything, mock.Anything, "employee",
+		entitytype.AttributeFilter{AllowNonCredential: true}).Return(nil, &tidcommon.InternalServerError)
+
+	err := svc.SyncFederatedEntity(s.ctx, "u1",
+		providers.FederatedEntitySync{
+			Link:             syncTestLink,
+			AttributesByType: map[string]map[string]interface{}{"employee": {"email": "a@example.com"}},
+		})
+	s.ErrorContains(err, "failed to get schema attributes")
+}
+
+func (s *ServiceTestSuite) TestSyncFederatedEntity_NoMembershipProviderRegistered() {
+	s.store.On("LockEntity", mock.Anything, "u1").Return(syncTestUser(`{}`), nil)
+
+	s.ErrorContains(s.svc.SyncFederatedEntity(s.ctx, "u1",
+		providers.FederatedEntitySync{Link: syncTestLink, Groups: &providers.MembershipSync{}}),
+		"no group membership provider registered")
+	s.ErrorContains(s.svc.SyncFederatedEntity(s.ctx, "u1",
+		providers.FederatedEntitySync{Link: syncTestLink, Roles: &providers.MembershipSync{}}),
+		"no role membership provider registered")
+}
+
+func (s *ServiceTestSuite) TestSyncFederatedEntity_StampFailures() {
+	s.Run("re-read fails", func() {
+		s.SetupTest()
+		svc, _, _, _ := s.newSyncSvc()
+		s.store.On("LockEntity", mock.Anything, "u1").Return(syncTestUser(`{}`), nil).Once()
+		s.store.On("GetEntity", mock.Anything, "u1").Return(providers.Entity{}, s.testErr).Once()
+
+		s.ErrorIs(svc.SyncFederatedEntity(s.ctx, "u1", providers.FederatedEntitySync{Link: syncTestLink}), s.testErr)
+	})
+
+	s.Run("write fails", func() {
+		s.SetupTest()
+		svc, _, _, _ := s.newSyncSvc()
+		s.expectSyncEntity(syncTestUser(`{}`))
+		s.store.On("UpdateLinkSyncedAt", mock.Anything, "u1", mock.Anything).Return(s.testErr).Once()
+
+		s.ErrorIs(svc.SyncFederatedEntity(s.ctx, "u1", providers.FederatedEntitySync{Link: syncTestLink}), s.testErr)
+	})
+}
+
+func (s *ServiceTestSuite) TestCreateEntity_SyncedLinkIsStamped() {
+	e := testEntity("e-synced")
+	var created providers.Entity
+	s.store.On("IsEntityDeclarative", mock.Anything, e.ID).Return(false, ErrEntityNotFound).Once()
+	s.store.On("CreateEntity", mock.Anything, mock.Anything, json.RawMessage(nil), json.RawMessage(nil)).
+		Run(func(args mock.Arguments) { created = args.Get(1).(providers.Entity) }).Return(nil).Once()
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+	before := time.Now()
+
+	_, err := s.svc.CreateEntity(s.ctx, e, nil,
+		&providers.LinkedAccount{IdpID: "idp-a", Sub: "sub-1", Synced: true})
+	s.Require().NoError(err)
+
+	var attrs struct {
+		LinkedIDs map[string]map[string]map[string]string `json:"linkedIds"`
+	}
+	s.Require().NoError(json.Unmarshal(created.SystemAttributes, &attrs))
+	stamped, err := time.Parse(time.RFC3339, attrs.LinkedIDs["idp-a"]["sub-1"][authnprovidercm.SystemAttrLastSyncedAt])
+	s.Require().NoError(err)
+	s.False(stamped.Before(before.Truncate(time.Second)))
+}
+
+func (s *ServiceTestSuite) TestCreateEntity_UnsyncedLinkIsNotStamped() {
+	e := testEntity("e-unsynced")
+	s.store.On("IsEntityDeclarative", mock.Anything, e.ID).Return(false, ErrEntityNotFound).Once()
+	s.store.On("CreateEntity", mock.Anything, mock.MatchedBy(func(got providers.Entity) bool {
+		return string(got.SystemAttributes) == `{"linkedIds":{"idp-a":{"sub-1":{}}}}`
+	}), json.RawMessage(nil), json.RawMessage(nil)).Return(nil).Once()
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+
+	_, err := s.svc.CreateEntity(s.ctx, e, nil,
+		&providers.LinkedAccount{IdpID: "idp-a", Sub: "sub-1", Synced: false})
+	s.NoError(err)
+}
+
+func (s *ServiceTestSuite) TestWithLinkSyncedAt() {
+	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.FixedZone("x", 3600))
+
+	stamped, err := withLinkSyncedAt(json.RawMessage(`{"linkedIds":{"idp-a":{"sub-1":{"k":"v"}}}}`),
+		"idp-a", "sub-1", at)
+	s.NoError(err)
+	s.JSONEq(`{"linkedIds":{"idp-a":{"sub-1":{"k":"v","lastSyncedAt":"2026-01-02T02:04:05Z"}}}}`, string(stamped))
+
+	for _, malformed := range []string{`not json`, `{"linkedIds":[]}`, `{"linkedIds":{"idp-a":"x"}}`,
+		`{"linkedIds":{"idp-a":{"sub-1":1}}}`} {
+		_, err := withLinkSyncedAt(json.RawMessage(malformed), "idp-a", "sub-1", at)
+		s.Error(err, malformed)
+	}
 }

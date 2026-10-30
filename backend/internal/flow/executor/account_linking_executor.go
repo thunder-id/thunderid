@@ -10,6 +10,7 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
@@ -34,6 +35,7 @@ type accountLinkingExecutor struct {
 	providers.Executor
 	authnProvider     providers.AuthnProviderManager
 	entityTypeService entitytype.EntityTypeServiceInterface
+	entityProvider    entityprovider.EntityProviderInterface
 	logger            *log.Logger
 }
 
@@ -44,6 +46,7 @@ func newAccountLinkingExecutor(
 	flowFactory core.FlowFactoryInterface,
 	authnProvider providers.AuthnProviderManager,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	entityProvider entityprovider.EntityProviderInterface,
 ) *accountLinkingExecutor {
 	logger := log.GetLogger().With(
 		log.String(log.LoggerKeyComponentName, ExecutorNameAccountLinking),
@@ -64,6 +67,7 @@ func newAccountLinkingExecutor(
 		Executor:          base,
 		authnProvider:     authnProvider,
 		entityTypeService: entityTypeService,
+		entityProvider:    entityProvider,
 		logger:            logger,
 	}
 }
@@ -183,6 +187,11 @@ func (e *accountLinkingExecutor) settleVerification(ctx *providers.NodeContext,
 
 	if err := e.writeLink(ctx, execResp, authenticatedID, logger); err != nil ||
 		execResp.Status == providers.ExecFailure {
+		return err
+	}
+	// The sync is a separate write after the link, so a sync that fails keeps the verified link for
+	// the next sign-in to resolve through.
+	if ok, err := syncPendingFederatedUser(ctx, execResp, e.entityProvider, authenticatedID, logger); !ok {
 		return err
 	}
 	execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateExists

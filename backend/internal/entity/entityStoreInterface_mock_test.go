@@ -1800,6 +1800,69 @@ func (_c *entityStoreInterfaceMock_UpdateEntity_Call) RunAndReturn(run func(ctx 
 	return _c
 }
 
+// UpdateLinkSyncedAt provides a mock function for the type entityStoreInterfaceMock
+func (_mock *entityStoreInterfaceMock) UpdateLinkSyncedAt(ctx context.Context, entityID string, attrs json.RawMessage) error {
+	ret := _mock.Called(ctx, entityID, attrs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateLinkSyncedAt")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, json.RawMessage) error); ok {
+		r0 = returnFunc(ctx, entityID, attrs)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// entityStoreInterfaceMock_UpdateLinkSyncedAt_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateLinkSyncedAt'
+type entityStoreInterfaceMock_UpdateLinkSyncedAt_Call struct {
+	*mock.Call
+}
+
+// UpdateLinkSyncedAt is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+//   - attrs json.RawMessage
+func (_e *entityStoreInterfaceMock_Expecter) UpdateLinkSyncedAt(ctx any, entityID any, attrs any) *entityStoreInterfaceMock_UpdateLinkSyncedAt_Call {
+	return &entityStoreInterfaceMock_UpdateLinkSyncedAt_Call{Call: _e.mock.On("UpdateLinkSyncedAt", ctx, entityID, attrs)}
+}
+
+func (_c *entityStoreInterfaceMock_UpdateLinkSyncedAt_Call) Run(run func(ctx context.Context, entityID string, attrs json.RawMessage)) *entityStoreInterfaceMock_UpdateLinkSyncedAt_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 json.RawMessage
+		if args[2] != nil {
+			arg2 = args[2].(json.RawMessage)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *entityStoreInterfaceMock_UpdateLinkSyncedAt_Call) Return(err error) *entityStoreInterfaceMock_UpdateLinkSyncedAt_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *entityStoreInterfaceMock_UpdateLinkSyncedAt_Call) RunAndReturn(run func(ctx context.Context, entityID string, attrs json.RawMessage) error) *entityStoreInterfaceMock_UpdateLinkSyncedAt_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // UpdateSystemAttributes provides a mock function for the type entityStoreInterfaceMock
 func (_mock *entityStoreInterfaceMock) UpdateSystemAttributes(ctx context.Context, entityID string, attrs json.RawMessage) error {
 	ret := _mock.Called(ctx, entityID, attrs)

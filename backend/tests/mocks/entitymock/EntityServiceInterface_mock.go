@@ -2872,6 +2872,46 @@ func (_c *EntityServiceInterfaceMock_SetGroupMembershipProvider_Call) RunAndRetu
 	return _c
 }
 
+// SetRoleMembershipProvider provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) SetRoleMembershipProvider(provider entity.RoleMembershipProvider) {
+	_mock.Called(provider)
+	return
+}
+
+// EntityServiceInterfaceMock_SetRoleMembershipProvider_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetRoleMembershipProvider'
+type EntityServiceInterfaceMock_SetRoleMembershipProvider_Call struct {
+	*mock.Call
+}
+
+// SetRoleMembershipProvider is a helper method to define mock.On call
+//   - provider entity.RoleMembershipProvider
+func (_e *EntityServiceInterfaceMock_Expecter) SetRoleMembershipProvider(provider any) *EntityServiceInterfaceMock_SetRoleMembershipProvider_Call {
+	return &EntityServiceInterfaceMock_SetRoleMembershipProvider_Call{Call: _e.mock.On("SetRoleMembershipProvider", provider)}
+}
+
+func (_c *EntityServiceInterfaceMock_SetRoleMembershipProvider_Call) Run(run func(provider entity.RoleMembershipProvider)) *EntityServiceInterfaceMock_SetRoleMembershipProvider_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 entity.RoleMembershipProvider
+		if args[0] != nil {
+			arg0 = args[0].(entity.RoleMembershipProvider)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_SetRoleMembershipProvider_Call) Return() *EntityServiceInterfaceMock_SetRoleMembershipProvider_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_SetRoleMembershipProvider_Call) RunAndReturn(run func(provider entity.RoleMembershipProvider)) *EntityServiceInterfaceMock_SetRoleMembershipProvider_Call {
+	_c.Run(run)
+	return _c
+}
+
 // SetSuspension provides a mock function for the type EntityServiceInterfaceMock
 func (_mock *EntityServiceInterfaceMock) SetSuspension(ctx context.Context, entityID string, at time.Time, operatorNote string) (bool, error) {
 	ret := _mock.Called(ctx, entityID, at, operatorNote)
@@ -2946,6 +2986,69 @@ func (_c *EntityServiceInterfaceMock_SetSuspension_Call) Return(b bool, err erro
 }
 
 func (_c *EntityServiceInterfaceMock_SetSuspension_Call) RunAndReturn(run func(ctx context.Context, entityID string, at time.Time, operatorNote string) (bool, error)) *EntityServiceInterfaceMock_SetSuspension_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SyncFederatedEntity provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) SyncFederatedEntity(ctx context.Context, entityID string, sync providers.FederatedEntitySync) error {
+	ret := _mock.Called(ctx, entityID, sync)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SyncFederatedEntity")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.FederatedEntitySync) error); ok {
+		r0 = returnFunc(ctx, entityID, sync)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// EntityServiceInterfaceMock_SyncFederatedEntity_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SyncFederatedEntity'
+type EntityServiceInterfaceMock_SyncFederatedEntity_Call struct {
+	*mock.Call
+}
+
+// SyncFederatedEntity is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+//   - sync providers.FederatedEntitySync
+func (_e *EntityServiceInterfaceMock_Expecter) SyncFederatedEntity(ctx any, entityID any, sync any) *EntityServiceInterfaceMock_SyncFederatedEntity_Call {
+	return &EntityServiceInterfaceMock_SyncFederatedEntity_Call{Call: _e.mock.On("SyncFederatedEntity", ctx, entityID, sync)}
+}
+
+func (_c *EntityServiceInterfaceMock_SyncFederatedEntity_Call) Run(run func(ctx context.Context, entityID string, sync providers.FederatedEntitySync)) *EntityServiceInterfaceMock_SyncFederatedEntity_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 providers.FederatedEntitySync
+		if args[2] != nil {
+			arg2 = args[2].(providers.FederatedEntitySync)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_SyncFederatedEntity_Call) Return(err error) *EntityServiceInterfaceMock_SyncFederatedEntity_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_SyncFederatedEntity_Call) RunAndReturn(run func(ctx context.Context, entityID string, sync providers.FederatedEntitySync) error) *EntityServiceInterfaceMock_SyncFederatedEntity_Call {
 	_c.Call.Return(run)
 	return _c
 }

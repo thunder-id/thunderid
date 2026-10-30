@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/tests/mocks/database/modelmock"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 
@@ -2205,5 +2206,103 @@ func loadRuntimeForScope() {
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("", &config.Config{
 		Server: engineconfig.ServerConfig{Identifier: testDeploymentID},
+	})
+}
+
+func (suite *RoleStoreTestSuite) newStoreWithFreshMocks() {
+	suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
+	suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
+	suite.store = &roleStore{dbProvider: suite.mockDBProvider}
+}
+
+func (suite *RoleStoreTestSuite) TestGetRolesByIDs() {
+	suite.Run("Success", func() {
+		suite.newStoreWithFreshMocks()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+		suite.mockDBClient.On("QueryContext", mock.Anything,
+			mock.MatchedBy(func(q dbmodel.DBQuery) bool { return q.ID == "RLQ-ROLE_MGT-30" }),
+			"role1", "missing", testDeploymentID).
+			Return([]map[string]interface{}{
+				{"id": "role1", "name": "Admin", "description": "d", "ou_id": "ou1"},
+			}, nil)
+
+		roles, err := suite.store.GetRolesByIDs(context.Background(), []string{"role1", "missing"})
+
+		suite.NoError(err)
+		suite.Equal([]Role{{ID: "role1", Name: "Admin", Description: "d", OUID: "ou1"}}, roles)
+	})
+	suite.Run("EmptyInput", func() {
+		suite.newStoreWithFreshMocks()
+		roles, err := suite.store.GetRolesByIDs(context.Background(), nil)
+		suite.NoError(err)
+		suite.Empty(roles)
+	})
+	suite.Run("QueryError", func() {
+		suite.newStoreWithFreshMocks()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+		suite.mockDBClient.On("QueryContext", mock.Anything, mock.Anything, "role1", testDeploymentID).
+			Return(nil, errors.New("query failed"))
+
+		_, err := suite.store.GetRolesByIDs(context.Background(), []string{"role1"})
+
+		suite.ErrorContains(err, "failed to execute query")
+	})
+}
+
+func (suite *RoleStoreTestSuite) TestAddAssigneeToRoles() {
+	assignee := RoleAssignment{ID: testUserID1, Type: assigneeTypeEntity}
+	suite.Run("Success", func() {
+		suite.newStoreWithFreshMocks()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+		for _, rid := range []string{"role1", "role2"} {
+			suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRoleAssignment, rid,
+				assigneeTypeEntity, testUserID1, testDeploymentID).Return(int64(1), nil).Once()
+		}
+
+		suite.NoError(suite.store.AddAssigneeToRoles(context.Background(), assignee, []string{"role1", "role2"}))
+	})
+	suite.Run("ExecError", func() {
+		suite.newStoreWithFreshMocks()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRoleAssignment, "role1",
+			assigneeTypeEntity, testUserID1, testDeploymentID).Return(int64(0), errors.New("insert failed"))
+
+		err := suite.store.AddAssigneeToRoles(context.Background(), assignee, []string{"role1", "role2"})
+
+		suite.ErrorContains(err, "failed to add assignee to role")
+	})
+	suite.Run("DBClientError", func() {
+		suite.newStoreWithFreshMocks()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("db client error"))
+		suite.Error(suite.store.AddAssigneeToRoles(context.Background(), assignee, []string{"role1"}))
+	})
+}
+
+func (suite *RoleStoreTestSuite) TestRemoveAssigneeFromRoles() {
+	assignee := RoleAssignment{ID: testUserID1, Type: assigneeTypeEntity}
+	suite.Run("Success", func() {
+		suite.newStoreWithFreshMocks()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+		for _, rid := range []string{"role1", "role2"} {
+			suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteRoleAssignmentsByIDs, rid,
+				assigneeTypeEntity, testUserID1, testDeploymentID).Return(int64(1), nil).Once()
+		}
+
+		suite.NoError(suite.store.RemoveAssigneeFromRoles(context.Background(), assignee, []string{"role1", "role2"}))
+	})
+	suite.Run("ExecError", func() {
+		suite.newStoreWithFreshMocks()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteRoleAssignmentsByIDs, "role1",
+			assigneeTypeEntity, testUserID1, testDeploymentID).Return(int64(0), errors.New("delete failed"))
+
+		err := suite.store.RemoveAssigneeFromRoles(context.Background(), assignee, []string{"role1"})
+
+		suite.ErrorContains(err, "failed to remove assignee from role")
+	})
+	suite.Run("DBClientError", func() {
+		suite.newStoreWithFreshMocks()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("db client error"))
+		suite.Error(suite.store.RemoveAssigneeFromRoles(context.Background(), assignee, []string{"role1"}))
 	})
 }

@@ -188,10 +188,8 @@ const (
 
 // Executor property keys
 const (
-	propertyKeyAssignGroup           = "assignGroup"
-	propertyKeyAssignRole            = "assignRole"
-	propertyKeySeedGroupsFromMapping = "seedGroupsFromMapping"
-	propertyKeySeedRolesFromMapping  = "seedRolesFromMapping"
+	propertyKeyAssignGroup = "assignGroup"
+	propertyKeyAssignRole  = "assignRole"
 	// propertyKeyDelegated sets whether a provisioned agent acts on behalf of a signed-in user when the
 	// flow does not collect the choice itself. A value the flow collects takes precedence. It applies
 	// to the agent category only.

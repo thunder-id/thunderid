@@ -116,8 +116,10 @@ func (s *FederatedMappingSuite) TestLinkingBesideAnIdentityLinkedMeanwhile() {
 	// The same subject, now carrying an address no account holds, provisions a user and its link.
 	other := *user
 	other.Email = s.nextSubject() + "@example.com"
-	holder := s.registerEntity(mapping(fedPersonType.Handle, pair("email", "email"), pair("email", "username")),
-		&other)
+	// The picked account would otherwise sync the new address into the username the holder already has.
+	holderConfig := mapping(fedPersonType.Handle, pair("email", "email"), pair("email", "username"))
+	holderConfig.Sync = &testutils.SyncConfiguration{Attributes: "no_sync"}
+	holder := s.registerEntity(holderConfig, &other)
 	s.Require().NotEqual(candidateID, holder.ID, "the registration should provision a user of its own")
 
 	verification, err := common.CompleteFlow(step.ExecutionID, nil, common.LinkAccountAction, step.ChallengeToken)

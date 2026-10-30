@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -299,6 +300,23 @@ func convertToFloat64(value interface{}) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// ConvertToSchemaType converts a string value, such as a collected input or a received federated
+// claim, to the type declared by its schema attribute. Values that fail to parse are returned unchanged so
+// that schema validation reports them instead of a zero value being silently substituted.
+func ConvertToSchemaType(value string, schemaType string) interface{} {
+	switch schemaType {
+	case TypeBoolean:
+		if parsed, err := strconv.ParseBool(value); err == nil {
+			return parsed
+		}
+	case TypeNumber:
+		if parsed, err := strconv.ParseFloat(value, 64); err == nil {
+			return parsed
+		}
+	}
+	return value
 }
 
 // CompileSchema compiles an entity type JSON Schema from the provided raw JSON.

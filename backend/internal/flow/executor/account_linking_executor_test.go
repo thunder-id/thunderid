@@ -12,12 +12,14 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
+	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 )
@@ -27,6 +29,7 @@ type AccountLinkingExecutorTestSuite struct {
 	mockFlowFactory       *coremock.FlowFactoryInterfaceMock
 	mockAuthnProvider     *managermock.AuthnProviderManagerMock
 	mockEntityTypeService *entitytypemock.EntityTypeServiceInterfaceMock
+	mockEntityProvider    *entityprovidermock.EntityProviderInterfaceMock
 	mockBaseExecutor      *coremock.ExecutorInterfaceMock
 	executor              *accountLinkingExecutor
 }
@@ -39,6 +42,7 @@ func (suite *AccountLinkingExecutorTestSuite) SetupTest() {
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 	suite.mockEntityTypeService = entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
 	suite.mockBaseExecutor = coremock.NewExecutorInterfaceMock(suite.T())
 
 	suite.mockFlowFactory.On("CreateExecutor",
@@ -48,7 +52,7 @@ func (suite *AccountLinkingExecutorTestSuite) SetupTest() {
 		[]providers.Input{}, mock.Anything).Return(suite.mockBaseExecutor)
 
 	suite.executor = newAccountLinkingExecutor(suite.mockFlowFactory, suite.mockAuthnProvider,
-		suite.mockEntityTypeService)
+		suite.mockEntityTypeService, suite.mockEntityProvider)
 }
 
 // linkingCandidateID is the account every test here matches on, and linkingOtherCandidateID the
@@ -421,7 +425,7 @@ func (suite *AccountLinkingExecutorTestSuite) TestExecute_UnrestorableSavedAuthU
 		suite.Run(name, func() {
 			mockAuthnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
 			executor := newAccountLinkingExecutor(suite.mockFlowFactory, mockAuthnProvider,
-				suite.mockEntityTypeService)
+				suite.mockEntityTypeService, suite.mockEntityProvider)
 			ctx := &providers.NodeContext{
 				ExecutionID: "flow-1",
 				FlowType:    providers.FlowTypeAuthentication,
@@ -497,7 +501,7 @@ func (suite *AccountLinkingExecutorTestSuite) TestExecute_ServerErrorIsReturned(
 		suite.Run(name, func() {
 			mockAuthnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
 			executor := newAccountLinkingExecutor(suite.mockFlowFactory, mockAuthnProvider,
-				suite.mockEntityTypeService)
+				suite.mockEntityTypeService, suite.mockEntityProvider)
 			tc.stub(mockAuthnProvider)
 			ctx := &providers.NodeContext{
 				ExecutionID: "flow-1",
@@ -546,7 +550,7 @@ func (suite *AccountLinkingExecutorTestSuite) TestExecute_ReEntryByNonCandidateR
 		suite.Run(name, func() {
 			mockAuthnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
 			executor := newAccountLinkingExecutor(suite.mockFlowFactory, mockAuthnProvider,
-				suite.mockEntityTypeService)
+				suite.mockEntityTypeService, suite.mockEntityProvider)
 			ctx := &providers.NodeContext{
 				ExecutionID: "flow-1",
 				FlowType:    providers.FlowTypeAuthentication,
@@ -1016,4 +1020,60 @@ func (suite *AccountLinkingExecutorTestSuite) TestCycle_RefusedThenLaterLinkingN
 	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
 	assert.Equal(suite.T(), dataValueTrue, resp.RuntimeData[common.RuntimeKeyLinkingVerificationRequested])
 	assert.NotEmpty(suite.T(), resp.RuntimeData[common.RuntimeKeyLinkingCheckpoint])
+}
+
+// The verified link is written first, then the federated sign-in's sync goes to the linked account.
+func (suite *AccountLinkingExecutorTestSuite) TestExecute_VerifiedLinkThenSyncs() {
+	runtime := withFederatedIdentity(verificationPending())
+	runtime[common.RuntimeKeyPendingFederatedSync] = pendingSync()
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-1",
+		FlowType:    providers.FlowTypeAuthentication,
+		AuthUser:    authenticatedAuthUser(),
+		RuntimeData: returningFromVerification(runtime),
+	}
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.EntityReference{EntityID: linkingCandidateID},
+			(*tidcommon.ServiceError)(nil))
+	suite.expectLink(nil)
+	suite.mockEntityProvider.On("SyncFederatedEntity", linkingCandidateID, syncedLink(linkingIdpID, linkingSub)).
+		Run(func(mock.Arguments) {
+			suite.mockAuthnProvider.AssertCalled(suite.T(), "LinkAccount",
+				mock.Anything, mock.Anything, linkingIdpID, linkingSub)
+		}).
+		Return(nil).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	assert.Equal(suite.T(), entityStateExists, resp.RuntimeData[common.RuntimeKeyEntityState])
+}
+
+// A sync that fails after the link is written fails the sign-in. The link stays, for the next
+// sign-in to resolve through.
+func (suite *AccountLinkingExecutorTestSuite) TestExecute_FailedSyncKeepsTheLink() {
+	runtime := withFederatedIdentity(verificationPending())
+	runtime[common.RuntimeKeyPendingFederatedSync] = pendingSync()
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-1",
+		FlowType:    providers.FlowTypeAuthentication,
+		AuthUser:    authenticatedAuthUser(),
+		RuntimeData: returningFromVerification(runtime),
+	}
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.EntityReference{EntityID: linkingCandidateID},
+			(*tidcommon.ServiceError)(nil))
+	suite.expectLink(nil)
+	suite.mockEntityProvider.On("SyncFederatedEntity", linkingCandidateID, mock.Anything).Return(
+		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSyncRejected, "Sync rejected", "denied")).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+	assert.Equal(suite.T(), &ErrFederatedUserSyncFailed, resp.Error)
+	suite.mockAuthnProvider.AssertCalled(suite.T(), "LinkAccount", mock.Anything, mock.Anything,
+		linkingIdpID, linkingSub)
+	suite.assertCycleEnded(resp)
 }

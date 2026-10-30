@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package role
@@ -180,25 +180,40 @@ func buildGetRolesByNamesQuery(names []string, deploymentID string) (dbmodel.DBQ
 	if len(names) == 0 {
 		return dbmodel.DBQuery{}, nil, fmt.Errorf("names list cannot be empty")
 	}
+	return buildGetRolesByColumnQuery("RLQ-ROLE_MGT-29", "NAME", names, deploymentID)
+}
 
-	args := make([]interface{}, len(names)+1)
-	postgresPlaceholders := make([]string, len(names))
-	sqlitePlaceholders := make([]string, len(names))
+// buildGetRolesByIDsQuery constructs a query to fetch roles by a list of IDs.
+func buildGetRolesByIDsQuery(ids []string, deploymentID string) (dbmodel.DBQuery, []interface{}, error) {
+	if len(ids) == 0 {
+		return dbmodel.DBQuery{}, nil, fmt.Errorf("ids list cannot be empty")
+	}
+	return buildGetRolesByColumnQuery("RLQ-ROLE_MGT-30", "ID", ids, deploymentID)
+}
 
-	for i, name := range names {
+// buildGetRolesByColumnQuery constructs a query to fetch roles whose column matches any of values.
+func buildGetRolesByColumnQuery(
+	queryID, column string, values []string, deploymentID string,
+) (dbmodel.DBQuery, []interface{}, error) {
+	args := make([]interface{}, len(values)+1)
+	postgresPlaceholders := make([]string, len(values))
+	sqlitePlaceholders := make([]string, len(values))
+
+	for i, value := range values {
 		postgresPlaceholders[i] = fmt.Sprintf("$%d", i+1)
 		sqlitePlaceholders[i] = "?"
-		args[i] = name
+		args[i] = value
 	}
-	args[len(names)] = deploymentID
+	args[len(values)] = deploymentID
 
-	deploymentPlaceholder := fmt.Sprintf("$%d", len(names)+1)
-	baseQuery := `SELECT ID, OU_ID, NAME, DESCRIPTION FROM "ROLE" WHERE NAME IN (%s) AND DEPLOYMENT_ID = %s`
+	deploymentPlaceholder := fmt.Sprintf("$%d", len(values)+1)
+	baseQuery := `SELECT ID, OU_ID, NAME, DESCRIPTION FROM "ROLE" WHERE ` + column +
+		` IN (%s) AND DEPLOYMENT_ID = %s`
 	postgresQuery := fmt.Sprintf(baseQuery, strings.Join(postgresPlaceholders, ","), deploymentPlaceholder)
 	sqliteQuery := fmt.Sprintf(baseQuery, strings.Join(sqlitePlaceholders, ","), "?")
 
 	return dbmodel.DBQuery{
-		ID:            "RLQ-ROLE_MGT-29",
+		ID:            queryID,
 		Query:         postgresQuery,
 		PostgresQuery: postgresQuery,
 		SQLiteQuery:   sqliteQuery,

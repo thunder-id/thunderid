@@ -277,20 +277,20 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameOAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOAuth, newOAuthExecutor(
 				"", []providers.Input{}, []providers.Input{}, deps.FlowFactory, deps.IDPService,
-				deps.OAuthSvc, deps.AuthnProvider, providers.IDPTypeOAuth))
+				deps.OAuthSvc, deps.AuthnProvider, providers.IDPTypeOAuth, deps.EntityProvider))
 		},
 		ExecutorNameOIDCAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOIDCAuth, newOIDCAuthExecutor(
 				"", []providers.Input{}, []providers.Input{}, deps.FlowFactory, deps.IDPService,
-				deps.OIDCSvc, deps.AuthnProvider, providers.IDPTypeOIDC))
+				deps.OIDCSvc, deps.AuthnProvider, providers.IDPTypeOIDC, deps.EntityProvider))
 		},
 		ExecutorNameGitHubAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameGitHubAuth, newGithubOAuthExecutor(
-				deps.FlowFactory, deps.IDPService, deps.GithubSvc, deps.AuthnProvider))
+				deps.FlowFactory, deps.IDPService, deps.GithubSvc, deps.AuthnProvider, deps.EntityProvider))
 		},
 		ExecutorNameGoogleAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameGoogleAuth, newGoogleOIDCAuthExecutor(
-				deps.FlowFactory, deps.IDPService, deps.GoogleSvc, deps.AuthnProvider))
+				deps.FlowFactory, deps.IDPService, deps.GoogleSvc, deps.AuthnProvider, deps.EntityProvider))
 		},
 		ExecutorNameProvisioning: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameProvisioning, newProvisioningExecutor(
@@ -453,7 +453,8 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameAccountLinking: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAccountLinking,
-				newAccountLinkingExecutor(deps.FlowFactory, deps.AuthnProvider, deps.EntityTypeService))
+				newAccountLinkingExecutor(deps.FlowFactory, deps.AuthnProvider, deps.EntityTypeService,
+					deps.EntityProvider))
 		},
 	}
 }

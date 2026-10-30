@@ -3467,3 +3467,236 @@ func (suite *GroupServiceTestSuite) TestGetDirectGroupMember_CarriesTheReadError
 	suite.Equal(ErrorGroupNotFound.Code, svcErr.Code)
 	suite.Nil(member)
 }
+
+func TestAddMemberToExistingGroups_SkipsMissingGroups(t *testing.T) {
+	useMutableStore(t)
+	storeMock := newGroupStoreInterfaceMock(t)
+	storeMock.On("GetGroupsByIDs", mock.Anything, []string{"deleted-group"}).
+		Return([]GroupBasicDAO{}, nil).Once()
+	service := &groupService{groupStore: storeMock}
+
+	svcErr := service.AddMemberToExistingGroups(context.Background(),
+		Member{ID: "user-1", Type: MemberTypeUser}, []string{"deleted-group"})
+
+	require.Nil(t, svcErr)
+	storeMock.AssertNotCalled(t, "AddGroupMembers", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestAddMemberToExistingGroups_StoreError(t *testing.T) {
+	useMutableStore(t)
+	storeMock := newGroupStoreInterfaceMock(t)
+	storeMock.On("GetGroupsByIDs", mock.Anything, []string{"group-1"}).
+		Return(nil, errors.New("db down")).Once()
+	service := &groupService{groupStore: storeMock}
+
+	svcErr := service.AddMemberToExistingGroups(context.Background(),
+		Member{ID: "user-1", Type: MemberTypeUser}, []string{"group-1"})
+
+	require.NotNil(t, svcErr)
+	require.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// useMutableStore runs the test with a mutable store, since another test may leave the runtime in
+// declarative mode.
+func useMutableStore(t *testing.T) {
+	t.Helper()
+	config.ResetServerRuntime()
+	require.NoError(t, config.InitializeServerRuntime("/tmp/test", &config.Config{}))
+	t.Cleanup(config.ResetServerRuntime)
+}
+
+func (suite *GroupServiceTestSuite) TestGroupService_ReplaceEntityGroups() {
+	ctx := context.Background()
+	storedMember := Member{ID: "usr-001", Type: memberTypeEntity}
+	entityType := string(memberTypeEntity)
+	newEntityMock := func() *entitymock.EntityServiceInterfaceMock {
+		entityMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
+		entityMock.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001"}).
+			Return([]providers.Entity{{ID: "usr-001", Category: providers.EntityCategoryUser}}, nil).Maybe()
+		return entityMock
+	}
+	newService := func(
+		storeMock *groupStoreInterfaceMock, authz sysauthz.SystemAuthorizationServiceInterface,
+	) *groupService {
+		return &groupService{authzService: authz, groupStore: storeMock,
+			entityService: newEntityMock(), transactioner: &stubTransactioner{}}
+	}
+
+	suite.Run("adds missing groups, keeps shared ones and removes the rest, skipping missing groups", func() {
+		storeMock := newGroupStoreInterfaceMock(suite.T())
+		storeMock.On("GetMemberGroupIDs", ctx, entityType, "usr-001").
+			Return([]string{"grp-keep", "grp-stale"}, nil).Once()
+		storeMock.On("GetGroupsByIDs", ctx, []string{"grp-new", "grp-gone", "grp-stale"}).
+			Return([]GroupBasicDAO{{ID: "grp-new", OUID: testOUID1}, {ID: "grp-stale", OUID: testOUID1}}, nil).Once()
+		storeMock.On("AddMemberToGroups", ctx, storedMember, []string{"grp-new"}).Return(nil).Once()
+		storeMock.On("RemoveMemberFromGroups", ctx, storedMember, []string{"grp-stale"}).Return(nil).Once()
+		svc := newService(storeMock, newAllowAllAuthz(suite.T()))
+
+		svcErr := svc.ReplaceEntityGroups(ctx, "usr-001", providers.EntityCategoryUser,
+			[]string{"grp-keep", "grp-new", "grp-new", "grp-gone"}, nil)
+
+		suite.Require().Nil(svcErr)
+	})
+
+	suite.Run("writes nothing in declarative mode", func() {
+		runtime := config.GetServerRuntime()
+		runtime.Config.Group.Store = "declarative"
+		defer func() { runtime.Config.Group.Store = "" }()
+		storeMock := newGroupStoreInterfaceMock(suite.T())
+		svc := newService(storeMock, newAllowAllAuthz(suite.T()))
+
+		svcErr := svc.ReplaceEntityGroups(ctx, "usr-001", providers.EntityCategoryUser, []string{"grp-new"}, nil)
+
+		suite.Require().Nil(svcErr)
+		storeMock.AssertNotCalled(suite.T(), "GetMemberGroupIDs", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	suite.Run("never removes a kept group", func() {
+		storeMock := newGroupStoreInterfaceMock(suite.T())
+		storeMock.On("GetMemberGroupIDs", ctx, entityType, "usr-001").
+			Return([]string{"grp-ambiguous", "grp-stale"}, nil).Once()
+		storeMock.On("GetGroupsByIDs", ctx, []string{"grp-stale"}).
+			Return([]GroupBasicDAO{{ID: "grp-stale", OUID: testOUID1}}, nil).Once()
+		storeMock.On("RemoveMemberFromGroups", ctx, storedMember, []string{"grp-stale"}).Return(nil).Once()
+		svc := newService(storeMock, newAllowAllAuthz(suite.T()))
+
+		svcErr := svc.ReplaceEntityGroups(ctx, "usr-001", providers.EntityCategoryUser, nil,
+			[]string{"grp-ambiguous", "grp-other"})
+
+		suite.Require().Nil(svcErr)
+		storeMock.AssertNotCalled(suite.T(), "AddMemberToGroups", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	suite.Run("does nothing when the member already has exactly these groups", func() {
+		storeMock := newGroupStoreInterfaceMock(suite.T())
+		storeMock.On("GetMemberGroupIDs", ctx, entityType, "usr-001").Return([]string{"grp-keep"}, nil).Once()
+		svc := newService(storeMock, newAllowAllAuthz(suite.T()))
+
+		svcErr := svc.ReplaceEntityGroups(ctx, "usr-001", providers.EntityCategoryUser, []string{"grp-keep"}, nil)
+
+		suite.Require().Nil(svcErr)
+	})
+
+	suite.Run("only removes when no groups are added", func() {
+		storeMock := newGroupStoreInterfaceMock(suite.T())
+		storeMock.On("GetMemberGroupIDs", ctx, entityType, "usr-001").Return([]string{"grp-stale"}, nil).Once()
+		storeMock.On("GetGroupsByIDs", ctx, []string{"grp-stale"}).
+			Return([]GroupBasicDAO{{ID: "grp-stale", OUID: testOUID1}}, nil).Once()
+		storeMock.On("RemoveMemberFromGroups", ctx, storedMember, []string{"grp-stale"}).Return(nil).Once()
+		svc := newService(storeMock, newAllowAllAuthz(suite.T()))
+
+		svcErr := svc.ReplaceEntityGroups(ctx, "usr-001", providers.EntityCategoryUser, nil, nil)
+
+		suite.Require().Nil(svcErr)
+	})
+
+	suite.Run("skips the write when every added group is gone", func() {
+		storeMock := newGroupStoreInterfaceMock(suite.T())
+		storeMock.On("GetMemberGroupIDs", ctx, entityType, "usr-001").Return(nil, nil).Once()
+		storeMock.On("GetGroupsByIDs", ctx, []string{"grp-gone"}).Return([]GroupBasicDAO{}, nil).Once()
+		svc := newService(storeMock, newAllowAllAuthz(suite.T()))
+
+		svcErr := svc.ReplaceEntityGroups(ctx, "usr-001", providers.EntityCategoryUser, []string{"grp-gone"}, nil)
+
+		suite.Require().Nil(svcErr)
+	})
+
+	suite.Run("rejects an unknown member type", func() {
+		svc := &groupService{}
+
+		svcErr := svc.ReplaceEntityGroups(ctx, "usr-001", providers.EntityCategory("bogus"), []string{"grp-new"}, nil)
+
+		suite.Require().Equal(&ErrorInvalidMemberType, svcErr)
+	})
+
+	suite.Run("rejects a member that doesn't exist", func() {
+		storeMock := newGroupStoreInterfaceMock(suite.T())
+		storeMock.On("GetMemberGroupIDs", ctx, entityType, "usr-001").Return(nil, nil).Once()
+		entityMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
+		entityMock.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001"}).Return([]providers.Entity{}, nil).Once()
+		svc := &groupService{authzService: newAllowAllAuthz(suite.T()), groupStore: storeMock,
+			entityService: entityMock, transactioner: &stubTransactioner{}}
+
+		svcErr := svc.ReplaceEntityGroups(ctx, "usr-001", providers.EntityCategoryUser, []string{"grp-new"}, nil)
+
+		suite.Require().Equal(&ErrorInvalidMemberID, svcErr)
+	})
+
+	suite.Run("returns unauthorized when the caller can't update a group", func() {
+		storeMock := newGroupStoreInterfaceMock(suite.T())
+		storeMock.On("GetMemberGroupIDs", ctx, entityType, "usr-001").Return(nil, nil).Once()
+		storeMock.On("GetGroupsByIDs", ctx, []string{"grp-new"}).
+			Return([]GroupBasicDAO{{ID: "grp-new", OUID: testOUID1}}, nil).Once()
+		authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+		authzMock.On("GetAccessibleResources", mock.Anything, mock.Anything, security.ResourceTypeOU).
+			Return(&sysauthz.AccessibleResources{AllAllowed: true}, (*tidcommon.ServiceError)(nil))
+		authzMock.On("IsActionAllowed", mock.Anything, security.ActionUpdateGroup, mock.Anything).
+			Return(false, (*tidcommon.ServiceError)(nil)).Once()
+		svc := newService(storeMock, authzMock)
+
+		svcErr := svc.ReplaceEntityGroups(ctx, "usr-001", providers.EntityCategoryUser, []string{"grp-new"}, nil)
+
+		suite.Require().Equal(&tidcommon.ErrorUnauthorized, svcErr)
+		storeMock.AssertNotCalled(suite.T(), "AddMemberToGroups", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	suite.Run("returns the grant error when membership can't be granted", func() {
+		storeMock := newGroupStoreInterfaceMock(suite.T())
+		storeMock.On("GetMemberGroupIDs", ctx, entityType, "usr-001").Return(nil, nil).Once()
+		storeMock.On("GetGroupsByIDs", ctx, []string{"grp-new"}).
+			Return([]GroupBasicDAO{{ID: "grp-new", OUID: testOUID1}}, nil).Once()
+		authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+		authzMock.On("GetAccessibleResources", mock.Anything, mock.Anything, security.ResourceTypeOU).
+			Return(&sysauthz.AccessibleResources{AllAllowed: true}, (*tidcommon.ServiceError)(nil))
+		authzMock.On("IsActionAllowed", mock.Anything, security.ActionUpdateGroup, mock.Anything).
+			Return(true, (*tidcommon.ServiceError)(nil)).Once()
+		authzMock.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeGroup, "grp-new").
+			Return(&tidcommon.ErrorUnauthorized).Once()
+		svc := newService(storeMock, authzMock)
+
+		svcErr := svc.ReplaceEntityGroups(ctx, "usr-001", providers.EntityCategoryUser, []string{"grp-new"}, nil)
+
+		suite.Require().Equal(&tidcommon.ErrorUnauthorized, svcErr)
+		storeMock.AssertNotCalled(suite.T(), "AddMemberToGroups", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	serverErrorCases := []struct {
+		name  string
+		setup func(storeMock *groupStoreInterfaceMock)
+	}{
+		{"current groups can't be read", func(storeMock *groupStoreInterfaceMock) {
+			storeMock.On("GetMemberGroupIDs", ctx, entityType, "usr-001").Return(nil, errors.New("db down")).Once()
+		}},
+		{"groups can't be loaded", func(storeMock *groupStoreInterfaceMock) {
+			storeMock.On("GetMemberGroupIDs", ctx, entityType, "usr-001").Return([]string{"grp-stale"}, nil).Once()
+			storeMock.On("GetGroupsByIDs", ctx, []string{"grp-new", "grp-stale"}).
+				Return(nil, errors.New("db down")).Once()
+		}},
+		{"add fails", func(storeMock *groupStoreInterfaceMock) {
+			storeMock.On("GetMemberGroupIDs", ctx, entityType, "usr-001").Return([]string{"grp-stale"}, nil).Once()
+			storeMock.On("GetGroupsByIDs", ctx, []string{"grp-new", "grp-stale"}).
+				Return([]GroupBasicDAO{{ID: "grp-new"}, {ID: "grp-stale"}}, nil).Once()
+			storeMock.On("AddMemberToGroups", ctx, storedMember, []string{"grp-new"}).
+				Return(errors.New("db down")).Once()
+		}},
+		{"remove fails", func(storeMock *groupStoreInterfaceMock) {
+			storeMock.On("GetMemberGroupIDs", ctx, entityType, "usr-001").Return([]string{"grp-stale"}, nil).Once()
+			storeMock.On("GetGroupsByIDs", ctx, []string{"grp-new", "grp-stale"}).
+				Return([]GroupBasicDAO{{ID: "grp-new"}, {ID: "grp-stale"}}, nil).Once()
+			storeMock.On("AddMemberToGroups", ctx, storedMember, []string{"grp-new"}).Return(nil).Once()
+			storeMock.On("RemoveMemberFromGroups", ctx, storedMember, []string{"grp-stale"}).
+				Return(errors.New("db down")).Once()
+		}},
+	}
+	for _, tc := range serverErrorCases {
+		suite.Run("returns a server error when "+tc.name, func() {
+			storeMock := newGroupStoreInterfaceMock(suite.T())
+			tc.setup(storeMock)
+			svc := newService(storeMock, newAllowAllAuthz(suite.T()))
+
+			svcErr := svc.ReplaceEntityGroups(ctx, "usr-001", providers.EntityCategoryUser, []string{"grp-new"}, nil)
+
+			suite.Require().Equal(&tidcommon.InternalServerError, svcErr)
+		})
+	}
+}

@@ -153,6 +153,41 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestRemoveAssignments_Delegate
 	suite.mockDBStore.AssertExpectations(suite.T())
 }
 
+// Test AddAssigneeToRoles and RemoveAssigneeFromRoles delegate to database store
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestAssigneeToRoles_DelegatesToDB() {
+	assignee := RoleAssignment{ID: "user1", Type: assigneeTypeEntity}
+	suite.mockDBStore.On("AddAssigneeToRoles", suite.ctx, assignee, []string{"role1"}).Return(nil).Once()
+	suite.mockDBStore.On("RemoveAssigneeFromRoles", suite.ctx, assignee, []string{"role2"}).Return(nil).Once()
+
+	assert.NoError(suite.T(), suite.store.AddAssigneeToRoles(suite.ctx, assignee, []string{"role1"}))
+	assert.NoError(suite.T(), suite.store.RemoveAssigneeFromRoles(suite.ctx, assignee, []string{"role2"}))
+}
+
+// Test GetRolesByIDs merges roles from both stores
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetRolesByIDs_MergesBothStores() {
+	ids := []string{"role-db", "role-file"}
+	suite.mockDBStore.On("GetRolesByIDs", suite.ctx, ids).Return([]Role{{ID: "role-db"}}, nil)
+	suite.mockFileStore.On("GetRolesByIDs", suite.ctx, ids).Return([]Role{{ID: "role-file"}}, nil)
+
+	result, err := suite.store.GetRolesByIDs(suite.ctx, ids)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), []Role{{ID: "role-db"}, {ID: "role-file", IsReadOnly: true}}, result)
+}
+
+// Test GetRolesByIDs propagates store errors
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetRolesByIDs_Errors() {
+	storeErr := errors.New("store error")
+	suite.mockDBStore.On("GetRolesByIDs", suite.ctx, []string{"r1"}).Return(nil, storeErr).Once()
+	_, err := suite.store.GetRolesByIDs(suite.ctx, []string{"r1"})
+	assert.Equal(suite.T(), storeErr, err)
+
+	suite.mockDBStore.On("GetRolesByIDs", suite.ctx, []string{"r2"}).Return([]Role{}, nil).Once()
+	suite.mockFileStore.On("GetRolesByIDs", suite.ctx, []string{"r2"}).Return(nil, storeErr).Once()
+	_, err = suite.store.GetRolesByIDs(suite.ctx, []string{"r2"})
+	assert.Equal(suite.T(), storeErr, err)
+}
+
 // Test CheckRoleNameExists checks file store first, returns true if found
 func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestCheckRoleNameExists_ChecksBothStores() {
 	// CompositeBooleanCheckHelper checks fileStore first. If it returns true, it stops.

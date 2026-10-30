@@ -12,6 +12,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // NewRoleAssignmentServiceInterfaceMock creates a new instance of RoleAssignmentServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -48,6 +49,71 @@ type RoleAssignmentServiceInterfaceMock_Expecter struct {
 
 func (_m *RoleAssignmentServiceInterfaceMock) EXPECT() *RoleAssignmentServiceInterfaceMock_Expecter {
 	return &RoleAssignmentServiceInterfaceMock_Expecter{mock: &_m.Mock}
+}
+
+// AddAssigneeToExistingRoles provides a mock function for the type RoleAssignmentServiceInterfaceMock
+func (_mock *RoleAssignmentServiceInterfaceMock) AddAssigneeToExistingRoles(ctx context.Context, assignment role.RoleAssignment, roleIDs []string) *common.ServiceError {
+	ret := _mock.Called(ctx, assignment, roleIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AddAssigneeToExistingRoles")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, role.RoleAssignment, []string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, assignment, roleIDs)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// RoleAssignmentServiceInterfaceMock_AddAssigneeToExistingRoles_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AddAssigneeToExistingRoles'
+type RoleAssignmentServiceInterfaceMock_AddAssigneeToExistingRoles_Call struct {
+	*mock.Call
+}
+
+// AddAssigneeToExistingRoles is a helper method to define mock.On call
+//   - ctx context.Context
+//   - assignment role.RoleAssignment
+//   - roleIDs []string
+func (_e *RoleAssignmentServiceInterfaceMock_Expecter) AddAssigneeToExistingRoles(ctx any, assignment any, roleIDs any) *RoleAssignmentServiceInterfaceMock_AddAssigneeToExistingRoles_Call {
+	return &RoleAssignmentServiceInterfaceMock_AddAssigneeToExistingRoles_Call{Call: _e.mock.On("AddAssigneeToExistingRoles", ctx, assignment, roleIDs)}
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_AddAssigneeToExistingRoles_Call) Run(run func(ctx context.Context, assignment role.RoleAssignment, roleIDs []string)) *RoleAssignmentServiceInterfaceMock_AddAssigneeToExistingRoles_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 role.RoleAssignment
+		if args[1] != nil {
+			arg1 = args[1].(role.RoleAssignment)
+		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_AddAssigneeToExistingRoles_Call) Return(serviceError *common.ServiceError) *RoleAssignmentServiceInterfaceMock_AddAssigneeToExistingRoles_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_AddAssigneeToExistingRoles_Call) RunAndReturn(run func(ctx context.Context, assignment role.RoleAssignment, roleIDs []string) *common.ServiceError) *RoleAssignmentServiceInterfaceMock_AddAssigneeToExistingRoles_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // AddAssigneesToRoles provides a mock function for the type RoleAssignmentServiceInterfaceMock
@@ -569,6 +635,83 @@ func (_c *RoleAssignmentServiceInterfaceMock_RemoveAssignments_Call) Return(serv
 }
 
 func (_c *RoleAssignmentServiceInterfaceMock_RemoveAssignments_Call) RunAndReturn(run func(ctx context.Context, id string, assignments []role.RoleAssignment) *common.ServiceError) *RoleAssignmentServiceInterfaceMock_RemoveAssignments_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ReplaceEntityRoles provides a mock function for the type RoleAssignmentServiceInterfaceMock
+func (_mock *RoleAssignmentServiceInterfaceMock) ReplaceEntityRoles(ctx context.Context, entityID string, category providers.EntityCategory, roleIDs []string, keepIDs []string) *common.ServiceError {
+	ret := _mock.Called(ctx, entityID, category, roleIDs, keepIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ReplaceEntityRoles")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.EntityCategory, []string, []string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, entityID, category, roleIDs, keepIDs)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// RoleAssignmentServiceInterfaceMock_ReplaceEntityRoles_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReplaceEntityRoles'
+type RoleAssignmentServiceInterfaceMock_ReplaceEntityRoles_Call struct {
+	*mock.Call
+}
+
+// ReplaceEntityRoles is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+//   - category providers.EntityCategory
+//   - roleIDs []string
+//   - keepIDs []string
+func (_e *RoleAssignmentServiceInterfaceMock_Expecter) ReplaceEntityRoles(ctx any, entityID any, category any, roleIDs any, keepIDs any) *RoleAssignmentServiceInterfaceMock_ReplaceEntityRoles_Call {
+	return &RoleAssignmentServiceInterfaceMock_ReplaceEntityRoles_Call{Call: _e.mock.On("ReplaceEntityRoles", ctx, entityID, category, roleIDs, keepIDs)}
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_ReplaceEntityRoles_Call) Run(run func(ctx context.Context, entityID string, category providers.EntityCategory, roleIDs []string, keepIDs []string)) *RoleAssignmentServiceInterfaceMock_ReplaceEntityRoles_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 providers.EntityCategory
+		if args[2] != nil {
+			arg2 = args[2].(providers.EntityCategory)
+		}
+		var arg3 []string
+		if args[3] != nil {
+			arg3 = args[3].([]string)
+		}
+		var arg4 []string
+		if args[4] != nil {
+			arg4 = args[4].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_ReplaceEntityRoles_Call) Return(serviceError *common.ServiceError) *RoleAssignmentServiceInterfaceMock_ReplaceEntityRoles_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_ReplaceEntityRoles_Call) RunAndReturn(run func(ctx context.Context, entityID string, category providers.EntityCategory, roleIDs []string, keepIDs []string) *common.ServiceError) *RoleAssignmentServiceInterfaceMock_ReplaceEntityRoles_Call {
 	_c.Call.Return(run)
 	return _c
 }

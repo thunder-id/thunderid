@@ -24,6 +24,11 @@ const ConnectionConstants = {
    * Fallback avatar rendered for the SMS Gateway vendor.
    */
   SMS_GATEWAY_AVATAR_FALLBACK: 'avatar:shape=rounded,variant=anonymous_entity,content=pentagon,colors=0',
+
+  /**
+   * The mode each sync setting takes on the server when it is unset.
+   */
+  DEFAULT_SYNC_MODES: {attributes: 'override_received', groupsAndRoles: 'no_sync'},
 } as const;
 
 export default ConnectionConstants;

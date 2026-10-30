@@ -340,6 +340,15 @@ const (
 	// RuntimeKeyMappedPermissions holds the JSON-encoded []providers.AuthorizationTarget permission
 	// targets a federated login's authorization mapping (rule-based or direct) resolved.
 	RuntimeKeyMappedPermissions = "mapped_permissions"
+	// RuntimeKeyAttributesSyncMode holds the federated connection's effective attributes sync mode,
+	// read by provisioning to decide which attributes are stored on the new account.
+	RuntimeKeyAttributesSyncMode = "attributes_sync_mode"
+	// RuntimeKeyGroupsAndRolesSyncMode holds the federated connection's effective groups and roles sync
+	// mode, read by provisioning to decide whether mapped groups and roles are stored on the new account.
+	RuntimeKeyGroupsAndRolesSyncMode = "groups_and_roles_sync_mode"
+	// RuntimeKeyPendingFederatedSync holds the JSON-encoded sync a federated sign-in writes to the user
+	// holding its link, once a node settles that user.
+	RuntimeKeyPendingFederatedSync = "pending_federated_sync"
 	// RuntimeKeyExtensionAttemptCount holds the number of FAILED and INCOMPLETE answers an extension
 	// step has had in the current flow execution, scoped to the step by ExtensionAttemptCountKey.
 	RuntimeKeyExtensionAttemptCount = "extensionAttemptCount"

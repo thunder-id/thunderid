@@ -10,6 +10,7 @@ import (
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // NewGroupServiceInterfaceMock creates a new instance of GroupServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -120,6 +121,71 @@ func (_c *GroupServiceInterfaceMock_AddGroupMembers_Call) Return(group *Group, s
 }
 
 func (_c *GroupServiceInterfaceMock_AddGroupMembers_Call) RunAndReturn(run func(ctx context.Context, groupID string, members []Member) (*Group, *common.ServiceError)) *GroupServiceInterfaceMock_AddGroupMembers_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// AddMemberToExistingGroups provides a mock function for the type GroupServiceInterfaceMock
+func (_mock *GroupServiceInterfaceMock) AddMemberToExistingGroups(ctx context.Context, member Member, groupIDs []string) *common.ServiceError {
+	ret := _mock.Called(ctx, member, groupIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AddMemberToExistingGroups")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, Member, []string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, member, groupIDs)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// GroupServiceInterfaceMock_AddMemberToExistingGroups_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AddMemberToExistingGroups'
+type GroupServiceInterfaceMock_AddMemberToExistingGroups_Call struct {
+	*mock.Call
+}
+
+// AddMemberToExistingGroups is a helper method to define mock.On call
+//   - ctx context.Context
+//   - member Member
+//   - groupIDs []string
+func (_e *GroupServiceInterfaceMock_Expecter) AddMemberToExistingGroups(ctx any, member any, groupIDs any) *GroupServiceInterfaceMock_AddMemberToExistingGroups_Call {
+	return &GroupServiceInterfaceMock_AddMemberToExistingGroups_Call{Call: _e.mock.On("AddMemberToExistingGroups", ctx, member, groupIDs)}
+}
+
+func (_c *GroupServiceInterfaceMock_AddMemberToExistingGroups_Call) Run(run func(ctx context.Context, member Member, groupIDs []string)) *GroupServiceInterfaceMock_AddMemberToExistingGroups_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 Member
+		if args[1] != nil {
+			arg1 = args[1].(Member)
+		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *GroupServiceInterfaceMock_AddMemberToExistingGroups_Call) Return(serviceError *common.ServiceError) *GroupServiceInterfaceMock_AddMemberToExistingGroups_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *GroupServiceInterfaceMock_AddMemberToExistingGroups_Call) RunAndReturn(run func(ctx context.Context, member Member, groupIDs []string) *common.ServiceError) *GroupServiceInterfaceMock_AddMemberToExistingGroups_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1308,6 +1374,83 @@ func (_c *GroupServiceInterfaceMock_RemoveGroupMembers_Call) Return(group *Group
 }
 
 func (_c *GroupServiceInterfaceMock_RemoveGroupMembers_Call) RunAndReturn(run func(ctx context.Context, groupID string, members []Member) (*Group, *common.ServiceError)) *GroupServiceInterfaceMock_RemoveGroupMembers_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ReplaceEntityGroups provides a mock function for the type GroupServiceInterfaceMock
+func (_mock *GroupServiceInterfaceMock) ReplaceEntityGroups(ctx context.Context, entityID string, category providers.EntityCategory, groupIDs []string, keepIDs []string) *common.ServiceError {
+	ret := _mock.Called(ctx, entityID, category, groupIDs, keepIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ReplaceEntityGroups")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.EntityCategory, []string, []string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, entityID, category, groupIDs, keepIDs)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// GroupServiceInterfaceMock_ReplaceEntityGroups_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReplaceEntityGroups'
+type GroupServiceInterfaceMock_ReplaceEntityGroups_Call struct {
+	*mock.Call
+}
+
+// ReplaceEntityGroups is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+//   - category providers.EntityCategory
+//   - groupIDs []string
+//   - keepIDs []string
+func (_e *GroupServiceInterfaceMock_Expecter) ReplaceEntityGroups(ctx any, entityID any, category any, groupIDs any, keepIDs any) *GroupServiceInterfaceMock_ReplaceEntityGroups_Call {
+	return &GroupServiceInterfaceMock_ReplaceEntityGroups_Call{Call: _e.mock.On("ReplaceEntityGroups", ctx, entityID, category, groupIDs, keepIDs)}
+}
+
+func (_c *GroupServiceInterfaceMock_ReplaceEntityGroups_Call) Run(run func(ctx context.Context, entityID string, category providers.EntityCategory, groupIDs []string, keepIDs []string)) *GroupServiceInterfaceMock_ReplaceEntityGroups_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 providers.EntityCategory
+		if args[2] != nil {
+			arg2 = args[2].(providers.EntityCategory)
+		}
+		var arg3 []string
+		if args[3] != nil {
+			arg3 = args[3].([]string)
+		}
+		var arg4 []string
+		if args[4] != nil {
+			arg4 = args[4].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *GroupServiceInterfaceMock_ReplaceEntityGroups_Call) Return(serviceError *common.ServiceError) *GroupServiceInterfaceMock_ReplaceEntityGroups_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *GroupServiceInterfaceMock_ReplaceEntityGroups_Call) RunAndReturn(run func(ctx context.Context, entityID string, category providers.EntityCategory, groupIDs []string, keepIDs []string) *common.ServiceError) *GroupServiceInterfaceMock_ReplaceEntityGroups_Call {
 	_c.Call.Return(run)
 	return _c
 }

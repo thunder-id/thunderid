@@ -200,6 +200,21 @@ func (c *compositeRoleStore) GetRolesByNames(ctx context.Context, names []string
 	return mergeRoles(dbRoles, fileRoles), nil
 }
 
+// GetRolesByIDs returns roles matching the given IDs from both stores.
+func (c *compositeRoleStore) GetRolesByIDs(ctx context.Context, ids []string) ([]Role, error) {
+	dbRoles, err := c.dbStore.GetRolesByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	fileRoles, err := c.fileStore.GetRolesByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	return mergeRoles(dbRoles, fileRoles), nil
+}
+
 // IsRoleExist checks if a role exists in either store.
 func (c *compositeRoleStore) IsRoleExist(ctx context.Context, id string) (bool, error) {
 	return declarativeresource.CompositeBooleanCheckHelper(
@@ -396,6 +411,18 @@ func (c *compositeRoleStore) AddAssignments(ctx context.Context, id string, assi
 // RemoveAssignments removes assignments from a role in the database store only.
 func (c *compositeRoleStore) RemoveAssignments(ctx context.Context, id string, assignments []RoleAssignment) error {
 	return c.dbStore.RemoveAssignments(ctx, id, assignments)
+}
+
+// AddAssigneeToRoles assigns an assignee to roles in the database store only.
+func (c *compositeRoleStore) AddAssigneeToRoles(
+	ctx context.Context, assignee RoleAssignment, roleIDs []string) error {
+	return c.dbStore.AddAssigneeToRoles(ctx, assignee, roleIDs)
+}
+
+// RemoveAssigneeFromRoles removes an assignee from roles in the database store only.
+func (c *compositeRoleStore) RemoveAssigneeFromRoles(
+	ctx context.Context, assignee RoleAssignment, roleIDs []string) error {
+	return c.dbStore.RemoveAssigneeFromRoles(ctx, assignee, roleIDs)
 }
 
 // CheckRoleNameExists checks if a role with the given name exists in either store.

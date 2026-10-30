@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"strconv"
 	"time"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
@@ -212,23 +211,6 @@ func schemaTypeForInputType(inputType string) string {
 	}
 }
 
-// convertToSchemaType converts a collected input value, which the engine always carries as a string,
-// to the type declared by its schema attribute. Values that fail to parse are returned unchanged so
-// that schema validation reports them instead of a zero value being silently substituted.
-func convertToSchemaType(value string, schemaType string) interface{} {
-	switch schemaType {
-	case entitytypemodel.TypeBoolean:
-		if parsed, err := strconv.ParseBool(value); err == nil {
-			return parsed
-		}
-	case entitytypemodel.TypeNumber:
-		if parsed, err := strconv.ParseFloat(value, 64); err == nil {
-			return parsed
-		}
-	}
-	return value
-}
-
 // isAuthenticationWithoutLocalUserAllowed returns the value of the AllowAuthenticationWithoutLocalUser
 // node property, defaulting to false if absent or not a bool.
 // This is used to determine if authentication flow can proceed without a local user account.
@@ -273,15 +255,16 @@ func isCrossOUProvisioningAllowed(ctx *providers.NodeContext) bool {
 }
 
 // setFederatedEntityState records whether federated authentication resolved a concrete local user
-// (via account linking) into the entityState runtime key. Several users holding the link is recorded
-// as ambiguous, for a later node to let the user pick between them.
+// (via account linking) into the entityState runtime key, and returns that user's ID, or "" when none.
+// Several users holding the link is recorded as ambiguous, for a later node to let the user pick
+// between them.
 func setFederatedEntityState(ctx context.Context, execResp *providers.ExecutorResponse,
-	authnProvider providers.AuthnProviderManager) {
+	authnProvider providers.AuthnProviderManager) string {
 	execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateNotExists
 
 	// An unauthenticated AuthUser names nobody, and GetEntityReference would log it as an error.
 	if !execResp.AuthUser.IsAuthenticated() {
-		return
+		return ""
 	}
 
 	authUser, entityRef, svcErr := authnProvider.GetEntityReference(ctx, execResp.AuthUser)
@@ -289,9 +272,11 @@ func setFederatedEntityState(ctx context.Context, execResp *providers.ExecutorRe
 	switch {
 	case svcErr == nil && entityRef != nil:
 		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateExists
+		return entityRef.EntityID
 	case svcErr != nil && svcErr.Code == authnprovidermgr.ErrorAmbiguousUser.Code:
 		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateAmbiguous
 	}
+	return ""
 }
 
 // authenticateEntityByID signs in an entity whose ID the flow already trusts, such as one it just
@@ -318,23 +303,25 @@ func authenticateEntityByID(ctx *providers.NodeContext, authnProvider providers.
 
 // resolveAndSetMappedAuthorizationTargets resolves the IDP's AuthorizationRuleMapping (explicit value
 // rules) and AuthorizationDirectMapping (direct name-based lookup) against federatedAttributes,
-// unions their targets, and stores the result as runtime data for later executors. Logs and continues
+// unions their targets, and stores the result, with the connection's sync modes, as runtime data for
+// later executors, and returns the resolved mapping. Logs and continues
 // without the direct targets when they can't be resolved, rather than failing the federated login over
 // what is best-effort enrichment of its runtime state.
 func resolveAndSetMappedAuthorizationTargets(
 	ctx context.Context, execResp *providers.ExecutorResponse,
 	idpService providers.IDPProvider, idpDTO *providers.IDPDTO, federatedAttributes map[string]interface{},
 	logger *log.Logger,
-) {
-	targets := idp.GetRuleAuthorizationTargets(idpDTO, federatedAttributes)
-	directTargets, svcErr := idpService.GetDirectAuthorizationTargets(ctx, idpDTO, federatedAttributes)
+) *idp.ResolvedAuthorizationMapping {
+	resolved, svcErr := idp.ResolveAuthorizationMapping(
+		ctx, idpDTO, federatedAttributes, idpService.ResolveDirectAuthorizationTargets)
 	if svcErr != nil {
 		logger.Warn(ctx, "Failed to resolve direct authorization targets, continuing with rule-based targets only",
 			log.String("idpId", idpDTO.ID), log.String("error", svcErr.Error.DefaultValue))
-	} else {
-		targets = append(targets, directTargets...)
 	}
-	setMappedAuthorizationTargets(execResp, targets)
+	setMappedAuthorizationTargets(execResp, resolved.Targets)
+	execResp.RuntimeData[common.RuntimeKeyAttributesSyncMode] = string(idp.GetAttributesSyncMode(idpDTO))
+	execResp.RuntimeData[common.RuntimeKeyGroupsAndRolesSyncMode] = string(idp.GetGroupsAndRolesSyncMode(idpDTO))
+	return resolved
 }
 
 // setMappedAuthorizationTargets splits resolved authorization mapping targets (rule-based or direct)

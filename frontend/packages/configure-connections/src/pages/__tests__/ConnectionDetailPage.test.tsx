@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {fireEvent, render, screen, waitFor, within} from '@thunderid/test-utils';
@@ -29,6 +29,8 @@ const DIRECT_MAPPINGS = [{claim: 'role_name', targetType: 'role'}];
 
 const LINKING = {attributes: ['email']};
 
+const SYNC = {attributes: 'override_received'};
+
 const CONNECTION = {
   id: 'g1',
   type: 'google',
@@ -41,6 +43,7 @@ const CONNECTION = {
     ...ATTR_CONFIG,
     authorizationMapping: {rules: AUTHZ_MAPPINGS, direct: DIRECT_MAPPINGS},
     accountLinking: LINKING,
+    sync: SYNC,
   },
 };
 
@@ -452,6 +455,36 @@ vi.mock('../../components/SubjectMappingSection', () => ({
   },
 }));
 
+vi.mock('../../components/SyncSection', () => ({
+  default: function StubSyncSection({sync, onChange}: {sync?: object; onChange: (s: object) => void}) {
+    return (
+      <>
+        <button
+          type="button"
+          data-testid="set-session-only"
+          onClick={() => onChange({...sync, groupsAndRoles: 'session_only'})}
+        >
+          set session only
+        </button>
+        <button
+          type="button"
+          data-testid="set-attributes-no-sync"
+          onClick={() => onChange({...sync, attributes: 'no_sync'})}
+        >
+          set attributes no sync
+        </button>
+        <button
+          type="button"
+          data-testid="set-attributes-default"
+          onClick={() => onChange({...sync, attributes: 'override_received'})}
+        >
+          set attributes default
+        </button>
+      </>
+    );
+  },
+}));
+
 describe('ConnectionDetailPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -636,6 +669,7 @@ describe('ConnectionDetailPage', () => {
       ...ATTR_CONFIG,
       authorizationMapping: {rules: AUTHZ_MAPPINGS, direct: DIRECT_MAPPINGS},
       accountLinking: LINKING,
+      sync: SYNC,
     });
 
     await waitFor(() => expect(refetchMock).toHaveBeenCalledTimes(1));
@@ -658,6 +692,44 @@ describe('ConnectionDetailPage', () => {
     };
     expect(payload.attributeConfiguration?.authorizationMapping).toBeUndefined();
     expect(payload.attributeConfiguration?.accountLinking).toBeUndefined();
+  });
+
+  it('saves the edited groups and roles sync mode and keeps the stored attributes mode', () => {
+    render(<ConnectionDetailPage />);
+    fireEvent.click(screen.getByTestId('connection-tab-attributes'));
+    expect(screen.queryByTestId('save-bar')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('set-session-only'));
+    fireEvent.click(screen.getByTestId('save-bar'));
+
+    const payload = updateMock.mock.calls[0][0] as {attributeConfiguration?: {sync?: unknown}};
+    expect(payload.attributeConfiguration?.sync).toEqual({...SYNC, groupsAndRoles: 'session_only'});
+  });
+
+  it('does not send a sync object when saving another section of a connection without sync', () => {
+    mockConn.data = {...CONNECTION, attributeConfiguration: {...CONNECTION.attributeConfiguration, sync: undefined}};
+    render(<ConnectionDetailPage />);
+    fireEvent.click(screen.getByTestId('connection-tab-attributes'));
+    fireEvent.click(screen.getByTestId('clear-linking'));
+    fireEvent.click(screen.getByTestId('save-bar'));
+
+    const payload = updateMock.mock.calls[0][0] as {attributeConfiguration?: {sync?: unknown}};
+    expect(JSON.parse(JSON.stringify(payload.attributeConfiguration))).not.toHaveProperty('sync');
+  });
+
+  it('is clean again, and saves no sync object, after a mode is changed and changed back', () => {
+    mockConn.data = {...CONNECTION, attributeConfiguration: {...CONNECTION.attributeConfiguration, sync: undefined}};
+    render(<ConnectionDetailPage />);
+    fireEvent.click(screen.getByTestId('connection-tab-attributes'));
+    fireEvent.click(screen.getByTestId('set-attributes-no-sync'));
+    expect(screen.getByTestId('save-bar')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('set-attributes-default'));
+    expect(screen.queryByTestId('save-bar')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('clear-linking'));
+    fireEvent.click(screen.getByTestId('save-bar'));
+
+    const payload = updateMock.mock.calls[0][0] as {attributeConfiguration?: {sync?: unknown}};
+    expect(JSON.parse(JSON.stringify(payload.attributeConfiguration))).not.toHaveProperty('sync');
   });
 
   it('clearing only the rule-based half keeps the stored direct mappings nested alongside it', () => {

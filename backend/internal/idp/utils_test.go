@@ -2166,3 +2166,155 @@ func (s *IDPUtilsTestSuite) TestValidateAccountLinking() {
 		})
 	}
 }
+
+func (s *IDPUtilsTestSuite) TestValidateSyncConfiguration() {
+	tests := []struct {
+		name    string
+		sync    *providers.SyncConfiguration
+		wantErr bool
+	}{
+		{"unset", nil, false},
+		{"empty modes", &providers.SyncConfiguration{}, false},
+		{"all attribute modes", &providers.SyncConfiguration{Attributes: providers.SyncModeOverrideReceived}, false},
+		{"session only groups and roles",
+			&providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeSessionOnly}, false},
+		{"unknown attributes mode", &providers.SyncConfiguration{Attributes: "always"}, true},
+		{"override received for groups and roles",
+			&providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeOverrideReceived}, true},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			svcErr := validateSyncConfiguration(&providers.AttributeConfiguration{Sync: tc.sync})
+			if tc.wantErr {
+				s.Require().NotNil(svcErr)
+				s.Equal(ErrorInvalidAttributeConfiguration.Code, svcErr.Code)
+			} else {
+				s.Nil(svcErr)
+			}
+		})
+	}
+}
+
+func (s *IDPUtilsTestSuite) TestValidateIDP_SyncMode() {
+	prop1, _ := cmodels.NewProperty(PropClientID, "test-client", false)
+	prop2, _ := cmodels.NewProperty(PropClientSecret, "test-secret", false)
+	prop3, _ := cmodels.NewProperty(PropRedirectURI, "http://localhost/callback", false)
+	newDTO := func(sync providers.SyncConfiguration) *providers.IDPDTO {
+		return &providers.IDPDTO{
+			Name:                   "idp",
+			Type:                   providers.IDPTypeGitHub,
+			Properties:             []cmodels.Property{*prop1, *prop2, *prop3},
+			AttributeConfiguration: &providers.AttributeConfiguration{Sync: &sync},
+		}
+	}
+
+	s.NoError(ValidateIDP(newDTO(providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeOverrideAll})))
+	s.Error(ValidateIDP(newDTO(providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeOverrideReceived})))
+	s.NoError(ValidateIDP(newDTO(providers.SyncConfiguration{Attributes: providers.SyncModeOverrideReceived})))
+	s.Error(ValidateIDP(newDTO(providers.SyncConfiguration{Attributes: providers.SyncModeOverrideAll})))
+
+	err := ValidateIDP(newDTO(providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeOverrideReceived}))
+	s.ErrorContains(err, "sync mode 'override_received' is not supported for 'groupsAndRoles'")
+}
+
+func (s *IDPUtilsTestSuite) TestGetAttributesSyncMode() {
+	s.Equal(providers.SyncModeOverrideReceived, GetAttributesSyncMode(nil))
+	s.Equal(providers.SyncModeOverrideReceived, GetAttributesSyncMode(&providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{Sync: &providers.SyncConfiguration{}},
+	}))
+	s.Equal(providers.SyncModeSessionOnly, GetAttributesSyncMode(&providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			Sync: &providers.SyncConfiguration{Attributes: providers.SyncModeSessionOnly},
+		},
+	}))
+}
+
+func (s *IDPUtilsTestSuite) TestGetGroupsAndRolesSyncMode() {
+	s.Equal(providers.SyncModeNoSync, GetGroupsAndRolesSyncMode(nil))
+	s.Equal(providers.SyncModeNoSync, GetGroupsAndRolesSyncMode(&providers.IDPDTO{}))
+	s.Equal(providers.SyncModeNoSync, GetGroupsAndRolesSyncMode(&providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{Sync: &providers.SyncConfiguration{}},
+	}))
+	s.Equal(providers.SyncModeOverrideAll, GetGroupsAndRolesSyncMode(&providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			Sync: &providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeOverrideAll},
+		},
+	}))
+}
+
+// directResolver returns a DirectTargetResolver that returns the given results.
+func directResolver(targets, ambiguous []providers.AuthorizationTarget,
+	svcErr *tidcommon.ServiceError) DirectTargetResolver {
+	return func(context.Context, *providers.IDPDTO, map[string]interface{}) (
+		[]providers.AuthorizationTarget, []providers.AuthorizationTarget, *tidcommon.ServiceError) {
+		return targets, ambiguous, svcErr
+	}
+}
+
+func (s *IDPUtilsTestSuite) TestResolveAuthorizationMapping() {
+	ruleTarget := providers.AuthorizationTarget{Type: providers.AuthorizationTargetGroup, ID: "g1"}
+	rules := []providers.AuthorizationRuleMapping{{Claim: "dept", Values: []providers.AuthorizationRule{{
+		Operator: providers.AuthorizationOperatorEquals,
+		Value:    "eng",
+		Targets:  []providers.AuthorizationTarget{ruleTarget},
+	}}}}
+	direct := []providers.AuthorizationDirectMapping{{Claim: "roles", TargetType: providers.AuthorizationTargetRole}}
+	newIDP := func(mapping *providers.AuthorizationMapping) *providers.IDPDTO {
+		return &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMapping: mapping,
+		}}
+	}
+	claims := map[string]interface{}{"dept": "eng"}
+	directTarget := providers.AuthorizationTarget{Type: providers.AuthorizationTargetRole, ID: "r1"}
+	ambiguous := []providers.AuthorizationTarget{{Type: providers.AuthorizationTargetRole, ID: "r2"}}
+	resolveDirect := directResolver([]providers.AuthorizationTarget{directTarget}, ambiguous, nil)
+
+	s.Run("rules and direct", func() {
+		resolved, svcErr := ResolveAuthorizationMapping(context.Background(),
+			newIDP(&providers.AuthorizationMapping{Rules: rules, Direct: direct}), claims, resolveDirect)
+		s.Nil(svcErr)
+		s.True(resolved.MapsGroups)
+		s.True(resolved.MapsRoles)
+		s.True(resolved.Complete)
+		s.Equal([]providers.AuthorizationTarget{ruleTarget, directTarget}, resolved.Targets)
+		s.Equal(ambiguous, resolved.Ambiguous)
+	})
+
+	s.Run("rules only map groups", func() {
+		resolved, svcErr := ResolveAuthorizationMapping(context.Background(),
+			newIDP(&providers.AuthorizationMapping{Rules: rules}), claims, resolveDirect)
+		s.Nil(svcErr)
+		s.True(resolved.MapsGroups)
+		s.False(resolved.MapsRoles)
+	})
+
+	s.Run("direct only maps roles", func() {
+		resolved, svcErr := ResolveAuthorizationMapping(context.Background(),
+			newIDP(&providers.AuthorizationMapping{Direct: direct}), claims, resolveDirect)
+		s.Nil(svcErr)
+		s.False(resolved.MapsGroups)
+		s.True(resolved.MapsRoles)
+	})
+
+	s.Run("direct lookup fails", func() {
+		resolved, svcErr := ResolveAuthorizationMapping(context.Background(),
+			newIDP(&providers.AuthorizationMapping{Rules: rules, Direct: direct}), claims,
+			directResolver(nil, nil, &tidcommon.InternalServerError))
+		s.NotNil(svcErr)
+		s.False(resolved.Complete)
+		s.True(resolved.MapsGroups)
+		s.True(resolved.MapsRoles)
+		s.Equal([]providers.AuthorizationTarget{ruleTarget}, resolved.Targets)
+		s.Nil(resolved.Ambiguous)
+	})
+
+	s.Run("no mapping", func() {
+		resolved, svcErr := ResolveAuthorizationMapping(context.Background(), &providers.IDPDTO{}, nil,
+			directResolver(nil, nil, nil))
+		s.Nil(svcErr)
+		s.False(resolved.MapsGroups)
+		s.False(resolved.MapsRoles)
+		s.True(resolved.Complete)
+		s.Empty(resolved.Targets)
+	})
+}
