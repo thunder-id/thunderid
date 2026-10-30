@@ -3806,13 +3806,17 @@ func (s *ServiceTestSuite) TestExecuteSystemFlow_RunsToCompletion() {
 	engine.EXPECT().Execute(mock.MatchedBy(func(ctx *EngineContext) bool {
 		return ctx.FlowType == providers.FlowTypeSystem && ctx.UserInputs["targetApplicationId"] == "app-1" &&
 			ctx.Application.ID == ""
-	})).Return(FlowStep{Status: providers.FlowStatusComplete}, nil)
+	})).Run(func(ctx *EngineContext) {
+		ctx.setSharedRuntimeData("revocationPlan", "plan")
+	}).Return(FlowStep{Status: providers.FlowStatusComplete}, nil)
 
 	result, svcErr := service.ExecuteSystemFlow(context.Background(), &SystemFlowContext{
 		Handle: "system-application-delete", Inputs: map[string]string{"targetApplicationId": "app-1"}})
 
 	s.Nil(svcErr)
 	s.NotEmpty(result.ExecutionID)
+	// What the steps shared comes back, for the caller to finish the change with.
+	s.Equal(map[string]string{"revocationPlan": "plan"}, result.SharedRuntimeData)
 }
 
 // A step's refusal is returned as it is, so the caller reports the real reason.
