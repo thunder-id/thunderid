@@ -52,6 +52,11 @@ func (st *store) GetByHandle(ctx context.Context, handleID string) (*Session, er
 	return st.getSingle(ctx, queryGetSessionByHandle, handleID)
 }
 
+// GetBySessionID fetches a session by its ID.
+func (st *store) GetBySessionID(ctx context.Context, sessionID string) (*Session, error) {
+	return st.getSingle(ctx, queryGetSessionBySessionID, sessionID)
+}
+
 // GetByExecutionID fetches the session established by the given flow execution.
 func (st *store) GetByExecutionID(ctx context.Context, flowExecutionID string) (*Session, error) {
 	return st.getSingle(ctx, queryGetSessionByExecutionID, flowExecutionID)

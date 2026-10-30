@@ -1102,3 +1102,247 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_NotifiesOnlyForRowsItRemov
 
 	suite.Require().NoError(err)
 }
+
+// --- Revoke through the session management API ---
+
+// expectTerminated sets up the reads and deletes terminateSessions makes for one session.
+func expectTerminated(m *serviceMocks, sessionID string, participants []Participant) {
+	m.store.EXPECT().ListBySessionID(mock.Anything, sessionID).Return(participants, nil).Once()
+	m.store.EXPECT().DeleteSession(mock.Anything, sessionID).Return(true, nil).Once()
+	m.store.EXPECT().Delete(mock.Anything, sessionID).Return(nil).Once()
+	m.store.EXPECT().DeleteBySessionID(mock.Anything, sessionID).Return(nil).Once()
+}
+
+func (suite *ServiceTestSuite) TestRevokeSession_RevokesFamiliesAndNotifies() {
+	revoker := NewCriteriaRevokerMock(suite.T())
+	svc, m, listener := suite.newServiceWithListener(revoker)
+	participants := []Participant{
+		{SessionID: "sess-1", AppID: "app-1", TokenFamilyID: "tfid-a"},
+		{SessionID: "sess-1", AppID: "app-2", TokenFamilyID: "tfid-b"},
+	}
+
+	m.store.EXPECT().GetBySessionID(mock.Anything, "sess-1").Return(liveStoreSession(), nil)
+	runTx(m)
+	expectTerminated(m, "sess-1", participants)
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-a").Return(nil).Once()
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-b").Return(nil).Once()
+	listener.EXPECT().OnEvent(mock.Anything, TerminatedSession{
+		SessionID:    "sess-1",
+		SubjectID:    "user-1",
+		Participants: participants,
+		Reason:       TerminationReasonSessionRevocation,
+	}).Once()
+
+	found, err := svc.RevokeSession(context.Background(), "sess-1", "")
+
+	suite.Require().NoError(err)
+	suite.True(found)
+}
+
+func (suite *ServiceTestSuite) TestRevokeSession_OwnerMatches() {
+	svc, m, revoker := suite.newServiceWithRevoker()
+	m.store.EXPECT().GetBySessionID(mock.Anything, "sess-1").Return(liveStoreSession(), nil)
+	runTx(m)
+	expectTerminated(m, "sess-1", []Participant{{SessionID: "sess-1", AppID: "app-1", TokenFamilyID: "tfid-a"}})
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-a").Return(nil).Once()
+
+	found, err := svc.RevokeSession(context.Background(), "sess-1", "user-1")
+
+	suite.Require().NoError(err)
+	suite.True(found)
+}
+
+func (suite *ServiceTestSuite) TestRevokeSession_NotFoundOrNotOwnedRevokesNothing() {
+	tests := []struct {
+		name  string
+		sess  *Session
+		owner string
+	}{
+		{"missing session", nil, ""},
+		{"another subject's session", liveStoreSession(), "user-2"},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			svc, m, revoker := suite.newServiceWithRevoker()
+			m.store.EXPECT().GetBySessionID(mock.Anything, "sess-1").Return(tc.sess, nil)
+
+			found, err := svc.RevokeSession(context.Background(), "sess-1", tc.owner)
+
+			suite.Require().NoError(err)
+			suite.False(found)
+			m.tx.AssertNotCalled(suite.T(), "Transact", mock.Anything, mock.Anything)
+			revoker.AssertNotCalled(suite.T(), "RevokeTokenFamily", mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (suite *ServiceTestSuite) TestRevokeSession_EmptyIDIsNoOp() {
+	svc, m := suite.newService()
+
+	found, err := svc.RevokeSession(context.Background(), "", "")
+
+	suite.Require().NoError(err)
+	suite.False(found)
+	m.store.AssertNotCalled(suite.T(), "GetBySessionID", mock.Anything, mock.Anything)
+}
+
+func (suite *ServiceTestSuite) TestRevokeSession_Errors() {
+	suite.Run("lookup fails", func() {
+		svc, m := suite.newService()
+		m.store.EXPECT().GetBySessionID(mock.Anything, "sess-1").Return(nil, errors.New("db down"))
+
+		_, err := svc.RevokeSession(context.Background(), "sess-1", "")
+
+		suite.Require().Error(err)
+		suite.Contains(err.Error(), "failed to load session for revocation")
+	})
+	suite.Run("revocation fails before any delete", func() {
+		svc, m, revoker := suite.newServiceWithRevoker()
+		m.store.EXPECT().GetBySessionID(mock.Anything, "sess-1").Return(liveStoreSession(), nil)
+		runTx(m)
+		m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").
+			Return([]Participant{{SessionID: "sess-1", AppID: "app-1", TokenFamilyID: "tfid-a"}}, nil)
+		revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-a").Return(errors.New("deny list down"))
+
+		found, err := svc.RevokeSession(context.Background(), "sess-1", "")
+
+		suite.Require().Error(err)
+		suite.False(found)
+		suite.Contains(err.Error(), "failed to revoke session")
+		m.store.AssertNotCalled(suite.T(), "DeleteSession", mock.Anything, mock.Anything)
+	})
+}
+
+func (suite *ServiceTestSuite) TestRevokeSubjectSessions_RevokesEverySession() {
+	svc, m, revoker := suite.newServiceWithRevoker()
+	m.store.EXPECT().ListBySubject(mock.Anything, "user-1").Return([]Session{
+		{SessionID: "sess-1", SubjectID: "user-1"},
+		{SessionID: "sess-2", SubjectID: "user-1"},
+	}, nil)
+	// One transaction covers every session's revocation and deletes.
+	m.tx.EXPECT().Transact(mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, fn func(context.Context) error) error { return fn(ctx) }).Once()
+	expectTerminated(m, "sess-1", []Participant{{SessionID: "sess-1", AppID: "app-1", TokenFamilyID: "tfid-a"}})
+	expectTerminated(m, "sess-2", []Participant{{SessionID: "sess-2", AppID: "app-1", TokenFamilyID: "tfid-b"}})
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-a").Return(nil).Once()
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-b").Return(nil).Once()
+
+	err := svc.RevokeSubjectSessions(context.Background(), "user-1", "")
+
+	suite.Require().NoError(err)
+	m.store.AssertNotCalled(suite.T(), "ListBySessionIDs", mock.Anything, mock.Anything)
+}
+
+func (suite *ServiceTestSuite) TestRevokeSubjectSessions_ParticipantReadErrorSkipsOnlyThatSession() {
+	svc, m, listener := suite.newServiceWithListener(nil)
+	m.store.EXPECT().ListBySubject(mock.Anything, "user-1").Return([]Session{
+		{SessionID: "sess-1", SubjectID: "user-1"},
+		{SessionID: "sess-2", SubjectID: "user-1"},
+	}, nil)
+	runTx(m)
+	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return(nil, errors.New("db down")).Once()
+	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(true, nil).Once()
+	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil).Once()
+	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return(nil).Once()
+	participants := []Participant{{SessionID: "sess-2", AppID: "app-1", TokenFamilyID: "tfid-b"}}
+	expectTerminated(m, "sess-2", participants)
+	listener.EXPECT().OnEvent(mock.Anything, TerminatedSession{
+		SessionID:    "sess-2",
+		SubjectID:    "user-1",
+		Participants: participants,
+		Reason:       TerminationReasonSessionRevocation,
+	}).Once()
+
+	err := svc.RevokeSubjectSessions(context.Background(), "user-1", "")
+
+	suite.Require().NoError(err, "a read that only the listener needs must not block the revocation")
+}
+
+func (suite *ServiceTestSuite) TestRevokeSubjectSessions_KeepsSessionOfTokenFamily() {
+	svc, m, revoker := suite.newServiceWithRevoker()
+	m.store.EXPECT().ListBySubject(mock.Anything, "user-1").Return([]Session{
+		{SessionID: "sess-1", SubjectID: "user-1"},
+		{SessionID: "sess-2", SubjectID: "user-1"},
+	}, nil)
+	m.store.EXPECT().ListBySessionIDs(mock.Anything, []string{"sess-1", "sess-2"}).Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-1", TokenFamilyID: "tfid-current"},
+		{SessionID: "sess-2", AppID: "app-1", TokenFamilyID: "tfid-b"},
+	}, nil)
+	runTx(m)
+	expectTerminated(m, "sess-2", []Participant{{SessionID: "sess-2", AppID: "app-1", TokenFamilyID: "tfid-b"}})
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-b").Return(nil).Once()
+
+	err := svc.RevokeSubjectSessions(context.Background(), "user-1", "tfid-current")
+
+	suite.Require().NoError(err)
+	m.store.AssertNotCalled(suite.T(), "DeleteSession", mock.Anything, "sess-1")
+}
+
+func (suite *ServiceTestSuite) TestRevokeSubjectSessions_KeepWithNoSessionsIsUnknownTokenFamily() {
+	svc, m := suite.newService()
+	m.store.EXPECT().ListBySubject(mock.Anything, "user-1").Return([]Session{}, nil)
+
+	err := svc.RevokeSubjectSessions(context.Background(), "user-1", "tfid-a")
+
+	suite.Require().ErrorIs(err, ErrTokenFamilyNotInSession)
+	m.tx.AssertNotCalled(suite.T(), "Transact", mock.Anything, mock.Anything)
+}
+
+func (suite *ServiceTestSuite) TestRevokeSubjectSessions_UnknownTokenFamilyRevokesNothing() {
+	svc, m := suite.newService()
+	m.store.EXPECT().ListBySubject(mock.Anything, "user-1").Return([]Session{{SessionID: "sess-1"}}, nil)
+	m.store.EXPECT().ListBySessionIDs(mock.Anything, []string{"sess-1"}).
+		Return([]Participant{{SessionID: "sess-1", TokenFamilyID: "tfid-other"}}, nil)
+
+	err := svc.RevokeSubjectSessions(context.Background(), "user-1", "tfid-gone")
+
+	suite.Require().ErrorIs(err, ErrTokenFamilyNotInSession)
+	m.tx.AssertNotCalled(suite.T(), "Transact", mock.Anything, mock.Anything)
+}
+
+func (suite *ServiceTestSuite) TestRevokeSubjectSessions_NothingToRevoke() {
+	suite.Run("empty subject", func() {
+		svc, m := suite.newService()
+		suite.Require().NoError(svc.RevokeSubjectSessions(context.Background(), "", ""))
+		m.store.AssertNotCalled(suite.T(), "ListBySubject", mock.Anything, mock.Anything)
+	})
+	suite.Run("no sessions", func() {
+		svc, m := suite.newService()
+		m.store.EXPECT().ListBySubject(mock.Anything, "user-1").Return([]Session{}, nil)
+		suite.Require().NoError(svc.RevokeSubjectSessions(context.Background(), "user-1", ""))
+		m.tx.AssertNotCalled(suite.T(), "Transact", mock.Anything, mock.Anything)
+	})
+	suite.Run("only the kept session", func() {
+		svc, m := suite.newService()
+		m.store.EXPECT().ListBySubject(mock.Anything, "user-1").Return([]Session{{SessionID: "sess-1"}}, nil)
+		m.store.EXPECT().ListBySessionIDs(mock.Anything, []string{"sess-1"}).
+			Return([]Participant{{SessionID: "sess-1", TokenFamilyID: "tfid-a"}}, nil)
+		suite.Require().NoError(svc.RevokeSubjectSessions(context.Background(), "user-1", "tfid-a"))
+		m.tx.AssertNotCalled(suite.T(), "Transact", mock.Anything, mock.Anything)
+	})
+}
+
+func (suite *ServiceTestSuite) TestRevokeSubjectSessions_Errors() {
+	suite.Run("listing sessions fails", func() {
+		svc, m := suite.newService()
+		m.store.EXPECT().ListBySubject(mock.Anything, "user-1").Return(nil, errors.New("db down"))
+		suite.Require().Error(svc.RevokeSubjectSessions(context.Background(), "user-1", ""))
+	})
+	suite.Run("listing participants fails", func() {
+		svc, m := suite.newService()
+		m.store.EXPECT().ListBySubject(mock.Anything, "user-1").Return([]Session{{SessionID: "sess-1"}}, nil)
+		m.store.EXPECT().ListBySessionIDs(mock.Anything, []string{"sess-1"}).Return(nil, errors.New("db down"))
+		err := svc.RevokeSubjectSessions(context.Background(), "user-1", "tfid-a")
+		suite.Require().Error(err)
+		m.tx.AssertNotCalled(suite.T(), "Transact", mock.Anything, mock.Anything)
+	})
+	suite.Run("transaction fails", func() {
+		svc, m := suite.newService()
+		m.store.EXPECT().ListBySubject(mock.Anything, "user-1").Return([]Session{{SessionID: "sess-1"}}, nil)
+		runTx(m)
+		m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(false, errors.New("db down"))
+		err := svc.RevokeSubjectSessions(context.Background(), "user-1", "")
+		suite.Require().Error(err)
+		suite.Contains(err.Error(), "failed to revoke subject sessions")
+	})
+}

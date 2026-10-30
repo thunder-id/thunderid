@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
@@ -66,6 +67,17 @@ type Service interface {
 	// grants first so no session is deleted while its tokens remain live. It is idempotent, returning
 	// nil when the subject holds no sessions.
 	TerminateBySubject(ctx context.Context, subjectID string) error
+	// RevokeSession ends the session with the given ID as Terminate does, revoking the token families
+	// of its applications. When ownerSubjectID is non-empty the session must belong to that subject. It
+	// returns false, and revokes nothing, when no such session exists.
+	RevokeSession(ctx context.Context, sessionID, ownerSubjectID string) (bool, error)
+	// RevokeSubjectSessions ends every session of the subject as Terminate does, revoking each session's
+	// token families, except the session in which exceptTokenFamilyID was issued. An empty
+	// exceptTokenFamilyID keeps none. When no session holds exceptTokenFamilyID it revokes nothing and
+	// returns ErrTokenFamilyNotInSession, so a caller asking to keep its own session is never signed out.
+	// Unlike TerminateBySubject it revokes only the sessions' grants, not every token the subject holds.
+	// It is idempotent, returning nil when no session is left.
+	RevokeSubjectSessions(ctx context.Context, subjectID, exceptTokenFamilyID string) error
 
 	// DetachApplication detaches an application from every SSO session it participates in: it revokes
 	// the token family of that participation and drops the participant row, deleting the session itself
@@ -339,59 +351,11 @@ func (s *service) Terminate(ctx context.Context, handle, flowID string) (*Sessio
 	if flowID != "" && sess.FlowID != flowID {
 		return nil, fmt.Errorf("session handle belongs to flow %q, expected %q", sess.FlowID, flowID)
 	}
-	// Hard-delete the session and its derived state (checkpoint contexts and participants) in one
-	// transaction. Sign-out ends SSO reuse outright and nothing references the session afterwards, so the
-	// row is removed rather than tombstoned. DeleteSession removes the session row (SSO_SESSION), Delete
-	// its checkpoint contexts (SSO_SESSION_CONTEXT), and DeleteBySessionID its participants
-	// (SSO_SESSION_PARTICIPANT). Repeated calls are idempotent: once the row is gone, GetByHandle
-	// returns nil above. Token families are revoked first, in the same transaction, so a crash can
-	// never orphan live tokens for a deleted session.
-	//
-	// Participants are read once, inside the transaction, for both the revoker and the listener; the
-	// rows are gone after commit. The read is skipped when neither is wired. A failed read is fatal
-	// only when the revoker needs it; for the listener alone it just drops the notification.
-	var participants []Participant
-	notify := s.terminationTopic.HasListeners()
-	if txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		if s.criteriaRevoker != nil || notify {
-			list, listErr := s.store.ListBySessionID(txCtx, sess.SessionID)
-			switch {
-			case listErr == nil:
-				participants = list
-			case s.criteriaRevoker != nil:
-				return listErr
-			default:
-				s.logger.Error(txCtx, "Failed to read session participants before termination; "+
-					"participants will not be notified", log.Error(listErr))
-				notify = false
-			}
-		}
-		if revErr := s.revokeFamilies(txCtx, participants); revErr != nil {
-			return revErr
-		}
-		removed, delErr := s.store.DeleteSession(txCtx, sess.SessionID)
-		if delErr != nil {
-			return delErr
-		}
-		// A concurrent termination already removed the row; only the node that removed it notifies.
-		notify = notify && removed
-		if delErr := s.store.Delete(txCtx, sess.SessionID); delErr != nil {
-			return delErr
-		}
-		return s.store.DeleteBySessionID(txCtx, sess.SessionID)
-	}); txErr != nil {
-		return nil, fmt.Errorf("failed to terminate session: %w", txErr)
+	if err := s.terminateSessions(ctx, []Session{*sess}, TerminationReasonSignOut); err != nil {
+		return nil, fmt.Errorf("failed to terminate session: %w", err)
 	}
 
 	s.logger.Debug(ctx, "Terminated SSO session", log.String("flowId", sess.FlowID))
-	if notify {
-		s.terminationTopic.Notify(ctx, TerminatedSession{
-			SessionID:    sess.SessionID,
-			SubjectID:    sess.SubjectID,
-			Participants: participants,
-			Reason:       TerminationReasonSignOut,
-		})
-	}
 	return sess, nil
 }
 
@@ -460,6 +424,148 @@ func (s *service) TerminateBySubject(ctx context.Context, subjectID string) erro
 				Reason:       TerminationReasonSubjectRevocation,
 			})
 		}
+	}
+	return nil
+}
+
+// RevokeSession implements Service.
+func (s *service) RevokeSession(ctx context.Context, sessionID, ownerSubjectID string) (bool, error) {
+	if sessionID == "" {
+		return false, nil
+	}
+	sess, err := s.store.GetBySessionID(ctx, sessionID)
+	if err != nil {
+		return false, fmt.Errorf("failed to load session for revocation: %w", err)
+	}
+	if sess == nil || (ownerSubjectID != "" && sess.SubjectID != ownerSubjectID) {
+		return false, nil
+	}
+	if err := s.terminateSessions(ctx, []Session{*sess}, TerminationReasonSessionRevocation); err != nil {
+		return false, fmt.Errorf("failed to revoke session: %w", err)
+	}
+
+	s.logger.Debug(ctx, "Revoked SSO session")
+	return true, nil
+}
+
+// RevokeSubjectSessions implements Service.
+func (s *service) RevokeSubjectSessions(ctx context.Context, subjectID, exceptTokenFamilyID string) error {
+	if subjectID == "" {
+		return nil
+	}
+	sessions, err := s.store.ListBySubject(ctx, subjectID)
+	if err != nil {
+		return fmt.Errorf("failed to list sessions by subject: %w", err)
+	}
+	if exceptTokenFamilyID != "" {
+		if len(sessions) == 0 {
+			return ErrTokenFamilyNotInSession
+		}
+		if sessions, err = s.withoutTokenFamily(ctx, sessions, exceptTokenFamilyID); err != nil {
+			return err
+		}
+	}
+	if len(sessions) == 0 {
+		return nil
+	}
+	if err := s.terminateSessions(ctx, sessions, TerminationReasonSessionRevocation); err != nil {
+		return fmt.Errorf("failed to revoke subject sessions: %w", err)
+	}
+
+	s.logger.Debug(ctx, "Revoked SSO sessions for subject", log.Int("sessionCount", len(sessions)))
+	return nil
+}
+
+// withoutTokenFamily returns the sessions none of whose participants holds the token family, or
+// ErrTokenFamilyNotInSession when no session holds it.
+func (s *service) withoutTokenFamily(ctx context.Context, sessions []Session,
+	tokenFamilyID string) ([]Session, error) {
+	sessionIDs := make([]string, 0, len(sessions))
+	for _, sess := range sessions {
+		sessionIDs = append(sessionIDs, sess.SessionID)
+	}
+	participants, err := s.store.ListBySessionIDs(ctx, sessionIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list session participants: %w", err)
+	}
+	var keep string
+	for _, p := range participants {
+		if p.TokenFamilyID == tokenFamilyID {
+			keep = p.SessionID
+			break
+		}
+	}
+	if keep == "" {
+		return nil, ErrTokenFamilyNotInSession
+	}
+	return slices.DeleteFunc(sessions, func(sess Session) bool { return sess.SessionID == keep }), nil
+}
+
+// terminateSessions ends the sessions in one transaction: for each one it revokes the token families of
+// every participating application (when a revoker is wired) and hard-deletes the session along with its
+// checkpoint contexts and participants, so nothing is left that could back SSO or hold live grants. The
+// rows are removed rather than tombstoned, since nothing references a session once it has ended. Token
+// families are revoked first, in the same transaction, so a crash can never orphan live tokens for a
+// deleted session. Listeners are notified after commit, only for the sessions this call removed.
+//
+// Participants are read inside the transaction for both the revoker and the listener; the rows are gone
+// after commit. The read is skipped when neither is wired. A failed read is fatal only when the revoker
+// needs it; for the listener alone it just drops the notifications.
+func (s *service) terminateSessions(ctx context.Context, sessions []Session, reason TerminationReason) error {
+	notify := s.terminationTopic.HasListeners()
+	participants := make(map[string][]Participant, len(sessions))
+	removed := make(map[string]bool, len(sessions))
+	unread := make(map[string]bool)
+	if txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		for _, sess := range sessions {
+			if s.criteriaRevoker != nil || notify {
+				list, listErr := s.store.ListBySessionID(txCtx, sess.SessionID)
+				switch {
+				case listErr == nil:
+					participants[sess.SessionID] = list
+				case s.criteriaRevoker != nil:
+					return listErr
+				default:
+					s.logger.Error(txCtx, "Failed to read session participants before termination; "+
+						"participants will not be notified", log.Error(listErr))
+					unread[sess.SessionID] = true
+				}
+			}
+			if revErr := s.revokeFamilies(txCtx, participants[sess.SessionID]); revErr != nil {
+				return revErr
+			}
+			wasRemoved, delErr := s.store.DeleteSession(txCtx, sess.SessionID)
+			if delErr != nil {
+				return delErr
+			}
+			// A concurrent termination already removed the row; only the call that removed it notifies.
+			removed[sess.SessionID] = wasRemoved
+			if delErr := s.store.Delete(txCtx, sess.SessionID); delErr != nil {
+				return delErr
+			}
+			if delErr := s.store.DeleteBySessionID(txCtx, sess.SessionID); delErr != nil {
+				return delErr
+			}
+		}
+		return nil
+	}); txErr != nil {
+		return txErr
+	}
+
+	if !notify {
+		return nil
+	}
+	for _, sess := range sessions {
+		// Only the call that removed the session notifies, and only once its participants are known.
+		if !removed[sess.SessionID] || unread[sess.SessionID] {
+			continue
+		}
+		s.terminationTopic.Notify(ctx, TerminatedSession{
+			SessionID:    sess.SessionID,
+			SubjectID:    sess.SubjectID,
+			Participants: participants[sess.SessionID],
+			Reason:       reason,
+		})
 	}
 	return nil
 }

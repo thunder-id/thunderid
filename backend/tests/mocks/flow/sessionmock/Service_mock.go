@@ -385,6 +385,141 @@ func (_c *ServiceMock_Resolve_Call) RunAndReturn(run func(ctx context.Context, h
 	return _c
 }
 
+// RevokeSession provides a mock function for the type ServiceMock
+func (_mock *ServiceMock) RevokeSession(ctx context.Context, sessionID string, ownerSubjectID string) (bool, error) {
+	ret := _mock.Called(ctx, sessionID, ownerSubjectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RevokeSession")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (bool, error)); ok {
+		return returnFunc(ctx, sessionID, ownerSubjectID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) bool); ok {
+		r0 = returnFunc(ctx, sessionID, ownerSubjectID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, sessionID, ownerSubjectID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// ServiceMock_RevokeSession_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RevokeSession'
+type ServiceMock_RevokeSession_Call struct {
+	*mock.Call
+}
+
+// RevokeSession is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sessionID string
+//   - ownerSubjectID string
+func (_e *ServiceMock_Expecter) RevokeSession(ctx any, sessionID any, ownerSubjectID any) *ServiceMock_RevokeSession_Call {
+	return &ServiceMock_RevokeSession_Call{Call: _e.mock.On("RevokeSession", ctx, sessionID, ownerSubjectID)}
+}
+
+func (_c *ServiceMock_RevokeSession_Call) Run(run func(ctx context.Context, sessionID string, ownerSubjectID string)) *ServiceMock_RevokeSession_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ServiceMock_RevokeSession_Call) Return(b bool, err error) *ServiceMock_RevokeSession_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *ServiceMock_RevokeSession_Call) RunAndReturn(run func(ctx context.Context, sessionID string, ownerSubjectID string) (bool, error)) *ServiceMock_RevokeSession_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RevokeSubjectSessions provides a mock function for the type ServiceMock
+func (_mock *ServiceMock) RevokeSubjectSessions(ctx context.Context, subjectID string, exceptTokenFamilyID string) error {
+	ret := _mock.Called(ctx, subjectID, exceptTokenFamilyID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RevokeSubjectSessions")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = returnFunc(ctx, subjectID, exceptTokenFamilyID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// ServiceMock_RevokeSubjectSessions_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RevokeSubjectSessions'
+type ServiceMock_RevokeSubjectSessions_Call struct {
+	*mock.Call
+}
+
+// RevokeSubjectSessions is a helper method to define mock.On call
+//   - ctx context.Context
+//   - subjectID string
+//   - exceptTokenFamilyID string
+func (_e *ServiceMock_Expecter) RevokeSubjectSessions(ctx any, subjectID any, exceptTokenFamilyID any) *ServiceMock_RevokeSubjectSessions_Call {
+	return &ServiceMock_RevokeSubjectSessions_Call{Call: _e.mock.On("RevokeSubjectSessions", ctx, subjectID, exceptTokenFamilyID)}
+}
+
+func (_c *ServiceMock_RevokeSubjectSessions_Call) Run(run func(ctx context.Context, subjectID string, exceptTokenFamilyID string)) *ServiceMock_RevokeSubjectSessions_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ServiceMock_RevokeSubjectSessions_Call) Return(err error) *ServiceMock_RevokeSubjectSessions_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *ServiceMock_RevokeSubjectSessions_Call) RunAndReturn(run func(ctx context.Context, subjectID string, exceptTokenFamilyID string) error) *ServiceMock_RevokeSubjectSessions_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SaveCheckpoint provides a mock function for the type ServiceMock
 func (_mock *ServiceMock) SaveCheckpoint(ctx context.Context, in session.SaveCheckpointInput) (session.SaveCheckpointResult, error) {
 	ret := _mock.Called(ctx, in)

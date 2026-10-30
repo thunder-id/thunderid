@@ -1,0 +1,512 @@
+openapi: 3.0.3
+info:
+  title: Session Management API
+  version: "1.0"
+  description: List and revoke SSO sessions. Administrators list the sessions of a user or of an application and revoke a user's sessions, and signed-in users list and revoke their own. Sessions are recorded only for sign-ins through flows with SSO enabled, and only live sessions are listed.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://{host}:{port}
+    variables:
+      host:
+        default: "localhost"
+      port:
+        default: "8090"
+
+tags:
+  - name: Sessions
+    description: List and revoke the SSO sessions of users and applications, or your own.
+
+security:
+  - OAuth2: [system]
+
+paths:
+  /sessions:
+    get:
+      tags:
+        - Sessions
+      summary: List sessions
+      description: |
+        Lists the live sessions of one user or one application, most recently active first. Exactly one
+        of `userId` and `appId` is required. Requires the `system` permission.
+      parameters:
+        - in: query
+          name: userId
+          required: false
+          description: Lists the sessions of this user.
+          schema:
+            type: string
+        - in: query
+          name: appId
+          required: false
+          description: Lists the sessions this application has joined.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/offsetQueryParam'
+      responses:
+        "200":
+          description: One page of live sessions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionListResponse'
+              example:
+                totalResults: 2
+                startIndex: 1
+                count: 1
+                sessions:
+                  - id: "019a1b2c-3d4e-7f60-8a9b-0c1d2e3f4a5b"
+                    userId: "019a1b2c-0000-7000-8000-000000000001"
+                    userName: "alice"
+                    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+                    creationIp: "198.51.100.7"
+                    lastActiveIp: "203.0.113.24"
+                    authenticatedAt: "2026-09-30T08:00:00Z"
+                    createdAt: "2026-09-30T08:00:00Z"
+                    lastActiveAt: "2026-09-30T08:20:00Z"
+                    idleExpiresAt: "2026-09-30T08:50:00Z"
+                    absoluteExpiresAt: "2026-09-30T16:00:00Z"
+                    participants:
+                      - appId: "019a1b2c-0000-7000-8000-0000000000aa"
+                        appName: "Console"
+                        firstJoinedAt: "2026-09-30T08:00:00Z"
+                        lastActiveAt: "2026-09-30T08:20:00Z"
+                links:
+                  - href: "/sessions?offset=1&limit=1&userId=019a1b2c-0000-7000-8000-000000000001"
+                    rel: "next"
+                  - href: "/sessions?offset=1&limit=1&userId=019a1b2c-0000-7000-8000-000000000001"
+                    rel: "last"
+        "400":
+          description: Invalid filter or pagination parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid-filter:
+                  summary: Missing or conflicting filter
+                  value:
+                    code: "SSM-1001"
+                    message:
+                      key: "error.sessionmgt.invalid_filter"
+                      defaultValue: "Invalid session filter"
+                    description:
+                      key: "error.sessionmgt.invalid_filter_description"
+                      defaultValue: "Exactly one of the userId or appId query parameters is required"
+                invalid-limit:
+                  summary: Invalid limit
+                  value:
+                    code: "SSM-1002"
+                    message:
+                      key: "error.sessionmgt.invalid_limit"
+                      defaultValue: "Invalid limit parameter"
+                    description:
+                      key: "error.sessionmgt.invalid_limit_description"
+                      defaultValue: "The limit parameter must be an integer between 1 and 100"
+                invalid-offset:
+                  summary: Invalid offset
+                  value:
+                    code: "SSM-1003"
+                    message:
+                      key: "error.sessionmgt.invalid_offset"
+                      defaultValue: "Invalid offset parameter"
+                    description:
+                      key: "error.sessionmgt.invalid_offset_description"
+                      defaultValue: "The offset parameter must be a non-negative integer"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Sessions
+      summary: Revoke a user's sessions
+      description: |
+        Revokes every session of the user. Revoking a session signs it out: the token families of
+        its applications are revoked and the session is deleted, so the next sign-in to those
+        applications asks for credentials again. Only each application's latest grant in the session is
+        revoked; tokens from an earlier grant of the same application stay valid until they expire. Tokens that were not issued
+        through a session are not affected. Requires the `system` permission.
+      parameters:
+        - in: query
+          name: userId
+          required: true
+          description: The user whose sessions are revoked.
+          schema:
+            type: string
+      responses:
+        "204":
+          description: The user's sessions were revoked, or the user had none
+        "400":
+          description: The userId query parameter is missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSM-1004"
+                message:
+                  key: "error.sessionmgt.missing_user_id"
+                  defaultValue: "Missing user ID"
+                description:
+                  key: "error.sessionmgt.missing_user_id_description"
+                  defaultValue: "The userId query parameter is required"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /sessions/{sessionId}:
+    delete:
+      tags:
+        - Sessions
+      summary: Revoke a session
+      description: |
+        Revokes one session. Revoking a session signs it out: the token families of
+        its applications are revoked and the session is deleted, so the next sign-in to those
+        applications asks for credentials again. Only each application's latest grant in the session is
+        revoked; tokens from an earlier grant of the same application stay valid until they expire. Requires the `system` permission.
+      parameters:
+        - $ref: '#/components/parameters/sessionIdPathParam'
+      responses:
+        "204":
+          description: The session was revoked, or it was already gone
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /users/me/sessions:
+    get:
+      tags:
+        - Sessions
+      summary: List my sessions
+      description: |
+        Lists the signed-in user's live sessions, most recently active first. Any signed-in user can call
+        it; the user comes from the access token. Each session has `isCurrent`, which is true for the
+        session that issued the access token. User names are not resolved.
+      security:
+        - OAuth2: []
+      parameters:
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/offsetQueryParam'
+      responses:
+        "200":
+          description: One page of the caller's live sessions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionListResponse'
+        "400":
+          description: Invalid pagination parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags:
+        - Sessions
+      summary: Revoke my sessions
+      description: |
+        Revokes the signed-in user's sessions. With `exceptCurrent=true` the session that issued the
+        access token is kept, so the caller stays signed in. Revoking a session signs it out: the token families of
+        its applications are revoked and the session is deleted, so the next sign-in to those
+        applications asks for credentials again. Only each application's latest grant in the session is
+        revoked; tokens from an earlier grant of the same application stay valid until they expire.
+      security:
+        - OAuth2: []
+      parameters:
+        - in: query
+          name: exceptCurrent
+          required: false
+          description: Keeps the session that issued the access token. When the access token identifies no session, nothing is revoked and the request fails with `SSM-1006`.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "204":
+          description: The sessions were revoked, or none were left
+        "400":
+          description: Invalid exceptCurrent, or the access token doesn't identify the current session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid-except-current:
+                  summary: Invalid exceptCurrent
+                  value:
+                    code: "SSM-1005"
+                    message:
+                      key: "error.sessionmgt.invalid_except_current"
+                      defaultValue: "Invalid exceptCurrent parameter"
+                    description:
+                      key: "error.sessionmgt.invalid_except_current_description"
+                      defaultValue: "The exceptCurrent parameter must be true or false"
+                current-session-unknown:
+                  summary: Current session unknown
+                  value:
+                    code: "SSM-1006"
+                    message:
+                      key: "error.sessionmgt.current_session_unknown"
+                      defaultValue: "Current session unknown"
+                    description:
+                      key: "error.sessionmgt.current_session_unknown_description"
+                      defaultValue: "The access token does not identify the current session, so it cannot be kept"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /users/me/sessions/{sessionId}:
+    delete:
+      tags:
+        - Sessions
+      summary: Revoke one of my sessions
+      description: |
+        Revokes one of the signed-in user's sessions. Revoking a session signs it out: the token families of
+        its applications are revoked and the session is deleted, so the next sign-in to those
+        applications asks for credentials again. Only each application's latest grant in the session is
+        revoked; tokens from an earlier grant of the same application stay valid until they expire.
+      security:
+        - OAuth2: []
+      parameters:
+        - $ref: '#/components/parameters/sessionIdPathParam'
+      responses:
+        "204":
+          description: The session was revoked
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          description: The caller has no session with this ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSM-1007"
+                message:
+                  key: "error.sessionmgt.session_not_found"
+                  defaultValue: "Session not found"
+                description:
+                  key: "error.sessionmgt.session_not_found_description"
+                  defaultValue: "No session with the given ID was found"
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://localhost:8090/oauth2/authorize
+          tokenUrl: https://localhost:8090/oauth2/token
+          scopes:
+            system: Access to system management APIs
+        clientCredentials:
+          tokenUrl: https://localhost:8090/oauth2/token
+          scopes:
+            system: Access to system management APIs
+
+  parameters:
+    sessionIdPathParam:
+      in: path
+      name: sessionId
+      required: true
+      description: The session ID.
+      schema:
+        type: string
+    limitQueryParam:
+      in: query
+      name: limit
+      required: false
+      description: Maximum number of sessions to return. Must be between 1 and 100 inclusive.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 30
+    offsetQueryParam:
+      in: query
+      name: offset
+      required: false
+      description: Number of sessions to skip for pagination. Must be a non-negative integer.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid access token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "AUTH-4010"
+            message:
+              key: "error.auth.unauthorized"
+              defaultValue: "Unauthorized"
+            description:
+              key: "error.auth.unauthorized_description"
+              defaultValue: "Authentication is required to access this resource"
+    Forbidden:
+      description: The caller lacks the `system` permission
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "AUTH-4030"
+            message:
+              key: "error.auth.forbidden"
+              defaultValue: "Forbidden"
+            description:
+              key: "error.auth.forbidden_description"
+              defaultValue: "You do not have sufficient permissions to access this resource"
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Session:
+      type: object
+      required: [id, userId, authenticatedAt, createdAt, lastActiveAt, participants]
+      properties:
+        id:
+          type: string
+          description: The session ID.
+        userId:
+          type: string
+          description: The ID of the user the session belongs to.
+        userName:
+          type: string
+          description: The user's display name, or the user ID when the user type has no display attribute. Left out when the user can't be found, and on `/users/me/sessions`.
+        userAgent:
+          type: string
+          description: The User-Agent of the browser or client that created the session. Left out when not recorded.
+        creationIp:
+          type: string
+          description: The IP address the session was created from. Behind a reverse proxy, this is the client IP resolved from the configured trusted proxies. Left out when not recorded.
+        lastActiveIp:
+          type: string
+          description: The IP address the session was last used from. Behind a reverse proxy, this is the client IP resolved from the configured trusted proxies. Left out when not recorded.
+        authenticatedAt:
+          type: string
+          format: date-time
+          description: When the user last authenticated in this session.
+        createdAt:
+          type: string
+          format: date-time
+        lastActiveAt:
+          type: string
+          format: date-time
+          description: When the session last backed a sign-in (SSO reuse or signing in again). May lag the latest use by up to the activity refresh interval, 60 seconds by default. Using or refreshing tokens doesn't update it.
+        idleExpiresAt:
+          type: string
+          format: date-time
+          description: When the session ends if it isn't used before then.
+        absoluteExpiresAt:
+          type: string
+          format: date-time
+          description: When the session ends regardless of use.
+        isCurrent:
+          type: boolean
+          description: Only on `/users/me/sessions`. True for the session that issued the caller's access token. A session records only the latest grant of each application, so a token from an earlier grant of the same application matches no session.
+        participants:
+          type: array
+          description: The applications that have used the session, first joined first.
+          items:
+            $ref: '#/components/schemas/Participant'
+
+    Participant:
+      type: object
+      required: [appId, firstJoinedAt, lastActiveAt]
+      properties:
+        appId:
+          type: string
+        appName:
+          type: string
+          description: The application's name. Left out when the application can't be found.
+        firstJoinedAt:
+          type: string
+          format: date-time
+        lastActiveAt:
+          type: string
+          format: date-time
+
+    SessionListResponse:
+      type: object
+      required: [totalResults, startIndex, count, sessions, links]
+      properties:
+        totalResults:
+          type: integer
+          description: The number of live sessions that match, across all pages.
+        startIndex:
+          type: integer
+          description: The 1-based position of the first session on this page.
+        count:
+          type: integer
+          description: The number of sessions on this page.
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Session'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/Link'
+
+    Link:
+      type: object
+      properties:
+        href:
+          type: string
+          example: "/sessions?offset=30&limit=30&userId=019a1b2c-0000-7000-8000-000000000001"
+        rel:
+          type: string
+          example: "next"
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: "Error code. The prefix identifies the service that produced the error."
+          example: "SSM-1001"
+        message:
+          $ref: '#/components/schemas/I18nMessage'
+        description:
+          $ref: '#/components/schemas/I18nMessage'
+
+    I18nMessage:
+      type: object
+      description: Internationalized message with translation key and default value.
+      required:
+        - key
+        - defaultValue
+      properties:
+        key:
+          type: string
+        defaultValue:
+          type: string
