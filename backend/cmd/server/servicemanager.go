@@ -319,7 +319,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	)
 
 	roleService, roleAssignmentService, ouRoleResolver, roleExporter, err := role.Initialize(
-		mux, entityService, groupService, ouService, resourceService, entityTypeService, ouAuthzService,
+		mux, mcpServer, entityService, groupService, ouService, resourceService, entityTypeService, ouAuthzService,
 		sharingService)
 	fatalOnError(ctx, logger, err, "Failed to initialize RoleService")
 	exporters = append(exporters, roleExporter)

@@ -713,3 +713,62 @@ func (ts *MCPTestSuite) deleteHTTPConnection(id string) {
 	defer resp.Body.Close()
 	ts.Equal(http.StatusNoContent, resp.StatusCode)
 }
+
+// The role tools run a role's lifecycle end to end: a role is created, gains and loses a permission
+// without its other settings being resent, is granted to and revoked from a group, and is deleted.
+func (ts *MCPTestSuite) TestRoleTools_Lifecycle() {
+	token := ts.mcpScopedAdminToken()
+
+	created, raw := ts.callMCPTool(token, "create_role", map[string]any{
+		"name": "MCP Tools Role", "description": "Created through the role tools", "ouId": ts.ouID,
+	})
+	ts.Require().Falsef(created.Result.IsError, "create failed: %s", raw)
+	roleID, _ := created.Result.StructuredContent["id"].(string)
+	ts.Require().NotEmpty(roleID)
+	ts.T().Cleanup(func() {
+		if err := testutils.DeleteRole(roleID); err != nil {
+			ts.T().Logf("Failed to delete role %s: %v", roleID, err)
+		}
+	})
+
+	listed, raw := ts.callMCPTool(token, "list_roles", map[string]any{"limit": 100})
+	ts.Require().Falsef(listed.Result.IsError, "list failed: %s", raw)
+	ts.Contains(raw, roleID)
+
+	permission := []map[string]any{
+		{"resourceServerId": ts.resourceServerID, "permissions": []string{systemActionHandle}}}
+	added, raw := ts.callMCPTool(token, "change_role_permissions", map[string]any{
+		"id": roleID, "add": permission})
+	ts.Require().Falsef(added.Result.IsError, "adding a permission failed: %s", raw)
+	ts.Contains(raw, ts.resourceServerID)
+	ts.Equal("Created through the role tools", added.Result.StructuredContent["description"],
+		"a permission change must keep the description")
+
+	granted, raw := ts.callMCPTool(token, "grant_role", map[string]any{
+		"id": roleID, "assignees": []map[string]any{{"id": adminGroupID, "type": "group"}}})
+	ts.Require().Falsef(granted.Result.IsError, "grant failed: %s", raw)
+
+	got, raw := ts.callMCPTool(token, "get_role", map[string]any{"id": roleID})
+	ts.Require().Falsef(got.Result.IsError, "get failed: %s", raw)
+	ts.Contains(raw, adminGroupID)
+	ts.Contains(raw, systemActionHandle)
+	ts.EqualValues(1, got.Result.StructuredContent["totalAssignees"])
+
+	revoked, raw := ts.callMCPTool(token, "revoke_role", map[string]any{
+		"id": roleID, "assignees": []map[string]any{{"id": adminGroupID, "type": "group"}}})
+	ts.Require().Falsef(revoked.Result.IsError, "revoke failed: %s", raw)
+
+	removed, raw := ts.callMCPTool(token, "change_role_permissions", map[string]any{
+		"id": roleID, "remove": permission})
+	ts.Require().Falsef(removed.Result.IsError, "removing a permission failed: %s", raw)
+
+	got, raw = ts.callMCPTool(token, "get_role", map[string]any{"id": roleID})
+	ts.Require().Falsef(got.Result.IsError, "get failed: %s", raw)
+	ts.NotContains(raw, adminGroupID)
+	ts.NotContains(raw, ts.resourceServerID)
+
+	deleted, raw := ts.callMCPTool(token, "delete_role", map[string]any{"id": roleID})
+	ts.Require().Falsef(deleted.Result.IsError, "delete failed: %s", raw)
+	gone, raw := ts.callMCPTool(token, "get_role", map[string]any{"id": roleID})
+	ts.Truef(gone.Result.IsError, "a deleted role must not be found: %s", raw)
+}
