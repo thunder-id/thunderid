@@ -4,10 +4,12 @@
 package agent
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"testing"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -97,7 +99,7 @@ func (suite *InitializeTestSuite) TestInitialize_EntityLoadError_AllDeclarativeM
 			mockEntity.On("LoadDeclarativeResources", mock.Anything).
 				Return(errors.New("entity load error")).Once()
 
-			svc, exporter, err := Initialize(http.NewServeMux(), mockEntity, mockInbound, mockOU, mockRole,
+			svc, exporter, err := Initialize(http.NewServeMux(), nil, mockEntity, mockInbound, mockOU, mockRole,
 				newAllowAllAuthz(suite.T()), nil, nil, nil)
 
 			suite.EqualError(err, "entity load error")
@@ -128,7 +130,7 @@ func (suite *InitializeTestSuite) TestInitialize_InboundLoadError_AllDeclarative
 
 			mux := http.NewServeMux()
 			svc, exporter, err := Initialize(
-				mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil)
+				mux, nil, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil)
 
 			suite.Error(err)
 			suite.Equal("inbound load error", err.Error())
@@ -154,7 +156,7 @@ func (suite *InitializeTestSuite) TestInitialize_DeclarativeMode_Success() {
 
 	mux := http.NewServeMux()
 	svc, exporter, err := Initialize(
-		mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil)
+		mux, nil, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil)
 
 	suite.NoError(err)
 	suite.NotNil(svc)
@@ -174,7 +176,7 @@ func (suite *InitializeTestSuite) TestInitialize_MutableMode_SkipsDeclarativeLoa
 
 	mux := http.NewServeMux()
 	svc, exporter, err := Initialize(
-		mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil)
+		mux, nil, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil)
 
 	suite.NoError(err)
 	suite.NotNil(svc)
@@ -182,6 +184,35 @@ func (suite *InitializeTestSuite) TestInitialize_MutableMode_SkipsDeclarativeLoa
 	// No LoadDeclarativeResources calls expected in mutable mode.
 	mockEntity.AssertNotCalled(suite.T(), "LoadDeclarativeResources")
 	mockInbound.AssertNotCalled(suite.T(), "LoadDeclarativeResources")
+}
+
+func (suite *InitializeTestSuite) TestInitialize_RegistersMCPTools() {
+	setupAgentConfig(suite.T(), string(serverconst.StoreModeMutable), false)
+
+	mockEntity := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	mockEntity.On("LoadIndexedAttributes", []string{"name"}).Return(nil).Once()
+	mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
+	mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	mockRole := rolemock.NewRoleServiceInterfaceMock(suite.T())
+
+	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
+	_, _, err := Initialize(
+		http.NewServeMux(), server, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()),
+		nil, nil, nil)
+	suite.Require().NoError(err)
+
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
+	suite.Require().NoError(err)
+	defer func() { _ = serverSession.Close() }()
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil).
+		Connect(context.Background(), clientTransport, nil)
+	suite.Require().NoError(err)
+	defer func() { _ = session.Close() }()
+
+	tools, err := session.ListTools(context.Background(), nil)
+	suite.Require().NoError(err)
+	suite.Len(tools.Tools, 7)
 }
 
 func (suite *InitializeTestSuite) TestInitialize_IndexedAttributesLoadError() {
@@ -195,7 +226,7 @@ func (suite *InitializeTestSuite) TestInitialize_IndexedAttributesLoadError() {
 	mockEntity.On("LoadIndexedAttributes", []string{"name"}).Return(errors.New("indexed load error")).Once()
 
 	svc, exporter, err := Initialize(
-		http.NewServeMux(), mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil)
+		http.NewServeMux(), nil, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil)
 
 	suite.EqualError(err, "indexed load error")
 	suite.Nil(svc)

@@ -47,6 +47,16 @@ func registerMCPTools(server *mcp.Server, entityTypeService EntityTypeServiceInt
 			ReadOnlyHint: true,
 		},
 	}, tools.listUserTypes)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "list_agent_types",
+		Description: `List all agent types. Every agent belongs to one: its handle is the type an agent is ` +
+			`onboarded with, and its schema sets the agent's attributes.`,
+		Annotations: &mcp.ToolAnnotations{
+			Title:        "List Agent Types",
+			ReadOnlyHint: true,
+		},
+	}, tools.listAgentTypes)
 }
 
 // listUserTypes handles the list_user_types tool call.
@@ -55,9 +65,24 @@ func (t *entityTypeTools) listUserTypes(
 	_ *mcp.CallToolRequest,
 	_ any,
 ) (*mcp.CallToolResult, *entityTypeListMCPResponse, error) {
-	resp, svcErr := t.entityTypeService.GetEntityTypeList(ctx, TypeCategoryUser, serverconst.MaxPageSize, 0, false)
+	return t.listTypes(ctx, TypeCategoryUser, "failed to list user types")
+}
+
+// listAgentTypes handles the list_agent_types tool call.
+func (t *entityTypeTools) listAgentTypes(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	_ any,
+) (*mcp.CallToolResult, *entityTypeListMCPResponse, error) {
+	return t.listTypes(ctx, TypeCategoryAgent, "failed to list agent types")
+}
+
+// listTypes lists the entity types of one category.
+func (t *entityTypeTools) listTypes(ctx context.Context, category TypeCategory, failure string) (
+	*mcp.CallToolResult, *entityTypeListMCPResponse, error) {
+	resp, svcErr := t.entityTypeService.GetEntityTypeList(ctx, category, serverconst.MaxPageSize, 0, false)
 	if svcErr != nil {
-		return nil, nil, fmt.Errorf("failed to list user types: %s", svcErr.ErrorDescription)
+		return nil, nil, fmt.Errorf("%s: %s", failure, svcErr.ErrorDescription)
 	}
 
 	items := make([]entityTypeMCPItem, len(resp.Types))

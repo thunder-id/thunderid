@@ -103,3 +103,40 @@ func (suite *EntityTypeToolsTestSuite) TestListUserTypes_ServiceError() {
 
 	mockService.AssertExpectations(suite.T())
 }
+
+func (suite *EntityTypeToolsTestSuite) TestListAgentTypes_Success() {
+	mockService := NewEntityTypeServiceInterfaceMock(suite.T())
+	tools := &entityTypeTools{entityTypeService: mockService}
+
+	mockService.On("GetEntityTypeList", mock.Anything, TypeCategoryAgent, mock.Anything, mock.Anything, false).
+		Return(&EntityTypeListResponse{
+			TotalResults: 1,
+			Types:        []EntityTypeListItem{{ID: "at1", Handle: "assistant", DisplayName: "Assistant", OUID: "ou1"}},
+		}, nil)
+
+	result, output, err := tools.listAgentTypes(context.Background(), &mcp.CallToolRequest{}, nil)
+
+	suite.NoError(err)
+	suite.Nil(result)
+	suite.Require().NotNil(output)
+	suite.Equal(1, output.TotalResults)
+	suite.Require().Len(output.Types, 1)
+	suite.Equal("assistant", output.Types[0].Handle)
+	suite.Equal("ou1", output.Types[0].OUID)
+}
+
+func (suite *EntityTypeToolsTestSuite) TestListAgentTypes_ServiceError() {
+	mockService := NewEntityTypeServiceInterfaceMock(suite.T())
+	tools := &entityTypeTools{entityTypeService: mockService}
+
+	mockService.On("GetEntityTypeList", mock.Anything, TypeCategoryAgent, mock.Anything, mock.Anything, false).
+		Return(nil, &tidcommon.ServiceError{
+			ErrorDescription: tidcommon.I18nMessage{DefaultValue: "database error"},
+		})
+
+	result, output, err := tools.listAgentTypes(context.Background(), &mcp.CallToolRequest{}, nil)
+
+	suite.Nil(result)
+	suite.Nil(output)
+	suite.ErrorContains(err, "failed to list agent types: database error")
+}

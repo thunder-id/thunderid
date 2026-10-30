@@ -521,7 +521,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		"Failed to inject the application provider into the flow executors")
 	exporters = append(exporters, applicationExporter)
 
-	agentService, agentExporter, err := agent.Initialize(mux, entityService, inboundClientService, ouService,
+	agentService, agentExporter, err := agent.Initialize(mux, mcpServer, entityService, inboundClientService, ouService,
 		roleService, ouAuthzService, governanceService, nil, entityTypeService)
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)

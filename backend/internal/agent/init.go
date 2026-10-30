@@ -7,6 +7,8 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
@@ -19,12 +21,14 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
-// Initialize wires the agent service, registers HTTP routes and returns the service and exporter.
+// Initialize wires the agent service, registers HTTP routes and returns the service and exporter. Given
+// an MCP server, it also registers the agent tools.
 //
 // valueCapturer is optional. Given one, the service hands it every agent it creates or changes, so the
 // values the agent's export refers to are kept where a reference finds them.
 func Initialize(
 	mux *http.ServeMux,
+	mcpServer *mcp.Server,
 	entityService entity.EntityServiceInterface,
 	inboundClientService inboundclient.InboundClientServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
@@ -54,6 +58,10 @@ func Initialize(
 
 	handler := newAgentHandler(service)
 	registerRoutes(mux, handler)
+
+	if mcpServer != nil {
+		registerMCPTools(mcpServer, service)
+	}
 
 	exporter := newAgentExporter(service)
 	return service, exporter, nil

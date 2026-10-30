@@ -713,3 +713,103 @@ func (ts *MCPTestSuite) deleteHTTPConnection(id string) {
 	defer resp.Body.Close()
 	ts.Equal(http.StatusNoContent, resp.StatusCode)
 }
+
+// The agent tools run an agent's lifecycle end to end: onboarding issues credentials that obtain a
+// token, rotating the secret retires the old one, switching to delegated mode adds the user grants,
+// and offboarding removes the agent.
+func (ts *MCPTestSuite) TestAgentTools_Lifecycle() {
+	token := ts.mcpScopedAdminToken()
+
+	// The `default` agent type is a singleton shared with every other suite. Snapshot it before
+	// pointing it at this suite's OU, and put it back before the OU is deleted.
+	snapshot, err := testutils.SnapshotAgentType()
+	ts.Require().NoError(err, "failed to snapshot the default agent type")
+	ts.T().Cleanup(func() {
+		if err := testutils.RestoreAgentType(snapshot); err != nil {
+			ts.T().Logf("Failed to restore the default agent type: %v", err)
+		}
+	})
+	_, err = testutils.CreateAgentType(testutils.UserType{
+		DisplayName:      "Default",
+		OUID:             ts.ouID,
+		SystemAttributes: &testutils.UserTypeSystemAttributes{Display: "name"},
+		Schema: map[string]interface{}{
+			"name": map[string]interface{}{"type": "string", "required": true, "unique": true},
+		},
+	})
+	ts.Require().NoError(err, "failed to point the default agent type at the suite OU")
+
+	types, raw := ts.callMCPTool(token, "list_agent_types", map[string]any{})
+	ts.Require().Falsef(types.Result.IsError, "list agent types failed: %s", raw)
+	ts.Contains(raw, `"handle":"default"`)
+
+	onboarded, raw := ts.callMCPTool(token, "onboard_agent", map[string]any{
+		"type": "default", "ouId": ts.ouID, "description": "Triages support tickets",
+		"attributes": map[string]any{"name": "mcp-tools-agent"},
+	})
+	ts.Require().Falsef(onboarded.Result.IsError, "onboard failed: %s", raw)
+	agentID, _ := onboarded.Result.StructuredContent["id"].(string)
+	ts.Require().NotEmpty(agentID)
+	ts.T().Cleanup(func() {
+		if err := testutils.DeleteAgent(agentID); err != nil {
+			ts.T().Logf("Failed to delete agent %s: %v", agentID, err)
+		}
+	})
+	ts.Equal("autonomous", onboarded.Result.StructuredContent["mode"])
+	clientID, _ := onboarded.Result.StructuredContent["clientId"].(string)
+	firstSecret, _ := onboarded.Result.StructuredContent["clientSecret"].(string)
+	ts.Require().NotEmpty(clientID)
+	ts.Require().NotEmpty(firstSecret)
+	ts.Equal(http.StatusOK, ts.clientCredentialsStatus(clientID, firstSecret))
+
+	got, raw := ts.callMCPTool(token, "get_agent", map[string]any{"id": agentID})
+	ts.Require().Falsef(got.Result.IsError, "get failed: %s", raw)
+	ts.Equal("mcp-tools-agent", got.Result.StructuredContent["name"])
+	ts.NotContains(raw, firstSecret)
+
+	listed, raw := ts.callMCPTool(token, "list_agents", map[string]any{"limit": 100})
+	ts.Require().Falsef(listed.Result.IsError, "list failed: %s", raw)
+	ts.Contains(raw, agentID)
+	ts.NotContains(raw, firstSecret)
+
+	rotated, raw := ts.callMCPTool(token, "rotate_agent_secret", map[string]any{"id": agentID})
+	ts.Require().Falsef(rotated.Result.IsError, "rotate failed: %s", raw)
+	secondSecret, _ := rotated.Result.StructuredContent["clientSecret"].(string)
+	ts.Require().NotEmpty(secondSecret)
+	ts.NotEqual(firstSecret, secondSecret)
+	ts.Equal(clientID, rotated.Result.StructuredContent["clientId"])
+	ts.Equal(http.StatusUnauthorized, ts.clientCredentialsStatus(clientID, firstSecret))
+	ts.Equal(http.StatusOK, ts.clientCredentialsStatus(clientID, secondSecret))
+
+	refused, raw := ts.callMCPTool(token, "set_agent_mode", map[string]any{
+		"id": agentID, "mode": "delegated"})
+	ts.Truef(refused.Result.IsError, "delegated mode without redirect URIs must be refused: %s", raw)
+
+	delegated, raw := ts.callMCPTool(token, "set_agent_mode", map[string]any{
+		"id": agentID, "mode": "delegated", "redirectUris": []string{"https://localhost:3000/callback"}})
+	ts.Require().Falsef(delegated.Result.IsError, "set delegated mode failed: %s", raw)
+	ts.Equal("delegated", delegated.Result.StructuredContent["mode"])
+	ts.Contains(raw, "authorization_code")
+	ts.NotContains(raw, secondSecret)
+	ts.Equal(http.StatusOK, ts.clientCredentialsStatus(clientID, secondSecret),
+		"a mode change must keep the stored secret")
+
+	autonomous, raw := ts.callMCPTool(token, "set_agent_mode", map[string]any{
+		"id": agentID, "mode": "autonomous"})
+	ts.Require().Falsef(autonomous.Result.IsError, "set autonomous mode failed: %s", raw)
+	ts.Equal("autonomous", autonomous.Result.StructuredContent["mode"])
+	ts.NotContains(raw, "authorization_code")
+
+	offboarded, raw := ts.callMCPTool(token, "offboard_agent", map[string]any{"id": agentID})
+	ts.Require().Falsef(offboarded.Result.IsError, "offboard failed: %s", raw)
+	gone, raw := ts.callMCPTool(token, "get_agent", map[string]any{"id": agentID})
+	ts.Truef(gone.Result.IsError, "an offboarded agent must not be found: %s", raw)
+}
+
+// clientCredentialsStatus returns the token endpoint's status for a client credentials request
+// bound to this suite's resource server.
+func (ts *MCPTestSuite) clientCredentialsStatus(clientID, clientSecret string) int {
+	result, err := testutils.RequestClientCredentialsToken(clientID, clientSecret, "", mcpResourceIdentifier)
+	ts.Require().NoError(err)
+	return result.StatusCode
+}
