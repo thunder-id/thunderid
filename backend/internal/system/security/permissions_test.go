@@ -429,6 +429,10 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 			method: http.MethodGet, path: "/users/me/profile", wantPerm: "",
 		},
 
+		// ---- Session management paths ----
+		{name: "GET /sessions falls back to system", method: http.MethodGet, path: "/sessions", wantPerm: p.Root},
+		{name: "GET /users/me/sessions self-service", method: http.MethodGet, path: "/users/me/sessions", wantPerm: ""},
+
 		// ---- OU tree paths ----
 		{
 			name:   "GET /organization-units/tree",

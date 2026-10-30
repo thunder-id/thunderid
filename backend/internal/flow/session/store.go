@@ -367,6 +367,77 @@ func (st *store) DeleteParticipant(ctx context.Context, sessionID, appID string)
 	})
 }
 
+// ListLiveBySubject returns one page of the subject's live sessions, most recently active first.
+func (st *store) ListLiveBySubject(ctx context.Context, subjectID string, now time.Time,
+	limit, offset int) ([]Session, error) {
+	return st.listLive(ctx, queryListLiveSessionsBySubject, subjectID, now, limit, offset)
+}
+
+// CountLiveBySubject counts the subject's live sessions.
+func (st *store) CountLiveBySubject(ctx context.Context, subjectID string, now time.Time) (int, error) {
+	return st.countLive(ctx, queryCountLiveSessionsBySubject, subjectID, now)
+}
+
+// ListLiveByApp returns one page of the live sessions the application has joined, most recently
+// active first.
+func (st *store) ListLiveByApp(ctx context.Context, appID string, now time.Time,
+	limit, offset int) ([]Session, error) {
+	return st.listLive(ctx, queryListLiveSessionsByApp, appID, now, limit, offset)
+}
+
+// CountLiveByApp counts the live sessions the application has joined.
+func (st *store) CountLiveByApp(ctx context.Context, appID string, now time.Time) (int, error) {
+	return st.countLive(ctx, queryCountLiveSessionsByApp, appID, now)
+}
+
+// listLive runs a paginated live-session query keyed by a subject or application id.
+func (st *store) listLive(ctx context.Context, query model.DBQuery, key string, now time.Time,
+	limit, offset int) ([]Session, error) {
+	result := make([]Session, 0)
+	err := withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
+		rows, err := dbClient.QueryContext(ctx, query, key, now, limit, offset, st.deploymentID)
+		if err != nil {
+			return fmt.Errorf("failed to list live sessions: %w", err)
+		}
+		for _, row := range rows {
+			sess, buildErr := buildSessionFromRow(row)
+			if buildErr != nil {
+				return buildErr
+			}
+			result = append(result, *sess)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// countLive runs a live-session count query keyed by a subject or application id.
+func (st *store) countLive(ctx context.Context, query model.DBQuery, key string, now time.Time) (int, error) {
+	total := 0
+	err := withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
+		rows, err := dbClient.QueryContext(ctx, query, key, now, st.deploymentID)
+		if err != nil {
+			return fmt.Errorf("failed to count live sessions: %w", err)
+		}
+		if len(rows) != 1 {
+			return fmt.Errorf("unexpected number of results: %d", len(rows))
+		}
+		parsed, parseErr := parseInt(rows[0]["total"], "total")
+		if parseErr != nil {
+			return parseErr
+		}
+		total = parsed
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
 // buildParticipantFromRow maps a database result row into a Participant.
 func buildParticipantFromRow(row map[string]interface{}) (Participant, error) {
 	sessionID, err := parseString(row["session_id"], "session_id")

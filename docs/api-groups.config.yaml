@@ -89,6 +89,7 @@ fileGroupNames:
   resource.yaml: ~               # all tags claimed by Access Control
   role.yaml: ~                   # Roles claimed by Access Control
   scim.yaml: ~                   # SCIM tags claimed by SCIM Provisioning
+  session.yaml: ~                # Sessions claimed by Identities
   user.yaml: ~                   # all tags claimed by Identities
   openid4vci.yaml: Verifiable Credentials
   openid4vp.yaml: Verifiable Credentials
@@ -107,6 +108,7 @@ explicitSubGroups:
       - Organization Units
       - Agents
       - Agent Types
+      - Sessions
 
   # ── RBAC ─────────────────────────────────────────────────────────────────────
   - name: Access Control

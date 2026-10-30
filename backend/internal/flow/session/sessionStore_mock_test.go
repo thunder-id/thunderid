@@ -47,6 +47,150 @@ func (_m *sessionStoreMock) EXPECT() *sessionStoreMock_Expecter {
 	return &sessionStoreMock_Expecter{mock: &_m.Mock}
 }
 
+// CountLiveByApp provides a mock function for the type sessionStoreMock
+func (_mock *sessionStoreMock) CountLiveByApp(ctx context.Context, appID string, now time.Time) (int, error) {
+	ret := _mock.Called(ctx, appID, now)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CountLiveByApp")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time) (int, error)); ok {
+		return returnFunc(ctx, appID, now)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time) int); ok {
+		r0 = returnFunc(ctx, appID, now)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, time.Time) error); ok {
+		r1 = returnFunc(ctx, appID, now)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// sessionStoreMock_CountLiveByApp_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CountLiveByApp'
+type sessionStoreMock_CountLiveByApp_Call struct {
+	*mock.Call
+}
+
+// CountLiveByApp is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+//   - now time.Time
+func (_e *sessionStoreMock_Expecter) CountLiveByApp(ctx any, appID any, now any) *sessionStoreMock_CountLiveByApp_Call {
+	return &sessionStoreMock_CountLiveByApp_Call{Call: _e.mock.On("CountLiveByApp", ctx, appID, now)}
+}
+
+func (_c *sessionStoreMock_CountLiveByApp_Call) Run(run func(ctx context.Context, appID string, now time.Time)) *sessionStoreMock_CountLiveByApp_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *sessionStoreMock_CountLiveByApp_Call) Return(n int, err error) *sessionStoreMock_CountLiveByApp_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *sessionStoreMock_CountLiveByApp_Call) RunAndReturn(run func(ctx context.Context, appID string, now time.Time) (int, error)) *sessionStoreMock_CountLiveByApp_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// CountLiveBySubject provides a mock function for the type sessionStoreMock
+func (_mock *sessionStoreMock) CountLiveBySubject(ctx context.Context, subjectID string, now time.Time) (int, error) {
+	ret := _mock.Called(ctx, subjectID, now)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CountLiveBySubject")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time) (int, error)); ok {
+		return returnFunc(ctx, subjectID, now)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time) int); ok {
+		r0 = returnFunc(ctx, subjectID, now)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, time.Time) error); ok {
+		r1 = returnFunc(ctx, subjectID, now)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// sessionStoreMock_CountLiveBySubject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CountLiveBySubject'
+type sessionStoreMock_CountLiveBySubject_Call struct {
+	*mock.Call
+}
+
+// CountLiveBySubject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - subjectID string
+//   - now time.Time
+func (_e *sessionStoreMock_Expecter) CountLiveBySubject(ctx any, subjectID any, now any) *sessionStoreMock_CountLiveBySubject_Call {
+	return &sessionStoreMock_CountLiveBySubject_Call{Call: _e.mock.On("CountLiveBySubject", ctx, subjectID, now)}
+}
+
+func (_c *sessionStoreMock_CountLiveBySubject_Call) Run(run func(ctx context.Context, subjectID string, now time.Time)) *sessionStoreMock_CountLiveBySubject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *sessionStoreMock_CountLiveBySubject_Call) Return(n int, err error) *sessionStoreMock_CountLiveBySubject_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *sessionStoreMock_CountLiveBySubject_Call) RunAndReturn(run func(ctx context.Context, subjectID string, now time.Time) (int, error)) *sessionStoreMock_CountLiveBySubject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Create provides a mock function for the type sessionStoreMock
 func (_mock *sessionStoreMock) Create(ctx context.Context, s Session) error {
 	ret := _mock.Called(ctx, s)
@@ -882,6 +1026,178 @@ func (_c *sessionStoreMock_ListBySubject_Call) Return(sessions []Session, err er
 }
 
 func (_c *sessionStoreMock_ListBySubject_Call) RunAndReturn(run func(ctx context.Context, subjectID string) ([]Session, error)) *sessionStoreMock_ListBySubject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListLiveByApp provides a mock function for the type sessionStoreMock
+func (_mock *sessionStoreMock) ListLiveByApp(ctx context.Context, appID string, now time.Time, limit int, offset int) ([]Session, error) {
+	ret := _mock.Called(ctx, appID, now, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListLiveByApp")
+	}
+
+	var r0 []Session
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time, int, int) ([]Session, error)); ok {
+		return returnFunc(ctx, appID, now, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time, int, int) []Session); ok {
+		r0 = returnFunc(ctx, appID, now, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]Session)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, time.Time, int, int) error); ok {
+		r1 = returnFunc(ctx, appID, now, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// sessionStoreMock_ListLiveByApp_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListLiveByApp'
+type sessionStoreMock_ListLiveByApp_Call struct {
+	*mock.Call
+}
+
+// ListLiveByApp is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+//   - now time.Time
+//   - limit int
+//   - offset int
+func (_e *sessionStoreMock_Expecter) ListLiveByApp(ctx any, appID any, now any, limit any, offset any) *sessionStoreMock_ListLiveByApp_Call {
+	return &sessionStoreMock_ListLiveByApp_Call{Call: _e.mock.On("ListLiveByApp", ctx, appID, now, limit, offset)}
+}
+
+func (_c *sessionStoreMock_ListLiveByApp_Call) Run(run func(ctx context.Context, appID string, now time.Time, limit int, offset int)) *sessionStoreMock_ListLiveByApp_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 int
+		if args[4] != nil {
+			arg4 = args[4].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *sessionStoreMock_ListLiveByApp_Call) Return(sessions []Session, err error) *sessionStoreMock_ListLiveByApp_Call {
+	_c.Call.Return(sessions, err)
+	return _c
+}
+
+func (_c *sessionStoreMock_ListLiveByApp_Call) RunAndReturn(run func(ctx context.Context, appID string, now time.Time, limit int, offset int) ([]Session, error)) *sessionStoreMock_ListLiveByApp_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListLiveBySubject provides a mock function for the type sessionStoreMock
+func (_mock *sessionStoreMock) ListLiveBySubject(ctx context.Context, subjectID string, now time.Time, limit int, offset int) ([]Session, error) {
+	ret := _mock.Called(ctx, subjectID, now, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListLiveBySubject")
+	}
+
+	var r0 []Session
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time, int, int) ([]Session, error)); ok {
+		return returnFunc(ctx, subjectID, now, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time, int, int) []Session); ok {
+		r0 = returnFunc(ctx, subjectID, now, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]Session)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, time.Time, int, int) error); ok {
+		r1 = returnFunc(ctx, subjectID, now, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// sessionStoreMock_ListLiveBySubject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListLiveBySubject'
+type sessionStoreMock_ListLiveBySubject_Call struct {
+	*mock.Call
+}
+
+// ListLiveBySubject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - subjectID string
+//   - now time.Time
+//   - limit int
+//   - offset int
+func (_e *sessionStoreMock_Expecter) ListLiveBySubject(ctx any, subjectID any, now any, limit any, offset any) *sessionStoreMock_ListLiveBySubject_Call {
+	return &sessionStoreMock_ListLiveBySubject_Call{Call: _e.mock.On("ListLiveBySubject", ctx, subjectID, now, limit, offset)}
+}
+
+func (_c *sessionStoreMock_ListLiveBySubject_Call) Run(run func(ctx context.Context, subjectID string, now time.Time, limit int, offset int)) *sessionStoreMock_ListLiveBySubject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 int
+		if args[4] != nil {
+			arg4 = args[4].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *sessionStoreMock_ListLiveBySubject_Call) Return(sessions []Session, err error) *sessionStoreMock_ListLiveBySubject_Call {
+	_c.Call.Return(sessions, err)
+	return _c
+}
+
+func (_c *sessionStoreMock_ListLiveBySubject_Call) RunAndReturn(run func(ctx context.Context, subjectID string, now time.Time, limit int, offset int) ([]Session, error)) *sessionStoreMock_ListLiveBySubject_Call {
 	_c.Call.Return(run)
 	return _c
 }

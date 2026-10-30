@@ -72,6 +72,14 @@ type Service interface {
 	// only when the application was its last participant. It is idempotent, returning nil when the
 	// application participates in none.
 	DetachApplication(ctx context.Context, appID string) error
+
+	// ListLiveBySubject returns one page of the subject's live sessions at now, most recently active first,
+	// each with the applications that have joined it. The sessions carry the handle, so callers must
+	// never expose it.
+	ListLiveBySubject(ctx context.Context, subjectID string, now time.Time, limit, offset int) (*SessionPage, error)
+	// ListLiveByApp returns one page of the live sessions at now that the application has joined, most
+	// recently active first, each with the applications that have joined it.
+	ListLiveByApp(ctx context.Context, appID string, now time.Time, limit, offset int) (*SessionPage, error)
 }
 
 // LoadCheckpointInput carries what a Session join needs to restore a checkpoint. Session and Context

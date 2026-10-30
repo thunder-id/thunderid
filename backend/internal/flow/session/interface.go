@@ -23,6 +23,16 @@ type sessionStore interface {
 	GetByExecutionID(ctx context.Context, flowExecutionID string) (*Session, error)
 	// ListBySubject returns every SSO session belonging to the subject.
 	ListBySubject(ctx context.Context, subjectID string) ([]Session, error)
+	// ListLiveBySubject returns one page of the subject's live sessions at now, most recently active
+	// first.
+	ListLiveBySubject(ctx context.Context, subjectID string, now time.Time, limit, offset int) ([]Session, error)
+	// CountLiveBySubject counts the subject's live sessions at now.
+	CountLiveBySubject(ctx context.Context, subjectID string, now time.Time) (int, error)
+	// ListLiveByApp returns one page of the live sessions at now that the application has joined, most
+	// recently active first.
+	ListLiveByApp(ctx context.Context, appID string, now time.Time, limit, offset int) ([]Session, error)
+	// CountLiveByApp counts the live sessions at now that the application has joined.
+	CountLiveByApp(ctx context.Context, appID string, now time.Time) (int, error)
 	// Update writes the mutable fields of an existing session under an optimistic-lock guard. It
 	// returns errVersionConflict when the stored version no longer matches, and bumps the in-memory
 	// Version on success.

@@ -147,6 +147,61 @@ var (
 		Query: `DELETE FROM "SSO_SESSION_PARTICIPANT" ` +
 			`WHERE SESSION_ID = $1 AND APP_ID = $2 AND DEPLOYMENT_ID = $3`,
 	}
+
+	// The live-session queries below apply the resolver's liveness rule in SQL, since expired rows
+	// stay in the table until cleanup removes them: STATE is ACTIVE and neither deadline has been
+	// reached at the caller-supplied time. A NULL deadline never expires.
+
+	// queryListLiveSessionsBySubject returns one page of a subject's live sessions, most recently
+	// active first. Backed by idx_sso_session_subject.
+	queryListLiveSessionsBySubject = model.DBQuery{
+		ID: "SSO-SESS-18",
+		Query: `SELECT SESSION_ID, SUBJECT_ID, FLOW_ID, FLOW_VERSION, FLOW_EXECUTION_ID, HANDLE_ID, ` +
+			`AUTHENTICATED_AT, CREATED_AT, LAST_ACTIVE_AT, IDLE_EXPIRES_AT, ABSOLUTE_EXPIRES_AT, ` +
+			`PROPERTIES, STATE, VERSION ` +
+			`FROM "SSO_SESSION" WHERE SUBJECT_ID = $1 AND STATE = 'ACTIVE' ` +
+			`AND (IDLE_EXPIRES_AT IS NULL OR IDLE_EXPIRES_AT > $2) ` +
+			`AND (ABSOLUTE_EXPIRES_AT IS NULL OR ABSOLUTE_EXPIRES_AT > $2) ` +
+			`AND DEPLOYMENT_ID = $5 ` +
+			`ORDER BY LAST_ACTIVE_AT DESC, SESSION_ID DESC LIMIT $3 OFFSET $4`,
+	}
+
+	// queryCountLiveSessionsBySubject counts a subject's live sessions.
+	queryCountLiveSessionsBySubject = model.DBQuery{
+		ID: "SSO-SESS-19",
+		Query: `SELECT COUNT(*) AS total FROM "SSO_SESSION" WHERE SUBJECT_ID = $1 AND STATE = 'ACTIVE' ` +
+			`AND (IDLE_EXPIRES_AT IS NULL OR IDLE_EXPIRES_AT > $2) ` +
+			`AND (ABSOLUTE_EXPIRES_AT IS NULL OR ABSOLUTE_EXPIRES_AT > $2) ` +
+			`AND DEPLOYMENT_ID = $3`,
+	}
+
+	// queryListLiveSessionsByApp returns one page of the live sessions an application has joined,
+	// most recently active first. The participant primary key includes APP_ID, so the join yields at
+	// most one row per session. Backed by idx_sso_session_participant_app.
+	queryListLiveSessionsByApp = model.DBQuery{
+		ID: "SSO-SESS-20",
+		Query: `SELECT S.SESSION_ID, S.SUBJECT_ID, S.FLOW_ID, S.FLOW_VERSION, S.FLOW_EXECUTION_ID, ` +
+			`S.HANDLE_ID, S.AUTHENTICATED_AT, S.CREATED_AT, S.LAST_ACTIVE_AT, S.IDLE_EXPIRES_AT, ` +
+			`S.ABSOLUTE_EXPIRES_AT, S.PROPERTIES, S.STATE, S.VERSION ` +
+			`FROM "SSO_SESSION" S INNER JOIN "SSO_SESSION_PARTICIPANT" P ` +
+			`ON P.SESSION_ID = S.SESSION_ID AND P.DEPLOYMENT_ID = S.DEPLOYMENT_ID ` +
+			`WHERE P.APP_ID = $1 AND S.STATE = 'ACTIVE' ` +
+			`AND (S.IDLE_EXPIRES_AT IS NULL OR S.IDLE_EXPIRES_AT > $2) ` +
+			`AND (S.ABSOLUTE_EXPIRES_AT IS NULL OR S.ABSOLUTE_EXPIRES_AT > $2) ` +
+			`AND P.DEPLOYMENT_ID = $5 ` +
+			`ORDER BY S.LAST_ACTIVE_AT DESC, S.SESSION_ID DESC LIMIT $3 OFFSET $4`,
+	}
+
+	// queryCountLiveSessionsByApp counts the live sessions an application has joined.
+	queryCountLiveSessionsByApp = model.DBQuery{
+		ID: "SSO-SESS-21",
+		Query: `SELECT COUNT(*) AS total FROM "SSO_SESSION" S INNER JOIN "SSO_SESSION_PARTICIPANT" P ` +
+			`ON P.SESSION_ID = S.SESSION_ID AND P.DEPLOYMENT_ID = S.DEPLOYMENT_ID ` +
+			`WHERE P.APP_ID = $1 AND S.STATE = 'ACTIVE' ` +
+			`AND (S.IDLE_EXPIRES_AT IS NULL OR S.IDLE_EXPIRES_AT > $2) ` +
+			`AND (S.ABSOLUTE_EXPIRES_AT IS NULL OR S.ABSOLUTE_EXPIRES_AT > $2) ` +
+			`AND P.DEPLOYMENT_ID = $3`,
+	}
 )
 
 // participantsBySessionIDsChunkSize caps the session ids per query, keeping it under the
