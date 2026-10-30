@@ -6,6 +6,8 @@ package gateway
 import (
 	"net/http"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/export"
@@ -32,7 +34,10 @@ import (
 //
 // changes is bound here when given, so the configuration is captured as the current version after
 // each change. Only a control plane gives one: it is where the configuration is authored.
-func Initialize(mux *http.ServeMux, exporter export.ExportServiceInterface,
+//
+// The same operations are registered on mcpServer as tools that answer as the REST endpoints do, so
+// an MCP client can capture, deploy, promote and roll back as the console does.
+func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, exporter export.ExportServiceInterface,
 	capture *ValueCapture, exporters []declarativeresource.ResourceExporter,
 	changes *ChangeCapture) (ServiceInterface, error) {
 	var (
@@ -66,9 +71,10 @@ func Initialize(mux *http.ServeMux, exporter export.ExportServiceInterface,
 	}
 	registerRoutes(mux, h)
 	registerVersionRoutes(mux, newVersionHandler(versions))
-	registerAppliedConfigurationRoutes(mux,
-		newAppliedConfigurationHandler(newAppliedConfigurationService(versions, exporters)))
+	applied := newAppliedConfigurationService(versions, exporters)
+	registerAppliedConfigurationRoutes(mux, newAppliedConfigurationHandler(applied))
 	registerStoreRoutes(mux, newStoreHandler(stores))
+	registerMCPTools(mcpServer, &gatewayTools{gateways: service, versions: versions, applied: applied, stores: stores})
 
 	// A gateway can also be declared in a file rather than registered through the API. The files are
 	// read on every start into the in-memory store, so the file is the whole truth about what it

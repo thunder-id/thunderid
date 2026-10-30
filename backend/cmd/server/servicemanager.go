@@ -572,7 +572,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// The gateways this control plane administers. Registration is bounded by server.max_gateways,
 	// which is one unless a deployment raises it.
-	gatewayService, err := gateway.Initialize(mux, exportService, nil, exporters, nil)
+	gatewayService, err := gateway.Initialize(mux, mcpServer, exportService, nil, exporters, nil)
 	fatalOnError(ctx, logger, err, "Failed to initialize gateway service")
 
 	// Initialize import service
@@ -609,6 +609,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		secretresolver.New(variablestore.Lookup(references)).
 			WithSecretFields(declarativeresource.SecretFieldsOf(exporters)),
 	)
+	importer.RegisterMCPTools(mcpServer, importService)
+	export.RegisterMCPTools(mcpServer, exportService)
 
 	attestationProvider := initAttestationProvider(ctx, logger, runtimeCryptoSvc)
 	// The flow endpoint and the authorize endpoint share one SSO handle transport. The SSO cookie is

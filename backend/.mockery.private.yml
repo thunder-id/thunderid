@@ -15,6 +15,21 @@ packages:
           pkgname: httpconnection
           filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/gateway:
+    interfaces:
+      VersionServiceInterface:
+        config:
+          dir: internal/gateway
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: gateway
+          filename: "{{.InterfaceName}}_mock_test.go"
+      StoreServiceInterface:
+        config:
+          dir: internal/gateway
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: gateway
+          filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/system/cache:
     config:
       all: true
