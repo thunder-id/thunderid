@@ -164,7 +164,6 @@ func (s *flowMgtService) ListFlows(ctx context.Context, limit, offset int, flowT
 	if flowType != "" && !isValidFlowType(flowType) {
 		return nil, &ErrorInvalidFlowType
 	}
-
 	flows, totalCount, err := s.store.ListFlows(ctx, limit, offset, string(flowType))
 	if err != nil {
 		s.logger.Error(ctx, "Failed to list flows", log.Error(err))
@@ -185,6 +184,9 @@ func (s *flowMgtService) ListFlows(ctx context.Context, limit, offset int, flowT
 // CreateFlow creates a new flow definition with version 1.
 func (s *flowMgtService) CreateFlow(ctx context.Context, flowDef *FlowDefinition) (
 	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
+	if svcErr := s.validateDeviceGrantCallTargetTypes(ctx, flowDef); svcErr != nil {
+		return nil, svcErr
+	}
 	if err := s.flowValidator.ValidateFlowDefinition(ctx, flowDef); err != nil {
 		return nil, err
 	}
@@ -315,10 +317,13 @@ func (s *flowMgtService) GetReachableCallTargets(ctx context.Context, flowID str
 
 		for i := range flow.Nodes {
 			node := &flow.Nodes[i]
-			if node.Type != string(common.NodeTypeCall) || node.Flow == nil || node.Flow.Ref == "" {
+			if node.Type != string(common.NodeTypeCall) || node.Flow == nil {
 				continue
 			}
 			targetID := node.Flow.Ref
+			if targetID == "" {
+				continue
+			}
 			if _, seen := visited[targetID]; seen {
 				continue
 			}
@@ -629,6 +634,9 @@ func (s *flowMgtService) UpdateFlow(ctx context.Context, flowID string, flowDef 
 	if flowID == "" {
 		return nil, &ErrorMissingFlowID
 	}
+	if svcErr := s.validateDeviceGrantCallTargetTypes(ctx, flowDef); svcErr != nil {
+		return nil, svcErr
+	}
 	if err := s.flowValidator.ValidateFlowDefinition(ctx, flowDef); err != nil {
 		return nil, err
 	}
@@ -725,6 +733,33 @@ func (s *flowMgtService) UpdateFlow(ctx context.Context, flowID string, flowDef 
 	logger.Debug(ctx, "Flow updated successfully")
 
 	return updatedFlow, nil
+}
+
+func (s *flowMgtService) validateDeviceGrantCallTargetTypes(
+	ctx context.Context, flowDef *FlowDefinition,
+) *tidcommon.ServiceError {
+	if flowDef == nil || flowDef.FlowType != providers.FlowTypeDeviceGrant {
+		return nil
+	}
+	for _, node := range flowDef.Nodes {
+		if node.Type != string(common.NodeTypeCall) || node.Flow == nil {
+			continue
+		}
+		if node.Flow.Ref == "" {
+			continue
+		}
+		target, svcErr := s.GetFlow(ctx, node.Flow.Ref)
+		if svcErr != nil {
+			return svcErr
+		}
+		if target.FlowType != providers.FlowTypeAuthentication {
+			return tidcommon.CustomServiceError(ErrorInvalidNodeConfig, tidcommon.I18nMessage{
+				Key:          "error.flowmgtservice.device_grant_authentication_call_invalid_description",
+				DefaultValue: "Device Grant flow CALL nodes must target an Authentication flow",
+			})
+		}
+	}
+	return nil
 }
 
 // DeleteFlow deletes a flow definition and all its version history.

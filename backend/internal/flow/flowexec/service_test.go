@@ -279,24 +279,26 @@ func TestInitiateFlowSuccessScenarios(t *testing.T) {
 
 			// Setup expectations
 			if tt.name == "user onboarding flow (system flow)" {
-				initContext.FlowType = string(providers.FlowTypeUserOnboarding)
+				systemFlowType := providers.FlowTypeUserOnboarding
+				systemHandle := testUserOnboardingFlowHandle
+				initContext.FlowType = string(systemFlowType)
 				initContext.ApplicationID = "" // System flows don't need app ID
 
 				// Mock flow management service to return flow by handle
 				mockFlow := &providers.CompleteFlowDefinition{
 					ID:       "onboarding-flow-123",
-					FlowType: providers.FlowTypeUserOnboarding,
+					FlowType: systemFlowType,
 				}
 				mockFlowProvider.EXPECT().GetFlowByHandle(mock.Anything,
-					testUserOnboardingFlowHandle, providers.FlowTypeUserOnboarding).Return(mockFlow, nil)
+					systemHandle, systemFlowType).Return(mockFlow, nil)
 
 				// Mock GetGraph call which is made during initContext
-				inviteGraph := flowFactory.CreateGraph("onboarding-flow-123", providers.FlowTypeUserOnboarding, 1)
+				inviteGraph := flowFactory.CreateGraph("onboarding-flow-123", systemFlowType, 1)
 				mockFlowProvider.EXPECT().
 					GetFlow(mock.Anything, "onboarding-flow-123").
 					Return(&providers.CompleteFlowDefinition{
 						ID:       "onboarding-flow-123",
-						FlowType: providers.FlowTypeUserOnboarding,
+						FlowType: systemFlowType,
 					}, nil)
 				mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(inviteGraph, nil)
 
@@ -2700,7 +2702,7 @@ func (s *ServiceTestSuite) TestUpdateContext_CompleteStatusRemovesContext() {
 	s.NoError(err)
 }
 
-func (s *ServiceTestSuite) TestGetSystemFlowGraph_GetFlowByHandleError() {
+func (s *ServiceTestSuite) TestGetApplicationIndependentFlowGraph_GetFlowByHandleError() {
 	mockFlowProvider := NewFlowProviderMock(s.T())
 	mockGraphBuilder := NewGraphBuilderInterfaceMock(s.T())
 	service := &flowExecService{
@@ -2715,7 +2717,7 @@ func (s *ServiceTestSuite) TestGetSystemFlowGraph_GetFlowByHandleError() {
 	mockFlowProvider.EXPECT().GetFlowByHandle(mock.Anything, testUserOnboardingFlowHandle,
 		providers.FlowTypeUserOnboarding).Return(nil, &tidcommon.InternalServerError)
 
-	graphID, svcErr := service.getSystemFlowGraph(context.Background(),
+	graphID, svcErr := service.getApplicationIndependentFlowGraph(context.Background(),
 		providers.FlowTypeUserOnboarding, log.GetLogger())
 
 	s.Empty(graphID)

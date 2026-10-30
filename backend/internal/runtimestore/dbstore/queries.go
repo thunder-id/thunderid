@@ -84,3 +84,18 @@ var queryCompareFieldAndSwapRuntimeStore = dbmodel.DBQuery{
 		`AND (EXPIRY_TIME IS NULL OR EXPIRY_TIME > $5) ` +
 		`AND json_extract(VALUE, '$.' || $6) = $7`,
 }
+
+// queryCompareFieldAndSwapBeforeRuntimeStoreExpiry replaces a value only when its JSON field
+// matches and the supplied application-level expiry is still in the future.
+var queryCompareFieldAndSwapBeforeRuntimeStoreExpiry = dbmodel.DBQuery{
+	ID: "RTS-09",
+	PostgresQuery: `UPDATE "RUNTIME_STORE" SET VALUE = $4, UPDATED_AT = CURRENT_TIMESTAMP ` +
+		`WHERE DEPLOYMENT_ID = $1 AND NAMESPACE = $2 AND KEY = $3 ` +
+		`AND (EXPIRY_TIME IS NULL OR EXPIRY_TIME > $5) ` +
+		`AND (VALUE ->> $6) = $7 AND $8 > $5`,
+	SQLiteQuery: `UPDATE "RUNTIME_STORE" SET VALUE = $4, UPDATED_AT = CURRENT_TIMESTAMP ` +
+		`WHERE DEPLOYMENT_ID = $1 AND NAMESPACE = $2 AND KEY = $3 ` +
+		`AND (EXPIRY_TIME IS NULL OR EXPIRY_TIME > $5) ` +
+		`AND json_extract(VALUE, '$.' || $6) = $7 ` +
+		`AND $8 > $5`,
+}

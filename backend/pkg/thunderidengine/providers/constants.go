@@ -50,6 +50,8 @@ const (
 	// FlowTypeSystem represents a flow a service runs in process, such as revoking what a change
 	// invalidates. It is left out of ValidFlowTypes, so no API creates or starts one.
 	FlowTypeSystem FlowType = "SYSTEM"
+	// FlowTypeDeviceGrant represents a Device Authorization Grant flow.
+	FlowTypeDeviceGrant FlowType = "DEVICE_GRANT"
 )
 
 // ValidFlowTypes is the set of supported flow types.
@@ -60,6 +62,7 @@ var ValidFlowTypes = []FlowType{
 	FlowTypeRecovery,
 	FlowTypeSignOut,
 	FlowTypeAdministration,
+	FlowTypeDeviceGrant,
 }
 
 // NodeVariant identifies a PROMPT node sub-type that activates a variant-specific code path.
@@ -134,6 +137,8 @@ const (
 	GrantTypeTokenExchange GrantType = "urn:ietf:params:oauth:grant-type:token-exchange" //nolint:gosec
 	// GrantTypeCIBA represents the OpenID Connect CIBA (Client-Initiated Backchannel Authentication) grant type.
 	GrantTypeCIBA GrantType = "urn:openid:params:grant-type:ciba"
+	// GrantTypeDeviceCode represents the OAuth 2.0 Device Authorization Grant grant type.
+	GrantTypeDeviceCode GrantType = "urn:ietf:params:oauth:grant-type:device_code"
 	// GrantTypeJWTBearer represents the JWT bearer grant type used to present an ID-JAG assertion
 	// (draft-ietf-oauth-identity-assertion-authz-grant) issued by a trusted external IdP.
 	GrantTypeJWTBearer GrantType = "urn:ietf:params:oauth:grant-type:jwt-bearer" //nolint:gosec
@@ -175,6 +180,7 @@ var SupportedGrantTypes = []GrantType{
 	GrantTypeRefreshToken,
 	GrantTypeTokenExchange,
 	GrantTypeCIBA,
+	GrantTypeDeviceCode,
 	GrantTypeJWTBearer,
 }
 
@@ -192,6 +198,7 @@ func (gt GrantType) IsValid() bool {
 var refreshTokenIssuingGrantTypes = []GrantType{
 	GrantTypeAuthorizationCode,
 	GrantTypeCIBA,
+	GrantTypeDeviceCode,
 }
 
 // IssuesRefreshToken reports whether this grant type can issue a refresh token.
@@ -664,6 +671,7 @@ const (
 	NamespaceLogoutReq      RuntimeStoreNamespace = "logout:req"
 	NamespacePAR            RuntimeStoreNamespace = "par:req"
 	NamespaceCIBA           RuntimeStoreNamespace = "ciba:req"
+	NamespaceDeviceAuth     RuntimeStoreNamespace = "device:req"
 	NamespaceJTI            RuntimeStoreNamespace = "jti:token"
 	NamespaceVCINonce       RuntimeStoreNamespace = "vci:nonce"
 	NamespaceVCIOffer       RuntimeStoreNamespace = "vci:offer"

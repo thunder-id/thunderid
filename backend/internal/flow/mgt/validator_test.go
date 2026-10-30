@@ -49,6 +49,27 @@ func minimalValidFlow() *FlowDefinition {
 	}
 }
 
+// deviceGrantValidationNodes returns a Device Grant flow with code entry before Authentication.
+func deviceGrantValidationNodes() []providers.NodeDefinition {
+	return []providers.NodeDefinition{
+		{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: "verify"},
+		{
+			ID: "verify", Type: string(common.NodeTypeTaskExecution),
+			Executor:  &providers.ExecutorDefinition{Name: "DeviceCodeExecutor"},
+			OnSuccess: "call", OnIncomplete: "prompt",
+		},
+		{
+			ID: "prompt", Type: string(common.NodeTypePrompt),
+			Prompts: []providers.PromptDefinition{{Action: &providers.ActionDefinition{NextNode: "verify"}}},
+		},
+		{
+			ID: "call", Type: string(common.NodeTypeCall), OnSuccess: "end",
+			Flow: &providers.FlowReferenceDefinition{Ref: "authentication-flow-id"},
+		},
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+}
+
 // ---------------------------------------------------------------------------
 // ValidatorTestSuite
 // ---------------------------------------------------------------------------
@@ -765,6 +786,20 @@ func (s *ValidatorTestSuite) TestValidateCallNode_EmptyFlowRef() {
 	s.Require().NotNil(err)
 	s.Equal(ErrorInvalidNodeConfig.Code, err.Code)
 	s.Contains(err.ErrorDescription.DefaultValue, "flow reference")
+}
+
+func (s *ValidatorTestSuite) TestFixedCallTargetIsAllowedInAuthenticationFlow() {
+	nodes := []providers.NodeDefinition{
+		{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: "call"},
+		{ID: "call", Type: string(common.NodeTypeCall), OnSuccess: "end",
+			Flow: &providers.FlowReferenceDefinition{Ref: "authentication-flow-id"}},
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+	index := map[string]*providers.NodeDefinition{}
+	for i := range nodes {
+		index[nodes[i].ID] = &nodes[i]
+	}
+	s.Nil(s.v.validateNodes(nodes, index, providers.FlowTypeAuthentication))
 }
 
 func (s *ValidatorTestSuite) TestValidateCallNode_MissingOnSuccess() {
@@ -1564,6 +1599,66 @@ func (s *ValidatorTestSuite) TestValidateCompanionExecutors_UnrelatedFlowUnaffec
 // ---------------------------------------------------------------------------
 // Tests for validateRequiredExecutors
 // ---------------------------------------------------------------------------
+
+func (s *ValidatorTestSuite) TestValidateDeviceGrantConstraints() {
+	tests := []struct {
+		name     string
+		change   func([]providers.NodeDefinition)
+		wantCode string
+	}{
+		{name: "valid", change: func([]providers.NodeDefinition) {}},
+		{
+			name: "missing device code executor",
+			change: func(nodes []providers.NodeDefinition) {
+				nodes[1].Executor.Name = "CredentialsAuthExecutor"
+			},
+			wantCode: ErrorInvalidExecutorConfig.Code,
+		},
+		{
+			name: "call without fixed target",
+			change: func(nodes []providers.NodeDefinition) {
+				nodes[3].Flow = &providers.FlowReferenceDefinition{}
+			},
+			wantCode: ErrorInvalidNodeConfig.Code,
+		},
+		{
+			name: "call before verification",
+			change: func(nodes []providers.NodeDefinition) {
+				nodes[0].OnSuccess = "call"
+				nodes[3].OnSuccess = "verify"
+				nodes[1].OnSuccess = "end"
+			},
+			wantCode: ErrorInvalidNodeConfig.Code,
+		},
+		{
+			name: "incomplete code entry bypasses verification",
+			change: func(nodes []providers.NodeDefinition) {
+				nodes[2].Prompts[0].Action.NextNode = "call"
+			},
+			wantCode: ErrorInvalidNodeConfig.Code,
+		},
+		{
+			name: "condition skips verification",
+			change: func(nodes []providers.NodeDefinition) {
+				nodes[1].Condition = &providers.ConditionDefinition{OnSkip: "call"}
+			},
+			wantCode: ErrorInvalidNodeConfig.Code,
+		},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			nodes := deviceGrantValidationNodes()
+			tt.change(nodes)
+			err := s.v.validateFlowTypeBasedConstraints(providers.FlowTypeDeviceGrant, nodes)
+			if tt.wantCode == "" {
+				s.Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Equal(tt.wantCode, err.Code)
+		})
+	}
+}
 
 func (s *ValidatorTestSuite) TestValidateRequiredExecutors_AuthAssertMissingInAuthentication() {
 	nodes := []providers.NodeDefinition{

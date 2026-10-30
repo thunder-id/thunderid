@@ -7710,3 +7710,107 @@ content:
       <p>{{t(accountUnlocked.email.intro)}}</p>
     </body>
     </html>
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-00000000008a
+ouHandle: default
+name: Default Device Grant Flow
+handle: default-device-grant-flow
+flowType: DEVICE_GRANT
+nodes:
+  - id: start
+    type: START
+    onSuccess: verify-user-code
+    layout:
+      size: {width: 101, height: 34}
+      position: {x: 80, y: 313}
+  - id: verify-user-code
+    type: TASK_EXECUTION
+    executor:
+      name: DeviceCodeExecutor
+    onSuccess: call-authentication-flow
+    onIncomplete: prompt-user-code
+    layout:
+      size: {width: 200, height: 100}
+      position: {x: 330, y: 280}
+  - id: prompt-user-code
+    type: PROMPT
+    meta:
+      components:
+        - type: TEXT
+          id: device-code-heading
+          label: Enter the code shown on your device
+          variant: HEADING_2
+        - type: TEXT_INPUT
+          id: device-code-input
+          ref: user_code
+          label: Verification code
+          placeholder: ABCD-EFGH
+          required: true
+        - type: ACTION
+          id: device-code-submit
+          label: Continue
+          variant: PRIMARY
+          eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: device-code-input
+            identifier: user_code
+            type: TEXT_INPUT
+            required: true
+        action:
+          ref: device-code-submit
+          nextNode: verify-user-code
+    layout:
+      size: {width: 350, height: 320}
+      position: {x: 330, y: 540}
+  - id: call-authentication-flow
+    type: CALL
+    flow:
+      ref: 01900000-0000-7000-8000-000000000061
+    onSuccess: authorization-succeeded
+    onFailure: authorization-failed
+    layout:
+      size: {width: 260, height: 120}
+      position: {x: 740, y: 270}
+  - id: authorization-succeeded
+    type: PROMPT
+    message: Device authorized
+    next: end
+    meta:
+      components:
+        - type: TEXT
+          id: success-title
+          label: Device authorized
+          variant: HEADING_1
+          color: SUCCESS
+        - type: TEXT
+          id: success-description
+          label: You can return to your device.
+          variant: BODY_1
+    layout:
+      size: {width: 350, height: 220}
+      position: {x: 1170, y: 220}
+  - id: authorization-failed
+    type: PROMPT
+    message: Device authorization failed
+    next: end
+    meta:
+      components:
+        - type: TEXT
+          id: failure-title
+          label: Device authorization failed
+          variant: HEADING_1
+          color: ERROR
+        - type: TEXT
+          id: failure-description
+          label: Return to your device and start again.
+          variant: BODY_1
+    layout:
+      size: {width: 350, height: 220}
+      position: {x: 1170, y: 570}
+  - id: end
+    type: END
+    layout:
+      size: {width: 85, height: 34}
+      position: {x: 1620, y: 313}

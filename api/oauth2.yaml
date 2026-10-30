@@ -19,6 +19,8 @@ servers:
 tags:
   - name: Authorization
     description: OAuth 2.0 authorization endpoint and flow-engine callback.
+  - name: Device Authorization
+    description: OAuth 2.0 Device Authorization Grant endpoints per RFC 8628.
   - name: Token
     description: OAuth 2.0 token endpoint for issuing access tokens, refresh tokens, and ID tokens.
   - name: Introspection
@@ -212,11 +214,79 @@ paths:
               schema:
                 $ref: '#/components/schemas/OAuthError'
 
+  /oauth2/device-authorize:
+    post:
+      summary: Device authorization endpoint
+      description: |
+        Starts an OAuth 2.0 Device Authorization Grant request as defined by RFC 8628. The client
+        receives a device code for token polling and a user code that the user enters at the
+        verification URI. The client must be configured to use the Device Code grant.
+
+        Confidential clients authenticate using their configured token endpoint authentication
+        method. Public clients identify themselves with `client_id`.
+      tags:
+        - Device Authorization
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DeviceAuthorizationRequest'
+      responses:
+        "200":
+          description: Device authorization request accepted.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: Always `no-store`.
+            Pragma:
+              schema:
+                type: string
+              description: Always `no-cache`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceAuthorizationResponse'
+              example:
+                device_code: "GmRhmhcxhwAzkoEqiMEg_DnyEysNkuNhszIySk9eS"
+                user_code: "BCDF-GHJK"
+                verification_uri: "https://server.example.com/gate/device?applicationId=550e8400-e29b-41d4-a716-446655440000"
+                verification_uri_complete: "https://server.example.com/gate/device?applicationId=550e8400-e29b-41d4-a716-446655440000&user_code=BCDF-GHJK"
+                expires_in: 600
+                interval: 5
+        "400":
+          description: >-
+            Bad Request — invalid_request, invalid_scope, invalid_target, or unauthorized_client.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+        "401":
+          description: Unauthorized — client authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+        "500":
+          description: Internal server error — the device authorization request could not be created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+
   /oauth2/token:
     post:
       summary: Token endpoint
       description: |
-        Issues access tokens, refresh tokens, and ID tokens. Supports the following grant types: `authorization_code`, `client_credentials`, `refresh_token`, `urn:openid:params:grant-type:ciba` (CIBA Core 1.0), `urn:ietf:params:oauth:grant-type:token-exchange` (RFC 8693), and `urn:ietf:params:oauth:grant-type:jwt-bearer` (draft-ietf-oauth-identity-assertion-authz-grant). Confidential clients authenticate with HTTP Basic auth, `client_id`/`client_secret` form parameters, or a `private_key_jwt` client assertion; a public client sends only `client_id`.
+        Issues access tokens, refresh tokens, and ID tokens. Supports the following grant types:
+        `authorization_code`, `client_credentials`, `refresh_token`,
+        `urn:openid:params:grant-type:ciba` (CIBA Core 1.0),
+        `urn:ietf:params:oauth:grant-type:token-exchange` (RFC 8693), and
+        `urn:ietf:params:oauth:grant-type:jwt-bearer` (draft-ietf-oauth-identity-assertion-authz-grant),
+        and `urn:ietf:params:oauth:grant-type:device_code` (RFC 8628).
+        Confidential clients authenticate with HTTP Basic auth, `client_id`/`client_secret` form
+        parameters, or a `private_key_jwt` client assertion; a public client sends only `client_id`.
 
         An access token issued for a user through the `authorization_code`, `urn:openid:params:grant-type:ciba` or `urn:ietf:params:oauth:grant-type:jwt-bearer` grant keeps that user in `sub` and adds an on-behalf-of `act` claim naming the client that obtained it. Token exchange adds the same claim when no `actor_token` is given, and a refreshed access token keeps the claim its refresh token was issued with. Agent clients always receive the claim; application clients receive it when `includeActClaim` is enabled on the client. The `act.sub` value is the agent or application resource id rather than the client id, and the claim is present on the access token only, never on the ID token.
 
@@ -258,15 +328,40 @@ paths:
                 id_token: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
         "400":
           description: >-
-            Bad Request — invalid grant, missing parameters, or unsupported grant type; or
-            interaction_required when a device secret cannot sign the user in without them.
+            Bad Request — invalid grant, missing parameters, unsupported grant type; or
+            interaction_required when a device secret cannot sign the user in without them, or a Device
+            Code polling response such as authorization_pending, slow_down, access_denied, or
+            expired_token.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/OAuthError'
-              example:
-                error: "invalid_grant"
-                error_description: "The provided authorization grant is invalid"
+              examples:
+                invalidGrant:
+                  summary: Invalid authorization grant
+                  value:
+                    error: "invalid_grant"
+                    error_description: "The provided authorization grant is invalid"
+                authorizationPending:
+                  summary: Device authorization is pending
+                  value:
+                    error: "authorization_pending"
+                    error_description: "The user has not yet completed authorization"
+                slowDown:
+                  summary: Device client is polling too frequently
+                  value:
+                    error: "slow_down"
+                    error_description: "The client is polling too frequently"
+                accessDenied:
+                  summary: Device authorization was denied
+                  value:
+                    error: "access_denied"
+                    error_description: "The user denied the device authorization request"
+                expiredToken:
+                  summary: Device authorization request expired
+                  value:
+                    error: "expired_token"
+                    error_description: "The device authorization request has expired"
         "401":
           description: Unauthorized — client authentication failed.
           content:
@@ -972,6 +1067,62 @@ components:
           type: string
           description: The full redirect URI for the client, including the authorization code and state.
 
+    DeviceAuthorizationRequest:
+      type: object
+      properties:
+        client_id:
+          type: string
+          description: The client identifier, required when it is not supplied through client authentication.
+        client_secret:
+          type: string
+          description: The client secret for confidential clients using form-based authentication.
+        scope:
+          type: string
+          description: Space-separated list of requested scopes.
+        resource:
+          type: array
+          items:
+            type: string
+            format: uri
+          description: >-
+            Resource indicator per RFC 8707. ThunderID supports one resource value; multiple values
+            are rejected with invalid_target.
+
+    DeviceAuthorizationResponse:
+      type: object
+      required:
+        - device_code
+        - user_code
+        - verification_uri
+        - verification_uri_complete
+        - expires_in
+        - interval
+      properties:
+        device_code:
+          type: string
+          description: Opaque code used by the device to poll the token endpoint.
+        user_code:
+          type: string
+          description: Short code displayed by the device and entered by the user.
+        verification_uri:
+          type: string
+          format: uri
+          description: URI where the user enters the user code and completes authorization.
+        verification_uri_complete:
+          type: string
+          format: uri
+          description: Verification URI containing the user code for direct navigation or a QR code.
+        expires_in:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Lifetime of the device code and user code in seconds.
+        interval:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Minimum number of seconds between token endpoint polling requests.
+
     TokenRequest:
       type: object
       required:
@@ -985,6 +1136,7 @@ components:
             - refresh_token
             - urn:ietf:params:oauth:grant-type:token-exchange
             - urn:ietf:params:oauth:grant-type:jwt-bearer
+            - urn:ietf:params:oauth:grant-type:device_code
             - urn:openid:params:grant-type:ciba
           description: The OAuth 2.0 grant type.
         client_id:
@@ -1061,6 +1213,11 @@ components:
           type: string
           description: >-
             RFC 9396 authorization details as a JSON array. On `client_credentials` it is a new request: every requested type must have a processor, the token carries only the details the processors approve, and a request whose details are all refused fails with `invalid_authorization_details`. The `authorization_code`, `urn:openid:params:grant-type:ciba` and `refresh_token` grants ignore it. Other grants refuse it with `invalid_authorization_details`.
+        device_code:
+          type: string
+          description: >-
+            The device code returned by /oauth2/device-authorize. Required for the
+            `urn:ietf:params:oauth:grant-type:device_code` grant.
 
     TokenResponse:
       type: object
@@ -1378,6 +1535,7 @@ components:
               - client_credentials
               - refresh_token
               - urn:ietf:params:oauth:grant-type:token-exchange
+              - urn:ietf:params:oauth:grant-type:device_code
         response_types:
           type: array
           items:

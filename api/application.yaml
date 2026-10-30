@@ -1460,6 +1460,10 @@ components:
           type: string
           description: The ID of the authentication flow.
           example: "edc013d0-e893-4dc0-990c-3e1d203e005b"
+        deviceGrantFlowId:
+          type: string
+          description: The ID of the Device Grant flow used to approve device authorization requests.
+          example: "a1d70ad1-9c45-4cd1-954c-d20ce83e2676"
         registrationFlowId:
           type: string
           description: The ID of the registration flow.
@@ -1611,6 +1615,10 @@ components:
           type: string
           description: The ID of the authentication flow.
           example: "edc013d0-e893-4dc0-990c-3e1d203e005b"
+        deviceGrantFlowId:
+          type: string
+          description: The ID of the Device Grant flow used to approve device authorization requests.
+          example: "a1d70ad1-9c45-4cd1-954c-d20ce83e2676"
         registrationFlowId:
           type: string
           description: The ID of the registration flow.
@@ -1758,6 +1766,10 @@ components:
           type: string
           description: The ID of the authentication flow.
           example: "edc013d0-e893-4dc0-990c-3e1d203e005b"
+        deviceGrantFlowId:
+          type: string
+          description: The ID of the Device Grant flow used to approve device authorization requests.
+          example: "a1d70ad1-9c45-4cd1-954c-d20ce83e2676"
         registrationFlowId:
           type: string
           description: The ID of the registration flow.
@@ -1894,6 +1906,10 @@ components:
           type: string
           description: The ID of the authentication flow.
           example: "edc013d0-e893-4dc0-990c-3e1d203e005b"
+        deviceGrantFlowId:
+          type: string
+          description: The ID of the Device Grant flow used to approve device authorization requests.
+          example: "a1d70ad1-9c45-4cd1-954c-d20ce83e2676"
         registrationFlowId:
           type: string
           description: The ID of the registration flow.

@@ -19,6 +19,7 @@ type Config struct {
 	JWT                        engineconfig.JWTConfig
 	OAuth                      engineconfig.OAuthConfig
 	GateClient                 engineconfig.GateClientConfig
+	DeviceAuthUserCodeIndexKey []byte
 	EnableOUQualifiedEndpoints bool
 }
 
@@ -36,6 +37,7 @@ func FromServerRuntime() Config {
 		JWT:                        runtime.Config.JWT,
 		OAuth:                      oauth,
 		GateClient:                 runtime.Config.GateClient,
+		DeviceAuthUserCodeIndexKey: []byte(runtime.Config.Crypto.Encryption.Key),
 		EnableOUQualifiedEndpoints: runtime.Config.Server.EnableOUQualifiedEndpoints,
 	}
 }

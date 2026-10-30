@@ -75,6 +75,8 @@ const (
 	DataInviteLink = "inviteLink"
 	// DataCallbackType is the OAuth grant type surfaced on the terminal flow response's additional data.
 	DataCallbackType = "callbackType"
+	// DataAuthID identifies the OAuth authorization request for its callback.
+	DataAuthID = "authId"
 	// DataEmailSent is the key used to indicate that an email was sent successfully in the flow response.
 	DataEmailSent = "emailSent"
 	// DataSMSSent is the key used to indicate that an SMS was sent successfully in the flow response.
@@ -288,6 +290,8 @@ const (
 	// RuntimeKeyAuthorizationRequestID holds the auth request identifier bound to the current flow
 	// execution (the OAuth authorize authId or the CIBA auth_req_id), if applicable.
 	RuntimeKeyAuthorizationRequestID = "authorizationRequestId"
+	// RuntimeKeyDeviceCallFailed marks a failed application flow call in a Device Grant flow.
+	RuntimeKeyDeviceCallFailed = "deviceCallFailed"
 	// RuntimeKeyCallbackType holds the OAuth grant type of the initiating request, seeded by the OAuth
 	// initiator and surfaced onto the terminal flow response as DataCallbackType so the Gate/SDK routes
 	// to the correct callback handler. Absent for non-OAuth flows.

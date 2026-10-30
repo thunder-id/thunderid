@@ -39,6 +39,7 @@ type FlowTypeConfig struct {
 // never lock, so have no unlock.
 type FlowSectionConfig struct {
 	AuthFlow                FlowTypeConfig `json:"authFlow"`
+	DeviceGrantFlow         FlowTypeConfig `json:"deviceGrantFlow"`
 	RegistrationFlow        FlowTypeConfig `json:"registrationFlow"`
 	UserOnboardingFlow      FlowTypeConfig `json:"userOnboardingFlow"`
 	RecoveryFlow            FlowTypeConfig `json:"recoveryFlow"`

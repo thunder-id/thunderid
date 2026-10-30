@@ -24,6 +24,8 @@ const (
 	// cibaBackchannelAuthEndpointPath is the backchannel authentication endpoint path
 	// (oauth2const.OAuth2BackchannelAuthEndpoint).
 	cibaBackchannelAuthEndpointPath = "/oauth2/bc-authorize"
+	deviceGrantType                 = "urn:ietf:params:oauth:grant-type:device_code"
+	deviceAuthorizationEndpointPath = "/oauth2/device-authorize"
 )
 
 // OAuth2AuthorizationServerMetadata represents OAuth2 Authorization Server Metadata (RFC 8414)
@@ -35,6 +37,7 @@ type OAuth2AuthorizationServerMetadata struct {
 	RevocationEndpoint                         string   `json:"revocation_endpoint,omitempty"`
 	IntrospectionEndpoint                      string   `json:"introspection_endpoint,omitempty"`
 	RegistrationEndpoint                       string   `json:"registration_endpoint,omitempty"`
+	DeviceAuthorizationEndpoint                string   `json:"device_authorization_endpoint,omitempty"`
 	BackchannelAuthenticationEndpoint          string   `json:"backchannel_authentication_endpoint,omitempty"`
 	BackchannelTokenDeliveryModesSupported     []string `json:"backchannel_token_delivery_modes_supported,omitempty"`
 	BackchannelUserCodeParameterSupported      bool     `json:"backchannel_user_code_parameter_supported"`
@@ -301,6 +304,34 @@ func (ts *DiscoveryTestSuite) TestOIDCDiscovery_CIBAMetadata() {
 	ts.Equal([]string{"poll"}, metadata.BackchannelTokenDeliveryModesSupported,
 		"only poll-mode delivery is implemented")
 	ts.False(metadata.BackchannelUserCodeParameterSupported, "user_code is not supported")
+}
+
+// TestDiscovery_DeviceGrantMetadata verifies that both discovery documents advertise the RFC 8628
+// endpoint and grant type when Device Grant is enabled in the server configuration.
+func (ts *DiscoveryTestSuite) TestDiscovery_DeviceGrantMetadata() {
+	for _, test := range []struct {
+		name     string
+		endpoint string
+	}{
+		{name: "oauth2", endpoint: oauth2DiscoveryEndpoint},
+		{name: "oidc", endpoint: oidcDiscoveryEndpoint},
+	} {
+		ts.Run(test.name, func() {
+			req, err := http.NewRequest(http.MethodGet, testServerURL+test.endpoint, nil)
+			ts.Require().NoError(err)
+
+			resp, err := ts.client.Do(req)
+			ts.Require().NoError(err)
+			defer resp.Body.Close()
+			ts.Require().Equal(http.StatusOK, resp.StatusCode)
+
+			var metadata OAuth2AuthorizationServerMetadata
+			ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&metadata))
+			ts.Contains(metadata.GrantTypesSupported, deviceGrantType)
+			ts.True(strings.HasSuffix(metadata.DeviceAuthorizationEndpoint,
+				deviceAuthorizationEndpointPath))
+		})
+	}
 }
 
 // TestOIDCDiscovery_OPTIONS_Success tests OPTIONS request for CORS
