@@ -50,6 +50,9 @@ type SCIMUsersTestSuite struct {
 
 const scimCoreUserTypeName = "declarative-test-schema"
 
+// scimCoreUserTypeOUID is the organization unit of the designated core user type.
+const scimCoreUserTypeOUID = "decl-ou-1"
+
 func TestSCIMUsersTestSuite(t *testing.T) {
 	suite.Run(t, new(SCIMUsersTestSuite))
 }
@@ -70,11 +73,12 @@ func (ts *SCIMUsersTestSuite) SetupSuite() {
 		DisplayName: "Entity Type",
 		OUID:        ouID,
 		Schema: map[string]interface{}{
-			"email":      map[string]interface{}{"type": "string", "required": true, "unique": true},
-			"department": map[string]interface{}{"type": "string"},
-			"team":       map[string]interface{}{"type": "string"},
-			"status":     map[string]interface{}{"type": "string", "enum": []string{"active", "inactive"}},
-			"level":      map[string]interface{}{"type": "number", "enum": []int{1, 2, 3}},
+			"email":        map[string]interface{}{"type": "string", "required": true, "unique": true},
+			"department":   map[string]interface{}{"type": "string"},
+			"team":         map[string]interface{}{"type": "string"},
+			"status":       map[string]interface{}{"type": "string", "enum": []string{"active", "inactive"}},
+			"level":        map[string]interface{}{"type": "number", "enum": []int{1, 2, 3}},
+			"phone_number": map[string]interface{}{"type": "string"},
 		},
 	})
 	ts.Require().NoError(err, "failed to create test entity type")
@@ -290,6 +294,142 @@ func (ts *SCIMUsersTestSuite) createCoreOnlyUser(userName, email string) string 
 	ts.Require().NotEmpty(id)
 	ts.createdUserIDs = append(ts.createdUserIDs, id)
 	return id
+}
+
+// firstPhoneNumber returns the first entry of a decoded response's top-level "phoneNumbers" array.
+func firstPhoneNumber(resp map[string]interface{}) (map[string]interface{}, bool) {
+	phones, ok := resp["phoneNumbers"].([]interface{})
+	if !ok || len(phones) == 0 {
+		return nil, false
+	}
+	entry, ok := phones[0].(map[string]interface{})
+	return entry, ok
+}
+
+// createCoreUserWithMobile creates a user of the designated core user type through the user API and
+// returns its ID.
+func (ts *SCIMUsersTestSuite) createCoreUserWithMobile(userName, mobile string) string {
+	attrs, err := json.Marshal(map[string]string{"username": userName, "mobile_number": mobile})
+	ts.Require().NoError(err)
+	id, err := testutils.CreateUser(testutils.User{
+		OUID:       scimCoreUserTypeOUID,
+		Type:       scimCoreUserTypeName,
+		Attributes: attrs,
+	})
+	ts.Require().NoError(err)
+	ts.createdUserIDs = append(ts.createdUserIDs, id)
+	return id
+}
+
+// storedUserAttributes reads a user's attributes through the user API.
+func (ts *SCIMUsersTestSuite) storedUserAttributes(id string) map[string]interface{} {
+	resp, err := testutils.GetHTTPClient().Get(testutils.TestServerURL + "/users/" + id)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var u testutils.User
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&u))
+	var attrs map[string]interface{}
+	ts.Require().NoError(json.Unmarshal(u.Attributes, &attrs))
+	return attrs
+}
+
+// TestCreateCoreSchemaUserStoresPhoneNumbersInMobileNumber tests that phoneNumbers sent to the
+// designated core user type is stored in its mobile_number property.
+func (ts *SCIMUsersTestSuite) TestCreateCoreSchemaUserStoresPhoneNumbersInMobileNumber() {
+	mobile := "+94771000001"
+	body, err := json.Marshal(map[string]interface{}{
+		"schemas":      []string{scimCoreUserSchemaURN},
+		"userName":     "scim.it.core-phone-create",
+		"phoneNumbers": []map[string]interface{}{{"value": mobile, "type": "mobile"}},
+	})
+	ts.Require().NoError(err)
+
+	status, respBody, err := scimRequest(http.MethodPost, "/Users", body, nil)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusCreated, status, "expected 201, got body: %s", respBody)
+
+	var created map[string]interface{}
+	ts.Require().NoError(json.Unmarshal(respBody, &created))
+	id, _ := created["id"].(string)
+	ts.Require().NotEmpty(id)
+	ts.createdUserIDs = append(ts.createdUserIDs, id)
+
+	entry, ok := firstPhoneNumber(created)
+	ts.Require().True(ok, "response should include the core-mapped phoneNumbers field")
+	ts.Equal(mobile, entry["value"])
+	ts.Equal(mobile, ts.storedUserAttributes(id)["mobile_number"], "phoneNumbers should be stored in mobile_number")
+}
+
+// TestGetCoreUserReturnsMobileNumberAsPhoneNumbers tests that a core type user's mobile_number is
+// read back as a phoneNumbers entry and not repeated in the extension object.
+func (ts *SCIMUsersTestSuite) TestGetCoreUserReturnsMobileNumberAsPhoneNumbers() {
+	mobile := "+94771000002"
+	id := ts.createCoreUserWithMobile("scim.it.core-phone-read", mobile)
+
+	status, respBody, err := scimRequest(http.MethodGet, "/Users/"+id, nil, nil)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, status, "body: %s", respBody)
+
+	var fetched map[string]interface{}
+	ts.Require().NoError(json.Unmarshal(respBody, &fetched))
+	entry, ok := firstPhoneNumber(fetched)
+	ts.Require().True(ok, "response should include the core-mapped phoneNumbers field")
+	ts.Equal(mobile, entry["value"])
+	ts.Equal(true, entry["primary"])
+	_, inExtension := extensionStringValue(fetched, ts.coreExtensionURN, "mobile_number")
+	ts.False(inExtension, "mobile_number should not be repeated in the extension object")
+}
+
+// TestReplaceCoreUserWithReturnedPhoneNumbers tests that a GET response carrying the phoneNumbers entry,
+// sent back unchanged as a PUT, keeps the user's mobile_number.
+func (ts *SCIMUsersTestSuite) TestReplaceCoreUserWithReturnedPhoneNumbers() {
+	mobile := "+94771000004"
+	id := ts.createCoreUserWithMobile("scim.it.core-phone-replace", mobile)
+
+	status, fetched, err := scimRequest(http.MethodGet, "/Users/"+id, nil, nil)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, status, "body: %s", fetched)
+
+	status, respBody, err := scimRequest(http.MethodPut, "/Users/"+id, fetched, nil)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, status, "replace failed: %s", respBody)
+	ts.Equal(mobile, ts.storedUserAttributes(id)["mobile_number"])
+}
+
+// TestListAndFilterByPhoneNumber tests that a phoneNumbers filter matches a user's phone_number.
+func (ts *SCIMUsersTestSuite) TestListAndFilterByPhoneNumber() {
+	phone := "+94112000001"
+	status, created := ts.createUser("scim.it.phone-filter@example.com", map[string]interface{}{"phone_number": phone})
+	ts.Require().Equal(http.StatusCreated, status, "expected 201, got body: %v", created)
+	id, _ := created["id"].(string)
+
+	list := ts.listUsersByPhoneNumber(phone)
+	ts.Require().Equal(1, list.TotalResults, "filter should match exactly the one user created for this test")
+	ts.Equal(id, list.Resources[0].ID)
+}
+
+// TestFilterByPhoneNumberDoesNotSearchMobileNumber tests that a phoneNumbers filter does not search
+// mobile_number, although reads return it as phoneNumbers.
+func (ts *SCIMUsersTestSuite) TestFilterByPhoneNumberDoesNotSearchMobileNumber() {
+	mobile := "+94771000003"
+	ts.createCoreUserWithMobile("scim.it.core-phone-filter", mobile)
+
+	list := ts.listUsersByPhoneNumber(mobile)
+	ts.Equal(0, list.TotalResults, "phoneNumbers filters search phone_number only")
+}
+
+// listUsersByPhoneNumber lists users with a phoneNumbers.value filter.
+func (ts *SCIMUsersTestSuite) listUsersByPhoneNumber(phone string) scimUserListResponse {
+	filter := url.QueryEscape(`phoneNumbers.value eq "` + phone + `"`)
+	status, body, err := scimRequest(http.MethodGet, "/Users?filter="+filter, nil, nil)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, status, "body: %s", body)
+
+	var list scimUserListResponse
+	ts.Require().NoError(json.Unmarshal(body, &list))
+	return list
 }
 
 // TestCoreSchemaRejectedForNonDesignatedType tests that core User schema attributes sent to

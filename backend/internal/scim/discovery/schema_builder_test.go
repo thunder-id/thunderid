@@ -43,6 +43,34 @@ func (suite *SchemaBuilderTestSuite) TestMapRawPropertyToSCIMAttribute_Credentia
 	require.Equal(t, scimMutabilityWriteOnly, attr.Mutability)
 }
 
+// TestBuildCoreUserSchema_MobileNumber_DeclaresPhoneNumbers tests that a core type with a mobile_number
+// property declares phoneNumbers.
+func (suite *SchemaBuilderTestSuite) TestBuildCoreUserSchema_MobileNumber_DeclaresPhoneNumbers() {
+	t := suite.T()
+	et := entitytype.EntityType{
+		ID:          "et-person",
+		Handle:      "person",
+		DisplayName: "Person",
+		Schema: []byte(`{
+			"username": {"type": "string"},
+			"mobile_number": {"type": "mobile", "required": true}
+		}`),
+	}
+
+	schema, err := buildCoreUserSchema("https://example.com", et)
+	require.NoError(t, err)
+
+	var phoneNumbers *scimSchemaAttribute
+	for i := range schema.Attributes {
+		if schema.Attributes[i].Name == "phoneNumbers" {
+			phoneNumbers = &schema.Attributes[i]
+			break
+		}
+	}
+	require.NotNil(t, phoneNumbers)
+	require.True(t, phoneNumbers.Required)
+}
+
 // TestBuildEnterpriseUserSchema_Success tests buildEnterpriseUserSchema for an entity type with enterprise attributes.
 func (suite *SchemaBuilderTestSuite) TestBuildEnterpriseUserSchema_Success() {
 	t := suite.T()

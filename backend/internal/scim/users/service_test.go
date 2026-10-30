@@ -1730,6 +1730,59 @@ func (suite *ServiceTestSuite) TestCreateUser_CoreSchema_UndeclaredAttribute_Ret
 	require.Contains(t, err.ErrorDescription.DefaultValue, "active")
 }
 
+// TestCreateUser_CoreSchema_PhoneNumbers_StoredInMobileNumber tests that phoneNumbers sent for a core
+// type with a mobile_number property is stored there and returned as phoneNumbers.
+func (suite *ServiceTestSuite) TestCreateUser_CoreSchema_PhoneNumbers_StoredInMobileNumber() {
+	t := suite.T()
+	mockUserService := usermock.NewUserServiceInterfaceMock(t)
+	mockUserTypeService := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	service := newSCIMUsersService(
+		mockUserService, mockUserTypeService, scimconfig.SCIMConfig{
+			SchemaURNPrefix: testURNPrefix,
+			CoreUserTypeID:  "et-emp",
+		})
+
+	payload := &SCIMUserPayload{
+		UserTypeHandle: testUserTypeEmployee,
+		ExtensionURN:   "urn:thunderid:params:scim:schemas:employee:2.0:User",
+		CoreAttrs: map[string]json.RawMessage{
+			"userName":     json.RawMessage(`"alice"`),
+			"phoneNumbers": json.RawMessage(`[{"value":"+94771234567","primary":true}]`),
+		},
+		ExtensionAttrs: map[string]json.RawMessage{},
+	}
+
+	et := &entitytype.EntityType{
+		ID:     "et-emp",
+		Handle: testUserTypeEmployee,
+		OUID:   testOUID,
+		Schema: json.RawMessage(`{"username":{"type":"string"},"mobile_number":{"type":"mobile"}}`),
+	}
+
+	mockUserTypeService.On(
+		"GetEntityType", mock.Anything, entitytype.TypeCategoryUser, "et-emp", false,
+	).Return(et, (*tidcommon.ServiceError)(nil))
+	mockUserTypeService.On(
+		"GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, testUserTypeEmployee,
+	).Return(et, (*tidcommon.ServiceError)(nil))
+	mockUserService.On("CreateUser", mock.Anything, mock.MatchedBy(func(u *providers.User) bool {
+		var attrs map[string]interface{}
+		return json.Unmarshal(u.Attributes, &attrs) == nil && len(attrs) == 2 &&
+			attrs["username"] == "alice" && attrs["mobile_number"] == "+94771234567"
+	})).Return(&providers.User{
+		ID:         "user-new",
+		Type:       testUserTypeEmployee,
+		OUID:       testOUID,
+		Attributes: json.RawMessage(`{"username":"alice","mobile_number":"+94771234567"}`),
+	}, (*tidcommon.ServiceError)(nil))
+
+	scimUser, err := service.CreateUser(context.Background(), payload, testBaseURL)
+
+	require.Nil(t, err)
+	require.JSONEq(t, `[{"value":"+94771234567","primary":true}]`,
+		string(scimUser.CoreAttrs["phoneNumbers"]))
+}
+
 // --- ValidateAttributePaths ---
 
 // TestValidateAttributePaths_ConflictingParams tests that supplying both attributes and

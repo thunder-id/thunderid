@@ -200,6 +200,22 @@ func (ts *SCIMDiscoveryTestSuite) TestSchemaGetCoreUserURN() {
 	ts.Equal("urn:ietf:params:scim:schemas:core:2.0:User", s.ID)
 }
 
+// TestSchemaGetCoreUserURNListsPhoneNumbers verifies that the core User schema declares phoneNumbers when
+// the designated core user type has a mobile_number property.
+func (ts *SCIMDiscoveryTestSuite) TestSchemaGetCoreUserURNListsPhoneNumbers() {
+	status, body, err := scimRequest(http.MethodGet, "/Schemas/"+scimCoreUserSchemaURN, nil, nil)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, status, "body: %s", string(body))
+
+	var s scimSchema
+	ts.Require().NoError(json.Unmarshal(body, &s))
+	names := make(map[string]bool, len(s.Attributes))
+	for _, attr := range s.Attributes {
+		names[attr.Name] = true
+	}
+	ts.True(names["phoneNumbers"], "the core User schema should declare phoneNumbers backed by mobile_number")
+}
+
 // TestSchemaGetUnknownURN verifies fetching an unknown schema URN returns 404.
 func (ts *SCIMDiscoveryTestSuite) TestSchemaGetUnknownURN() {
 	status, _, err := scimRequest(http.MethodGet, "/Schemas/urn:thunderid:params:scim:schemas:does-not-exist:2.0:User", nil, nil)

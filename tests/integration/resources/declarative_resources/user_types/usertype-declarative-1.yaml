@@ -14,5 +14,8 @@ schema: |
     },
     "username": {
       "type": "string"
+    },
+    "mobile_number": {
+      "type": "mobile"
     }
   }

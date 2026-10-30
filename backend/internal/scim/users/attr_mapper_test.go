@@ -114,6 +114,41 @@ func (suite *AttrMapperTestSuite) TestMapToCoreAttrs_PhoneNumber() {
 	require.False(t, hasType)
 }
 
+// TestMapToCoreAttrs_MobileNumber tests that mobile_number is returned as a phoneNumbers entry.
+func (suite *AttrMapperTestSuite) TestMapToCoreAttrs_MobileNumber() {
+	t := suite.T()
+	result := mapToCoreAttrs(json.RawMessage(`{"mobile_number":"+94771234567"}`))
+	require.JSONEq(t, `[{"value":"+94771234567","primary":true}]`, string(result["phoneNumbers"]))
+}
+
+// TestMapToCoreAttrs_PhoneNumberAndMobileNumber_ReturnsOneEntry tests that phoneNumbers holds one entry,
+// taken from phone_number when it is set and from mobile_number otherwise.
+func (suite *AttrMapperTestSuite) TestMapToCoreAttrs_PhoneNumberAndMobileNumber_ReturnsOneEntry() {
+	t := suite.T()
+	tests := []struct {
+		name  string
+		attrs string
+		want  string
+	}{
+		{
+			name:  "both set",
+			attrs: `{"phone_number":"+94112345678","mobile_number":"+94771234567"}`,
+			want:  `[{"value":"+94112345678","primary":true}]`,
+		},
+		{
+			name:  "only mobile_number set",
+			attrs: `{"mobile_number":"+94771234567"}`,
+			want:  `[{"value":"+94771234567","primary":true}]`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := mapToCoreAttrs(json.RawMessage(tt.attrs))
+			require.JSONEq(t, tt.want, string(result["phoneNumbers"]))
+		})
+	}
+}
+
 // TestMapToCoreAttrs_Picture tests Map To Core Attrs for Picture.
 func (suite *AttrMapperTestSuite) TestMapToCoreAttrs_Picture() {
 	t := suite.T()
@@ -481,6 +516,63 @@ func (suite *AttrMapperTestSuite) TestReverseMapCoreAttrsForSchema_MultiComplex_
 	require.Equal(t, []string{"a.work@example.com", "a.home@example.com"}, got)
 }
 
+// TestReverseMapCoreAttrsForSchema_ContactTypes tests that emails and phoneNumbers are stored as the
+// first entry's value in properties of the email and mobile types.
+func (suite *AttrMapperTestSuite) TestReverseMapCoreAttrsForSchema_ContactTypes() {
+	t := suite.T()
+	schema := json.RawMessage(`{"email":{"type":"email"},"mobile_number":{"type":"mobile"}}`)
+	coreAttrs := map[string]json.RawMessage{
+		"emails":       json.RawMessage(`[{"value":"a@example.com","type":"work","primary":true}]`),
+		"phoneNumbers": json.RawMessage(`[{"value":"+94771234567","type":"mobile","primary":true}]`),
+	}
+	result, undeclared, err := reverseMapCoreAttrsForSchema(coreAttrs, schema)
+	require.NoError(t, err)
+	require.Empty(t, undeclared)
+	require.JSONEq(t, `"a@example.com"`, string(result["email"]))
+	require.JSONEq(t, `"+94771234567"`, string(result["mobile_number"]))
+}
+
+// TestReverseMapCoreAttrsForSchema_PhoneNumbers_StoredInEveryDeclaredProperty tests that phoneNumbers is
+// stored in each of phone_number and mobile_number that the schema declares.
+func (suite *AttrMapperTestSuite) TestReverseMapCoreAttrsForSchema_PhoneNumbers_StoredInEveryDeclaredProperty() {
+	t := suite.T()
+	tests := []struct {
+		name   string
+		schema string
+		want   []string
+	}{
+		{
+			name:   "both declared",
+			schema: `{"phone_number":{"type":"string"},"mobile_number":{"type":"mobile"}}`,
+			want:   []string{"phone_number", "mobile_number"},
+		},
+		{
+			name:   "only mobile_number declared",
+			schema: `{"mobile_number":{"type":"mobile"}}`,
+			want:   []string{"mobile_number"},
+		},
+		{
+			name:   "only phone_number declared",
+			schema: `{"phone_number":{"type":"string"}}`,
+			want:   []string{"phone_number"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			coreAttrs := map[string]json.RawMessage{
+				"phoneNumbers": json.RawMessage(`[{"value":"+94771234567","primary":true}]`),
+			}
+			result, undeclared, err := reverseMapCoreAttrsForSchema(coreAttrs, json.RawMessage(tt.schema))
+			require.NoError(t, err)
+			require.Empty(t, undeclared)
+			require.Len(t, result, len(tt.want))
+			for _, prop := range tt.want {
+				require.JSONEq(t, `"+94771234567"`, string(result[prop]))
+			}
+		})
+	}
+}
+
 // TestReverseMapCoreAttrsForSchema_SubAttr tests Reverse Map Core Attrs For Schema for Sub Attr.
 func (suite *AttrMapperTestSuite) TestReverseMapCoreAttrsForSchema_SubAttr() {
 	t := suite.T()
@@ -843,6 +935,8 @@ func (suite *AttrMapperTestSuite) TestTranslateSCIMFilterAttr() {
 		{"sub-attribute", "name.givenName", "given_name"},
 		{"multi-valued bare key", "emails", "email"},
 		{"multi-valued value sub-key", "emails.value", "email"},
+		{"phone numbers bare key", "phoneNumbers", "phone_number"},
+		{"phone numbers value sub-key", "phoneNumbers.value", "phone_number"},
 		{"address sub-attribute", "addresses.streetAddress", "street_address"},
 		{"case insensitive", "USERNAME", "username"},
 		{"unmapped passthrough", "active", "active"},
