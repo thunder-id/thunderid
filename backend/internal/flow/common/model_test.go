@@ -369,3 +369,82 @@ func (s *ModelTestSuite) TestParseExtensionProperties_MaxAttemptsBounds() {
 		s.NotZero(props.MaxAttempts)
 	}
 }
+
+func (s *ModelTestSuite) TestParseExtensionAuthResolverProperties_ReadsEveryProperty() {
+	props, invalid := ParseExtensionAuthResolverProperties(map[string]interface{}{
+		NodePropertySourceKey:      " extension.pin_check.verifiedUserId ",
+		NodePropertyMatchAttribute: " userID ",
+		NodePropertyAttributeMapping: map[string]interface{}{
+			" email ": " extension.pin_check.email ",
+		},
+	})
+
+	s.Empty(invalid)
+	s.Equal(ExtensionAuthResolverProperties{
+		SourceKey:        "extension.pin_check.verifiedUserId",
+		MatchAttribute:   "userID",
+		AttributeMapping: map[string]string{"email": "extension.pin_check.email"},
+	}, props)
+}
+
+func (s *ModelTestSuite) TestParseExtensionAuthResolverProperties_Defaults() {
+	for name, properties := range map[string]map[string]interface{}{
+		"absent": {NodePropertySourceKey: "extension.pin_check.username"},
+		"null": {NodePropertySourceKey: "extension.pin_check.username", NodePropertyMatchAttribute: nil,
+			NodePropertyAttributeMapping: nil},
+		"blank": {NodePropertySourceKey: "extension.pin_check.username", NodePropertyMatchAttribute: " "},
+	} {
+		s.Run(name, func() {
+			props, invalid := ParseExtensionAuthResolverProperties(properties)
+
+			s.Empty(invalid)
+			s.Equal("username", props.MatchAttribute)
+			s.Nil(props.AttributeMapping)
+		})
+	}
+}
+
+func (s *ModelTestSuite) TestParseExtensionAuthResolverProperties_RefusesUnusableValues() {
+	const sourceKey = "extension.pin_check.username"
+	cases := []struct {
+		name       string
+		properties map[string]interface{}
+		invalid    string
+	}{
+		{"no sourceKey", map[string]interface{}{}, NodePropertySourceKey},
+		{"blank sourceKey", map[string]interface{}{NodePropertySourceKey: " "}, NodePropertySourceKey},
+		{"non-string sourceKey", map[string]interface{}{NodePropertySourceKey: 1}, NodePropertySourceKey},
+		{"bare sourceKey", map[string]interface{}{NodePropertySourceKey: "username"}, NodePropertySourceKey},
+		{"sourceKey without a field", map[string]interface{}{NodePropertySourceKey: "extension.pin_check."},
+			NodePropertySourceKey},
+		{"sourceKey without a node", map[string]interface{}{NodePropertySourceKey: "extension..username"},
+			NodePropertySourceKey},
+		{"sourceKey of the namespace only", map[string]interface{}{NodePropertySourceKey: "extension.pin_check"},
+			NodePropertySourceKey},
+		{"non-string matchAttribute", map[string]interface{}{NodePropertySourceKey: sourceKey,
+			NodePropertyMatchAttribute: true}, NodePropertyMatchAttribute},
+		// Any attribute other than the user ID and username can be changed by its user through self-service.
+		{"self-service attribute", map[string]interface{}{NodePropertySourceKey: sourceKey,
+			NodePropertyMatchAttribute: "email"}, NodePropertyMatchAttribute},
+		{"attributeMapping not a map", map[string]interface{}{NodePropertySourceKey: sourceKey,
+			NodePropertyAttributeMapping: "email"}, NodePropertyAttributeMapping},
+		{"attributeMapping bare key", map[string]interface{}{NodePropertySourceKey: sourceKey,
+			NodePropertyAttributeMapping: map[string]interface{}{"email": "email"}}, NodePropertyAttributeMapping},
+		{"attributeMapping non-string key", map[string]interface{}{NodePropertySourceKey: sourceKey,
+			NodePropertyAttributeMapping: map[string]interface{}{"email": 1}}, NodePropertyAttributeMapping},
+		{"attributeMapping blank attribute", map[string]interface{}{NodePropertySourceKey: sourceKey,
+			NodePropertyAttributeMapping: map[string]interface{}{" ": sourceKey}}, NodePropertyAttributeMapping},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			_, invalid := ParseExtensionAuthResolverProperties(tc.properties)
+
+			s.Equal(tc.invalid, invalid)
+		})
+	}
+}
+
+func (s *ModelTestSuite) TestExtensionNamespace() {
+	s.Equal("extension.pin_check.", ExtensionNamespace("pin_check"))
+	s.Equal("extensionRedirectPending:pin_check", ExtensionRedirectPendingKey("pin_check"))
+}

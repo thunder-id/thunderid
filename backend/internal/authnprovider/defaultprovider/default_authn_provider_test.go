@@ -2519,6 +2519,38 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_EntityBoundByIDIsAd
 	suite.mockGovernance.AssertNumberOfCalls(suite.T(), "AdmitAuthenticationStep", 1)
 }
 
+func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_ExtensionVerifiedEntityIsAdmittedAsAFederatedSignIn() {
+	admitted := providers.AccessDecision{Admitted: true}
+	suite.mockService.On("GetEntityProfile", mock.Anything, "u1").
+		Return(&providers.Entity{ID: "u1", Category: providers.EntityCategoryUser,
+			Attributes: json.RawMessage(`{}`)}, nil).Once()
+	suite.mockGovernance.On("AdmitAuthenticationStep", mock.MatchedBy(security.IsRuntimeContext), "u1",
+		providers.AuthenticationMethodFederated).Return(admitted, nil).Once()
+
+	result, svcErr := suite.governedProvider().Authenticate(context.Background(), nil,
+		map[string]interface{}{authnprovidercm.CredentialTypeExtensionVerifiedEntityID: "u1"}, nil)
+
+	suite.Require().Nil(svcErr)
+	suite.Equal("u1", result.EntityReference.EntityID)
+	suite.Equal("u1", result.AuthenticatedClaims[authnprovidercm.UserAttributeUserID])
+	suite.assertNothingRecorded()
+}
+
+func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_ExtensionVerifiedEntityNeedsAUserID() {
+	for name, value := range map[string]interface{}{"empty": "", "not a string": 123, "nil": nil} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+
+			result, svcErr := suite.provider.Authenticate(context.Background(), nil,
+				map[string]interface{}{authnprovidercm.CredentialTypeExtensionVerifiedEntityID: value}, nil)
+
+			suite.Nil(result)
+			suite.Require().NotNil(svcErr)
+			suite.Equal(authnprovidercm.ErrorCodeInvalidRequest, svcErr.Code)
+		})
+	}
+}
+
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_HeldEntityBoundByIDIsRefused() {
 	heldReasons := []struct {
 		name   string

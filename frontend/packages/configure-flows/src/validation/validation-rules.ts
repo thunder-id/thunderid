@@ -182,6 +182,12 @@ export const VALIDATION_RULES: ValidationRuleDefinition[] = [
     ],
     generalMessageKey: 'flows:core.validation.fields.executor.general',
   },
+  // Extension auth resolver: the key the verified identifier is read from
+  {
+    match: (r) => (r as {data?: StepData}).data?.action?.executor?.name === ExecutionTypes.ExtensionAuthResolver,
+    fields: [{name: 'data.properties.sourceKey', errorMessageKey: 'flows:core.validation.fields.input.sourceKey'}],
+    generalMessageKey: 'flows:core.validation.fields.executor.general',
+  },
   // Email executor. A node without a provider cannot send: email providers are configured only
   // through the connections API and there is no deployment-wide default. A plain field rule would
   // miss the unresolved {{SENDER_ID}} placeholder that shipped templates carry, so check both.

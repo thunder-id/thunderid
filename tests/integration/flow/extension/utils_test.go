@@ -310,6 +310,7 @@ type mockService struct {
 	mu         sync.Mutex
 	calls      []serviceCall
 	answers    map[string]serviceAnswer
+	queued     map[string][]serviceAnswer
 	targetHits int
 }
 
@@ -320,7 +321,7 @@ func newMockService(seed seedValues) *mockService {
 // newMockServiceOn is newMockService with the service answering on listener, or on loopback when
 // listener is nil.
 func newMockServiceOn(seed seedValues, listener net.Listener) *mockService {
-	m := &mockService{seed: seed, answers: map[string]serviceAnswer{}}
+	m := &mockService{seed: seed, answers: map[string]serviceAnswer{}, queued: map[string][]serviceAnswer{}}
 	m.server = httptest.NewUnstartedServer(http.HandlerFunc(m.handle))
 	if listener != nil {
 		_ = m.server.Listener.Close()
@@ -352,6 +353,10 @@ func (m *mockService) handle(w http.ResponseWriter, r *http.Request) {
 	m.mu.Lock()
 	m.calls = append(m.calls, call)
 	answer, ok := m.answers[call.Body.CurrentNodeID]
+	if queue := m.queued[call.Body.CurrentNodeID]; len(queue) > 0 && r.URL.Path == servicePath {
+		answer, ok = queue[0], true
+		m.queued[call.Body.CurrentNodeID] = queue[1:]
+	}
 	m.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -395,11 +400,20 @@ func (m *mockService) answer(nodeID string, a serviceAnswer) {
 	m.answers[nodeID] = a
 }
 
+// answerInTurn sets what the service answers to the next calls of the extension step nodeID, one
+// answer per call, before falling back to answer.
+func (m *mockService) answerInTurn(nodeID string, answers ...serviceAnswer) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.queued[nodeID] = append(m.queued[nodeID], answers...)
+}
+
 func (m *mockService) reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.calls = nil
 	m.answers = map[string]serviceAnswer{}
+	m.queued = map[string][]serviceAnswer{}
 	m.targetHits = 0
 }
 

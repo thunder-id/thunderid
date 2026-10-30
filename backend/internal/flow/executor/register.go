@@ -451,6 +451,11 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 				newExtensionExecutor(deps.FlowFactory, deps.HTTPConnectionProvider, deps.ExtensionHTTPClient,
 					deps.ObservabilitySvc))
 		},
+		ExecutorNameExtensionAuthResolver: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameExtensionAuthResolver,
+				newExtensionAuthResolver(deps.FlowFactory, deps.EntityProvider, deps.AuthnProvider,
+					deps.OUService))
+		},
 		ExecutorNameAccountLinking: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAccountLinking,
 				newAccountLinkingExecutor(deps.FlowFactory, deps.AuthnProvider, deps.EntityTypeService))

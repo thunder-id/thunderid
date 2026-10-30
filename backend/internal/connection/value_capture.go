@@ -49,6 +49,41 @@ func (s *service) captureHTTPValues(ctx context.Context, connection *httpconnect
 	s.captureModel(ctx, connection.ID, model, err)
 }
 
+// releaseHTTPSecrets hands the value capturer the secrets of an HTTP connection that were dropped: all
+// of them once it is deleted, when current is nil, or else each one current no longer holds a value
+// for. A secret current still holds, even under a new name after a rename, is not released, so a
+// version captured before the update still finds it.
+func (s *service) releaseHTTPSecrets(ctx context.Context, previous, current *httpconnection.HTTPConnection) {
+	if s.valueCapturer == nil || previous == nil {
+		return
+	}
+	model, err := connectionModelFromHTTP(*previous)
+	if err != nil {
+		s.logReleaseFailure(ctx, previous.ID, err)
+		return
+	}
+	if current != nil {
+		kept, err := connectionModelFromHTTP(*current)
+		if err != nil {
+			s.logReleaseFailure(ctx, current.ID, err)
+			return
+		}
+		for name, value := range kept.Authentication.Properties {
+			if value != "" {
+				delete(model.Authentication.Properties, name)
+			}
+		}
+	}
+	s.valueCapturer.ReleaseSecrets(ctx, resourceTypeConnection, &model)
+}
+
+// logReleaseFailure logs why a connection's secrets could not be released.
+func (s *service) logReleaseFailure(ctx context.Context, id string, err error) {
+	log.GetLogger().With(log.String(log.LoggerKeyComponentName, valueCaptureLoggerComponentName)).Warn(ctx,
+		"Failed to read a connection's values, so none were released",
+		log.String("connectionId", id), log.Error(err))
+}
+
 // captureModel hands a connection's export model to the value capturer, or logs why it could not be
 // built.
 func (s *service) captureModel(ctx context.Context, id string, model connectionExportModel, err error) {

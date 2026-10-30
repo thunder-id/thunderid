@@ -17,6 +17,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 )
 
 type captureFixture struct {
@@ -277,4 +278,117 @@ func TestACaptureGivesUpAfterItsAttempts(t *testing.T) {
 	f.settle(t)
 
 	assert.Equal(t, []string{"/variables/A", "/variables/A"}, f.paths())
+}
+
+var _ declarativeresource.ValueReleaser = (*ValueCapture)(nil)
+
+// A released resource's secrets that nothing stored refers to are removed from the default gateway's
+// store, and from no other.
+func TestAReleaseRemovesTheSecretsNothingRefersTo(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.exporter.variables = map[string]string{"CONNECTION_A_URL": "u"}
+	f.exporter.secrets = map[string]string{"CONNECTION_A_PASSWORD": "p", "CONNECTION_A_TOKEN": "t"}
+	f.exporter.referenced = map[string]bool{"CONNECTION_B_PASSWORD": true}
+
+	f.capture.ReleaseSecrets(context.Background(), "connection", "deleted")
+	f.settle(t)
+
+	calls, others := f.received()
+	assert.ElementsMatch(t, []storeCall{
+		{method: http.MethodDelete, path: "/secrets/CONNECTION_A_PASSWORD", key: "the-key"},
+		{method: http.MethodDelete, path: "/secrets/CONNECTION_A_TOKEN", key: "the-key"},
+	}, calls)
+	assert.Empty(t, others, "a secret was removed from a gateway that is not the default")
+	require.Len(t, f.exporter.valuesOf, 1)
+	assert.Equal(t, valuesRequest{resourceType: "connection", resource: "deleted"}, f.exporter.valuesOf[0])
+}
+
+// A secret a stored resource still refers to is the one that resource's export resolves, so it stays.
+func TestAReleaseKeepsASecretAStoredResourceRefersTo(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.exporter.secrets = map[string]string{"CONNECTION_A_PASSWORD": "p", "CONNECTION_A_TOKEN": "t"}
+	f.exporter.referenced = map[string]bool{"CONNECTION_A_PASSWORD": true}
+
+	f.capture.ReleaseSecrets(context.Background(), "connection", "deleted")
+	f.settle(t)
+
+	assert.Equal(t, []string{"/secrets/CONNECTION_A_TOKEN"}, f.paths())
+}
+
+// When what stored resources refer to cannot be worked out, nothing is removed: a copy left behind is
+// replaced by its next capture, while one removed in error breaks whatever refers to it.
+func TestAReleaseWhoseReferencesFailRemovesNothing(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.exporter.secrets = map[string]string{"CONNECTION_A_PASSWORD": "p"}
+	f.exporter.referencedErr = errors.New("the database is down")
+
+	f.capture.ReleaseSecrets(context.Background(), "connection", "deleted")
+	f.settle(t)
+
+	assert.Empty(t, f.paths())
+}
+
+// A resource whose secrets cannot be worked out, or that has none, removes nothing and reads nothing
+// else.
+func TestAReleaseWithNoSecretsRemovesNothing(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.exporter.variables = map[string]string{"CONNECTION_A_URL": "u"}
+
+	f.capture.ReleaseSecrets(context.Background(), "connection", "deleted")
+	f.exporter.secrets = map[string]string{"CONNECTION_A_PASSWORD": "p"}
+	f.exporter.valuesErr = errors.New("no exporter")
+	f.capture.ReleaseSecrets(context.Background(), "connection", "deleted")
+	f.settle(t)
+
+	assert.Empty(t, f.paths())
+	assert.Zero(t, f.exporter.referencedAsked)
+}
+
+// Without a default gateway, or before it is bound, a release removes nothing.
+func TestAReleaseWithoutADefaultGatewayRemovesNothing(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.gateways.gateways[1].IsDefault = false
+	f.exporter.secrets = map[string]string{"CONNECTION_A_PASSWORD": "p"}
+
+	f.capture.ReleaseSecrets(context.Background(), "connection", "deleted")
+	f.settle(t)
+
+	calls, others := f.received()
+	assert.Empty(t, calls)
+	assert.Empty(t, others)
+	assert.NotPanics(t, func() {
+		NewValueCapture().ReleaseSecrets(context.Background(), "connection", "deleted")
+		var none *ValueCapture
+		none.ReleaseSecrets(context.Background(), "connection", "deleted")
+	})
+}
+
+// A secret captured after its release is what the gateway is left with.
+func TestASecretCapturedAfterItsReleaseIsWhatRemains(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.exporter.secrets = map[string]string{"CONNECTION_A_PASSWORD": "old"}
+
+	f.capture.ReleaseSecrets(context.Background(), "connection", "deleted")
+	f.exporter.secrets = map[string]string{"CONNECTION_A_PASSWORD": "new"}
+	f.capture.CaptureValues(context.Background(), "connection", "created")
+	f.settle(t)
+
+	calls, _ := f.received()
+	require.NotEmpty(t, calls)
+	last := calls[len(calls)-1]
+	assert.Equal(t, http.MethodPut, last.method, "the removal arrived after the newer secret")
+	assert.Equal(t, `{"value":"new"}`, last.body)
+}
+
+// A removal the gateway did not answer is tried again, as a write is.
+func TestARemovalIsTriedAgainUntilItsAttemptsRunOut(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.capture.attempts = 2
+	f.hangUp = true
+	f.exporter.secrets = map[string]string{"CONNECTION_A_PASSWORD": "p"}
+
+	f.capture.ReleaseSecrets(context.Background(), "connection", "deleted")
+	f.settle(t)
+
+	assert.Equal(t, []string{"/secrets/CONNECTION_A_PASSWORD", "/secrets/CONNECTION_A_PASSWORD"}, f.paths())
 }

@@ -9,12 +9,15 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/agent"
 	agentmodel "github.com/thunder-id/thunderid/internal/agent/model"
 	"github.com/thunder-id/thunderid/internal/application"
+	appmodel "github.com/thunder-id/thunderid/internal/application/model"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
 )
@@ -305,4 +308,69 @@ func TestSecretFieldsMatchWhereTheExportWritesSecrets(t *testing.T) {
 			assert.Contains(t, lister.SecretFields(), p.convertPathToYAMLPath(reflect.TypeOf(tc.model), path), name)
 		}
 	}
+}
+
+// storedApplications serves the applications as their store holds them, a secret held as a value or as
+// a reference alike.
+func storedApplications(t *testing.T, apps ...*providers.Application) *applicationmock.ApplicationServiceInterfaceMock {
+	t.Helper()
+	appService := applicationmock.NewApplicationServiceInterfaceMock(t)
+	list := &appmodel.ApplicationListResponse{}
+	for _, app := range apps {
+		list.Applications = append(list.Applications, appmodel.BasicApplicationResponse{ID: app.ID, Name: app.Name})
+		appService.On("GetApplication", context.Background(), app.ID).Return(app, nil).Maybe()
+	}
+	appService.On("GetApplicationList", context.Background(), mock.Anything).Return(list, nil).Maybe()
+	return appService
+}
+
+// Every stored resource of the type contributes the secrets its reference export refers to: one it
+// names for a value it holds, and one it holds a reference to, which the export keeps as it stands.
+func TestReferencedSecretNamesCoverEveryStoredResource(t *testing.T) {
+	held := confidentialApp("the-id", "the-secret")
+	referring := confidentialApp("var:APPLICATION_OLD_NAME_CLIENT_ID", "sec:APPLICATION_OLD_NAME_CLIENT_SECRET")
+	referring.ID, referring.Name = "app-2", "Other App"
+	svc := referenceExportService(t, application.NewApplicationExporterForTest(
+		storedApplications(t, held, referring), sharingWithNoPolicies(t)))
+
+	names, err := svc.ReferencedSecretNames(context.Background(), resourceTypeApplication)
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]bool{"APPLICATION_MY_APP_CLIENT_SECRET": true,
+		"APPLICATION_OLD_NAME_CLIENT_SECRET": true}, names)
+}
+
+// Names that cannot all be worked out are reported as an error, never as a partial set.
+func TestReferencedSecretNamesFailWhenAResourceCannotBeRead(t *testing.T) {
+	t.Run("unregistered type", func(t *testing.T) {
+		_, err := referenceExportService(t).ReferencedSecretNames(context.Background(), resourceTypeApplication)
+		assert.Error(t, err)
+	})
+	t.Run("list fails", func(t *testing.T) {
+		appService := applicationmock.NewApplicationServiceInterfaceMock(t)
+		appService.On("GetApplicationList", context.Background(), mock.Anything).
+			Return(nil, &tidcommon.InternalServerError)
+		svc := referenceExportService(t, application.NewApplicationExporterForTest(appService, nil))
+
+		_, err := svc.ReferencedSecretNames(context.Background(), resourceTypeApplication)
+		assert.Error(t, err)
+	})
+	t.Run("a credential refers to a variable", func(t *testing.T) {
+		svc := referenceExportService(t, application.NewApplicationExporterForTest(
+			storedApplications(t, confidentialApp("the-id", "var:APPLICATION_MY_APP_CLIENT_SECRET")),
+			sharingWithNoPolicies(t)))
+
+		_, err := svc.ReferencedSecretNames(context.Background(), resourceTypeApplication)
+		assert.Error(t, err)
+	})
+	t.Run("read fails", func(t *testing.T) {
+		appService := applicationmock.NewApplicationServiceInterfaceMock(t)
+		appService.On("GetApplicationList", context.Background(), mock.Anything).Return(
+			&appmodel.ApplicationListResponse{Applications: []appmodel.BasicApplicationResponse{{ID: "app-1"}}}, nil)
+		appService.On("GetApplication", context.Background(), "app-1").Return(nil, &tidcommon.InternalServerError)
+		svc := referenceExportService(t, application.NewApplicationExporterForTest(appService, nil))
+
+		_, err := svc.ReferencedSecretNames(context.Background(), resourceTypeApplication)
+		assert.Error(t, err)
+	})
 }

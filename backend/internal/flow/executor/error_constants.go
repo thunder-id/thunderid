@@ -1701,6 +1701,36 @@ var (
 				"selected. Choose one of those.",
 		},
 	}
+
+	// ErrExtensionAuthResolverConfigInvalid is returned when an extension auth resolver's properties
+	// cannot be used, such as a missing sourceKey.
+	ErrExtensionAuthResolverConfigInvalid = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1125",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_auth_resolver_config_invalid",
+			DefaultValue: "Configuration error",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_auth_resolver_config_invalid_desc",
+			DefaultValue: "The extension auth resolver configuration is invalid",
+		},
+	}
+
+	// ErrExtensionReturnNotVerified is returned when the flow resumes after an extension step sent the
+	// browser to its service's page, without the code the page returned.
+	ErrExtensionReturnNotVerified = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1126",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_return_not_verified",
+			DefaultValue: "Return not verified",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_return_not_verified_desc",
+			DefaultValue: "Continue in the browser that completed the external service's page",
+		},
+	}
 )
 
 // errForEntityCategory returns a copy of err whose messages name the entity category they are

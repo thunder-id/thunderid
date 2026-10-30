@@ -4731,6 +4731,31 @@ const translations = {
     'core.executions.extension.contract.hint':
       'The service must answer with actionStatus SUCCESS, FAILED, INCOMPLETE or ERROR.',
 
+    // Extension auth resolver
+    'core.executions.extensionAuthResolver.description':
+      'Signs in the local user that the extension before this step verified.',
+    'core.executions.extensionAuthResolver.sourceKey.label': 'Source key',
+    'core.executions.extensionAuthResolver.sourceKey.placeholder': 'extension.pin_check.verifiedUserId',
+    'core.executions.extensionAuthResolver.sourceKey.hint':
+      'The key the extension before this step stored the verified identifier under, such as extension.pin_check.verifiedUserId.',
+    'core.executions.extensionAuthResolver.matchAttribute.label': 'Match attribute',
+    'core.executions.extensionAuthResolver.matchAttribute.username': 'Username',
+    'core.executions.extensionAuthResolver.matchAttribute.userId': 'User ID',
+    'core.executions.extensionAuthResolver.matchAttribute.hint':
+      'The user attribute the identifier is matched against. Only attributes users cannot change themselves can be used.',
+    'core.executions.extensionAuthResolver.allowAuthenticationWithoutLocalUser.label':
+      'Allow authentication without a local user',
+    'core.executions.extensionAuthResolver.allowAuthenticationWithoutLocalUser.hint':
+      'When no local user matches, continue so that a Provision User step can create the user.',
+    'core.executions.extensionAuthResolver.attributeMapping.label': 'Attribute mapping',
+    'core.executions.extensionAuthResolver.attributeMapping.keyLabel': 'User attribute',
+    'core.executions.extensionAuthResolver.attributeMapping.valueLabel': 'Source key',
+    'core.executions.extensionAuthResolver.attributeMapping.keyPlaceholder': 'email',
+    'core.executions.extensionAuthResolver.attributeMapping.valuePlaceholder': 'extension.pin_check.email',
+    'core.executions.extensionAuthResolver.attributeMapping.addLabel': 'Add attribute',
+    'core.executions.extensionAuthResolver.attributeMapping.hint':
+      'Attributes a Provision User step takes from the extension for a new user. Only these are taken, and never a credential.',
+
     // Executor input configuration
     'core.executions.inputs.title': 'Executor inputs',
     'core.executions.inputs.typeLabel': 'Type',
@@ -4777,6 +4802,7 @@ const translations = {
     'core.validation.fields.input.idpId': 'Connection is required',
     'core.validation.fields.input.senderId': 'Notification sender is required',
     'core.validation.fields.input.connectionId': 'Connection is required',
+    'core.validation.fields.input.sourceKey': 'Source key is required',
     'core.validation.fields.input.presentationDefinitionId': 'Presentation definition is required',
     'core.validation.fields.input.label': 'Label is required',
     'core.validation.fields.input.ref': 'Attribute is required',

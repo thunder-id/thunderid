@@ -162,6 +162,14 @@ const (
 	// NodePropertyMaxAttempts bounds the attempts a step accepts in one flow execution, such as OTP
 	// sends or an extension step's FAILED and INCOMPLETE answers.
 	NodePropertyMaxAttempts = "maxAttempts"
+	// NodePropertySourceKey names the extension data key an extension auth resolver reads the verified
+	// identifier from.
+	NodePropertySourceKey = "sourceKey"
+	// NodePropertyMatchAttribute names the user attribute an extension auth resolver matches on.
+	NodePropertyMatchAttribute = "matchAttribute"
+	// NodePropertyAttributeMapping maps user attributes to the extension data keys an extension auth
+	// resolver offers to provisioning.
+	NodePropertyAttributeMapping = "attributeMapping"
 )
 
 // RuntimeData keys.
@@ -343,12 +351,18 @@ const (
 	// RuntimeKeyExtensionAttemptCount holds the number of FAILED and INCOMPLETE answers an extension
 	// step has had in the current flow execution, scoped to the step by ExtensionAttemptCountKey.
 	RuntimeKeyExtensionAttemptCount = "extensionAttemptCount"
+	// RuntimeKeyExtensionRedirectPending marks an extension step that sent the browser to its service's
+	// page and waits for it to return, scoped to the step by ExtensionRedirectPendingKey.
+	RuntimeKeyExtensionRedirectPending = "extensionRedirectPending"
 )
 
 // ExtensionDataKeyPrefix starts every runtime-data key an extension step stores from its service's
 // answer, as extension.<nodeId>.<field>, so a returned field never names an engine key, a profile
 // attribute or a credential.
 const ExtensionDataKeyPrefix = "extension."
+
+// extensionMatchAttributeUsername is the user attribute an extension auth resolver matches on by default.
+const extensionMatchAttributeUsername = "username"
 
 // Bounds and default of an extension step's maxAttempts property.
 const (
@@ -361,6 +375,16 @@ const (
 // two extension steps in one flow count separately.
 func ExtensionAttemptCountKey(nodeID string) string {
 	return RuntimeKeyExtensionAttemptCount + ":" + nodeID
+}
+
+// ExtensionRedirectPendingKey scopes RuntimeKeyExtensionRedirectPending to an extension step's node ID.
+func ExtensionRedirectPendingKey(nodeID string) string {
+	return RuntimeKeyExtensionRedirectPending + ":" + nodeID
+}
+
+// ExtensionNamespace returns the prefix of the runtime-data keys the extension step nodeID stores.
+func ExtensionNamespace(nodeID string) string {
+	return ExtensionDataKeyPrefix + nodeID + "."
 }
 
 // SSOCheckpointKey scopes a per-checkpoint SSO control key (RuntimeKeySSOSessionPresent,

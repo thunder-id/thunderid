@@ -466,6 +466,42 @@ describe('computeValidationNotifications', () => {
       expect(result.has('extension-step-1_REQUIRED_FIELD_ERROR')).toBe(false);
     });
 
+    it.each([[{}], [{sourceKey: ''}]])('should flag an extension auth resolver without a source key', (properties) => {
+      const nodes = [
+        createNode({
+          id: 'resolver-step-1',
+          data: {
+            action: {executor: {name: 'ExtensionAuthResolver'}},
+            properties,
+          } as unknown as StepData,
+        }),
+      ];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t);
+
+      expect(
+        result
+          .get('resolver-step-1_REQUIRED_FIELD_ERROR')
+          ?.hasResourceFieldNotification('resolver-step-1_data.properties.sourceKey'),
+      ).toBe(true);
+    });
+
+    it('should accept an extension auth resolver with a source key', () => {
+      const nodes = [
+        createNode({
+          id: 'resolver-step-1',
+          data: {
+            action: {executor: {name: 'ExtensionAuthResolver'}},
+            properties: {sourceKey: 'extension.pin_check.verifiedUserId'},
+          } as unknown as StepData,
+        }),
+      ];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t);
+
+      expect(result.has('resolver-step-1_REQUIRED_FIELD_ERROR')).toBe(false);
+    });
+
     it('should not produce notification for executor with all fields present', () => {
       const nodes = [
         createNode({

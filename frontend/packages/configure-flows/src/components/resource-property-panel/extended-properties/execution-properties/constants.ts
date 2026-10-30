@@ -265,4 +265,5 @@ export const EXECUTORS_WITH_FIXED_INPUTS = new Set<string>([
   ExecutionTypes.PreSuspend,
   ExecutionTypes.IdentityGovernance,
   ExecutionTypes.ExtensionExecutor,
+  ExecutionTypes.ExtensionAuthResolver,
 ]);

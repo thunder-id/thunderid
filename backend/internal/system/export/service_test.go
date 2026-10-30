@@ -1271,6 +1271,14 @@ func (m *MockParameterizer) PlaceholderValues(_ context.Context, _ interface{}, 
 	return map[string]string{}, map[string]string{}, nil
 }
 
+func (m *MockParameterizer) ReferencedSecretNames(_ context.Context, _ interface{}, _ string, _ string,
+	_ *declarativeresource.ResourceRules) (map[string]bool, error) {
+	if m.shouldFail {
+		return nil, fmt.Errorf("%s", m.errorMsg)
+	}
+	return map[string]bool{}, nil
+}
+
 func (m *MockParameterizer) VarPrefix(resourceName string) string {
 	return newParameterizer(templatingRules{}, TemplatePlaceholders).VarPrefix(resourceName)
 }

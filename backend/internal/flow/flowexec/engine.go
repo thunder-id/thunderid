@@ -1530,6 +1530,10 @@ func publishNodeExecutionCompletedEvent(ctx *EngineContext, node core.NodeInterf
 		WithData(event.DataKey.StepNumber, fmt.Sprintf("%d", stepNumber)).
 		WithData(event.DataKey.AttemptNumber, fmt.Sprintf("%d", attemptNumber)).
 		WithData(event.DataKey.DurationMs, fmt.Sprintf("%d", durationMs))
+	if record.ExecutorName != "" {
+		evt.WithData(event.DataKey.ExecutorName, record.ExecutorName).
+			WithData(event.DataKey.ExecutorType, string(record.ExecutorType))
+	}
 
 	// The node that authenticates the subject reports it on its own response, and the engine merges
 	// that into the context only after this event is published. Prefer the response so the

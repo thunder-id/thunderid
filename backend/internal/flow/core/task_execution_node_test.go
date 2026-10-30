@@ -838,6 +838,34 @@ func (s *TaskExecutionNodeTestSuite) TestExecuteIncompleteWithOnIncompleteHandle
 	s.Equal("prompt-credentials", resp.NextNodeID)
 }
 
+func (s *TaskExecutionNodeTestSuite) TestExecuteRedirectionIsNotForwardedToOnIncomplete() {
+	mockExec := NewExecutorInterfaceMock(s.T())
+	node := newTaskExecutionNode("task-1", map[string]interface{}{}, false, false)
+	execNode, _ := node.(ExecutorBackedNodeInterface)
+
+	execNode.SetOnIncomplete("prompt-code")
+
+	mockExec.On("GetName").Return("test-executor").Once()
+	mockExec.On("Execute", mock.Anything).Return(
+		&providers.ExecutorResponse{
+			Status:      providers.ExecExternalRedirection,
+			RedirectURL: "https://pin.example.com/entry",
+		}, nil,
+	).Once()
+
+	execNode.SetExecutor(mockExec)
+
+	ctx := &providers.NodeContext{ExecutionID: "test-flow"}
+	resp, err := node.Execute(ctx)
+
+	s.Nil(err)
+	s.Require().NotNil(resp)
+	s.Equal(common.NodeStatusIncomplete, resp.Status, "A redirection pauses on this node")
+	s.Equal(common.NodeResponseTypeRedirection, resp.Type)
+	s.Equal("https://pin.example.com/entry", resp.RedirectURL)
+	s.Empty(resp.NextNodeID)
+}
+
 func (s *TaskExecutionNodeTestSuite) TestExecuteIncompleteWithOnIncompleteAndFailureReason() {
 	mockExec := NewExecutorInterfaceMock(s.T())
 

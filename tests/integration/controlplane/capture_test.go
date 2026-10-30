@@ -32,16 +32,25 @@ type capturingGateway struct {
 	attempts    map[string]int
 	// written records each value that received an accepted write.
 	written map[string]bool
+	// refuseFirstRemoval makes the first removal of each value fail; removals counts the removals each
+	// value received, failed ones included.
+	refuseFirstRemoval bool
+	removals           map[string]int
 }
 
 func newCapturingGateway() *capturingGateway {
-	g := &capturingGateway{values: map[string]string{}, attempts: map[string]int{}, written: map[string]bool{}}
+	g := &capturingGateway{values: map[string]string{}, attempts: map[string]int{}, written: map[string]bool{},
+		removals: map[string]int{}}
 	g.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("API-Key") != captureGatewayKey {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		if r.Method == http.MethodDelete && len(parts) == 2 {
+			g.remove(w, parts[0]+"/"+parts[1])
+			return
+		}
 		if r.Method != http.MethodPut || len(parts) != 2 {
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -69,6 +78,37 @@ func newCapturingGateway() *capturingGateway {
 		_, _ = w.Write([]byte(`{"name":"` + parts[1] + `"}`))
 	}))
 	return g
+}
+
+// remove removes the value under key, as a store removes a value whether or not it holds one.
+func (g *capturingGateway) remove(w http.ResponseWriter, key string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.removals[key]++
+	if g.refuseFirstRemoval && g.removals[key] == 1 {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	delete(g.values, key)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// goneSoon waits for the value under a name in a collection to be removed, and reports whether it was.
+func (g *capturingGateway) goneSoon(collection, name string) bool {
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, ok := g.held(collection, name); !ok || time.Now().After(deadline) {
+			return !ok
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// removalsAt counts the removals a value received, failed ones included.
+func (g *capturingGateway) removalsAt(collection, name string) int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.removals[collection+"/"+name]
 }
 
 // heldSoon waits for a value to be set under a name in a collection, since the control plane writes
@@ -545,4 +585,100 @@ func (ts *ControlPlaneTestSuite) TestAnHTTPConnectionWithAHeaderAnExportCannotNa
 
 	barrier := ts.captureBarrier(g)
 	ts.Equal([]string{barrier}, g.writtenNames(), "a value of the connection was written to the gateway's store")
+}
+
+// basicAuthentication is the authentication of a connection that signs in with a username and password.
+func basicAuthentication(password string) map[string]any {
+	return map[string]any{"type": "basic", "properties": map[string]any{"username": "cp-user", "password": password}}
+}
+
+// AC2.12: deleting an HTTP connection removes the copy of its secret from the default gateway.
+func (ts *ControlPlaneTestSuite) TestDeletingAnHTTPConnectionReleasesItsSecret() {
+	g := ts.withDefaultGateway()
+	name := unique("cp-http-release")
+	id := ts.createHTTPConnection(map[string]any{"name": name, "url": "https://cp-http-release.example.com/hook",
+		"authentication": basicAuthentication(unique("cp-http-release-secret"))})
+	secret := variableName("CONNECTION", name, "PASSWORD")
+	_, ok := g.heldSoon("secrets", secret)
+	ts.Require().True(ok, "the password was not captured")
+
+	status, raw := ts.call(http.MethodDelete, "/connections/http/"+id, nil, nil)
+	ts.Require().Equal(http.StatusNoContent, status, string(raw))
+
+	ts.True(g.goneSoon("secrets", secret), "the deleted connection's password is still in the gateway's store")
+}
+
+// AC2.12: an update that drops one of a connection's secrets removes that secret's copy and keeps the
+// others.
+func (ts *ControlPlaneTestSuite) TestAnHTTPUpdateDroppingASecretReleasesOnlyThatSecret() {
+	g := ts.withDefaultGateway()
+	name := unique("cp-http-drop")
+	const url = "https://cp-http-drop.example.com/hook"
+	primary := unique("cp-http-drop-primary")
+	apiKeys := func(keys map[string]any) map[string]any {
+		return map[string]any{"name": name, "url": url,
+			"authentication": map[string]any{"type": "api_key", "properties": keys}}
+	}
+	id := ts.createHTTPConnection(apiKeys(map[string]any{"Primary": primary,
+		"Secondary": unique("cp-http-drop-secondary")}))
+	kept, dropped := variableName("CONNECTION", name, "PRIMARY"), variableName("CONNECTION", name, "SECONDARY")
+	_, ok := g.heldSoon("secrets", dropped)
+	ts.Require().True(ok, "the secondary key was not captured")
+
+	status, raw := ts.call(http.MethodPut, "/connections/http/"+id, apiKeys(map[string]any{"Primary": primary}), nil)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+
+	ts.True(g.goneSoon("secrets", dropped), "the dropped key is still in the gateway's store")
+	held, ok := g.held("secrets", kept)
+	ts.True(ok, "the key the connection kept was removed")
+	ts.Equal(primary, held)
+}
+
+// A connection of another type with the same name refers to the same copy, so deleting the HTTP
+// connection leaves it for the other.
+func (ts *ControlPlaneTestSuite) TestDeletingAnHTTPConnectionKeepsASecretAnotherConnectionRefersTo() {
+	g := ts.withDefaultGateway()
+	name := unique("cp-shared")
+	id := ts.createHTTPConnection(map[string]any{"name": name, "url": "https://cp-shared.example.com/hook",
+		"authentication": basicAuthentication(unique("cp-shared-http"))})
+	smtpPassword := unique("cp-shared-smtp")
+	var smtp struct {
+		ID string `json:"id"`
+	}
+	status, raw := ts.call(http.MethodPost, "/connections/email-smtp", map[string]any{"name": name, "ouId": ts.ouID,
+		"host": "smtp.cp-shared.example.com", "port": 587, "fromAddress": "noreply@cp-shared.example.com",
+		"authentication": basicAuthentication(smtpPassword)}, &smtp)
+	ts.Require().Equal(http.StatusCreated, status, string(raw))
+	ts.T().Cleanup(func() { ts.call(http.MethodDelete, "/connections/email-smtp/"+smtp.ID, nil, nil) })
+	secret := variableName("CONNECTION", name, "PASSWORD")
+	ts.Require().True(g.holdsValueSoon("secrets", smtpPassword), "the SMTP password was not captured")
+
+	status, raw = ts.call(http.MethodDelete, "/connections/http/"+id, nil, nil)
+	ts.Require().Equal(http.StatusNoContent, status, string(raw))
+
+	ts.captureBarrier(g)
+	held, ok := g.held("secrets", secret)
+	ts.True(ok, "the copy the SMTP connection refers to was removed")
+	ts.Equal(smtpPassword, held)
+	ts.Zero(g.removalsAt("secrets", secret), "the gateway was asked to remove a copy another connection refers to")
+}
+
+// A removal the gateway fails does not fail the delete; it is tried again until the copy is gone.
+func (ts *ControlPlaneTestSuite) TestARemovalTheGatewayFailsIsTriedAgain() {
+	g := ts.withDefaultGateway()
+	g.mu.Lock()
+	g.refuseFirstRemoval = true
+	g.mu.Unlock()
+	name := unique("cp-http-retry")
+	id := ts.createHTTPConnection(map[string]any{"name": name, "url": "https://cp-http-retry.example.com/hook",
+		"authentication": basicAuthentication(unique("cp-http-retry-secret"))})
+	secret := variableName("CONNECTION", name, "PASSWORD")
+	_, ok := g.heldSoon("secrets", secret)
+	ts.Require().True(ok, "the password was not captured")
+
+	status, raw := ts.call(http.MethodDelete, "/connections/http/"+id, nil, nil)
+	ts.Require().Equal(http.StatusNoContent, status, string(raw))
+
+	ts.True(g.goneSoon("secrets", secret), "the removal was not tried again")
+	ts.GreaterOrEqual(g.removalsAt("secrets", secret), 2)
 }

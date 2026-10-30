@@ -395,7 +395,8 @@ func sanitizeSnapshotRuntimeData(rd map[string]string) map[string]string {
 			strings.HasPrefix(k, common.RuntimeKeySSOSessionPresent+":") ||
 			strings.HasPrefix(k, common.RuntimeKeySSOSessionSaved+":") ||
 			strings.HasPrefix(k, common.ExtensionDataKeyPrefix) ||
-			strings.HasPrefix(k, common.RuntimeKeyExtensionAttemptCount+":") {
+			strings.HasPrefix(k, common.RuntimeKeyExtensionAttemptCount+":") ||
+			strings.HasPrefix(k, common.RuntimeKeyExtensionRedirectPending+":") {
 			continue
 		}
 		out[k] = v

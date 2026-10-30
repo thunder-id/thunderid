@@ -215,8 +215,12 @@ describe('steps models', () => {
       expect(ExecutionTypes.ExtensionExecutor).toBe('ExtensionExecutor');
     });
 
-    it('should have exactly 41 execution types', () => {
-      expect(Object.keys(ExecutionTypes)).toHaveLength(41);
+    it('should have ExtensionAuthResolver type', () => {
+      expect(ExecutionTypes.ExtensionAuthResolver).toBe('ExtensionAuthResolver');
+    });
+
+    it('should have exactly 42 execution types', () => {
+      expect(Object.keys(ExecutionTypes)).toHaveLength(42);
     });
   });
 

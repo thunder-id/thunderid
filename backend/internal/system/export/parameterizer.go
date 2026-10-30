@@ -287,6 +287,38 @@ func (p *parameterizer) PlaceholderValues(ctx context.Context, obj interface{},
 	return variables, secrets, nil
 }
 
+// ReferencedSecretNames returns the name of every secret a reference-style export of the object refers
+// to: one for each credential it names, and each secret reference the object already holds, which
+// that export keeps as it stands.
+func (p *parameterizer) ReferencedSecretNames(ctx context.Context, obj interface{},
+	resourceType string, resourceName string,
+	rules *declarativeresource.ResourceRules) (map[string]bool, error) {
+	reader := *p
+	reader.style = ValueReferences
+	content, _, _, err := reader.ToParameterizedYAML(ctx, obj, resourceType, resourceName, rules)
+	if err != nil {
+		return nil, err
+	}
+	var document yaml.Node
+	if err := yaml.Unmarshal([]byte(content), &document); err != nil {
+		return nil, err
+	}
+	names := map[string]bool{}
+	collectSecretReferences(&document, names)
+	return names, nil
+}
+
+// collectSecretReferences adds the name of each well-formed secret reference under node.
+func collectSecretReferences(node *yaml.Node, names map[string]bool) {
+	if node.Kind == yaml.ScalarNode && valueref.IsSecretReference(node.Value) &&
+		valueref.IsWellFormedReference(node.Value) {
+		names[valueref.ReferencedName(node.Value)] = true
+	}
+	for _, child := range node.Content {
+		collectSecretReferences(child, names)
+	}
+}
+
 // listItems reads a list's value, the JSON list of its items, and reports false for anything else.
 func listItems(value string) ([]string, bool) {
 	var items []string

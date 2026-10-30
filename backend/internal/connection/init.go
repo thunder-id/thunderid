@@ -29,7 +29,8 @@ import (
 // A declarative connection names its owner, and the service of its kind resolves and checks it.
 //
 // valueCapturer is optional. Given one, the service hands it every connection it creates or changes,
-// so the values the connection's export refers to are kept where a reference finds them. It also
+// so the values the connection's export refers to are kept where a reference finds them, and every
+// HTTP connection it deletes or whose secret an update drops, so those secrets are released. It also
 // returns the HTTP connection writer.
 //
 // Connections of every kind register with the sharing framework as one resource type, so a connection
@@ -40,7 +41,7 @@ func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, idpService idp.IDPSer
 	resourceService resource.ResourceServiceInterface,
 	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
 	httpService httpconnection.HTTPConnectionServiceInterface,
-	valueCapturer declarativeresource.ValueCapturer,
+	valueCapturer declarativeresource.ValueReleaser,
 	sharingService sharing.SharingServiceInterface) (
 	declarativeresource.ResourceExporter, resourcedependency.Provider, HTTPConnectionWriterInterface, error) {
 	svc := newService(idpService, notificationService, resourceService, authZENPDPService, httpService)

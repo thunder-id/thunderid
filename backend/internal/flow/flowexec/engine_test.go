@@ -4833,6 +4833,42 @@ func TestNodeExecutionCompletedEvent_SubjectComesFromTheNodeResponse(t *testing.
 	})
 }
 
+// A node-completed event names the executor that ran, so a sign-in through a step such as the
+// extension auth resolver is recorded as that step's authentication.
+func TestNodeExecutionCompletedEvent_NamesTheExecutor(t *testing.T) {
+	mockObs, captured := setupCapturingObservability(t)
+	defer config.ResetServerRuntime()
+
+	node := coremock.NewNodeInterfaceMock(t)
+	node.On("GetID").Return("resolve_user")
+	node.On("GetType").Return(common.NodeTypeTaskExecution)
+	ctx := &EngineContext{
+		ExecutionID:      "flow-exec-5",
+		FlowType:         providers.FlowTypeAuthentication,
+		AppID:            "app-5",
+		ExecutionHistory: make(map[string]*providers.NodeExecutionRecord),
+	}
+	recordNodeExecution(ctx, node, &common.NodeResponse{Status: common.NodeStatusComplete}, nil, 0, 1)
+	ctx.ExecutionHistory["resolve_user"].ExecutorName = "ExtensionAuthResolver"
+	ctx.ExecutionHistory["resolve_user"].ExecutorType = providers.ExecutorTypeAuthentication
+	nodeResp := &common.NodeResponse{Status: common.NodeStatusComplete}
+	nodeResp.AuthUser.SetStateFor("default", providers.AuthState{
+		EntityReference: &providers.EntityReference{
+			EntityID:       "user-778",
+			EntityCategory: string(providers.EntityCategoryUser),
+		},
+	})
+
+	publishNodeExecutionCompletedEvent(ctx, node, nodeResp, nil, 0, 1, mockObs)
+
+	assertEventData(t, (*captured)[0], map[string]interface{}{
+		event.DataKey.NodeID:       "resolve_user",
+		event.DataKey.ExecutorName: "ExtensionAuthResolver",
+		event.DataKey.ExecutorType: string(providers.ExecutorTypeAuthentication),
+		event.DataKey.Subject:      "user-778",
+	})
+}
+
 func TestFlowCompletedEvent_ReportsPrincipalAndCorrelation(t *testing.T) {
 	mockObs, captured := setupCapturingObservability(t)
 	defer config.ResetServerRuntime()

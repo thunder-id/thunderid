@@ -5,16 +5,19 @@ package connection
 
 import (
 	"context"
+	"maps"
 	"net/http"
 
 	"github.com/stretchr/testify/mock"
 
 	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/export"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/connection/httpconnectionmock"
@@ -30,6 +33,8 @@ func (r *recordingCapturer) CaptureValues(_ context.Context, resourceType string
 	r.resourceTypes = append(r.resourceTypes, resourceType)
 	r.resources = append(r.resources, resource)
 }
+
+func (r *recordingCapturer) ReleaseSecrets(context.Context, string, interface{}) {}
 
 // captured returns the one connection handed to the capturer, in the shape its exporter reads back.
 func (s *ServiceTestSuite) captured(r *recordingCapturer) *connectionExportModel {
@@ -219,4 +224,268 @@ func (s *ServiceTestSuite) TestInitializeHandsTheHTTPConnectionWriter() {
 		newSharingServiceMock(s.T()))
 	s.Require().NoError(err)
 	s.IsType(&httpConnectionWriter{}, synced)
+}
+
+// gatewayStore keeps what the default gateway's store holds, by name, working each name out with the
+// export service as the gateway's value capture does: a capture sets every value, and a release
+// removes each secret of the released resource no stored connection refers to.
+type gatewayStore struct {
+	values export.ExportServiceInterface
+	held   map[string]string
+}
+
+func (g *gatewayStore) CaptureValues(ctx context.Context, resourceType string, resource interface{}) {
+	variables, secrets, err := g.values.PlaceholderValues(ctx, resourceType, resource)
+	if err != nil {
+		return
+	}
+	maps.Copy(g.held, variables)
+	maps.Copy(g.held, secrets)
+}
+
+func (g *gatewayStore) ReleaseSecrets(ctx context.Context, resourceType string, resource interface{}) {
+	_, secrets, err := g.values.PlaceholderValues(ctx, resourceType, resource)
+	if err != nil {
+		return
+	}
+	referenced, err := g.values.ReferencedSecretNames(ctx, resourceType)
+	if err != nil {
+		return
+	}
+	for name := range secrets {
+		if !referenced[name] {
+			delete(g.held, name)
+		}
+	}
+}
+
+// withHTTPStore gives the service an HTTP connection service holding the one connection each write
+// replaces, the given message senders, and a gateway store, whose values it returns.
+func (s *ServiceTestSuite) withHTTPStore(senders ...ncommon.NotificationSenderDTO) (map[string]string,
+	*httpconnectionmock.HTTPConnectionServiceInterfaceMock) {
+	mockHTTP := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, newAuthZENPDPServiceMock(s.T()), mockHTTP)
+	store := &gatewayStore{held: map[string]string{}, values: export.Initialize(http.NewServeMux(),
+		[]declarativeresource.ResourceExporter{newConnectionExporter(s.mockIDP, s.mockNotif, nil, mockHTTP)},
+		export.ValueReferences)}
+	s.svc.valueCapturer = store
+
+	s.mockIDP.On("GetIdentityProviderList", mock.Anything).Return([]idp.BasicIDPDTO{},
+		(*tidcommon.ServiceError)(nil)).Maybe()
+	s.mockIDP.On("GetIdentityProvider", mock.Anything, mock.Anything).Return((*providers.IDPDTO)(nil),
+		&idp.ErrorIDPNotFound).Maybe()
+	s.mockNotif.On("ListSenders", mock.Anything).Return(senders, (*tidcommon.ServiceError)(nil)).Maybe()
+	for i := range senders {
+		s.mockNotif.On("GetSender", mock.Anything, senders[i].ID).Return(&senders[i],
+			(*tidcommon.ServiceError)(nil)).Maybe()
+	}
+	s.mockNotif.On("GetSender", mock.Anything, storedHTTPConnectionID).Return(
+		(*ncommon.NotificationSenderDTO)(nil), &notification.ErrorSenderNotFound).Maybe()
+
+	var stored *httpconnection.HTTPConnection
+	write := func(connection httpconnection.HTTPConnection) *httpconnection.HTTPConnection {
+		connection.ID = storedHTTPConnectionID
+		stored = &connection
+		return stored
+	}
+	mockHTTP.On("CreateHTTPConnection", mock.Anything, mock.Anything).Return(
+		func(_ context.Context, connection httpconnection.HTTPConnection) *httpconnection.HTTPConnection {
+			return write(connection)
+		}, func(context.Context, httpconnection.HTTPConnection) *tidcommon.ServiceError { return nil }).Maybe()
+	mockHTTP.On("UpdateHTTPConnection", mock.Anything, storedHTTPConnectionID, mock.Anything).Return(
+		func(_ context.Context, _ string, connection httpconnection.HTTPConnection) *httpconnection.HTTPConnection {
+			return write(connection)
+		}, func(context.Context, string, httpconnection.HTTPConnection) *tidcommon.ServiceError { return nil }).Maybe()
+	mockHTTP.On("GetHTTPConnection", mock.Anything, storedHTTPConnectionID).Return(
+		func(context.Context, string) *httpconnection.HTTPConnection { return stored },
+		func(context.Context, string) *tidcommon.ServiceError {
+			if stored == nil {
+				return &httpconnection.ErrorNotFound
+			}
+			return nil
+		}).Maybe()
+	mockHTTP.On("ListHTTPConnections", mock.Anything).Return(
+		func(context.Context) []httpconnection.HTTPConnection {
+			if stored == nil {
+				return nil
+			}
+			return []httpconnection.HTTPConnection{*stored}
+		}, func(context.Context) *tidcommon.ServiceError { return nil }).Maybe()
+	mockHTTP.On("DeleteHTTPConnection", mock.Anything, storedHTTPConnectionID).Return(
+		func(context.Context, string) *tidcommon.ServiceError {
+			stored = nil
+			return nil
+		}).Maybe()
+	return store.held, mockHTTP
+}
+
+// createHTTPThroughTheAPI creates the connection as the create route maps it.
+func (s *ServiceTestSuite) createHTTPThroughTheAPI(request httpConnectionRequest) {
+	s.T().Helper()
+	dto, err := httpToDTO(request)
+	s.Require().NoError(err)
+	_, svcErr := s.svc.createHTTP(context.Background(), *dto)
+	s.Require().Nil(svcErr)
+}
+
+// updateHTTPThroughTheAPI updates the connection as the update route maps it.
+func (s *ServiceTestSuite) updateHTTPThroughTheAPI(request httpConnectionRequest) {
+	s.T().Helper()
+	dto, err := httpUpdateToDTO(request)
+	s.Require().NoError(err)
+	_, svcErr := s.svc.updateHTTP(context.Background(), storedHTTPConnectionID, *dto)
+	s.Require().Nil(svcErr)
+}
+
+func riskEngineBasic(password string) httpConnectionRequest {
+	return httpConnectionRequest{Name: "Risk Engine", URL: storedHTTPURL,
+		Authentication: basicAuthRequest("svc-user", password)}
+}
+
+// riskEngineSMTP is an SMTP connection with the HTTP connection's name, so its password is named as the
+// HTTP connection's is.
+func (s *ServiceTestSuite) riskEngineSMTP() ncommon.NotificationSenderDTO {
+	return ncommon.NotificationSenderDTO{
+		ID: "sm-1", Name: "Risk Engine", Type: ncommon.NotificationSenderTypeEmail,
+		Provider: ncommon.NotificationProviderTypeSMTP,
+		Properties: []cmodels.Property{
+			mustProperty(s.T(), ncommon.SMTPPropKeyHost, "smtp.example.com", false),
+			mustProperty(s.T(), ncommon.SMTPPropKeyPort, "587", false),
+			mustProperty(s.T(), ncommon.SMTPPropKeyFromAddress, "noreply@example.com", false),
+			mustProperty(s.T(), "authentication_type", string(outboundauth.TypeBasic), false),
+			mustProperty(s.T(), "authentication_username", "mailer", false),
+			mustProperty(s.T(), "authentication_password", "smtp-password", true),
+		},
+	}
+}
+
+// AC2.12: a deleted connection leaves no copy of its secret in the gateway's store.
+func (s *ServiceTestSuite) TestDeletingAnHTTPConnectionReleasesItsSecret() {
+	held, _ := s.withHTTPStore()
+	s.createHTTPThroughTheAPI(riskEngineBasic("old-password"))
+	s.Require().Equal(map[string]string{"CONNECTION_RISK_ENGINE_PASSWORD": "old-password"}, held)
+
+	s.Require().Nil(s.svc.deleteHTTP(context.Background(), storedHTTPConnectionID))
+
+	s.Empty(held)
+}
+
+// A connection of another type whose secret is named alike still refers to the copy, so it stays.
+func (s *ServiceTestSuite) TestDeletingAnHTTPConnectionKeepsASecretAnotherConnectionRefersTo() {
+	held, _ := s.withHTTPStore(s.riskEngineSMTP())
+	s.createHTTPThroughTheAPI(riskEngineBasic("old-password"))
+
+	s.Require().Nil(s.svc.deleteHTTP(context.Background(), storedHTTPConnectionID))
+
+	s.Equal(map[string]string{"CONNECTION_RISK_ENGINE_PASSWORD": "old-password"}, held)
+}
+
+// A delete that is refused, or of a connection that is not there, releases nothing.
+func (s *ServiceTestSuite) TestAnHTTPDeleteThatRemovesNothingReleasesNothing() {
+	held, mockHTTP := s.withHTTPStore()
+	s.Require().Nil(s.svc.deleteHTTP(context.Background(), storedHTTPConnectionID))
+	s.createHTTPThroughTheAPI(riskEngineBasic("old-password"))
+	mockHTTP.ExpectedCalls = withoutExpectations(mockHTTP.ExpectedCalls, "DeleteHTTPConnection")
+	mockHTTP.On("DeleteHTTPConnection", mock.Anything, storedHTTPConnectionID).
+		Return(&declarativeresource.ErrorDeclarativeResourceDeleteOperation)
+
+	s.Require().NotNil(s.svc.deleteHTTP(context.Background(), storedHTTPConnectionID))
+
+	s.Equal(map[string]string{"CONNECTION_RISK_ENGINE_PASSWORD": "old-password"}, held)
+}
+
+// A connection that cannot be read is not deleted, since what it held could not then be released.
+func (s *ServiceTestSuite) TestAnHTTPDeleteWhoseReadFailsDeletesNothing() {
+	mockHTTP := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, newAuthZENPDPServiceMock(s.T()), mockHTTP)
+	s.svc.valueCapturer = &recordingCapturer{}
+	mockHTTP.On("GetHTTPConnection", mock.Anything, storedHTTPConnectionID).
+		Return((*httpconnection.HTTPConnection)(nil), &tidcommon.InternalServerError)
+
+	s.Equal(&tidcommon.InternalServerError, s.svc.deleteHTTP(context.Background(), storedHTTPConnectionID))
+	mockHTTP.AssertNotCalled(s.T(), "DeleteHTTPConnection", mock.Anything, mock.Anything)
+}
+
+// Without a capturer, which is every plane but a control plane, a delete still reads the connection first, so a
+// delete naming a connection of another kind never reaches the policy cleanup, but releases nothing.
+func (s *ServiceTestSuite) TestAnHTTPDeleteWithoutACapturerReleasesNothing() {
+	mockHTTP := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, newAuthZENPDPServiceMock(s.T()), mockHTTP)
+	mockHTTP.On("GetHTTPConnection", mock.Anything, storedHTTPConnectionID).
+		Return(&httpconnection.HTTPConnection{ID: storedHTTPConnectionID}, (*tidcommon.ServiceError)(nil))
+	mockHTTP.On("DeleteHTTPConnection", mock.Anything, storedHTTPConnectionID).Return((*tidcommon.ServiceError)(nil))
+
+	s.Require().Nil(s.svc.deleteHTTP(context.Background(), storedHTTPConnectionID))
+}
+
+// AC2.12: an update releases only the secrets it dropped. One the connection still holds, under its
+// name or a new one, stays, so a version captured before the update still finds it.
+func (s *ServiceTestSuite) TestAnHTTPUpdateReleasesOnlyTheSecretsItDropped() {
+	apiKeys := func(keys map[string]string) httpConnectionRequest {
+		return httpConnectionRequest{Name: "Risk Engine", URL: storedHTTPURL,
+			Authentication: &outboundauth.Authentication{Type: string(outboundauth.TypeAPIKey), Properties: keys}}
+	}
+	cases := map[string]struct {
+		create, update httpConnectionRequest
+		senders        []ncommon.NotificationSenderDTO
+		want           map[string]string
+	}{
+		"the method changes": {
+			create: riskEngineBasic("old-password"),
+			update: httpConnectionRequest{Name: "Risk Engine", URL: storedHTTPURL,
+				Authentication: &outboundauth.Authentication{Type: string(outboundauth.TypeBearer),
+					Properties: map[string]string{outboundauth.FieldBearerToken: "new-token"}}},
+			want: map[string]string{"CONNECTION_RISK_ENGINE_TOKEN": "new-token"},
+		},
+		"authentication is removed": {
+			create: riskEngineBasic("old-password"),
+			update: httpConnectionRequest{Name: "Risk Engine", URL: storedHTTPURL},
+			want:   map[string]string{},
+		},
+		"an API-key header is removed": {
+			create: apiKeys(map[string]string{"Primary": "primary", "Secondary": "secondary"}),
+			update: apiKeys(map[string]string{"Primary": "primary"}),
+			want:   map[string]string{"CONNECTION_RISK_ENGINE_PRIMARY": "primary"},
+		},
+		"the password is replaced": {
+			create: riskEngineBasic("old-password"),
+			update: riskEngineBasic("new-password"),
+			want:   map[string]string{"CONNECTION_RISK_ENGINE_PASSWORD": "new-password"},
+		},
+		"the connection is renamed and keeps its password": {
+			create: riskEngineBasic("old-password"),
+			update: httpConnectionRequest{Name: "Fraud Engine", URL: storedHTTPURL,
+				Authentication: basicAuthRequest("svc-user", "")},
+			want: map[string]string{"CONNECTION_RISK_ENGINE_PASSWORD": "old-password",
+				"CONNECTION_FRAUD_ENGINE_PASSWORD": "old-password"},
+		},
+		"another connection refers to the dropped secret": {
+			create:  riskEngineBasic("old-password"),
+			update:  httpConnectionRequest{Name: "Risk Engine", URL: storedHTTPURL},
+			senders: []ncommon.NotificationSenderDTO{s.riskEngineSMTP()},
+			want:    map[string]string{"CONNECTION_RISK_ENGINE_PASSWORD": "old-password"},
+		},
+	}
+	for name, tc := range cases {
+		s.Run(name, func() {
+			s.SetupTest()
+			held, _ := s.withHTTPStore(tc.senders...)
+			s.createHTTPThroughTheAPI(tc.create)
+
+			s.updateHTTPThroughTheAPI(tc.update)
+
+			s.Equal(tc.want, held)
+		})
+	}
+}
+
+// withoutExpectations drops the expectations set for a method, so a test can set it again.
+func withoutExpectations(calls []*mock.Call, method string) []*mock.Call {
+	kept := make([]*mock.Call, 0, len(calls))
+	for _, call := range calls {
+		if call.Method != method {
+			kept = append(kept, call)
+		}
+	}
+	return kept
 }

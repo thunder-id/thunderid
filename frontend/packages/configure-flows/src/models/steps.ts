@@ -104,6 +104,7 @@ export const ExecutionTypes = {
   OwnerResolver: 'OwnerResolver',
   HTTPRequestExecutor: 'HTTPRequestExecutor',
   ExtensionExecutor: 'ExtensionExecutor',
+  ExtensionAuthResolver: 'ExtensionAuthResolver',
   OUExecutor: 'OUExecutor',
   UserTypeResolver: 'UserTypeResolver',
   AgentTypeResolver: 'AgentTypeResolver',

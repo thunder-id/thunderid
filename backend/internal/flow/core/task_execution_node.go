@@ -125,7 +125,8 @@ func (n *taskExecutionNode) Execute(ctx *providers.NodeContext) (*common.NodeRes
 		for _, input := range n.inputs {
 			delete(ctx.UserInputs, input.Identifier)
 		}
-	} else if nodeResp.Status == common.NodeStatusIncomplete && n.onIncomplete != "" {
+	} else if nodeResp.Status == common.NodeStatusIncomplete && n.onIncomplete != "" &&
+		nodeResp.Type != common.NodeResponseTypeRedirection {
 		// Executor requires user input - forward to dedicated prompt node
 		// Change status to Forward so engine forwards execution to onIncomplete node
 		nodeResp.Status = common.NodeStatusForward

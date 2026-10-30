@@ -6,6 +6,7 @@ package export
 import (
 	"context"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"sort"
@@ -60,6 +61,9 @@ type parameterizerInterface interface {
 	PlaceholderValues(ctx context.Context, obj interface{},
 		resourceType string, resourceName string,
 		rules *declarativeresource.ResourceRules) (map[string]string, map[string]string, error)
+	ReferencedSecretNames(ctx context.Context, obj interface{},
+		resourceType string, resourceName string,
+		rules *declarativeresource.ResourceRules) (map[string]bool, error)
 	VarPrefix(resourceName string) string
 }
 
@@ -101,6 +105,10 @@ type ExportServiceInterface interface {
 	// must be of the type the exporter registered for resourceType reads back.
 	PlaceholderValues(ctx context.Context, resourceType string, resource interface{}) (
 		map[string]string, map[string]string, error)
+	// ReferencedSecretNames returns the name of every secret a reference-style export of a stored
+	// resource of the type refers to, each resource named as PlaceholderValues names it. An error
+	// means the names could not all be worked out.
+	ReferencedSecretNames(ctx context.Context, resourceType string) (map[string]bool, error)
 }
 
 // exportService implements the ExportServiceInterface.
@@ -433,6 +441,33 @@ func (es *exportService) PlaceholderValues(ctx context.Context, resourceType str
 	}
 	return es.parameterizer.PlaceholderValues(ctx, resource, exporter.GetParameterizerType(), name,
 		rulesFor(exporter, resource))
+}
+
+// ReferencedSecretNames returns the name of every secret a reference-style export of a stored
+// resource of the type refers to.
+func (es *exportService) ReferencedSecretNames(ctx context.Context, resourceType string) (map[string]bool, error) {
+	exporter, exists := es.registry.Get(resourceType)
+	if !exists {
+		return nil, fmt.Errorf("no exporter is registered for resource type %q", resourceType)
+	}
+	ids, svcErr := exporter.GetAllResourceIDs(ctx)
+	if svcErr != nil {
+		return nil, fmt.Errorf("the %s resources could not be listed: %s", resourceType, svcErr.Error.DefaultValue)
+	}
+	names := map[string]bool{}
+	for _, id := range ids {
+		resource, name, svcErr := exporter.GetResourceByID(ctx, id)
+		if svcErr != nil {
+			return nil, fmt.Errorf("the %s %s could not be read: %s", resourceType, id, svcErr.Error.DefaultValue)
+		}
+		referenced, err := es.parameterizer.ReferencedSecretNames(ctx, resource, exporter.GetParameterizerType(),
+			name, rulesFor(exporter, resource))
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(names, referenced)
+	}
+	return names, nil
 }
 
 // rulesFor returns the parameterization rules an exporter applies to one resource.

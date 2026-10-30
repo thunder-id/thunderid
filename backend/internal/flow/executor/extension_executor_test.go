@@ -494,9 +494,35 @@ func (s *ExtensionExecutorTestSuite) TestExecute_BodyOfExactlyTheCapIsRead() {
 	s.Equal(providers.ExecComplete, execResp.Status)
 }
 
-func (s *ExtensionExecutorTestSuite) TestExecute_IncompleteWithARedirectURLIsAnErrorInThisBuild() {
-	for _, redirectURL := range []string{`"https://pin.example.com/entry"`, `"javascript:alert(1)"`,
-		`"data:text/html,x"`, `"/relative"`, `"//pin.example.com"`, `42`} {
+func (s *ExtensionExecutorTestSuite) TestExecute_IncompleteWithARedirectURLSendsTheBrowserThere() {
+	for _, redirectURL := range []string{"https://pin.example.com/entry?flowId=1", "http://localhost:3000/pin"} {
+		s.Run(redirectURL, func() {
+			s.SetupTest()
+			defer s.TearDownTest()
+
+			execResp := s.run(s.nodeContext(), `{"actionStatus":"INCOMPLETE","redirectUrl":"`+redirectURL+
+				`","failureDescription":"Enter your PIN.","challengeId":"c-1"}`)
+
+			s.Equal(providers.ExecExternalRedirection, execResp.Status)
+			s.Equal(redirectURL, execResp.RedirectURL)
+			s.Nil(execResp.Error, "a redirect shows no error")
+			s.Equal(map[string]string{
+				"extension.risk_check.challengeId":               "c-1",
+				common.ExtensionRedirectPendingKey("risk_check"): dataValueTrue,
+			}, execResp.RuntimeData,
+				"the answer's fields are stored, redirectUrl is not, and the redirect is not counted")
+			evt := s.onlyEvent()
+			s.Equal(string(extensionOutcomeIncomplete), evt.Data[event.DataKey.Outcome])
+			s.NotContains(evt.Data, event.DataKey.ErrorKind)
+		})
+	}
+}
+
+func (s *ExtensionExecutorTestSuite) TestExecute_UnsafeRedirectURLIsAnError() {
+	for _, redirectURL := range []string{`"javascript:alert(1)"`, `"data:text/html,x"`, `"/relative"`,
+		`"//pin.example.com/entry"`, `"pin.example.com/entry"`, `"https://"`, `"ftp://pin.example.com"`,
+		`"https://pin.example.com/%zz"`, `42`, `true`, `{"url":"https://pin.example.com"}`,
+		`["https://pin.example.com"]`} {
 		s.Run(redirectURL, func() {
 			s.SetupTest()
 			defer s.TearDownTest()
@@ -504,10 +530,142 @@ func (s *ExtensionExecutorTestSuite) TestExecute_IncompleteWithARedirectURLIsAnE
 			execResp := s.run(s.nodeContext(), `{"actionStatus":"INCOMPLETE","redirectUrl":`+redirectURL+`}`)
 
 			s.assertCallFailed(execResp)
-			s.NotEqual(providers.ExecExternalRedirection, execResp.Status)
 			s.Empty(execResp.RedirectURL)
+			s.Equal(string(extensionErrorKindContract), s.onlyEvent().Data[event.DataKey.ErrorKind])
 		})
 	}
+}
+
+func (s *ExtensionExecutorTestSuite) TestExecute_EmptyRedirectURLIsAnIncompleteWithoutRedirect() {
+	execResp := s.run(s.nodeContext(), `{"actionStatus":"INCOMPLETE","redirectUrl":""}`)
+
+	s.Equal(providers.ExecUserInputRequired, execResp.Status)
+	s.Empty(execResp.RedirectURL)
+}
+
+func (s *ExtensionExecutorTestSuite) TestExecute_RedirectURLIsIgnoredWithAnotherStatus() {
+	for _, body := range []string{`{"actionStatus":"SUCCESS","redirectUrl":"javascript:alert(1)"}`,
+		`{"actionStatus":"FAILED","redirectUrl":"https://pin.example.com"}`} {
+		s.Run(body, func() {
+			s.SetupTest()
+			defer s.TearDownTest()
+
+			execResp := s.run(s.nodeContext(), body)
+
+			s.NotEqual(providers.ExecExternalRedirection, execResp.Status)
+			s.Empty(execResp.RedirectURL)
+			s.NotEqual(string(extensionOutcomeError), s.onlyEvent().Data[event.DataKey.Outcome])
+		})
+	}
+}
+
+func (s *ExtensionExecutorTestSuite) TestExecute_RedirectWaitsForTheBrowserToReturn() {
+	execResp := s.run(s.nodeContext(), `{"actionStatus":"INCOMPLETE","redirectUrl":"https://pin.example.com/entry"}`)
+
+	s.Equal(providers.ExecExternalRedirection, execResp.Status)
+	s.Equal(dataValueTrue, execResp.RuntimeData[common.ExtensionRedirectPendingKey("risk_check")])
+}
+
+func (s *ExtensionExecutorTestSuite) TestExecute_ReturnFromTheRedirectForwardsItsCodeToTheSameExecution() {
+	cases := []struct {
+		name      string
+		inputKeys []interface{}
+	}{
+		{name: "code not named"},
+		{name: "code named", inputKeys: []interface{}{"code"}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			defer s.TearDownTest()
+			s.answerInTurn(`{"actionStatus":"INCOMPLETE","redirectUrl":"https://pin.example.com/entry"}`,
+				`{"actionStatus":"SUCCESS","verifiedUserId":"user-7"}`)
+			ctx := s.nodeContext()
+			ctx.UserInputs = map[string]string{}
+			if tc.inputKeys != nil {
+				ctx.NodeProperties[common.NodePropertyInputKeys] = tc.inputKeys
+			}
+			s.Equal(providers.ExecExternalRedirection, s.arrive(ctx).Status)
+
+			ctx.UserInputs = map[string]string{"code": "pin-ok"}
+			execResp := s.arrive(ctx)
+
+			s.Equal(providers.ExecComplete, execResp.Status)
+			s.Equal("user-7", ctx.RuntimeData["extension.risk_check.verifiedUserId"])
+			s.NotContains(ctx.RuntimeData, common.ExtensionRedirectPendingKey("risk_check"),
+				"the answer to the return ends the wait")
+			s.NotContains(ctx.UserInputs, "code", "the returned code reaches no later step")
+			s.Require().Len(s.requests, 2)
+			var first, second extensionRequest
+			s.Require().NoError(json.Unmarshal(s.requests[0].body, &first))
+			s.Require().NoError(json.Unmarshal(s.requests[1].body, &second))
+			s.Equal(first.ExecutionID, second.ExecutionID)
+			s.Equal(map[string]string{}, first.UserInputs)
+			s.Equal(map[string]string{"code": "pin-ok"}, second.UserInputs,
+				"the service gets the code to check it issued it to the browser that completed its page")
+		})
+	}
+}
+
+func (s *ExtensionExecutorTestSuite) TestExecute_ReturnWithoutACodeIsRefusedWithoutACall() {
+	for name, inputs := range map[string]map[string]string{
+		"no code":    {},
+		"empty code": {"code": ""},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			defer s.TearDownTest()
+			s.answer(http.StatusOK, `{"actionStatus":"SUCCESS"}`)
+			ctx := s.nodeContext()
+			ctx.UserInputs = inputs
+			ctx.RuntimeData[common.ExtensionRedirectPendingKey("risk_check")] = dataValueTrue
+
+			execResp, err := s.executor.Execute(ctx)
+
+			s.Require().NoError(err)
+			s.Equal(providers.ExecFailure, execResp.Status)
+			s.Equal(&ErrExtensionReturnNotVerified, execResp.Error)
+			s.Empty(s.requests, "the service is not asked for the outcome")
+			s.Equal(map[string]string{common.ExtensionAttemptCountKey("risk_check"): "1"}, execResp.RuntimeData,
+				"a refused return counts as an attempt")
+			s.Equal(dataValueTrue, ctx.RuntimeData[common.ExtensionRedirectPendingKey("risk_check")],
+				"the step still waits for the browser that left")
+			s.Equal(string(extensionOutcomeReturnRefused), s.onlyEvent().Data[event.DataKey.Outcome])
+		})
+	}
+}
+
+func (s *ExtensionExecutorTestSuite) TestExecute_ReturnWithoutAnAnswerKeepsWaiting() {
+	s.answer(http.StatusOK, `{"actionStatus":"SUCCESS"}`)
+	url := s.server.URL
+	s.server.Close()
+	s.server = nil
+	s.resolveTo(url, time.Second)
+	ctx := s.nodeContext()
+	ctx.UserInputs = map[string]string{"code": "pin-ok"}
+	ctx.RuntimeData[common.ExtensionRedirectPendingKey("risk_check")] = dataValueTrue
+
+	execResp, err := s.executor.Execute(ctx)
+
+	s.Require().NoError(err)
+	s.assertCallFailed(execResp)
+	s.Equal(dataValueTrue, ctx.RuntimeData[common.ExtensionRedirectPendingKey("risk_check")])
+}
+
+func (s *ExtensionExecutorTestSuite) TestExecute_RedirectIsNotCountedAsAnAttempt() {
+	s.answerInTurn(`{"actionStatus":"INCOMPLETE","redirectUrl":"https://pin.example.com/entry"}`,
+		`{"actionStatus":"INCOMPLETE","redirectUrl":"https://pin.example.com/entry"}`, `{"actionStatus":"FAILED"}`)
+	ctx := s.nodeContext()
+	ctx.NodeProperties[common.NodePropertyMaxAttempts] = float64(1)
+	s.arrive(ctx)
+	ctx.UserInputs = map[string]string{"code": "pin-1"}
+	s.arrive(ctx)
+	ctx.UserInputs = map[string]string{"code": "pin-2"}
+
+	execResp := s.arrive(ctx)
+
+	s.Len(s.requests, 3, "redirects do not use up the attempts")
+	s.Equal(ErrExtensionActionFailed.Code, execResp.Error.Code)
 }
 
 func (s *ExtensionExecutorTestSuite) TestExecute_RedirectURLIsNeverStored() {

@@ -348,6 +348,17 @@ func (ts *ExtensionContractTestSuite) TestAnswersOutsideTheContractAreGenericErr
 		{name: "Redirect", answer: serviceAnswer{status: http.StatusFound,
 			body: `{"actionStatus":"SUCCESS",` + leakyFields + `}`}},
 		{name: "BodyOverTheCap", answer: okAnswer(sizedBody(extContractBodyCap+1, extContractLeak))},
+		// A redirectUrl the browser cannot safely leave for is a breach of the contract (AC4.6).
+		{name: "JavascriptRedirectURL", answer: okAnswer(`{"actionStatus":"INCOMPLETE",` +
+			`"redirectUrl":"javascript:alert('` + extContractLeak + `')",` + leakyFields + `}`)},
+		{name: "DataRedirectURL", answer: okAnswer(`{"actionStatus":"INCOMPLETE",` +
+			`"redirectUrl":"data:text/html,` + extContractLeak + `",` + leakyFields + `}`)},
+		{name: "RelativeRedirectURL", answer: okAnswer(`{"actionStatus":"INCOMPLETE",` +
+			`"redirectUrl":"/` + extContractLeak + `",` + leakyFields + `}`)},
+		{name: "SchemelessRedirectURL", answer: okAnswer(`{"actionStatus":"INCOMPLETE",` +
+			`"redirectUrl":"//pin.example.com/` + extContractLeak + `",` + leakyFields + `}`)},
+		{name: "NonStringRedirectURL", answer: okAnswer(`{"actionStatus":"INCOMPLETE",` +
+			`"redirectUrl":["https://pin.example.com/` + extContractLeak + `"],` + leakyFields + `}`)},
 	}
 
 	for _, tc := range cases {

@@ -507,8 +507,12 @@ func (p *defaultAuthnProvider) authenticateWithCredential(
 	identifiers, credentials map[string]interface{},
 ) (*authncommon.AuthnResult, providers.AuthenticationMethod, *attributedFailure, *tidcommon.ServiceError) {
 	if provisioned, ok := credentials[authnprovidercm.CredentialTypeProvisionedEntityID]; ok {
-		res, svcErr := p.authenticateForProvisioning(provisioned)
+		res, svcErr := p.authenticateBoundEntity(provisioned)
 		// An entity the flow bound by ID checks no secret, so it is admitted as a federated sign-in.
+		return res, providers.AuthenticationMethodFederated, nil, svcErr
+	}
+	if verified, ok := credentials[authnprovidercm.CredentialTypeExtensionVerifiedEntityID]; ok {
+		res, svcErr := p.authenticateBoundEntity(verified)
 		return res, providers.AuthenticationMethodFederated, nil, svcErr
 	}
 	if passkeyCredential, ok := credentials[authnprovidercm.CredentialTypePasskey]; ok {
@@ -540,16 +544,17 @@ func (p *defaultAuthnProvider) authenticateWithCredential(
 	return res, method, failure, svcErr
 }
 
-// authenticateForProvisioning simulates a successful authentication for a provisioned entity.
-// The raw credential is expected to be a non-empty userID string.
-func (p *defaultAuthnProvider) authenticateForProvisioning(
+// authenticateBoundEntity simulates a successful authentication for an entity the flow bound by ID,
+// such as one it provisioned or one an extension auth resolver resolved. The raw credential is
+// expected to be a non-empty userID string.
+func (p *defaultAuthnProvider) authenticateBoundEntity(
 	raw interface{},
 ) (*authncommon.AuthnResult, *tidcommon.ServiceError) {
 	userID, ok := raw.(string)
 	if !ok || userID == "" {
 		return nil, newClientError(authnprovidercm.ErrorCodeInvalidRequest,
-			"Invalid provisioning credential payload",
-			"The provided provisioning credential must be a non-empty userID string")
+			"Invalid entity credential payload",
+			"The provided entity credential must be a non-empty userID string")
 	}
 	return &authncommon.AuthnResult{
 		Token:               map[string]interface{}{authnprovidercm.UserAttributeUserID: userID},

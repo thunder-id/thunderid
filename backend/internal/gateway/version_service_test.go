@@ -356,6 +356,11 @@ type fakeExporter struct {
 	variables map[string]string
 	secrets   map[string]string
 	valuesErr error
+	// referenced and referencedErr are what every stored resource of a type refers to; referencedAsked
+	// counts the reads.
+	referenced      map[string]bool
+	referencedErr   error
+	referencedAsked int
 	// valuesOf records the resource type and resource each value capture asked about.
 	valuesOf []valuesRequest
 	// valuesCtxDone records whether a value capture asked with a context that was already done.
@@ -378,6 +383,11 @@ func (f *fakeExporter) PlaceholderValues(ctx context.Context, resourceType strin
 	f.valuesOf = append(f.valuesOf, valuesRequest{resourceType: resourceType, resource: resource})
 	f.valuesCtxDone = f.valuesCtxDone || ctx.Err() != nil
 	return f.variables, f.secrets, f.valuesErr
+}
+
+func (f *fakeExporter) ReferencedSecretNames(_ context.Context, _ string) (map[string]bool, error) {
+	f.referencedAsked++
+	return f.referenced, f.referencedErr
 }
 
 // fakeGatewayClient records what an apply sends a gateway.

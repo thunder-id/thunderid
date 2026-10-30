@@ -300,7 +300,16 @@ func setFederatedEntityState(ctx context.Context, execResp *providers.ExecutorRe
 // provider's error as is, and ErrEntityAuthFailed when the AuthUser comes back unauthenticated.
 func authenticateEntityByID(ctx *providers.NodeContext, authnProvider providers.AuthnProviderManager,
 	entityID string, base providers.AuthUser, execResp *providers.ExecutorResponse) *tidcommon.ServiceError {
-	credential := map[string]interface{}{authnprovidercm.CredentialTypeProvisionedEntityID: entityID}
+	return authenticateEntity(ctx, authnProvider, authnprovidercm.CredentialTypeProvisionedEntityID, entityID,
+		base, execResp)
+}
+
+// authenticateEntity is authenticateEntityByID with the internal credential type that names how the
+// flow came to trust the entity.
+func authenticateEntity(ctx *providers.NodeContext, authnProvider providers.AuthnProviderManager,
+	credentialType, entityID string, base providers.AuthUser,
+	execResp *providers.ExecutorResponse) *tidcommon.ServiceError {
+	credential := map[string]interface{}{credentialType: entityID}
 	authUser, authenticatedClaims, svcErr := authnProvider.AuthenticateUser(ctx.Context, nil, credential,
 		nil, nil, base)
 	if svcErr != nil {

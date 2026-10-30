@@ -76,6 +76,9 @@ const (
 	CredentialTypeClientSecret = "clientSecret"
 	// CredentialTypeFlowSecret is the flow secret authenticating flow initiation.
 	CredentialTypeFlowSecret = "flowSecret"
+	// CredentialTypeExtensionVerifiedEntityID identifies an entity an extension auth resolver
+	// resolved from an external service's verified answer.
+	CredentialTypeExtensionVerifiedEntityID = "extensionVerifiedEntityID"
 )
 
 // InternalCredentialTypes are the credential types providers dispatch on by key name. Every
@@ -88,6 +91,7 @@ var InternalCredentialTypes = []string{
 	CredentialTypeFederated,
 	CredentialTypeMagicLink,
 	CredentialTypeOpenID4VP,
+	CredentialTypeExtensionVerifiedEntityID,
 }
 
 // SystemCredentialTypes are machine credentials of an application or agent. The entity layer

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
@@ -753,6 +754,40 @@ func (suite *CredentialsAuthExecutorTestSuite) TestExecute_StatedHoldsDifferFrom
 			suite.Require().NotNil(resp.Error)
 			suite.Equal(tc.wantCode, resp.Error.Code)
 			suite.NotEmpty(resp.Inputs)
+		})
+	}
+}
+
+func (suite *CredentialsAuthExecutorTestSuite) TestExecute_InternalCredentialTypeInputIsRefused() {
+	for _, credentialType := range []string{authnprovidercm.CredentialTypeExtensionVerifiedEntityID,
+		authnprovidercm.CredentialTypeProvisionedEntityID} {
+		suite.Run(credentialType, func() {
+			suite.SetupTest()
+			inputs := []providers.Input{
+				{Identifier: userAttributeUsername, Type: providers.InputTypeText, Required: true},
+				{Identifier: credentialType, Type: providers.InputTypePassword, Required: true},
+			}
+			base := coremock.NewExecutorInterfaceMock(suite.T())
+			base.On("GetRequiredInputs", mock.Anything).Return(inputs).Maybe()
+			base.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(true).Maybe()
+			factory := coremock.NewFlowFactoryInterfaceMock(suite.T())
+			factory.On("CreateExecutor", ExecutorNameIdentifying, providers.ExecutorTypeUtility,
+				mock.Anything, mock.Anything, mock.Anything).Return(createMockIdentifyingExecutor(suite.T())).Maybe()
+			factory.On("CreateExecutor", ExecutorNameCredentialsAuth, providers.ExecutorTypeAuthentication,
+				mock.Anything, mock.Anything, mock.Anything).Return(base)
+			executor := newCredentialsAuthExecutor(factory, suite.mockEntityProvider, suite.mockAuthnProvider)
+
+			resp, err := executor.Execute(&providers.NodeContext{
+				ExecutionID: "flow-123",
+				FlowType:    providers.FlowTypeAuthentication,
+				UserInputs:  map[string]string{userAttributeUsername: "victim", credentialType: "victim-user-id"},
+				RuntimeData: make(map[string]string),
+			})
+
+			suite.Error(err, "a flow that asks the user for an internal credential type is misconfigured")
+			suite.Nil(resp)
+			suite.mockAuthnProvider.AssertNotCalled(suite.T(), "AuthenticateUser", mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		})
 	}
 }

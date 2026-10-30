@@ -108,6 +108,17 @@ type ValueCapturer interface {
 	CaptureValues(ctx context.Context, resourceType string, resource interface{})
 }
 
+// ValueReleaser is a ValueCapturer that also removes what it kept once nothing refers to it.
+//
+// A service hands it a resource it has deleted, or one holding only the secrets an update dropped,
+// once the write has succeeded. Each secret that resource's export referred to is removed unless an
+// export of a resource of the same type still refers to it. Like a capture, it is best-effort and
+// never fails the write.
+type ValueReleaser interface {
+	ValueCapturer
+	ReleaseSecrets(ctx context.Context, resourceType string, resource interface{})
+}
+
 // ResourceViewer is implemented by an exporter that can show a document it exported the way the
 // resource's own read returns it, so a resource kept in a configuration version can be shown as that
 // read would show it. A value reference such as "var:NAME" is shown as it is, not resolved. An error

@@ -1598,6 +1598,26 @@ describe('ExecutionExtendedProperties', () => {
     });
   });
 
+  describe('Extension Auth Resolver', () => {
+    it('should render the resolver panel without the inputs editor', () => {
+      const resolverResource = {
+        id: 'extension-auth-resolver-1',
+        data: {
+          action: {executor: {name: ExecutionTypes.ExtensionAuthResolver}},
+          properties: {sourceKey: ''},
+        },
+      } as unknown as Resource;
+
+      render(<ExecutionExtendedProperties resource={resolverResource} onChange={mockOnChange} />);
+
+      expect(screen.getByText('flows:core.executions.extensionAuthResolver.sourceKey.label')).toBeInTheDocument();
+      expect(
+        screen.getByText('flows:core.executions.extensionAuthResolver.allowAuthenticationWithoutLocalUser.label'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('flows:core.executions.inputs.title')).not.toBeInTheDocument();
+    });
+  });
+
   describe('HTTP Request Executor', () => {
     const httpResource = {
       id: 'http-executor-1',
