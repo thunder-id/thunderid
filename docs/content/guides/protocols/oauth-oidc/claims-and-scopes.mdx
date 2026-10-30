@@ -27,13 +27,50 @@ A **scope** is what a client *asks for*. A **claim** is what <ProductName /> *re
 | `phone` | `phone_number`, `phone_number_verified` |
 | `address` | `address` (structured JSON object) |
 
-The actual values come from the authenticated user's attributes. Claims are omitted when the user has no value for them.
+The actual values come from the authenticated user's attributes. Claims are omitted when the user has no value for them. `email_verified` and the other `_verified` claims follow [Verified Contact Claims](#verified-contact-claims).
 
 These defaults are written into a client's `scopeClaims` mapping at creation when it declares no mapping of its own, and they remain the fallback at runtime: a standard scope the mapping does not define still returns the claims listed above. Edit an entry to change what the scope returns, or map it to an empty list to stop it returning anything.
 
 `openid` is the exception: it carries no user attributes of its own, its `sub` comes from the token subject, and it is always granted. It needs no mapping entry.
 
-The attributes a mapping can reference come from the schemas of the client's allowed user types, plus the runtime-computed `groups`, `roles`, `ouId`, `ouName`, `ouHandle`, `userTypeHandle`, and `userTypeName`. The `userTypeHandle` claim carries the handle of the user's type (for example, `person`), and `userTypeName` carries its display name (for example, `Person`). Anything else is removed when the client is saved. A client with no allowed user types has no schema to draw on, so the scopes it is seeded with start empty: the scope names are there, but no attributes are mapped to them until user types are configured. A mapping you send yourself is still stored as sent.
+The attributes a mapping can reference come from the schemas of the client's allowed user types, plus the runtime-computed `groups`, `roles`, `ouId`, `ouName`, `ouHandle`, `userTypeHandle`, and `userTypeName`, and `<attribute>_verified` for each top-level attribute of type `email` or `mobile`. The `userTypeHandle` claim carries the handle of the user's type (for example, `person`), and `userTypeName` carries its display name (for example, `Person`). Anything else is removed when the client is saved. A client with no allowed user types has no schema to draw on, so the scopes it is seeded with start empty: the scope names are there, but no attributes are mapped to them until user types are configured. A mapping you send yourself is still stored as sent.
+
+## Verified Contact Claims
+
+For each top-level user attribute of type `email` or `mobile`, a client can release `<attribute>_verified`: `true` when the user verified the value released beside it, `false` otherwise. Users verify a contact through a self-service flow, see [Email Address and Mobile Number Verification](../../../users/manage-users#email-address-and-mobile-number-verification).
+
+Map the claim to a scope beside its attribute:
+
+```json
+{
+  "scopeClaims": {
+    "email": ["email", "email_verified"],
+    "phone": ["mobile_number", "mobile_number_verified"]
+  }
+}
+```
+
+A user who verified their email address but not their mobile number then receives:
+
+```json
+{
+  "email": "alex@example.com",
+  "email_verified": true,
+  "mobile_number": "+94771234567",
+  "mobile_number_verified": false
+}
+```
+
+| Behavior | Detail |
+|---|---|
+| Released without its attribute | No, listing `email_verified` without `email` releases neither claim |
+| Set by a flow or a federated identity provider | No, only a verification <ProductName /> recorded counts |
+
+**A user type can define the claim itself.** When the user type's schema defines `email_verified`, for example to store a federated identity provider's value, <ProductName /> uses ordinary attribute resolution for that name instead of the server-computed verification status.
+
+**Values are read at sign-in.** Like every other user attribute, the claim keeps its sign-in value in refreshed tokens and in the UserInfo response. A verification or a contact change after sign-in appears after the user signs in again.
+
+**The default `phone` scope uses `phone_number`.** The default Person user type stores its number as `mobile_number`, so map `mobile_number` and `mobile_number_verified` to a scope, as in the example above.
 
 ## Custom Scope-to-Claim Mapping (`scopeClaims`)
 

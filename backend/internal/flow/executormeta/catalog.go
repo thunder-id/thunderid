@@ -29,6 +29,12 @@ var catalog = map[string]providers.ExecutorMeta{
 	},
 	ExecutorNameAttributeCollect:             {},
 	ExecutorNameAttributeUniquenessValidator: {},
+	ExecutorNameAttributeVerification: {
+		SupportedModes: []string{ExecutorModePrepare, ExecutorModeRecord},
+		SupportedProperties: []providers.ExecutorSupportedProperties{
+			{Property: "attribute", ApplicableModes: []string{ExecutorModePrepare}},
+		},
+	},
 	ExecutorNameAuthAssert: {
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "callbackType"},

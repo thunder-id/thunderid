@@ -456,6 +456,55 @@ Requirements:
 7. HTTP 403 and 404 MUST surface as distinct API error codes, so a caller can tell a missing
    permission from a missing resource.
 
+#### Self user attribute verification
+
+Self user verification lets a signed-in user prove control of a contact attribute in their
+own profile, such as an email address or mobile number, by entering a code the server sends
+to it or by opening a link it sends. It runs a `SELF_SERVICE` flow named by its handle; the
+flow picks the email or mobile path from the attribute's type. It is optional: an SDK MAY ship
+it, and one that does MUST follow this section.
+
+| Operation | Contract |
+|---|---|
+| Verify attribute | Executes one step of a `SELF_SERVICE` flow, by default `default-self-attribute-verification-flow`, for a named attribute of the signed-in user. Returns the step; `COMPLETE` means the server recorded the verification. |
+
+Requirements:
+
+1. Every request, the initiating one and each continuation, is sent through the SDK's
+   authenticated transport. The server takes the user from the access token on the initiating
+   request and keeps it for the execution, so the SDK MUST NOT send a user identifier or an
+   application ID.
+2. The request URL comes from an explicit URL passed to the call, then the `flowExecute`
+   endpoint override, then `baseUrl` followed by `/flow/execute`.
+3. A request that starts a verification sends `flowType: SELF_SERVICE`, the flow `handle` and
+   the attribute. The handle defaults to `default-self-attribute-verification-flow` and an
+   application MAY name another. The SDK MUST reject a new flow without a handle before any
+   network call.
+4. Steps are rendered from the server-described components, as the embedded sign-in, sign-up
+   and recovery components do, so input and action identifiers are not hard-coded. A rejected
+   code returns the step again with an error and without the first step's additional data, so
+   the SDK keeps the masked destination and code length from the step that sent the code.
+   A `RESEND` component submits its own action with no inputs and without client-side
+   validation, so the user can ask for a new code with the code field empty or partly typed.
+   `ERROR` or an HTTP 4xx is a refusal, reported to the caller without the response body. A
+   step with no input and no action waits for a link the user opens outside the application:
+   the SDK shows where the link went and a Done action that re-reads the profile, and MUST NOT
+   poll.
+5. Verification status comes only from the read-only `verifiedAttributes` field of
+   `/users/me`. The SDK MUST NOT write it, infer it from another field, or mark an attribute
+   verified locally. After `COMPLETE` it re-reads the profile. An absent `verifiedAttributes`
+   means the status is unknown: the SDK MUST show neither verified nor unverified and MUST NOT
+   offer the verify action on that basis.
+6. Status is shown for top-level single-valued schema properties of type `email` or `mobile`.
+   The verify action is offered for `email` and `mobile`, and only for a stored value, never one
+   being edited. Verification opens by itself after a save only for a changed `email`, since
+   sending to a mobile number needs an SMS provider the deployment may not have.
+7. Starting a verification sends a message, so a component that starts one when shown MUST
+   start it once per showing and MUST NOT retry automatically.
+8. A UI SDK ships a verify-attribute component with a `Base` variant, and its user profile
+   component shows each eligible attribute's status and, for an unverified email or mobile
+   number, the verify action.
+
 #### Back-channel logout handling
 
 When a session ends at the ThunderID server, the server notifies every application that took
@@ -571,7 +620,7 @@ own.
 | Actions | Trigger an operation | Sign-in button, sign-out button, sign-up button |
 | Auth flow | Handle the redirect callback | Callback |
 | Control | Render conditionally on auth state | Signed-in, signed-out, loading |
-| Presentation | Render identity UI | Sign-in, sign-up, recovery, accept invite, invite user, user, user avatar, user dropdown, user profile, language switcher |
+| Presentation | Render identity UI | Sign-in, sign-up, recovery, accept invite, invite user, user, user avatar, user dropdown, user profile, verify attribute, language switcher |
 
 Requirements:
 
@@ -1167,6 +1216,27 @@ session ended, so a user who signs out elsewhere is not left signed in to my app
   later request presents a matching session, then the request is treated as unauthenticated
   until that session could no longer be valid.
 
+### R10. Self user attribute verification that only the server can record
+
+**Requirement:** As a developer whose users keep their own email address and mobile number, I
+want the SDK to let a signed-in user verify them, so my application shows the verification the
+server recorded and nothing else.
+
+**Acceptance criteria:**
+
+- **AC10.1:** Given a signed-in user, when a verification starts, then the request carries the
+  access token, `flowType: SELF_SERVICE`, the handle and the attribute, and no user identifier
+  or application ID.
+- **AC10.2:** Given no handle, when a new verification is requested, then the SDK rejects it
+  before any network call.
+- **AC10.3:** Given a verify-attribute component, when it is shown, then it starts one
+  verification and does not retry it automatically.
+- **AC10.4:** Given a `COMPLETE` step, when the flow ends, then the SDK re-reads `/users/me` and
+  shows the status from `verifiedAttributes` only; an absent field shows neither verified nor
+  unverified.
+- **AC10.5:** Given any verification step, when the log output is inspected, then it contains
+  no code.
+
 ## Change log
 
 | Version | Date | Change |
@@ -1178,4 +1248,4 @@ session ended, so a user who signs out elsewhere is not left signed in to my app
 | 0.5 | 2026-10-15 | `syncSession` replaced by a `session` object. The server does not implement OpenID Connect Session Management, so there is no check-session iframe for an SDK to synchronize with. `session.silentSignIn` configures silent sign-in from the SSO session instead. |
 | 0.6 | 2026-10-20 | Federated redirects in embedded mode: a callback without a `state` is never submitted, mobile SDKs compare it with the request's `state`, and a chained `REDIRECTION` is followed (AC4.13 to AC4.15). Authorization codes, and the callback URLs that carry them, are never logged. |
 | 0.7 | 2026-10-26 | The `backchannelLogout` key applies only to an SDK that mounts the handler itself; an SDK that exposes the handler takes the store on it. A `sub`-only logout token also ends sessions that began within the clock tolerance after it was issued. As reviewed in #5777. |
-| 0.8 | 2026-10-26 | `authorizationDetails` configuration key (RFC 9396), sent on the authorization, silent sign-in, CIBA, and `client_credentials` requests. Granted details surfaced on the token response and the access token. Consent rendering of authorization details elements for SDKs that render consent, and decisions only in server-rendered consent. |
+| 0.8 | 2026-10-26 | `authorizationDetails` configuration key (RFC 9396), sent on the authorization, silent sign-in, CIBA, and `client_credentials` requests. Granted details surfaced on the token response and the access token. Consent rendering of authorization details elements for SDKs that render consent, and decisions only in server-rendered consent. Self user attribute verification added as an optional capability (R10). |

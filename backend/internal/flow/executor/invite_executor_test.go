@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 )
 
 type InviteExecutorTestSuite struct {
@@ -336,6 +337,190 @@ func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode_NoAuthReqIDWhenAb
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.NotContains(suite.T(), resp.RuntimeData[common.RuntimeKeyInviteLink], "auth_req_id")
+}
+
+// A pinned contact's invite is always a fresh token, and its proof restarts with it.
+func (suite *InviteExecutorTestSuite) TestExecute_GenerateMode_PinnedContactIssuesAFreshToken() {
+	ctx := &providers.NodeContext{
+		ExecutionID:       "test-flow-id",
+		FlowType:          providers.FlowTypeAdministration,
+		ExecutorMode:      ExecutorModeGenerate,
+		UserInputs:        make(map[string]string),
+		RuntimeData:       map[string]string{common.RuntimeKeyStoredInviteToken: "existing-token-123"},
+		SharedRuntimeData: pinnedEmailEvidence(suite.T(), "existing-token-123", true),
+	}
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	token := resp.RuntimeData[common.RuntimeKeyStoredInviteToken]
+	assert.NotEmpty(suite.T(), token)
+	assert.NotEqual(suite.T(), "existing-token-123", token)
+	assert.Equal(suite.T(), &verificationEvidence{Pin: emailPin(), Challenge: token},
+		evidenceIn(suite.T(), resp.SharedRuntimeData))
+	assert.Empty(suite.T(), resp.AdditionalData[common.DataInviteLink])
+}
+
+func (suite *InviteExecutorTestSuite) TestExecute_VerifyMode_PinnedContactMarksPassed() {
+	ctx := &providers.NodeContext{
+		ExecutionID:       "test-flow-id",
+		FlowType:          providers.FlowTypeSelfService,
+		ExecutorMode:      ExecutorModeVerify,
+		UserInputs:        map[string]string{userInputInviteToken: "invite-1"},
+		RuntimeData:       map[string]string{common.RuntimeKeyStoredInviteToken: "invite-1"},
+		SharedRuntimeData: pinnedEmailEvidence(suite.T(), "invite-1", false),
+	}
+	mockExecutor := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
+	mockExecutor.On("HasRequiredInputs", ctx, mock.Anything).Return(true)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	proof := evidenceIn(suite.T(), resp.SharedRuntimeData)
+	assert.True(suite.T(), proof.Passed)
+	assert.Equal(suite.T(), "invite-1", proof.Challenge)
+}
+
+// A token restored from an older CALL frame, or one issued before the pin, is not the active
+// challenge and passes nothing.
+func (suite *InviteExecutorTestSuite) TestExecute_VerifyMode_PinnedContactRefusesAnInactiveToken() {
+	for name, challenge := range map[string]string{
+		"restored older token":    "new-invite",
+		"token issued before pin": "",
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			ctx := &providers.NodeContext{
+				ExecutionID:       "test-flow-id",
+				FlowType:          providers.FlowTypeSelfService,
+				ExecutorMode:      ExecutorModeVerify,
+				UserInputs:        map[string]string{userInputInviteToken: "old-invite"},
+				RuntimeData:       map[string]string{common.RuntimeKeyStoredInviteToken: "old-invite"},
+				SharedRuntimeData: pinnedEmailEvidence(suite.T(), challenge, false),
+			}
+			mockExecutor := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
+			mockExecutor.On("HasRequiredInputs", ctx, mock.Anything).Return(true)
+
+			resp, err := suite.executor.Execute(ctx)
+
+			assert.NoError(suite.T(), err)
+			suite.Require().Equal(providers.ExecFailure, resp.Status)
+			assert.Equal(suite.T(), ErrInvalidInviteToken.Code, resp.Error.Code)
+			assert.Empty(suite.T(), resp.SharedRuntimeData)
+		})
+	}
+}
+
+func (suite *InviteExecutorTestSuite) TestExecute_CorruptEvidenceIsAnError() {
+	for _, mode := range []string{ExecutorModeGenerate, ExecutorModeVerify} {
+		suite.Run(mode, func() {
+			suite.SetupTest()
+			ctx := &providers.NodeContext{
+				ExecutionID:       "test-flow-id",
+				FlowType:          providers.FlowTypeSelfService,
+				ExecutorMode:      mode,
+				UserInputs:        map[string]string{userInputInviteToken: "invite-1"},
+				RuntimeData:       map[string]string{common.RuntimeKeyStoredInviteToken: "invite-1"},
+				SharedRuntimeData: map[string]string{common.RuntimeKeyAttributeVerificationEvidence: "{"},
+			}
+			mockExecutor := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
+			mockExecutor.On("HasRequiredInputs", ctx, mock.Anything).Return(true).Maybe()
+
+			_, err := suite.executor.Execute(ctx)
+
+			assert.Error(suite.T(), err)
+		})
+	}
+}
+
+// Without a pin, generate and verify behave as before in a self-service flow: the stored token is
+// reused and no evidence is written.
+func (suite *InviteExecutorTestSuite) TestExecute_WithoutPinBehavesAsBefore() {
+	ctx := &providers.NodeContext{
+		ExecutionID:  "test-flow-id",
+		FlowType:     providers.FlowTypeSelfService,
+		ExecutorMode: ExecutorModeGenerate,
+		UserInputs:   map[string]string{userInputInviteToken: "invite-1"},
+		RuntimeData:  map[string]string{common.RuntimeKeyStoredInviteToken: "invite-1"},
+	}
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal("invite-1", resp.RuntimeData[common.RuntimeKeyStoredInviteToken])
+	suite.Empty(resp.SharedRuntimeData)
+
+	ctx.ExecutorMode = ExecutorModeVerify
+	mockExecutor := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
+	mockExecutor.On("HasRequiredInputs", ctx, mock.Anything).Return(true)
+
+	resp, err = suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Empty(resp.SharedRuntimeData)
+}
+
+// The email link path: a record before the user confirms the link is refused, and inputs given later
+// cannot retarget the pinned user or attribute.
+func (suite *InviteExecutorTestSuite) TestExecute_PinnedContactRecordsOnlyAfterVerify() {
+	config.ResetServerRuntime()
+	factory := newVerificationTestFactory(suite.T())
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	verification := newAttributeVerificationExecutor(factory, governance, nil)
+	invite := newInviteExecutor(factory)
+	pin := providers.AttributeVerificationPin{Subject: "user-a", Attribute: "workEmail",
+		Value: "User@example.com", Channel: providers.VerificationChannelEmail}
+	governance.On("PrepareAttributeVerification", mock.Anything, pin.Subject, pin.Attribute).
+		Return(&pin, nil).Once()
+	governance.On("RecordAttributeVerification", mock.Anything, pin).Return(nil).Once()
+	ctx := selfPrepareContext(pin.Subject, map[string]string{"attribute": pin.Attribute}, map[string]string{})
+
+	prepared, err := verification.Execute(ctx)
+	suite.Require().NoError(err)
+	suite.Require().Equal(providers.ExecComplete, prepared.Status)
+	// The shipped sender reads the channel's default attribute; a custom one may read the attribute.
+	suite.Equal(pin.Value, prepared.RuntimeData[userAttributeEmail])
+	suite.Equal(pin.Value, prepared.RuntimeData[pin.Attribute])
+	suite.ElementsMatch([]string{"attribute"}, ctx.GetConsumedInputs())
+	applyVerificationResponse(ctx, prepared)
+
+	ctx.ExecutorMode = ExecutorModeGenerate
+	generated, err := invite.Execute(ctx)
+	suite.Require().NoError(err)
+	applyVerificationResponse(ctx, generated)
+	token := ctx.RuntimeData[common.RuntimeKeyStoredInviteToken]
+	suite.Require().NotEmpty(token)
+	suite.NotContains(generated.AdditionalData, common.DataInviteLink)
+
+	proof, err := pinnedVerificationEvidence(ctx)
+	suite.Require().NoError(err)
+	suite.Require().True(deliveryAllowed(proof, providers.VerificationChannelEmail, pin.Value))
+	delivery := &providers.ExecutorResponse{}
+	recordVerificationReceipt(delivery, proof, providers.VerificationChannelEmail, pin.Value)
+	applyVerificationResponse(ctx, delivery)
+
+	ctx.ExecutorMode = ExecutorModeRecord
+	beforeConfirmation, err := verification.Execute(ctx)
+	suite.Require().NoError(err)
+	suite.Require().Equal(providers.ExecFailure, beforeConfirmation.Status)
+
+	ctx.ExecutorMode = ExecutorModeVerify
+	ctx.UserInputs = map[string]string{userInputInviteToken: token}
+	verified, err := invite.Execute(ctx)
+	suite.Require().NoError(err)
+	suite.Require().Equal(providers.ExecComplete, verified.Status)
+	applyVerificationResponse(ctx, verified)
+
+	ctx.ExecutorMode = ExecutorModeRecord
+	ctx.UserInputs = map[string]string{"subject": "user-b", "attribute": "email"}
+	recorded, err := verification.Execute(ctx)
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, recorded.Status)
+	suite.Empty(recorded.SharedRuntimeData[common.RuntimeKeyAttributeVerificationEvidence])
 }
 
 func TestInviteExecutorSuite(t *testing.T) {

@@ -11,6 +11,7 @@ const (
 	defaultAuthFlowExpiry           int64 = 3600  // 60 minutes in seconds
 	defaultRegistrationFlowExpiry   int64 = 3600  // 60 minutes in seconds
 	defaultUserOnboardingFlowExpiry int64 = 86400 // 24 hours in seconds
+	defaultSelfServiceFlowExpiry    int64 = 1800  // 30 minutes in seconds
 	defaultRecoveryFlowExpiry       int64 = 1800  // 30 minutes in seconds
 	defaultSignOutFlowExpiry        int64 = 1800  // 30 minutes in seconds
 

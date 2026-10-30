@@ -179,3 +179,18 @@ var heldAtRecovery = map[providers.AuthenticationMethod]bool{
 	// Account-wide key; never derived.
 	AuthenticationMethodAccount: false,
 }
+
+// SystemAttrAttributeVerification holds server-owned contact verification metadata.
+const SystemAttrAttributeVerification = "attributeVerification"
+
+// VerificationInvalidationReason is why a write cleared a recorded verification.
+type VerificationInvalidationReason string
+
+const (
+	// VerificationValueChanged is a write that changes the verified value.
+	VerificationValueChanged VerificationInvalidationReason = "value_changed"
+	// VerificationValueRemoved is a write that removes the verified value.
+	VerificationValueRemoved VerificationInvalidationReason = "removed"
+	// VerificationUserTypeChanged is a write that changes the user type.
+	VerificationUserTypeChanged VerificationInvalidationReason = "user_type_changed"
+)

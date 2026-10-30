@@ -213,6 +213,7 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 		ExecutionHistory:  ctx.ExecutionHistory,
 	}
 	nodeCtx.SetInitiatorRequest(ctx.GetInitiatorRequest())
+	nodeCtx.SetBoundSubject(ctx.boundSubject)
 	if nodeCtx.NodeInputs == nil {
 		nodeCtx.NodeInputs = make([]providers.Input, 0)
 	}

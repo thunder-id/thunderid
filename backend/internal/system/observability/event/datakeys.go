@@ -67,6 +67,10 @@ var DataKey = struct {
 	LockPermanent string
 	UnlockAt      string
 
+	// Attribute Verification Keys. Names the verified attribute, never its value.
+	Attribute string
+	Reason    string
+
 	// Session & Delivery Keys
 	SessionID  string
 	HTTPStatus string
@@ -132,6 +136,10 @@ var DataKey = struct {
 	LockCount:     "lock_count",
 	LockPermanent: "lock_permanent",
 	UnlockAt:      "unlock_at",
+
+	// Attribute Verification Keys
+	Attribute: "attribute",
+	Reason:    "reason",
 
 	// Session & Delivery Keys
 	SessionID:  "session_id",

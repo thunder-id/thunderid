@@ -35,12 +35,27 @@ func InitiateRecoveryFlow(appID string, verbose bool, inputs map[string]string, 
 	return initiateFlow(appID, "RECOVERY", verbose, inputs, action)
 }
 
+// InitiateFlowWithHandle initiates a flow of a given type for an application, with the handle field
+// set on the request.
+func InitiateFlowWithHandle(appID, flowType, handle string, inputs map[string]string) (*FlowStep, error) {
+	return initiateFlowWithHandle(appID, flowType, handle, false, inputs, "")
+}
+
 // initiateFlow is a generic helper to initiate a flow of a given type
 func initiateFlow(appID, flowType string, verbose bool, inputs map[string]string, action string) (
 	*FlowStep, error) {
+	return initiateFlowWithHandle(appID, flowType, "", verbose, inputs, action)
+}
+
+// initiateFlowWithHandle is initiateFlow with the handle field set on the request when it is not empty.
+func initiateFlowWithHandle(appID, flowType, handle string, verbose bool, inputs map[string]string,
+	action string) (*FlowStep, error) {
 	flowReqBody := map[string]interface{}{
 		"applicationId": appID,
 		"flowType":      flowType,
+	}
+	if handle != "" {
+		flowReqBody["handle"] = handle
 	}
 	if verbose {
 		flowReqBody["verbose"] = true
@@ -204,41 +219,28 @@ func CompleteFlowWithRawResponse(executionID string, inputs map[string]string, a
 
 // ExecuteAdministrationFlow starts an administration flow, optionally as the admin.
 func ExecuteAdministrationFlow(flowID string, inputs map[string]string, authenticated bool) (
-	*AdministrationFlowResult, error) {
-	reqBody, err := json.Marshal(map[string]interface{}{"flowId": flowID, "inputs": inputs})
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request body: %w", err)
-	}
-
-	req, err := http.NewRequest("POST", testServerURL+"/flow/execute", bytes.NewReader(reqBody))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create flow request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
+	*FlowExecutionResult, error) {
+	token := ""
 	if authenticated {
-		token, err := testutils.GetAccessToken()
+		var err error
+		token, err = testutils.GetAccessToken()
 		if err != nil {
 			return nil, fmt.Errorf("failed to obtain admin access token: %w", err)
 		}
-		// The shared clients treat /flow/execute as public and skip token injection.
-		req.Header.Set("Authorization", "Bearer "+token)
 	}
+	return ExecuteFlowWithToken(token, map[string]interface{}{"flowId": flowID, "inputs": inputs})
+}
 
-	resp, err := testutils.GetRawHTTPClient().Do(req)
+// ExecuteFlowWithToken posts one flow execution request as the caller the bearer token names, or with
+// no token when it is empty.
+func ExecuteFlowWithToken(token string, request map[string]interface{}) (*FlowExecutionResult, error) {
+	status, body, err := testutils.ExecuteFlowRaw(nil, token, request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send flow request: %w", err)
 	}
-	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	result := &AdministrationFlowResult{StatusCode: resp.StatusCode}
-	if resp.StatusCode == http.StatusOK {
+	result := &FlowExecutionResult{StatusCode: status, Body: body}
+	if status == http.StatusOK {
 		var flowStep FlowStep
 		if err := json.Unmarshal(body, &flowStep); err != nil {
 			return nil, fmt.Errorf("failed to parse response body %s: %w", string(body), err)

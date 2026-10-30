@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package mgt
@@ -1001,6 +1001,204 @@ func (suite *FlowMgtAPITestSuite) TestRestoreFlowVersion_FlowNotFound() {
 	restoreReq := RestoreVersionRequest{Version: 1}
 
 	suite.restoreFlowVersionExpectError("non-existent-id", restoreReq, http.StatusNotFound, "FLM-1008")
+}
+
+// AttributeVerificationExecutor must prepare and record in the same flow, in any flow type: a flow
+// with one mode and not the other is rejected with the companion error naming the executor and the
+// missing mode, while the shipped self-service flow, and a copy of it without the executor, save.
+func (suite *FlowMgtAPITestSuite) TestCreateFlow_AttributeVerificationModesArePaired() {
+	flowID, err := testutils.GetFlowIDByHandle("default-self-attribute-verification-flow", "SELF_SERVICE")
+	suite.Require().NoError(err, "the self attribute verification flow must ship")
+	shipped, err := testutils.GetFlow(flowID)
+	suite.Require().NoError(err)
+	shipped.Name = "Shipped Copy"
+	shipped.Handle = generateUniqueHandle("shipped-copy")
+	copyID, err := testutils.CreateFlow(shipped)
+	suite.Require().NoError(err, "precondition: the shipped definition saves")
+	suite.trackFlow(copyID)
+
+	testCases := []struct {
+		name        string
+		flow        testutils.Flow
+		missingMode string
+	}{
+		{
+			name:        "Self-service flow without the prepare mode",
+			flow:        withoutFlowNodes(suite.T(), shipped, "prepare_verification"),
+			missingMode: "prepare",
+		},
+		{
+			name:        "Self-service flow without the record mode",
+			flow:        withoutFlowNodes(suite.T(), shipped, "record_verification"),
+			missingMode: "record",
+		},
+		{
+			name:        "Authentication flow with only the prepare mode",
+			flow:        signInWithVerificationModes("prepare"),
+			missingMode: "record",
+		},
+		{
+			name:        "Authentication flow with only the record mode",
+			flow:        signInWithVerificationModes("record"),
+			missingMode: "prepare",
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			tc.flow.Name = "Unpaired " + tc.name
+			tc.flow.Handle = generateUniqueHandle("unpaired")
+
+			status, respBody := suite.postFlow(tc.flow)
+
+			suite.Require().Equal(http.StatusBadRequest, status, "%s", respBody)
+			var errorResp struct {
+				Code        string `json:"code"`
+				Description struct {
+					Key          string            `json:"key"`
+					DefaultValue string            `json:"defaultValue"`
+					Params       map[string]string `json:"params"`
+				} `json:"description"`
+			}
+			suite.Require().NoError(json.Unmarshal(respBody, &errorResp))
+			suite.Equal("FLM-1023", errorResp.Code)
+			suite.Equal("error.flowmgtservice.companion_executor_missing_description",
+				errorResp.Description.Key, "%s", respBody)
+			suite.Equal(map[string]string{"executorName": "AttributeVerificationExecutor",
+				"companionExecutorName": "AttributeVerificationExecutor", "companionExecutorMode": tc.missingMode},
+				errorResp.Description.Params, "the error must name the missing executor and mode: %s", respBody)
+			suite.Contains(errorResp.Description.DefaultValue, "in mode '"+tc.missingMode+"'",
+				"the message must show the missing mode: %s", respBody)
+		})
+	}
+
+	suite.Run("Self-service flow without the executor", func() {
+		flow := withoutFlowNodes(suite.T(), shipped, "prepare_verification", "record_verification")
+		flow.Name = "Self-service Flow Without Verification"
+		flow.Handle = generateUniqueHandle("no-verification")
+
+		status, respBody := suite.postFlow(flow)
+
+		suite.Require().Equal(http.StatusCreated, status, "no flow type requires the executor: %s", respBody)
+		var created struct {
+			ID string `json:"id"`
+		}
+		suite.Require().NoError(json.Unmarshal(respBody, &created))
+		suite.trackFlow(created.ID)
+	})
+}
+
+// postFlow posts a flow definition and returns the status and body.
+func (suite *FlowMgtAPITestSuite) postFlow(flow testutils.Flow) (int, []byte) {
+	body, err := json.Marshal(flow)
+	suite.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPost, testServerURL+flowsEndpoint, bytes.NewReader(body))
+	suite.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	suite.Require().NoError(err)
+	return resp.StatusCode, respBody
+}
+
+// signInWithVerificationModes is an authentication flow with an AttributeVerificationExecutor node in
+// each mode given.
+func signInWithVerificationModes(modes ...string) testutils.Flow {
+	nodes := []interface{}{map[string]interface{}{"id": "start", "type": "START", "onSuccess": "verification_0"}}
+	for i, mode := range modes {
+		next := fmt.Sprintf("verification_%d", i+1)
+		if i == len(modes)-1 {
+			next = "auth_assert"
+		}
+		nodes = append(nodes, map[string]interface{}{
+			"id":        fmt.Sprintf("verification_%d", i),
+			"type":      "TASK_EXECUTION",
+			"executor":  map[string]interface{}{"name": "AttributeVerificationExecutor", "mode": mode},
+			"onSuccess": next,
+		})
+	}
+	nodes = append(nodes,
+		map[string]interface{}{
+			"id":        "auth_assert",
+			"type":      "TASK_EXECUTION",
+			"executor":  map[string]interface{}{"name": "AuthAssertExecutor"},
+			"onSuccess": "end",
+		},
+		map[string]interface{}{"id": "end", "type": "END"},
+	)
+	return testutils.Flow{FlowType: "AUTHENTICATION", Nodes: nodes}
+}
+
+// withoutFlowNodes returns a copy of the flow with each node removed in turn, as withoutFlowNode does.
+// The flow passed in is left as it was.
+func withoutFlowNodes(t *testing.T, flow testutils.Flow, nodeIDs ...string) testutils.Flow {
+	t.Helper()
+
+	encoded, err := json.Marshal(flow)
+	if err != nil {
+		t.Fatalf("failed to copy the flow: %v", err)
+	}
+	var copied testutils.Flow
+	if err := json.Unmarshal(encoded, &copied); err != nil {
+		t.Fatalf("failed to copy the flow: %v", err)
+	}
+	for _, nodeID := range nodeIDs {
+		copied = withoutFlowNode(t, copied, nodeID)
+	}
+	return copied
+}
+
+// withoutFlowNode returns the flow with one node removed and every reference to it, such as a
+// predecessor's onSuccess or an action's next node, pointed at its successor.
+func withoutFlowNode(t *testing.T, flow testutils.Flow, nodeID string) testutils.Flow {
+	t.Helper()
+
+	nodes, ok := flow.Nodes.([]interface{})
+	if !ok {
+		t.Fatalf("unexpected flow nodes type %T", flow.Nodes)
+	}
+	successor := ""
+	kept := make([]interface{}, 0, len(nodes))
+	for _, item := range nodes {
+		node, ok := item.(map[string]interface{})
+		if !ok {
+			t.Fatalf("unexpected flow node type %T", item)
+		}
+		if node["id"] == nodeID {
+			successor, _ = node["onSuccess"].(string)
+			continue
+		}
+		kept = append(kept, node)
+	}
+	if successor == "" {
+		t.Fatalf("flow has no node %s with a successor", nodeID)
+	}
+	for i, node := range kept {
+		kept[i] = repointFlowReferences(node, nodeID, successor)
+	}
+	flow.Nodes = kept
+	return flow
+}
+
+// repointFlowReferences replaces every string equal to from with to, at any depth.
+func repointFlowReferences(value interface{}, from, to string) interface{} {
+	switch v := value.(type) {
+	case string:
+		if v == from {
+			return to
+		}
+	case map[string]interface{}:
+		for key, item := range v {
+			v[key] = repointFlowReferences(item, from, to)
+		}
+	case []interface{}:
+		for i, item := range v {
+			v[i] = repointFlowReferences(item, from, to)
+		}
+	}
+	return value
 }
 
 // Helper methods for API interactions

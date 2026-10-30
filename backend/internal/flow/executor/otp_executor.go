@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 
@@ -117,6 +118,11 @@ func (e *otpExecutor) executeGenerate(ctx *providers.NodeContext,
 	execResp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
 	logger := e.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
+	proof, err := pinnedVerificationEvidence(ctx)
+	if err != nil {
+		return execResp, err
+	}
+
 	attemptCount, err := e.validateAttempts(ctx, execResp, logger)
 	if err != nil {
 		return execResp, err
@@ -162,8 +168,13 @@ func (e *otpExecutor) executeGenerate(ctx *providers.NodeContext,
 	// code does.
 	skipDelivery := false
 	if recipientAttr == authnprovidercm.UserAttributeUserID {
-		withheld, stated, fault := e.accessGuard.heldAtDispatch(ctx.Context, recipient,
-			providers.AuthenticationMethodOTP, ctx.FlowType, logger)
+		plane := dispatchPlaneFor(ctx.FlowType)
+		// A pinned contact's code is a contact proof, which an automatic lock does not hold.
+		if proof != nil {
+			plane = providers.AccessPlaneVerification
+		}
+		withheld, stated, fault := e.accessGuard.heldAt(ctx.Context, recipient, plane,
+			providers.AuthenticationMethodOTP, logger)
 		if fault != nil {
 			return nil, fault
 		}
@@ -180,6 +191,12 @@ func (e *otpExecutor) executeGenerate(ctx *providers.NodeContext,
 		e.otpService.GenerateOTP(ctx.Context, recipient, recipientAttr, otpCfg)
 	if svcErr != nil {
 		return execResp, fmt.Errorf("failed to generate OTP: %s", svcErr.ErrorDescription.DefaultValue)
+	}
+
+	// A pinned contact's proof restarts with this code: earlier deliveries and passes no longer count.
+	if proof != nil {
+		proof.Challenge, proof.Passed, proof.Receipts = sessionToken, false, nil
+		execResp.SharedRuntimeData = sharedVerificationEvidence(*proof)
 	}
 
 	execResp.RuntimeData[common.RuntimeKeyOTPSessionToken] = sessionToken
@@ -207,14 +224,41 @@ func (e *otpExecutor) executeGenerate(ctx *providers.NodeContext,
 // executeVerify validates the OTP code supplied by the user and authenticates them.
 func (e *otpExecutor) executeVerify(ctx *providers.NodeContext,
 	execResp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
+	proof, err := pinnedVerificationEvidence(ctx)
+	if err != nil {
+		return execResp, err
+	}
+
 	if !e.ValidatePrerequisites(ctx, execResp, e.authnProvider) {
 		return execResp, nil
 	}
 
-	if err := e.getAuthenticatedUser(ctx, execResp); err != nil {
+	// A pinned contact's proof counts only the code issued after the pin.
+	if proof != nil && (proof.Challenge == "" ||
+		proof.Challenge != ctx.RuntimeData[common.RuntimeKeyOTPSessionToken]) {
+		execResp.Status, execResp.Error = providers.ExecFailure, &ErrInvalidOTP
+		return execResp, nil
+	}
+
+	authnCtx := ctx.Context
+	if proof != nil {
+		authnCtx = authnprovidercm.WithVerificationFlow(authnCtx)
+	}
+	authUser, claims, err := e.getAuthenticatedUser(authnCtx, ctx, execResp)
+	if err != nil || execResp.Status != providers.ExecComplete {
 		return execResp, err
 	}
 
+	// A pinned contact's code is a contact proof, never a sign-in, even after a CALL returns.
+	if proof != nil {
+		proof.Passed = true
+		execResp.SharedRuntimeData = sharedVerificationEvidence(*proof)
+		return execResp, nil
+	}
+	execResp.AuthUser = authUser
+	for key, value := range claims {
+		execResp.RuntimeData[key] = systemutils.ConvertInterfaceValueToString(value)
+	}
 	return execResp, nil
 }
 
@@ -300,10 +344,11 @@ func (e *otpExecutor) buildSearchAttributes(ctx *providers.NodeContext) map[stri
 	return attrs
 }
 
-// getAuthenticatedUser verifies the OTP code via the authn provider and populates execResp.AuthUser
-// so that downstream executors (e.g. AuthAssertExecutor) can resolve the entity reference.
-func (e *otpExecutor) getAuthenticatedUser(ctx *providers.NodeContext,
-	execResp *providers.ExecutorResponse) error {
+// getAuthenticatedUser verifies the OTP code via the authn provider under authnCtx and returns the
+// authenticated user and claims, which let downstream executors (e.g. AuthAssertExecutor) resolve the
+// entity reference.
+func (e *otpExecutor) getAuthenticatedUser(authnCtx context.Context, ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse) (providers.AuthUser, providers.AuthenticatedClaims, error) {
 	logger := e.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	providedOTP := ctx.UserInputs[userInputOTP]
@@ -311,12 +356,12 @@ func (e *otpExecutor) getAuthenticatedUser(ctx *providers.NodeContext,
 		execResp.Status = providers.ExecUserInputRequired
 		execResp.Inputs = e.GetRequiredInputs(ctx)
 		execResp.Error = &ErrInvalidOTP
-		return nil
+		return providers.AuthUser{}, nil, nil
 	}
 
 	sessionToken := ctx.RuntimeData[common.RuntimeKeyOTPSessionToken]
 	if sessionToken == "" {
-		return fmt.Errorf("no OTP session token found in runtime data")
+		return providers.AuthUser{}, nil, fmt.Errorf("no OTP session token found in runtime data")
 	}
 
 	credentials := map[string]interface{}{
@@ -326,7 +371,7 @@ func (e *otpExecutor) getAuthenticatedUser(ctx *providers.NodeContext,
 		},
 	}
 	authUser, authenticatedClaims, svcErr := e.authnProvider.AuthenticateUser(
-		ctx.Context, nil, credentials, nil, nil, execResp.AuthUser)
+		authnCtx, nil, credentials, nil, nil, execResp.AuthUser)
 	if svcErr != nil {
 		// A stated hold re-prompts with its own message.
 		if stated := statedHold(svcErr); stated != nil {
@@ -335,7 +380,7 @@ func (e *otpExecutor) getAuthenticatedUser(ctx *providers.NodeContext,
 			execResp.Status = providers.ExecUserInputRequired
 			execResp.Inputs = e.GetRequiredInputs(ctx)
 			execResp.Error = stated
-			return nil
+			return providers.AuthUser{}, nil, nil
 		}
 		if svcErr.Code == authnprovidermgr.ErrorAuthenticationFailed.Code ||
 			svcErr.Code == authnprovidermgr.ErrorInvalidRequest.Code {
@@ -343,18 +388,14 @@ func (e *otpExecutor) getAuthenticatedUser(ctx *providers.NodeContext,
 			execResp.Status = providers.ExecUserInputRequired
 			execResp.Inputs = e.GetRequiredInputs(ctx)
 			execResp.Error = &ErrInvalidOTP
-			return nil
+			return providers.AuthUser{}, nil, nil
 		}
-		return fmt.Errorf("failed to verify OTP: %s", svcErr.ErrorDescription.DefaultValue)
+		return providers.AuthUser{}, nil, fmt.Errorf("failed to verify OTP: %s", svcErr.ErrorDescription.DefaultValue)
 	}
 
-	execResp.AuthUser = authUser
 	execResp.RuntimeData[common.RuntimeKeyOTPSessionToken] = ""
-	for key, value := range authenticatedClaims {
-		execResp.RuntimeData[key] = systemutils.ConvertInterfaceValueToString(value)
-	}
 	execResp.Status = providers.ExecComplete
-	return nil
+	return authUser, authenticatedClaims, nil
 }
 
 // resolveOTPDestination returns the identifier and value of the first phone or email node input.

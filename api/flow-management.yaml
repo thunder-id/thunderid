@@ -84,6 +84,11 @@ paths:
             enum:
               - AUTHENTICATION
               - REGISTRATION
+              - USER_ONBOARDING
+              - SELF_SERVICE
+              - RECOVERY
+              - SIGNOUT
+              - ADMINISTRATION
         - name: limit
           in: query
           description: Maximum number of flows to return
@@ -1598,6 +1603,11 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - USER_ONBOARDING
+            - SELF_SERVICE
+            - RECOVERY
+            - SIGNOUT
+            - ADMINISTRATION
         name:
           type: string
           description: Name of the flow
@@ -1659,6 +1669,11 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - USER_ONBOARDING
+            - SELF_SERVICE
+            - RECOVERY
+            - SIGNOUT
+            - ADMINISTRATION
           description: |
             Type of flow
           example: AUTHENTICATION
@@ -1914,6 +1929,11 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - USER_ONBOARDING
+            - SELF_SERVICE
+            - RECOVERY
+            - SIGNOUT
+            - ADMINISTRATION
           description: |
             Type of flow
           example: AUTHENTICATION
@@ -1994,6 +2014,11 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - USER_ONBOARDING
+            - SELF_SERVICE
+            - RECOVERY
+            - SIGNOUT
+            - ADMINISTRATION
           description: |
             Type of flow
           example: AUTHENTICATION
@@ -2090,7 +2115,9 @@ components:
           additionalProperties: true
           description: |
             Node-level properties for configuration (e.g., senderId for notification executors,
-            idpId for social login executors).
+            idpId for social login executors). On a PROMPT node, `preselectAction` holds a
+            `{{ctx(key)}}` placeholder: when the runtime data value it names is the ref of one of
+            the node's actions, that action is selected, replacing any action the request selected.
           example:
             senderId: "<SENDER_ID>"
         executor:

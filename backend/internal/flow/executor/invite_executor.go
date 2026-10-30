@@ -86,7 +86,12 @@ func (e *inviteExecutor) executeGenerate(ctx *providers.NodeContext) (*providers
 		ForwardedData:  make(map[string]interface{}),
 	}
 
-	inviteToken, err := e.getOrGenerateToken(ctx)
+	proof, err := pinnedVerificationEvidence(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	inviteToken, err := e.getOrGenerateToken(ctx, proof)
 	if err != nil {
 		logger.Debug(ctx.Context, "Failed to get or generate invite token", log.Error(err))
 		execResp.Status = providers.ExecFailure
@@ -94,6 +99,10 @@ func (e *inviteExecutor) executeGenerate(ctx *providers.NodeContext) (*providers
 		return execResp, nil
 	}
 
+	if proof != nil {
+		proof.Challenge, proof.Passed, proof.Receipts = inviteToken, false, nil
+		execResp.SharedRuntimeData = sharedVerificationEvidence(*proof)
+	}
 	inviteLink := e.generateInviteLink(ctx, inviteToken)
 
 	execResp.RuntimeData[common.RuntimeKeyStoredInviteToken] = inviteToken
@@ -122,6 +131,11 @@ func (e *inviteExecutor) executeVerify(ctx *providers.NodeContext) (*providers.E
 		RuntimeData:    make(map[string]string),
 	}
 
+	proof, err := pinnedVerificationEvidence(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// If the user has not yet provided the invite token, request it
 	if !e.HasRequiredInputs(ctx, execResp) {
 		execResp.Status = providers.ExecUserInputRequired
@@ -147,13 +161,26 @@ func (e *inviteExecutor) executeVerify(ctx *providers.NodeContext) (*providers.E
 		return execResp, nil
 	}
 
+	if proof != nil {
+		if proof.Challenge == "" || proof.Challenge != storedToken {
+			execResp.Status, execResp.Error = providers.ExecFailure, &ErrInvalidInviteToken
+			return execResp, nil
+		}
+		proof.Passed = true
+		execResp.SharedRuntimeData = sharedVerificationEvidence(*proof)
+	}
 	logger.Debug(ctx.Context, "Invite token validated successfully")
 	execResp.Status = providers.ExecComplete
 	return execResp, nil
 }
 
-// getOrGenerateToken retrieves the existing invite token from runtime data or generates a new one.
-func (e *inviteExecutor) getOrGenerateToken(ctx *providers.NodeContext) (string, error) {
+// getOrGenerateToken retrieves the existing invite token from runtime data or generates a new one. A
+// pinned contact always gets a new token.
+func (e *inviteExecutor) getOrGenerateToken(ctx *providers.NodeContext,
+	proof *verificationEvidence) (string, error) {
+	if proof != nil {
+		return utils.GenerateUUIDv7()
+	}
 	if storedToken, exists := ctx.RuntimeData[common.RuntimeKeyStoredInviteToken]; exists && storedToken != "" {
 		return storedToken, nil
 	}

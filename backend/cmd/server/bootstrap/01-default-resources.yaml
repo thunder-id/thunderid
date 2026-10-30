@@ -6395,6 +6395,21 @@ translations:
     forms.credentials.agent_id_label: Agent ID
     forms.credentials.client_id_label: Client ID
     forms.credentials.client_secret_label: Client Secret
+  verification:
+    self.choose.title: Verify your contact
+    self.choose.message: Choose where to receive your verification code.
+    self.choose.email: Email address
+    self.choose.mobile: Mobile number
+    self.email.title: Verify your email address
+    self.email.message: Enter the verification code sent to your email address.
+    self.email.code.label: Verification code
+    self.email.verify: Verify
+    self.email.resend: Resend code
+    self.mobile.title: Verify your mobile number
+    self.mobile.message: Enter the verification code sent to your mobile number.
+    self.mobile.code.label: Verification code
+    self.mobile.verify: Verify
+    self.mobile.resend: Resend code
   invite:
     validating: Validating your invite link...
     complete.title: Welcome Aboard!
@@ -7710,3 +7725,315 @@ content:
       <p>{{t(accountUnlocked.email.intro)}}</p>
     </body>
     </html>
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-00000000008a
+ouHandle: default
+name: Default Self Attribute Verification Flow
+handle: default-self-attribute-verification-flow
+flowType: SELF_SERVICE
+nodes:
+- id: start
+  type: START
+  onSuccess: prepare_verification
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 300
+- id: prepare_verification
+  type: TASK_EXECUTION
+  executor:
+    name: AttributeVerificationExecutor
+    mode: prepare
+  onSuccess: choose_channel
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 400
+      y: 275
+- id: choose_channel
+  type: PROMPT
+  properties:
+    preselectAction: '{{ctx(contactType)}}'
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: choose_channel_heading
+      label: '{{ t(verification:self.choose.title) }}'
+      variant: HEADING_1
+    - align: left
+      type: TEXT
+      id: choose_channel_message
+      label: '{{ t(verification:self.choose.message) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_choose_email
+      components:
+      - type: ACTION
+        id: email
+        label: '{{ t(verification:self.choose.email) }}'
+        variant: OUTLINED
+        eventType: TRIGGER
+    - type: BLOCK
+      id: block_choose_mobile
+      components:
+      - type: ACTION
+        id: mobile
+        label: '{{ t(verification:self.choose.mobile) }}'
+        variant: OUTLINED
+        eventType: TRIGGER
+  prompts:
+  - inputs: []
+    action:
+      ref: email
+      nextNode: generate_email_otp
+  - inputs: []
+    action:
+      ref: mobile
+      nextNode: generate_mobile_otp
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 700
+      y: 275
+- id: generate_email_otp
+  type: TASK_EXECUTION
+  properties:
+    maxAttempts: 3
+    otpValidityPeriodSeconds: 300
+  executor:
+    name: OTPExecutor
+    mode: generate
+  onSuccess: send_email_otp
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1000
+      y: 50
+- id: send_email_otp
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: otp
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: email_code
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1300
+      y: 50
+- id: email_code
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: email_code_heading
+      label: '{{ t(verification:self.email.title) }}'
+      variant: HEADING_1
+    - align: left
+      type: TEXT
+      id: email_code_message
+      label: '{{ t(verification:self.email.message) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_email_otp
+      components:
+      - type: OTP_INPUT
+        id: input_email_otp
+        ref: otp
+        label: '{{ t(verification:self.email.code.label) }}'
+        required: true
+      - type: ACTION
+        id: action_email_verify
+        label: '{{ t(verification:self.email.verify) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+      - type: RESEND
+        id: action_email_resend
+        label: '{{ t(verification:self.email.resend) }}'
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_email_otp
+      identifier: otp
+      type: OTP_INPUT
+      required: true
+    action:
+      ref: action_email_verify
+      nextNode: verify_email_otp
+  - inputs: []
+    action:
+      ref: action_email_resend
+      nextNode: generate_email_otp
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1600
+      y: 50
+- id: verify_email_otp
+  type: TASK_EXECUTION
+  inputs:
+  - ref: input_email_otp
+    identifier: otp
+    type: OTP_INPUT
+    required: true
+  executor:
+    name: OTPExecutor
+    mode: verify
+  onSuccess: record_verification
+  onIncomplete: email_code
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1900
+      y: 50
+- id: generate_mobile_otp
+  type: TASK_EXECUTION
+  properties:
+    maxAttempts: 3
+    otpValidityPeriodSeconds: 300
+  executor:
+    name: OTPExecutor
+    mode: generate
+  onSuccess: send_mobile_otp
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1000
+      y: 500
+- id: send_mobile_otp
+  type: TASK_EXECUTION
+  properties:
+    senderId: '{{SENDER_ID}}'
+    smsTemplate: otp
+  executor:
+    name: SMSExecutor
+    mode: send
+    inputs:
+    - identifier: mobile_number
+      type: PHONE_INPUT
+      required: true
+  onSuccess: mobile_code
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1300
+      y: 500
+- id: mobile_code
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: mobile_code_heading
+      label: '{{ t(verification:self.mobile.title) }}'
+      variant: HEADING_1
+    - align: left
+      type: TEXT
+      id: mobile_code_message
+      label: '{{ t(verification:self.mobile.message) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_mobile_otp
+      components:
+      - type: OTP_INPUT
+        id: input_mobile_otp
+        ref: otp
+        label: '{{ t(verification:self.mobile.code.label) }}'
+        required: true
+      - type: ACTION
+        id: action_mobile_verify
+        label: '{{ t(verification:self.mobile.verify) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+      - type: RESEND
+        id: action_mobile_resend
+        label: '{{ t(verification:self.mobile.resend) }}'
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_mobile_otp
+      identifier: otp
+      type: OTP_INPUT
+      required: true
+    action:
+      ref: action_mobile_verify
+      nextNode: verify_mobile_otp
+  - inputs: []
+    action:
+      ref: action_mobile_resend
+      nextNode: generate_mobile_otp
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1600
+      y: 500
+- id: verify_mobile_otp
+  type: TASK_EXECUTION
+  inputs:
+  - ref: input_mobile_otp
+    identifier: otp
+    type: OTP_INPUT
+    required: true
+  executor:
+    name: OTPExecutor
+    mode: verify
+  onSuccess: record_verification
+  onIncomplete: mobile_code
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1900
+      y: 500
+- id: record_verification
+  type: TASK_EXECUTION
+  executor:
+    name: AttributeVerificationExecutor
+    mode: record
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 2200
+      y: 275
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 2500
+      y: 300

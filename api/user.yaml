@@ -56,6 +56,9 @@ paths:
                   - id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
                     ouId: "456e8400-e29b-41d4-a716-446655440001"
                     type: "customer"
+                    verifiedAttributes:
+                      email:
+                        verifiedAt: "2026-10-14T09:00:00Z"
                     attributes:
                       age: 24
                       email: "jane.doe@example.com"
@@ -70,6 +73,7 @@ paths:
                   - id: "039bda67-a80d-4b7b-ac0f-36db85332089"
                     ouId: "456e8400-e29b-41d4-a716-446655440001"
                     type: "customer"
+                    verifiedAttributes: {}
                     attributes:
                       age: 31
                       email: "john.smith@example.com"
@@ -83,6 +87,7 @@ paths:
                   - id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
                     ouId: "26eec421-f1bb-4deb-a5d3-9ab6554c2ae6"
                     type: "employee"
+                    verifiedAttributes: {}
                     attributes:
                       username: "alice.wu"
                       firstname: "Alice"
@@ -166,6 +171,7 @@ paths:
                 id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
                 ouId: "456e8400-e29b-41d4-a716-446655440001"
                 type: "customer"
+                verifiedAttributes: {}
                 attributes:
                   age: 24
                   email: "jane.doe@example.com"
@@ -298,6 +304,9 @@ paths:
                 id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
                 ouId: "456e8400-e29b-41d4-a716-446655440001"
                 type: "customer"
+                verifiedAttributes:
+                  email:
+                    verifiedAt: "2026-10-14T09:00:00Z"
                 attributes:
                   age: 24
                   email: "jane.doe@example.com"
@@ -353,6 +362,9 @@ paths:
                 id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
                 ouId: "456e8400-e29b-41d4-a716-446655440001"
                 type: "customer"
+                verifiedAttributes:
+                  email:
+                    verifiedAt: "2026-10-14T09:00:00Z"
                 attributes:
                   age: 25
                   email: "jane.doe@example.com"
@@ -1337,6 +1349,7 @@ paths:
                 id: "7a4b1f8e-5c69-4b60-9232-2b0aaf65ef3c"
                 ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
                 type: "employee"
+                verifiedAttributes: {}
                 attributes:
                   username: "john.doe"
                   firstname: "John"
@@ -1470,6 +1483,9 @@ paths:
                 id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
                 ouId: "26eec421-f1bb-4deb-a5d3-9ab6554c2ae6"
                 type: "employee"
+                verifiedAttributes:
+                  email:
+                    verifiedAt: "2026-10-14T09:00:00Z"
                 attributes:
                   username: "alice.wu"
                   firstname: "Alice"
@@ -1546,6 +1562,7 @@ paths:
                 id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
                 ouId: "26eec421-f1bb-4deb-a5d3-9ab6554c2ae6"
                 type: "employee"
+                verifiedAttributes: {}
                 attributes:
                   username: "alice.wu"
                   firstname: "Alice"
@@ -2916,6 +2933,18 @@ components:
           description: "Human-readable handle of the organization unit (only included when include=display query parameter is used)."
         type:
           type: string
+        verifiedAttributes:
+          type: object
+          readOnly: true
+          description: Verification timestamps, one for each recorded verification of the user's attributes. Empty when none is verified. Omitted from a listing that returns identifiers only, and when the verification state could not be read. Set by the server and never accepted on a write.
+          additionalProperties:
+            type: object
+            required: [verifiedAt]
+            properties:
+              verifiedAt:
+                type: string
+                format: date-time
+                readOnly: true
         attributes:
           type: object
           additionalProperties: true

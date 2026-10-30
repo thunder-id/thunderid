@@ -69,3 +69,25 @@ func (p *defaultIdentityGovernanceProvider) Unsuspend(ctx context.Context,
 	entityID string) *tidcommon.ServiceError {
 	return p.governance.Unsuspend(ctx, entityID)
 }
+
+// PrepareAttributeVerification pins the contact of an existing user, on a runtime context.
+func (p *defaultIdentityGovernanceProvider) PrepareAttributeVerification(ctx context.Context,
+	subject, attribute string) (
+	*providers.AttributeVerificationPin, *tidcommon.ServiceError) {
+	return p.governance.PrepareAttributeVerification(security.WithRuntimeContext(ctx), subject, attribute)
+}
+
+// PrepareNewUserAttributeVerification pins a contact value for a user not created yet, on a runtime
+// context.
+func (p *defaultIdentityGovernanceProvider) PrepareNewUserAttributeVerification(ctx context.Context,
+	userType, attribute, value string) (
+	*providers.AttributeVerificationPin, *tidcommon.ServiceError) {
+	return p.governance.PrepareNewUserAttributeVerification(security.WithRuntimeContext(ctx), userType,
+		attribute, value)
+}
+
+// RecordAttributeVerification records the pinned contact on a runtime context.
+func (p *defaultIdentityGovernanceProvider) RecordAttributeVerification(ctx context.Context,
+	pin providers.AttributeVerificationPin) *tidcommon.ServiceError {
+	return p.governance.RecordAttributeVerification(security.WithRuntimeContext(ctx), pin)
+}

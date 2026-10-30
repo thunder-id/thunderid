@@ -106,6 +106,10 @@ const (
 	// DataLinkingPromptDetails holds the matched account-linking attribute values for the linking
 	// prompt, as a JSON array of {"label","value"} objects.
 	DataLinkingPromptDetails = "linkingPromptDetails"
+	// DataVerificationChannel is the channel an attribute verification challenge is sent on.
+	DataVerificationChannel = "channel"
+	// DataMaskedDestination is the masked contact an attribute verification challenge is sent to.
+	DataMaskedDestination = "maskedDestination"
 )
 
 // Error assertion claims.
@@ -145,6 +149,9 @@ const (
 	NodePropertyOUDirectChildrenOnly = "directChildrenOnly"
 	// NodePropertyAuthMethodMapping maps authentication classes to action refs on login_options PROMPT nodes.
 	NodePropertyAuthMethodMapping = "authMethodMapping"
+	// NodePropertyPreselectAction is a {{ctx(key)}} placeholder on a PROMPT node. When the runtime data
+	// value it names is one of the node's action refs, that action is selected for the user.
+	NodePropertyPreselectAction = "preselectAction"
 	// NodePropertySkipInterceptors indicates whether to skip interceptor execution for the current node.
 	NodePropertySkipInterceptors = "skipInterceptors"
 	// NodePropertyCheckpointRef is set on an SSO-Check node to name the Session (join) node id whose
@@ -346,6 +353,11 @@ const (
 	// RuntimeKeyExtensionAttemptCount holds the number of FAILED and INCOMPLETE answers an extension
 	// step has had in the current flow execution, scoped to the step by ExtensionAttemptCountKey.
 	RuntimeKeyExtensionAttemptCount = "extensionAttemptCount"
+	// RuntimeKeyAttributeVerificationEvidence holds the attribute verification evidence on shared runtime
+	// data: the pinned contact, its active challenge and the deliveries made to it.
+	RuntimeKeyAttributeVerificationEvidence = "attributeVerificationEvidence"
+	// RuntimeKeyContactType holds the pinned contact's type, email or mobile, for a preselected action.
+	RuntimeKeyContactType = "contactType"
 )
 
 // ExtensionDataKeyPrefix starts every runtime-data key an extension step stores from its service's

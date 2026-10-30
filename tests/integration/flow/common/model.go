@@ -65,9 +65,11 @@ type Action struct {
 	NextNode string `json:"nextNode,omitempty"`
 }
 
-// AdministrationFlowResult holds the decoded step on a 200 response and the API error otherwise.
-type AdministrationFlowResult struct {
+// FlowExecutionResult holds the decoded step on a 200 response and the API error otherwise, with the
+// raw body for assertions on what a response must not carry.
+type FlowExecutionResult struct {
 	StatusCode int
+	Body       []byte
 	Step       *FlowStep
 	Error      *ErrorResponse
 }

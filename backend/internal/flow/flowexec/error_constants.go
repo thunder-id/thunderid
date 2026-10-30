@@ -254,9 +254,9 @@ var ErrorAttestationNotConfigured = tidcommon.ServiceError{
 	},
 }
 
-// ErrorAdministrationAuthenticationRequired defines the error returned when an administrative
-// flow is invoked without an authenticated caller.
-var ErrorAdministrationAuthenticationRequired = tidcommon.ServiceError{
+// ErrorFlowAuthenticationRequired defines the error returned when a flow that requires an
+// authenticated caller is invoked without one.
+var ErrorFlowAuthenticationRequired = tidcommon.ServiceError{
 	Code: "FES-1017",
 	Type: tidcommon.ClientErrorType,
 	Error: tidcommon.I18nMessage{
@@ -325,5 +325,19 @@ var ErrorFlowConnectionNotSet = tidcommon.ServiceError{
 	ErrorDescription: tidcommon.I18nMessage{
 		Key:          "error.flowexecservice.connection_not_set_description",
 		DefaultValue: "The flow is not available for this organization yet. Contact your administrator",
+	},
+}
+
+// ErrorFlowHandleRequired is returned when a self-service start names no flow handle.
+var ErrorFlowHandleRequired = tidcommon.ServiceError{
+	Code: "FES-1023",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.flow_handle_required",
+		DefaultValue: "Invalid request",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.flow_handle_required_description",
+		DefaultValue: "A flow handle is required to start a self-service flow",
 	},
 }

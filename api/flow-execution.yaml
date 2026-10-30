@@ -39,12 +39,19 @@ paths:
         rejected with `403`. Supplying the step's inputs on the initiating request runs the flow
         through to its terminal state in a single call; omitting them returns the required inputs and
         an `executionId` to continue with.
+
+        A `SELF_SERVICE` flow runs an operation a signed-in user performs on their own account. It is
+        initiated by `flowType` and the flow's `handle`, with the user's access token as a bearer
+        token, and without an `applicationId`. The server binds the token's subject to the execution;
+        continuing the flow needs the `executionId` and `challengeToken` only, and a token sent with a
+        later request does not change the user. Other flow types ignore `handle`.
       tags:
         - Flow Execution
       security:
         - {}
         - FlowSecret: []
         - OAuth2: [system]
+        - OAuth2: []
       parameters:
         - in: header
           name: Attestation-Token
@@ -62,6 +69,7 @@ paths:
             schema:
               oneOf:
                 - $ref: '#/components/schemas/InitialFlowRequest'
+                - $ref: '#/components/schemas/SelfServiceFlowRequest'
                 - $ref: '#/components/schemas/AdministrativeFlowRequest'
                 - $ref: '#/components/schemas/SubSequentFlowRequest'
             examples:
@@ -80,6 +88,15 @@ paths:
                 value:
                   applicationId: "550e8400-e29b-41d4-a716-446655440000"
                   flowType: "SIGNOUT"
+              selfServiceRequest:
+                summary: Self-service flow started with the signed-in user's bearer token
+                value:
+                  flowType: "SELF_SERVICE"
+                  handle: "default-self-attribute-verification-flow"
+                  verbose: true
+                  inputs: {
+                    "attribute": "email"
+                  }
               administrativeFlowSingleCall:
                 summary: Administration flow run to completion in one call (inputs supplied up front)
                 value:
@@ -233,7 +250,10 @@ paths:
                         defaultValue: "The credentials provided are invalid"
         
         "400":
-          description: 'Bad Request: The request body is malformed or contains invalid data'
+          description: >
+            Bad Request: The request body is malformed or contains invalid data. A `SELF_SERVICE` flow
+            initiated without `handle` returns `FES-1023`, and one whose
+            `handle` names no `SELF_SERVICE` flow returns `FLM-1003`.
           content:
             application/json:
               schema:
@@ -243,6 +263,9 @@ paths:
             Unauthorized: The application must present a valid credential to initiate a new flow —
             a Flow Secret for backend applications, or a platform attestation token for mobile
             applications — and the presented credential was missing or invalid.
+            Initiating a flow by `flowId` without an administrator's access token returns `FES-1017`,
+            as does initiating a `SELF_SERVICE` flow without an access token this server issued to a
+            user. A `SELF_SERVICE` flow is checked for the token before its `handle` is resolved.
           content:
             application/json:
               schema:
@@ -250,7 +273,9 @@ paths:
         "403":
           description: >
             Forbidden: Direct flow initiation is not permitted for this application or its OAuth
-            configuration, or the application is suspended.
+            configuration, the application is suspended, the caller initiating a flow by `flowId` lacks
+            the `system` permission (`FES-1019`), or the flow that `flowId` names is not of type
+            `ADMINISTRATION` (`FES-1018`), a `SELF_SERVICE` flow included.
           content:
             application/json:
               schema:
@@ -277,8 +302,9 @@ components:
     OAuth2:
       type: oauth2
       description: >-
-        Access token used to authenticate the administrator initiating an administration flow by
-        `flowId`. The token must carry the `system` scope.
+        Access token. Initiating an administration flow by `flowId` requires an administrator's token
+        carrying the `system` scope; initiating a `SELF_SERVICE` flow requires the signed-in user's own
+        token and no scope.
       flows:
         authorizationCode:
           authorizationUrl: https://localhost:8090/oauth2/authorize
@@ -315,6 +341,42 @@ components:
           example: false
         sessionData:
           $ref: '#/components/schemas/FlowRequestSessionData'
+
+    SelfServiceFlowRequest:
+      type: object
+      description: >-
+        Initiates a self-service flow by its required handle, without an application ID. The request must carry
+        an access token this server issued to the signed-in user, as a bearer token. The flow acts on
+        that user only, so a `subject` input is ignored.
+      required:
+        - flowType
+        - handle
+      properties:
+        flowType:
+          type: string
+          enum: [SELF_SERVICE]
+        handle:
+          type: string
+          description: >-
+            Required handle of the `SELF_SERVICE` flow to execute. The server ships
+            `default-self-attribute-verification-flow`, which verifies one of the user's contact
+            attributes.
+          example: "default-self-attribute-verification-flow"
+        inputs:
+          type: object
+          description: >-
+            Input data for the flow. The self attribute verification flow takes the name of the email
+            or mobile attribute to verify as `attribute`.
+          additionalProperties:
+            type: string
+          example: {attribute: "email"}
+        action:
+          type: string
+          description: Reference of the action to execute in the flow
+        verbose:
+          type: boolean
+          description: When true, the response includes full UI metadata (meta/components) for prompt nodes
+          example: false
 
     AdministrativeFlowRequest:
       type: object

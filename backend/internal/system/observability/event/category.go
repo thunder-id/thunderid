@@ -83,6 +83,11 @@ var eventTypeToCategory = map[providers.EventType]EventCategory{
 	EventTypeServerConfigUpdated:        CategoryAdministration,
 	EventTypeServerConfigUpdateFailed:   CategoryAdministration,
 
+	EventTypeAttributeVerificationRequested:   CategoryAdministration,
+	EventTypeAttributeVerificationVerified:    CategoryAdministration,
+	EventTypeAttributeVerificationRefused:     CategoryAdministration,
+	EventTypeAttributeVerificationInvalidated: CategoryAdministration,
+
 	// Flow events
 	EventTypeFlowStarted:                CategoryFlows,
 	EventTypeFlowNodeExecutionStarted:   CategoryFlows,

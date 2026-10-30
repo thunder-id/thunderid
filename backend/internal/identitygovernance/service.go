@@ -7,8 +7,12 @@ package identitygovernance
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"time"
 
+	"github.com/thunder-id/thunderid/internal/entitytype"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
@@ -71,6 +75,20 @@ type IdentityGovernanceServiceInterface interface {
 	// ReadAccess derives what management reads report for each entity, in order: the effective status
 	// and the last login time. Each category's lockout policy is resolved once per call.
 	ReadAccess(ctx context.Context, entities []providers.Entity) []AccessRead
+
+	// GetVerifiedAttributes projects recorded verification from a loaded entity without reading storage.
+	GetVerifiedAttributes(ctx context.Context, entity providers.Entity) (map[string]providers.VerifiedAttribute, bool)
+
+	// PrepareAttributeVerification pins the stored contact of an existing user.
+	PrepareAttributeVerification(ctx context.Context, subject, attribute string) (
+		*providers.AttributeVerificationPin, *tidcommon.ServiceError)
+
+	// PrepareNewUserAttributeVerification pins a contact value collected for a user not created yet.
+	PrepareNewUserAttributeVerification(ctx context.Context, userType, attribute, value string) (
+		*providers.AttributeVerificationPin, *tidcommon.ServiceError)
+
+	// RecordAttributeVerification records the pinned contact after trusted proof if it is still current.
+	RecordAttributeVerification(ctx context.Context, pin providers.AttributeVerificationPin) *tidcommon.ServiceError
 }
 
 // entityStateProvider reads and writes the governed state. The entity service implements it.
@@ -112,11 +130,20 @@ type entityStateProvider interface {
 	// ClearSuspension removes the suspension placed at suspendedAt and writes the given hold, if any,
 	// in the same statement. It returns false, not an error, when that suspension is no longer there.
 	ClearSuspension(ctx context.Context, entityID string, hold *AccountHold, suspendedAt string) (bool, error)
+
+	// RecordAttributeVerification records attribute as verified at the given time if, under the entity
+	// lock, the user still has userType and the attribute's canonical value still equals value, the
+	// comparison invalidation uses. It returns false, not an error, when either changed, the attribute is
+	// no longer a verifiable contact or the user is gone. It checks no hold or channel; the caller checks
+	// both before calling it.
+	RecordAttributeVerification(ctx context.Context, entityID, userType, attribute, value string,
+		at time.Time) (bool, error)
 }
 
 // identityGovernanceService is the governance authority.
 type identityGovernanceService struct {
 	entityState entityStateProvider
+	entityTypes entitytype.EntityTypeServiceInterface
 	source      accountAccessSourceInterface
 	// notifier is optional; locks form the same without it.
 	notifier LockNotifierInterface
@@ -129,11 +156,13 @@ type identityGovernanceService struct {
 }
 
 // newIdentityGovernanceService builds the governance service.
-func newIdentityGovernanceService(entityState entityStateProvider, source accountAccessSourceInterface,
+func newIdentityGovernanceService(entityState entityStateProvider, entityTypes entitytype.EntityTypeServiceInterface,
+	source accountAccessSourceInterface,
 	notifier LockNotifierInterface, authorizer sysauthz.SystemAuthorizationServiceInterface,
 	observability providers.ObservabilityProvider) *identityGovernanceService {
 	return &identityGovernanceService{
 		entityState:   entityState,
+		entityTypes:   entityTypes,
 		source:        source,
 		notifier:      notifier,
 		authorizer:    authorizer,
@@ -427,6 +456,117 @@ func (s *identityGovernanceService) enforcementFor(ctx context.Context,
 	return lockEnforcementFor(s.source.Current(ctx), category)
 }
 
+// PrepareAttributeVerification pins the contact of a user the flow established, so no
+// organization-unit check applies. Only the runtime may call it, and a suspended identity is refused.
+func (s *identityGovernanceService) PrepareAttributeVerification(ctx context.Context, subject, attribute string) (
+	*providers.AttributeVerificationPin, *tidcommon.ServiceError) {
+	if !security.IsRuntimeContext(ctx) {
+		return nil, &tidcommon.ErrorUnauthorized
+	}
+	contact, svcErr := s.readStoredContact(ctx, subject, attribute)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	s.verificationEvent(ctx, event.EventTypeAttributeVerificationRequested, contact.pin, providers.StatusSuccess)
+	return &contact.pin, nil
+}
+
+// readStoredContact reads the stored contact of a user and pins its canonical value. A suspended
+// identity, a declarative user and an attribute that is not a non-empty email or mobile contact of the
+// user's type are refused.
+func (s *identityGovernanceService) readStoredContact(ctx context.Context, subject, attribute string) (
+	*storedContact, *tidcommon.ServiceError) {
+	if svcErr := s.verificationUser(ctx, subject); svcErr != nil {
+		return nil, svcErr
+	}
+	profile, err := s.entityState.GetEntityProfile(ctx, subject)
+	if err != nil {
+		// As with login recording, a governed read distinguishes deletion from a failed profile read.
+		if governed, govErr := s.entityState.GetGovernedEntity(ctx, subject, false); govErr == nil && governed == nil {
+			return nil, &ErrorNotApplicable
+		}
+		return nil, s.serverError(ctx, "Failed to read the contact for attribute verification", subject, err)
+	}
+	if profile.Category != providers.EntityCategoryUser || profile.IsReadOnly {
+		return nil, &ErrorNotApplicable
+	}
+	var values map[string]json.RawMessage
+	if len(profile.Attributes) > 0 {
+		if err := json.Unmarshal(profile.Attributes, &values); err != nil {
+			return nil, s.serverError(ctx, "Failed to read the contact for attribute verification", subject, err)
+		}
+	}
+	var value string
+	if err := json.Unmarshal(values[attribute], &value); err != nil {
+		return nil, &ErrorNotApplicable
+	}
+	pin, svcErr := s.prepareContact(ctx, profile.Type, attribute, value)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	pin.Subject = subject
+	return &storedContact{pin: *pin, userType: profile.Type}, nil
+}
+
+// PrepareNewUserAttributeVerification pins a value a flow collected for the user it will create. Only
+// the runtime may call it. No event is published: the pin has no user until it is recorded.
+func (s *identityGovernanceService) PrepareNewUserAttributeVerification(ctx context.Context,
+	userType, attribute, value string) (*providers.AttributeVerificationPin, *tidcommon.ServiceError) {
+	if !security.IsRuntimeContext(ctx) {
+		return nil, &tidcommon.ErrorUnauthorized
+	}
+	return s.prepareContact(ctx, userType, attribute, value)
+}
+
+// RecordAttributeVerification records a pinned contact for the runtime. A user suspended or deleted
+// since the pin, or a contact that changed or is no longer eligible, is refused.
+func (s *identityGovernanceService) RecordAttributeVerification(ctx context.Context,
+	pin providers.AttributeVerificationPin) *tidcommon.ServiceError {
+	if !security.IsRuntimeContext(ctx) {
+		return &tidcommon.ErrorUnauthorized
+	}
+	// Checked before the entity lock; a suspension landing in between is not refused.
+	contact, svcErr := s.readStoredContact(ctx, pin.Subject, pin.Attribute)
+	if svcErr == nil && contact.pin != pin {
+		svcErr = &ErrorNotApplicable
+	}
+	if svcErr != nil {
+		if svcErr.Type == tidcommon.ClientErrorType {
+			s.verificationEvent(ctx, event.EventTypeAttributeVerificationRefused, pin, providers.StatusFailure)
+		}
+		return svcErr
+	}
+	// The entity service compares the canonical value again under the entity lock.
+	applied, err := s.entityState.RecordAttributeVerification(ctx, pin.Subject, contact.userType, pin.Attribute,
+		pin.Value, s.now())
+	if err != nil {
+		return s.serverError(ctx, "Failed to record attribute verification", pin.Subject, err)
+	}
+	if !applied {
+		s.verificationEvent(ctx, event.EventTypeAttributeVerificationRefused, pin, providers.StatusFailure)
+		return &ErrorNotApplicable
+	}
+	s.verificationEvent(ctx, event.EventTypeAttributeVerificationVerified, pin, providers.StatusSuccess)
+	return nil
+}
+
+// GetVerifiedAttributes returns the verifications recorded in the system attributes of a mutable user,
+// without reading the user type's schema, and an empty map for any other entity. It returns false, and
+// logs, when the verification state cannot be read.
+func (s *identityGovernanceService) GetVerifiedAttributes(ctx context.Context,
+	entity providers.Entity) (map[string]providers.VerifiedAttribute, bool) {
+	if entity.Category != providers.EntityCategoryUser || entity.IsReadOnly {
+		return map[string]providers.VerifiedAttribute{}, true
+	}
+	entries, err := ReadVerifiedAttributes(entity.SystemAttributes)
+	if err != nil {
+		s.logger.Warn(ctx, "Failed to read the verified attributes of an entity",
+			log.MaskedString("id", entity.ID), log.Error(err))
+		return nil, false
+	}
+	return entries, true
+}
+
 // readForCheck reads the subject of a check. ok is false when the check is already decided: an empty
 // subject, or one with no local identity, admits, since there is no hold to apply; any other read
 // failure refuses.
@@ -612,6 +752,47 @@ func (s *identityGovernanceService) serverError(ctx context.Context, message, en
 	return &tidcommon.InternalServerError
 }
 
+// prepareContact checks the schema and pins a canonical contact value without writing.
+func (s *identityGovernanceService) prepareContact(ctx context.Context,
+	userType, attribute, value string) (*providers.AttributeVerificationPin, *tidcommon.ServiceError) {
+	if userType == "" || s.entityTypes == nil {
+		return nil, &ErrorNotApplicable
+	}
+	attributes, svcErr := s.entityTypes.GetAttributes(ctx, entitytype.TypeCategoryUser, userType,
+		entitytype.AttributeFilter{AllowNonCredential: true})
+	if svcErr != nil {
+		s.logger.Error(ctx, "Failed to read the contact schema for attribute verification",
+			log.String("errorCode", svcErr.Code))
+		return nil, &tidcommon.InternalServerError
+	}
+	for _, contact := range attributes {
+		if contact.Attribute != attribute || !entitytypemodel.IsContactType(contact.Type) {
+			continue
+		}
+		value = entitytypemodel.CanonicalContactValue(contact.Type, value)
+		if strings.TrimSpace(value) == "" {
+			return nil, &ErrorNotApplicable
+		}
+		return &providers.AttributeVerificationPin{Attribute: attribute, Value: value,
+			Channel: entitytypemodel.ContactChannel(contact.Type)}, nil
+	}
+	return nil, &ErrorNotApplicable
+}
+
+// verificationUser refuses attribute verification for an unknown identity, a non-user or a suspended
+// user. A failed read is a server error.
+func (s *identityGovernanceService) verificationUser(ctx context.Context, subject string) *tidcommon.ServiceError {
+	governed, err := s.entityState.GetGovernedEntity(ctx, subject, false)
+	if err != nil {
+		return s.serverError(ctx, "Failed to read the identity for attribute verification", subject, err)
+	}
+	if governed == nil || governed.Category != providers.EntityCategoryUser ||
+		isSuspended(governed.State, governed.AccessState) {
+		return &ErrorNotApplicable
+	}
+	return nil
+}
+
 // logStoreFailure logs a store or read failure once, with the masked subject.
 func (s *identityGovernanceService) logStoreFailure(ctx context.Context, message, entityID string, err error) {
 	s.logger.Error(ctx, message, log.MaskedString(log.LoggerKeyEntityID, entityID), log.Error(err))
@@ -651,6 +832,15 @@ func (s *identityGovernanceService) authorize(ctx context.Context, entity Govern
 		return &tidcommon.ErrorUnauthorized
 	}
 	return nil
+}
+
+// verificationEvent publishes an attribute verification event about the pinned contact.
+func (s *identityGovernanceService) verificationEvent(ctx context.Context, eventType providers.EventType,
+	pin providers.AttributeVerificationPin, status string) {
+	if s.observability == nil || !s.observability.IsEnabled() {
+		return
+	}
+	s.observability.PublishEvent(ctx, newVerificationEvent(ctx, eventType, pin, status))
 }
 
 // audit publishes one lifecycle operation as an event. The actor is the caller's subject, left empty

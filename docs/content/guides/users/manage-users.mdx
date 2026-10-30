@@ -64,6 +64,8 @@ If the user type schema changed since the user was last saved, saving the user r
 - Values for optional attributes that no longer conform to the schema are discarded.
 - Values for required attributes that no longer conform to the schema must be corrected before the save can succeed.
 
+Saving a different value for a verified email address or mobile number, or removing it, clears its verification. Changing the user type clears every verification the user has.
+
 ### Update User Credentials
 
 Credential fields (such as passwords) are write-only and cannot be viewed. To set new credential values for a user:
@@ -82,6 +84,14 @@ Credential fields (such as passwords) are write-only and cannot be viewed. To se
 3. Confirm the operation. **Unlock** runs without a confirmation.
 
 For what each operation does, see [Suspend and Restore Accounts](../../account-protection/suspend-and-restore-accounts). For the lock policy and how a user recovers from a lock, see [Configure Account Lockout](../../account-protection/configure-account-lockout).
+
+## Email Address and Mobile Number Verification
+
+A signed-in user verifies their own email address or mobile number through a self-service flow that your application starts, for example from the profile component of a <ProductName /> SDK. See [Build a Flow](../../flows/build-a-flow#go-further).
+
+User API responses that include a user's attributes also include `verifiedAttributes`: each verified attribute with the time it was verified, or an empty object when none is verified. The field is omitted when the server could not read the user's verification state, and from listings that return identifiers only.
+
+Applications can receive the verification status in tokens and the UserInfo response as `<attribute>_verified`, for example `email_verified`, beside the attribute it describes. If the user type defines an attribute with that name, its stored value is released instead. See [Verified Contact Claims](../../protocols/oauth-oidc/claims-and-scopes#verified-contact-claims).
 
 ## Delete a User
 

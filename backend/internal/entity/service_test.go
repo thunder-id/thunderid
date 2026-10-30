@@ -20,11 +20,15 @@ import (
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/observability/event"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/hashmock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
+	"github.com/thunder-id/thunderid/tests/mocks/observability/observabilitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 	"github.com/thunder-id/thunderid/tests/mocks/transactionmock"
@@ -58,7 +62,7 @@ func (s *ServiceTestSuite) SetupTest() {
 			Salt: "testsalt", Iterations: 1, KeySize: 32,
 		},
 	}, nil).Maybe()
-	s.svc = newEntityService(s.store, s.runtime, s.hashService, nil, nil, transaction.NewNoOpTransactioner(), nil)
+	s.svc = newEntityService(s.store, s.runtime, s.hashService, nil, nil, transaction.NewNoOpTransactioner(), nil, nil)
 	s.ctx = context.Background()
 	s.testErr = errors.New("store error")
 }
@@ -369,7 +373,7 @@ func (s *ServiceTestSuite) TestUpdateEntity_AppliesTheRuntimeRowReadBeforeTheTra
 			s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil).Once()
 			s.store.On("UpdateEntity", mock.Anything, e).Return(nil).Once()
 			s.store.On("GetEntity", mock.Anything, e.ID).Return(stored, nil).Once()
-			svc := newEntityService(s.store, runtime, s.hashService, nil, nil, transactioner, nil)
+			svc := newEntityService(s.store, runtime, s.hashService, nil, nil, transactioner, nil, nil)
 
 			updated, err := svc.UpdateEntity(s.ctx, e.ID, e)
 
@@ -604,7 +608,7 @@ func (s *ServiceTestSuite) TestCreateEntity_WritesTheRuntimeRowAfterTheCommit() 
 	var events []string
 	transactioner, txCtx := s.passingTransactioner(&committed, &events)
 	runtime := newEntityRuntimeStoreInterfaceMock(s.T())
-	svc := newEntityService(s.store, runtime, s.hashService, nil, nil, transactioner, nil)
+	svc := newEntityService(s.store, runtime, s.hashService, nil, nil, transactioner, nil, nil)
 	e := testEntity("create-after")
 	e.State = providers.EntityStateSuspended
 	s.store.On("IsEntityDeclarative", mock.Anything, e.ID).Return(false, ErrEntityNotFound).Once()
@@ -641,7 +645,7 @@ func (s *ServiceTestSuite) TestDeleteEntity_DeletesTheRuntimeRowAfterTheCommit()
 	var events []string
 	transactioner, txCtx := s.passingTransactioner(&committed, &events)
 	runtime := newEntityRuntimeStoreInterfaceMock(s.T())
-	svc := newEntityService(s.store, runtime, s.hashService, nil, nil, transactioner, nil)
+	svc := newEntityService(s.store, runtime, s.hashService, nil, nil, transactioner, nil, nil)
 	s.store.On("DeleteEntity", txCtx, "del-after").Return(nil).Once()
 	runtime.On("DeleteRuntimeData", s.ctx, "del-after").
 		Run(func(mock.Arguments) { events = append(events, "runtime row deleted") }).Return(nil).Once()
@@ -655,7 +659,7 @@ func (s *ServiceTestSuite) TestDeleteEntity_DeletesTheRuntimeRowAfterTheCommit()
 // expectations, for tests that make one runtime call fail.
 func (s *ServiceTestSuite) newServiceWithRuntimeMock() (EntityServiceInterface, *entityRuntimeStoreInterfaceMock) {
 	runtime := newEntityRuntimeStoreInterfaceMock(s.T())
-	svc := newEntityService(s.store, runtime, s.hashService, nil, nil, transaction.NewNoOpTransactioner(), nil)
+	svc := newEntityService(s.store, runtime, s.hashService, nil, nil, transaction.NewNoOpTransactioner(), nil, nil)
 	return svc, runtime
 }
 
@@ -707,7 +711,7 @@ func (s *ServiceTestSuite) TestUpdateEntity_Success() {
 
 func (s *ServiceTestSuite) newSvcWithEntityType() (*entityService, *entitytypemock.EntityTypeServiceInterfaceMock) {
 	ets := entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
-	svc := newEntityService(s.store, s.runtime, s.hashService, ets, nil, transaction.NewNoOpTransactioner(), nil)
+	svc := newEntityService(s.store, s.runtime, s.hashService, ets, nil, transaction.NewNoOpTransactioner(), nil, nil)
 	return svc.(*entityService), ets
 }
 
@@ -767,6 +771,7 @@ func (s *ServiceTestSuite) TestUpdateAttributes_DropsUndeclaredBeforeValidateAnd
 	svc, ets := s.newSvcWithEntityType()
 	e := testEntity("uad1")
 	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil)
 	// strip: all declared attributes (username only).
 	ets.On("GetAttributes", mock.Anything, mock.Anything, e.Type,
 		entitytype.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
@@ -774,6 +779,9 @@ func (s *ServiceTestSuite) TestUpdateAttributes_DropsUndeclaredBeforeValidateAnd
 	// credential extraction: no credential attributes.
 	ets.On("GetAttributes", mock.Anything, mock.Anything, e.Type, entitytype.AttributeFilter{AllowCredential: true}).
 		Return([]entitytype.AttributeInfo{}, nil)
+	// verifiable attributes: none.
+	ets.On("GetAttributes", mock.Anything, mock.Anything, e.Type, entitytype.AttributeFilter{AllowNonCredential: true}).
+		Return([]entitytype.AttributeInfo{{Attribute: "username"}}, nil)
 	// Validation must receive the already-stripped payload, proving strip runs before validate.
 	cleaned := json.RawMessage(`{"username":"new"}`)
 	ets.On("ValidateEntity", mock.Anything, mock.Anything, e.Type, cleaned, true).
@@ -798,6 +806,9 @@ func (s *ServiceTestSuite) TestUpdateEntity_DropsUndeclaredBeforeValidateAndStor
 	// credential extraction: no credential attributes.
 	ets.On("GetAttributes", mock.Anything, mock.Anything, e.Type, entitytype.AttributeFilter{AllowCredential: true}).
 		Return([]entitytype.AttributeInfo{}, nil)
+	// verifiable attributes: none.
+	ets.On("GetAttributes", mock.Anything, mock.Anything, e.Type, entitytype.AttributeFilter{AllowNonCredential: true}).
+		Return([]entitytype.AttributeInfo{{Attribute: "username"}}, nil)
 	// Validation must receive the already-stripped payload, proving strip runs before validate.
 	cleaned := json.RawMessage(`{"username":"new"}`)
 	ets.On("ValidateEntity", mock.Anything, mock.Anything, e.Type, cleaned, true).
@@ -825,12 +836,49 @@ func (s *ServiceTestSuite) TestUpdateAttributes_GetEntityFails() {
 	s.store.On("GetEntity", mock.Anything, "bad").Return(providers.Entity{}, s.testErr)
 	err := s.svc.UpdateAttributes(s.ctx, "bad", attrs)
 	s.Error(err)
+	s.store.AssertNotCalled(s.T(), "LockEntity", mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestUpdateAttributes_LockEntityFails() {
+	e := testEntity("ua-lock")
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(providers.Entity{}, s.testErr).Once()
+	err := s.svc.UpdateAttributes(s.ctx, e.ID, json.RawMessage(`{"username":"new"}`))
+	s.ErrorIs(err, s.testErr)
+	s.store.AssertNotCalled(s.T(), "UpdateAttributes", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestUpdateAttributes_RefusesATypeChangedBeforeTheLock() {
+	e := testEntity("ua-type")
+	locked := *e
+	locked.Type = "other"
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(locked, nil).Once()
+	err := s.svc.UpdateAttributes(s.ctx, e.ID, json.RawMessage(`{"username":"new"}`))
+	s.ErrorIs(err, ErrSchemaValidationFailed)
+	s.store.AssertNotCalled(s.T(), "UpdateAttributes", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestUpdateEntity_LockEntityFails() {
+	e := testEntity("ue-lock")
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(providers.Entity{}, s.testErr).Once()
+	_, err := s.svc.UpdateEntity(s.ctx, e.ID, e)
+	s.ErrorIs(err, s.testErr)
+	s.store.AssertNotCalled(s.T(), "UpdateEntity", mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestUpdateSystemAttributes_LockEntityFails() {
+	s.store.On("LockEntity", mock.Anything, "usa-lock").Return(providers.Entity{}, s.testErr).Once()
+	err := s.svc.UpdateSystemAttributes(s.ctx, "usa-lock", json.RawMessage(`{"keep":true}`))
+	s.ErrorIs(err, s.testErr)
+	s.store.AssertNotCalled(s.T(), "UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (s *ServiceTestSuite) TestUpdateAttributes_StoreFails() {
 	e := testEntity("ua1")
 	attrs := json.RawMessage(`{"username":"new"}`)
 	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil)
 	s.store.On("UpdateAttributes", mock.Anything, e.ID, attrs).Return(s.testErr)
 	err := s.svc.UpdateAttributes(s.ctx, e.ID, attrs)
 	s.Error(err)
@@ -840,6 +888,7 @@ func (s *ServiceTestSuite) TestUpdateAttributes_Success() {
 	e := testEntity("ua2")
 	attrs := json.RawMessage(`{"username":"new"}`)
 	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil)
 	s.store.On("UpdateAttributes", mock.Anything, e.ID, attrs).Return(nil)
 	err := s.svc.UpdateAttributes(s.ctx, e.ID, attrs)
 	s.NoError(err)
@@ -1043,7 +1092,7 @@ const testUserSharingType sharing.ResourceType = "user"
 func (s *ServiceTestSuite) withUserSharing() *sharingmock.SharingServiceInterfaceMock {
 	sharingService := sharingmock.NewSharingServiceInterfaceMock(s.T())
 	s.svc = newEntityService(s.store, s.runtime, s.hashService, nil, nil, transaction.NewNoOpTransactioner(),
-		sharingService)
+		sharingService, nil)
 	s.svc.RegisterSharedCategory(providers.EntityCategoryUser, testUserSharingType)
 	return sharingService
 }
@@ -1949,7 +1998,7 @@ func (s *ServiceTestSuite) TestResolveLinkedAccounts_RejectsEmptyArguments() {
 func (s *ServiceTestSuite) TestGetLinkedEntities_ReturnsHoldersWithOUHandles() {
 	ouService := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 	s.svc = newEntityService(s.store, s.runtime, s.hashService, nil, ouService,
-		transaction.NewNoOpTransactioner(), nil)
+		transaction.NewNoOpTransactioner(), nil, nil)
 	first, second := testEntity("e-holder-1"), testEntity("e-holder-2")
 	second.OUID = "ou-2"
 	s.store.On("ResolveLinkedAccounts", mock.Anything, "idp-a", "sub-1").
@@ -2271,7 +2320,7 @@ func (s *ServiceTestSuite) governedRead(e *providers.Entity, state providers.Ent
 	s.runtime = newEntityRuntimeStoreInterfaceMock(s.T())
 	s.runtime.On("GetRuntimeData", mock.Anything, []string{e.ID}).
 		Return(map[string]entityRuntimeData{e.ID: row}, nil).Once()
-	s.svc = newEntityService(s.store, s.runtime, s.hashService, nil, nil, transaction.NewNoOpTransactioner(), nil)
+	s.svc = newEntityService(s.store, s.runtime, s.hashService, nil, nil, transaction.NewNoOpTransactioner(), nil, nil)
 }
 
 // The governed read carries the category, the parsed lock state and the runtime row's revision.
@@ -2411,7 +2460,7 @@ func (s *ServiceTestSuite) newServiceWithIndexedEmail() (*entityService, *entity
 	runtime := newEntityRuntimeStoreInterfaceMock(s.T())
 	installRuntimeFixture(runtime)
 	svc := newEntityService(store, runtime, s.hashService, ets, nil,
-		transaction.NewNoOpTransactioner(), nil).(*entityService)
+		transaction.NewNoOpTransactioner(), nil, nil).(*entityService)
 	return svc, store
 }
 
@@ -2450,4 +2499,599 @@ func (s *ServiceTestSuite) TestUpdateSystemAttributes_ValuesAtLimitAccepted() {
 	store.On("UpdateSystemAttributes", mock.Anything, "e1", mock.IsType(json.RawMessage(nil))).Return(nil)
 
 	s.NoError(svc.UpdateSystemAttributes(s.ctx, "e1", attrs))
+}
+
+func (s *ServiceTestSuite) TestCreateEntityDropsIncomingVerification() {
+	e := testEntity("create-verification")
+	e.SystemAttributes = json.RawMessage(`{"keep":true,"attributeVerification":` +
+		`{"email":{"verifiedAt":"forged"}}}`)
+	s.store.On("IsEntityDeclarative", mock.Anything, e.ID).Return(false, ErrEntityNotFound)
+	s.store.On("CreateEntity", mock.Anything, mock.MatchedBy(func(created providers.Entity) bool {
+		return string(created.SystemAttributes) == `{"keep":true}`
+	}), json.RawMessage(nil), json.RawMessage(nil)).Return(nil).Once()
+	stored := *e
+	stored.SystemAttributes = json.RawMessage(`{"keep":true}`)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(stored, nil)
+	created, err := s.svc.CreateEntity(s.ctx, e, nil, nil)
+	s.Require().NoError(err)
+	s.JSONEq(`{"keep":true}`, string(created.SystemAttributes))
+}
+
+func (s *ServiceTestSuite) TestUpdateSystemAttributesPreservesVerification() {
+	e := testEntity("update-system-verification")
+	e.SystemAttributes = json.RawMessage(`{"attributeVerification":{"email":{"verifiedAt":"2026-10-14T00:00:00Z"}}}`)
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.MatchedBy(func(raw json.RawMessage) bool {
+		entries, err := identitygovernance.ReadVerifiedAttributes(raw)
+		return err == nil && entries["email"] == (providers.VerifiedAttribute{VerifiedAt: "2026-10-14T00:00:00Z"})
+	})).Return(nil).Once()
+	err := s.svc.UpdateSystemAttributes(s.ctx, e.ID,
+		json.RawMessage(`{"attributeVerification":{"email":{"verifiedAt":"forged"}}}`))
+	s.NoError(err)
+}
+
+func (s *ServiceTestSuite) TestUpdateAttributesRefusesUnreadableVerification() {
+	e := testEntity("malformed-verification")
+	e.SystemAttributes = json.RawMessage(`{"attributeVerification":{"email":{"verifiedAt":5}}}`)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+	err := s.svc.UpdateAttributes(s.ctx, e.ID, json.RawMessage(`{"username":"new"}`))
+	s.Error(err)
+	s.store.AssertNotCalled(s.T(), "UpdateAttributes", mock.Anything, mock.Anything, mock.Anything)
+	s.store.AssertNotCalled(s.T(), "UpdateEntity", mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestVerificationSurvivesUnrelatedMetadataWrites() {
+	original := json.RawMessage(`{"attributeVerification":{"email":{"verifiedAt":"2026-10-15T00:00:00Z"}}}`)
+	merged, err := mergeReservedAttributes(original, json.RawMessage(`{"keep":true}`))
+	s.Require().NoError(err)
+	credential, err := setCredentialUpdatedAt(original, time.Now())
+	s.Require().NoError(err)
+	linked, err := withLinkedSubject(original, "connection-1", "subject-1")
+	s.Require().NoError(err)
+	for _, value := range []json.RawMessage{merged, credential, linked} {
+		entries, err := identitygovernance.ReadVerifiedAttributes(value)
+		s.Require().NoError(err)
+		s.Equal("2026-10-15T00:00:00Z", entries["email"].VerifiedAt)
+	}
+}
+
+// declaredVerifiableAttributes are the verifiable attributes contactTypeService declares.
+var declaredVerifiableAttributes = map[string]string{"workEmail": "email", "mobile": "mobile"}
+
+func contactTypeService(t *testing.T) *entitytypemock.EntityTypeServiceInterfaceMock {
+	t.Helper()
+	return schemaService(t, []entitytype.AttributeInfo{
+		{Attribute: "workEmail", Type: "email"}, {Attribute: "mobile", Type: "mobile"},
+		{Attribute: "nested", Type: "object"}, {Attribute: "many", Type: "array"},
+		{Attribute: "nickname", Type: "string"},
+	})
+}
+
+// schemaService is a user type schema declaring the given attributes.
+func schemaService(t *testing.T, attributes []entitytype.AttributeInfo) *entitytypemock.EntityTypeServiceInterfaceMock {
+	t.Helper()
+	return declareSchema(entitytypemock.NewEntityTypeServiceInterfaceMock(t), attributes)
+}
+
+// declareSchema stubs the schema reads and validations of a type declaring the given attributes, after
+// any expectation the schema already has.
+func declareSchema(schema *entitytypemock.EntityTypeServiceInterfaceMock,
+	attributes []entitytype.AttributeInfo) *entitytypemock.EntityTypeServiceInterfaceMock {
+	schema.On("GetAttributes", mock.Anything, mock.Anything, mock.Anything,
+		entitytype.AttributeFilter{AllowNonCredential: true}).Return(attributes, nil).Maybe()
+	schema.On("GetAttributes", mock.Anything, mock.Anything, mock.Anything,
+		entitytype.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).Return(attributes, nil).Maybe()
+	schema.On("GetAttributes", mock.Anything, mock.Anything, mock.Anything,
+		entitytype.AttributeFilter{AllowCredential: true}).Return([]entitytype.AttributeInfo{}, nil).Maybe()
+	schema.On("ValidateEntity", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, true).Return(true, nil).Maybe()
+	schema.On("ValidateEntityUniqueness", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	return schema
+}
+
+// verifiedWorkEmail is stored verification metadata with workEmail verified.
+const verifiedWorkEmail = `{"attributeVerification":{"workEmail":{"verifiedAt":"2026-10-15T00:00:00Z"}}}`
+
+// verificationUser is user-1 in ou1 with the given attributes and system attributes.
+func verificationUser(attributes, systemAttributes string) providers.Entity {
+	return providers.Entity{ID: "user-1", OUID: "ou1", Category: providers.EntityCategoryUser, Type: "person",
+		Attributes: json.RawMessage(attributes), SystemAttributes: json.RawMessage(systemAttributes)}
+}
+
+// recordWorkEmail records user-1's person workEmail at a@example.com.
+func recordWorkEmail(svc *entityService, at time.Time) (bool, error) {
+	return svc.RecordAttributeVerification(context.Background(), "user-1", "person", "workEmail",
+		"a@example.com", at)
+}
+
+// txKey marks a context as inside a markingTransactioner transaction.
+type txKey struct{}
+
+// markingTransactioner runs each transaction inline on a context marked as inside it.
+func markingTransactioner(t *testing.T) *transactionmock.TransactionerMock {
+	m := transactionmock.NewTransactionerMock(t)
+	m.EXPECT().Transact(mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, txFunc func(context.Context) error) error {
+			return txFunc(context.WithValue(ctx, txKey{}, true))
+		}).Maybe()
+	return m
+}
+
+// inTransaction matches a context inside a markingTransactioner transaction.
+func inTransaction() interface{} {
+	return mock.MatchedBy(func(ctx context.Context) bool { return ctx.Value(txKey{}) != nil })
+}
+
+// outsideTransaction matches a context outside a markingTransactioner transaction.
+func outsideTransaction() interface{} {
+	return mock.MatchedBy(func(ctx context.Context) bool { return ctx.Value(txKey{}) == nil })
+}
+
+// expectAttributeUpdate stubs the read of an attribute update before its transaction and the locked
+// read inside it.
+func expectAttributeUpdate(store *entityStoreInterfaceMock, current providers.Entity) {
+	store.On("GetEntity", outsideTransaction(), current.ID).Return(current, nil).Once()
+	store.On("LockEntity", inTransaction(), current.ID).Return(current, nil).Once()
+}
+
+// withoutVerification matches system attributes that record no verification.
+func withoutVerification() interface{} {
+	return mock.MatchedBy(func(raw json.RawMessage) bool {
+		entries, err := identitygovernance.ReadVerifiedAttributes(raw)
+		return err == nil && len(entries) == 0
+	})
+}
+
+// verificationService is a service over the store and the runtime fixture whose transactions mark
+// their context.
+func (s *ServiceTestSuite) verificationService(store *entityStoreInterfaceMock,
+	schema entitytype.EntityTypeServiceInterface) *entityService {
+	runtime := newEntityRuntimeStoreInterfaceMock(s.T())
+	installRuntimeFixture(runtime)
+	store.On("GetIndexedAttributes").Return(map[string]bool{}).Maybe()
+	return &entityService{store: store, runtimeStore: runtime, entityTypeService: schema,
+		transactioner: markingTransactioner(s.T()), logger: log.GetLogger()}
+}
+
+func (s *ServiceTestSuite) TestCreateAndGenericWritesCannotSetVerification() {
+	incoming := json.RawMessage(`{"attributeVerification":` +
+		`{"workEmail":{"verifiedAt":"forged"}},"keep":true}`)
+	stripped, err := withoutCreateProtectedAttributes(incoming)
+	s.Require().NoError(err)
+	s.Require().JSONEq(`{"keep":true}`, string(stripped))
+	merged, err := mergeReservedAttributes(nil, incoming)
+	s.Require().NoError(err)
+	s.Require().JSONEq(`{"keep":true}`, string(merged))
+	current := json.RawMessage(`{"attributeVerification":{"workEmail":{"verifiedAt":"2026-10-14T00:00:00Z"}}}`)
+	merged, err = mergeReservedAttributes(current, incoming)
+	s.Require().NoError(err)
+	s.Require().JSONEq(`{"keep":true,"attributeVerification":{"workEmail":{"verifiedAt":"2026-10-14T00:00:00Z"}}}`,
+		string(merged))
+}
+
+func (s *ServiceTestSuite) TestUpdateEntityInvalidatesFromTheLockedProfile() {
+	t := s.T()
+	store := newEntityStoreInterfaceMock(t)
+	store.On("GetIndexedAttributes").Return(map[string]bool{}).Maybe()
+	current := providers.Entity{ID: "user-1", Category: providers.EntityCategoryUser, Type: "person",
+		Attributes: json.RawMessage(`{"workEmail":"old@example.com"}`),
+		SystemAttributes: json.RawMessage(
+			`{"attributeVerification":{"workEmail":{"verifiedAt":"2026-10-16T00:00:00Z"}}}`),
+	}
+	store.On("LockEntity", mock.Anything, current.ID).Return(current, nil).Once()
+	store.On("UpdateEntity", mock.Anything, mock.MatchedBy(func(next *providers.Entity) bool {
+		entries, err := identitygovernance.ReadVerifiedAttributes(next.SystemAttributes)
+		return err == nil && len(entries) == 0
+	})).Return(nil).Once()
+	store.On("GetEntity", mock.Anything, current.ID).Return(current, nil).Once()
+	attributes := []entitytype.AttributeInfo{{Attribute: "workEmail", Type: "email"}}
+	schema := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	schema.On("GetAttributes", outsideTransaction(), mock.Anything, "person",
+		entitytype.AttributeFilter{AllowNonCredential: true}).Return(attributes, nil).Once()
+	schema.On("GetAttributes", mock.Anything, mock.Anything, mock.Anything,
+		entitytype.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).Return(attributes, nil).Maybe()
+	schema.On("GetAttributes", mock.Anything, mock.Anything, mock.Anything,
+		entitytype.AttributeFilter{AllowCredential: true}).Return([]entitytype.AttributeInfo{}, nil).Maybe()
+	schema.On("ValidateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything, true).
+		Return(true, nil).Maybe()
+	schema.On("ValidateEntityUniqueness", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything).Return(true, nil).Maybe()
+	svc := s.verificationService(store, schema)
+	next := current
+	next.Attributes = json.RawMessage(`{"workEmail":"new@example.com"}`)
+	next.SystemAttributes = json.RawMessage(`{"attributeVerification":` +
+		`{"workEmail":{"verifiedAt":"forged"}}}`)
+	_, err := svc.UpdateEntity(context.Background(), current.ID, &next)
+	s.Require().NoError(err)
+}
+
+// The verifiable attributes are read before the transaction, so an unreadable schema refuses the write before
+// the lock.
+func (s *ServiceTestSuite) TestInvalidationRefusesAnUnreadableSchema() {
+	failingSchema := func() *entitytypemock.EntityTypeServiceInterfaceMock {
+		schema := entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
+		schema.On("GetAttributes", outsideTransaction(), mock.Anything, "person",
+			entitytype.AttributeFilter{AllowNonCredential: true}).
+			Return(nil, &tidcommon.InternalServerError).Once()
+		return declareSchema(schema, []entitytype.AttributeInfo{{Attribute: "workEmail", Type: "email"}})
+	}
+	current := verificationUser(`{"workEmail":"a@example.com"}`, verifiedWorkEmail)
+
+	s.Run("update attributes", func() {
+		store := newEntityStoreInterfaceMock(s.T())
+		store.On("GetEntity", outsideTransaction(), current.ID).Return(current, nil).Once()
+		svc := s.verificationService(store, failingSchema())
+
+		err := svc.UpdateAttributes(context.Background(), current.ID, json.RawMessage(`{}`))
+
+		s.ErrorContains(err, tidcommon.InternalServerError.Code)
+	})
+	s.Run("update entity", func() {
+		svc := s.verificationService(newEntityStoreInterfaceMock(s.T()), failingSchema())
+		next := current
+
+		_, err := svc.UpdateEntity(context.Background(), current.ID, &next)
+
+		s.ErrorContains(err, tidcommon.InternalServerError.Code)
+	})
+}
+
+func (s *ServiceTestSuite) TestUpdateAttributesValidatesBeforeTheTransaction() {
+	store := newEntityStoreInterfaceMock(s.T())
+	expectAttributeUpdate(store, verificationUser(`{"workEmail":"a@example.com"}`, verifiedWorkEmail))
+	store.On("UpdateAttributes", inTransaction(), "user-1", mock.Anything).Return(nil).Once()
+	store.On("UpdateSystemAttributes", inTransaction(), "user-1", withoutVerification()).Return(nil).Once()
+	schema := entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
+	schema.On("GetAttributes", outsideTransaction(), mock.Anything, "person",
+		entitytype.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+		Return([]entitytype.AttributeInfo{{Attribute: "workEmail", Type: "email"}}, nil).Once()
+	schema.On("GetAttributes", outsideTransaction(), mock.Anything, "person",
+		entitytype.AttributeFilter{AllowCredential: true}).Return([]entitytype.AttributeInfo{}, nil).Once()
+	schema.On("GetAttributes", outsideTransaction(), mock.Anything, "person",
+		entitytype.AttributeFilter{AllowNonCredential: true}).
+		Return([]entitytype.AttributeInfo{{Attribute: "workEmail", Type: "email"}}, nil).Once()
+	schema.On("ValidateEntity", outsideTransaction(), mock.Anything, mock.Anything, mock.Anything, true).
+		Return(true, nil).Once()
+	schema.On("ValidateEntityUniqueness", outsideTransaction(), mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything).Return(true, nil).Once()
+	svc := s.verificationService(store, schema)
+
+	err := svc.UpdateAttributes(context.Background(), "user-1", json.RawMessage(`{"workEmail":"b@example.com"}`))
+
+	s.NoError(err)
+}
+
+// lockedUser is a store that returns the given user under the lock and expects no write.
+func (s *ServiceTestSuite) lockedUser(current providers.Entity) (*entityService, *entityStoreInterfaceMock) {
+	store := newEntityStoreInterfaceMock(s.T())
+	store.On("LockEntity", mock.Anything, current.ID).Return(current, nil).Once()
+	return &entityService{store: store, entityTypeService: contactTypeService(s.T()),
+		transactioner: transaction.NewNoOpTransactioner(), logger: log.GetLogger()}, store
+}
+
+func (s *ServiceTestSuite) TestRecordRefusesAUserDeletedBeforeTheLock() {
+	store := newEntityStoreInterfaceMock(s.T())
+	store.On("LockEntity", mock.Anything, "user-1").Return(providers.Entity{}, ErrEntityNotFound).Once()
+	svc := &entityService{store: store, entityTypeService: contactTypeService(s.T()),
+		transactioner: transaction.NewNoOpTransactioner(), logger: log.GetLogger()}
+
+	applied, err := recordWorkEmail(svc, time.Now())
+
+	s.NoError(err)
+	s.False(applied)
+}
+
+// The caller pinned the type and canonical value before the lock; a record whose locked user no longer
+// matches writes nothing.
+func (s *ServiceTestSuite) TestRecordRefusesAChangedEntity() {
+	user := func(userType, attributes string) providers.Entity {
+		return providers.Entity{ID: "user-1", Category: providers.EntityCategoryUser, Type: userType,
+			Attributes: json.RawMessage(attributes)}
+	}
+	for name, current := range map[string]providers.Entity{
+		"other type":    user("employee", `{"workEmail":"a@example.com"}`),
+		"other value":   user("person", `{"workEmail":"b@example.com"}`),
+		"other local":   user("person", `{"workEmail":"A@example.com"}`),
+		"removed":       user("person", `{}`),
+		"no attributes": user("person", ``),
+		"not a string":  user("person", `{"workEmail":42}`),
+		"not a contact": user("person", `{"nickname":"a@example.com"}`),
+		"other category": {ID: "user-1", Category: providers.EntityCategoryAgent, Type: "person",
+			Attributes: json.RawMessage(`{"workEmail":"a@example.com"}`)},
+	} {
+		s.Run(name, func() {
+			svc, _ := s.lockedUser(current)
+
+			applied, err := recordWorkEmail(svc, time.Now())
+
+			s.NoError(err)
+			s.False(applied)
+		})
+	}
+}
+
+// Recording compares canonical values, as invalidation does, so a value that differs only in the case of
+// its email domain or surrounding whitespace is still the pinned contact.
+func (s *ServiceTestSuite) TestRecordMatchesTheCanonicalValue() {
+	svc, store := s.lockedUser(verificationUser(`{"workEmail":" a@EXAMPLE.com "}`, `{}`))
+	store.On("UpdateSystemAttributes", mock.Anything, "user-1", mock.Anything).Return(nil).Once()
+
+	applied, err := recordWorkEmail(svc, time.Now())
+
+	s.NoError(err)
+	s.True(applied)
+}
+
+// An attribute the user type no longer declares as a contact is not recorded.
+func (s *ServiceTestSuite) TestRecordRefusesAnAttributeThatIsNoLongerAContact() {
+	svc, _ := s.lockedUser(verificationUser(`{"workEmail":"a@example.com"}`, `{}`))
+	svc.entityTypeService = schemaService(s.T(), []entitytype.AttributeInfo{{Attribute: "workEmail", Type: "string"}})
+
+	applied, err := recordWorkEmail(svc, time.Now())
+
+	s.NoError(err)
+	s.False(applied)
+}
+
+func (s *ServiceTestSuite) TestRecordRefusesAnEmptyValue() {
+	svc := &entityService{logger: log.GetLogger()}
+
+	applied, err := svc.RecordAttributeVerification(context.Background(), "user-1", "person", "workEmail", "",
+		time.Now())
+
+	s.NoError(err)
+	s.False(applied)
+}
+
+func (s *ServiceTestSuite) TestRecordPersistenceFailureRecordsNothing() {
+	svc, store := s.lockedUser(verificationUser(`{"workEmail":"a@example.com"}`, `{}`))
+	writeErr := errors.New("write failed")
+	store.On("UpdateSystemAttributes", mock.Anything, "user-1", mock.Anything).Return(writeErr).Once()
+
+	applied, err := recordWorkEmail(svc, time.Now())
+
+	s.ErrorIs(err, writeErr)
+	s.False(applied)
+}
+
+// captureEvents returns an observability service whose events land in the returned slice.
+func (s *ServiceTestSuite) captureEvents() (*observabilitymock.ObservabilityServiceInterfaceMock,
+	*[]*providers.Event) {
+	published := []*providers.Event{}
+	obs := observabilitymock.NewObservabilityServiceInterfaceMock(s.T())
+	obs.On("IsEnabled").Return(true).Maybe()
+	obs.On("PublishEvent", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) { published = append(published, args.Get(1).(*providers.Event)) }).Maybe()
+	return obs, &published
+}
+
+func (s *ServiceTestSuite) TestAUserTypeChangePublishesWithTheCaller() {
+	store := newEntityStoreInterfaceMock(s.T())
+	store.On("GetIndexedAttributes").Return(map[string]bool{}).Maybe()
+	current := providers.Entity{ID: "user-1", Category: providers.EntityCategoryUser, Type: "person",
+		Attributes:       json.RawMessage(`{"workEmail":"a@example.com"}`),
+		SystemAttributes: json.RawMessage(verifiedWorkEmail)}
+	store.On("LockEntity", mock.Anything, current.ID).Return(current, nil).Once()
+	store.On("UpdateEntity", mock.Anything, mock.Anything).Return(nil).Once()
+	store.On("GetEntity", mock.Anything, current.ID).Return(current, nil).Once()
+	runtime := newEntityRuntimeStoreInterfaceMock(s.T())
+	installRuntimeFixture(runtime)
+	obs, published := s.captureEvents()
+	svc := &entityService{store: store, runtimeStore: runtime, entityTypeService: contactTypeService(s.T()),
+		transactioner: transaction.NewNoOpTransactioner(), observability: obs, logger: log.GetLogger()}
+	next := current
+	next.Type = "employee"
+	ctx := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("operator", "ou1", "", nil, nil))
+
+	_, err := svc.UpdateEntity(ctx, current.ID, &next)
+
+	s.Require().NoError(err)
+	s.Require().Len(*published, 1)
+	s.Equal(string(identitygovernance.VerificationUserTypeChanged), (*published)[0].Data[event.DataKey.Reason])
+	s.Equal("operator", (*published)[0].Data[event.DataKey.ActorSub])
+}
+
+func (s *ServiceTestSuite) TestUpdateAttributesClearsAChangedContactInItsTransaction() {
+	store := newEntityStoreInterfaceMock(s.T())
+	expectAttributeUpdate(store, verificationUser(`{"workEmail":"old@example.com"}`, verifiedWorkEmail))
+	store.On("UpdateAttributes", inTransaction(), "user-1", mock.Anything).Return(nil).Once()
+	store.On("UpdateSystemAttributes", inTransaction(), "user-1", withoutVerification()).Return(nil).Once()
+	svc := s.verificationService(store, contactTypeService(s.T()))
+
+	err := svc.UpdateAttributes(context.Background(), "user-1",
+		json.RawMessage(`{"workEmail":"new@example.com"}`))
+
+	s.NoError(err)
+}
+
+// Both writes run in one transaction, so a failed metadata write rolls the contact write back.
+func (s *ServiceTestSuite) TestAFailedMetadataWriteFailsTheContactWrite() {
+	store := newEntityStoreInterfaceMock(s.T())
+	expectAttributeUpdate(store, verificationUser(`{"workEmail":"a@example.com"}`, verifiedWorkEmail))
+	store.On("UpdateAttributes", inTransaction(), "user-1", mock.Anything).Return(nil).Once()
+	writeErr := errors.New("metadata write failed")
+	store.On("UpdateSystemAttributes", inTransaction(), "user-1", mock.Anything).Return(writeErr).Once()
+	obs, published := s.captureEvents()
+	svc := s.verificationService(store, contactTypeService(s.T()))
+	svc.observability = obs
+
+	err := svc.UpdateAttributes(context.Background(), "user-1", json.RawMessage(`{"workEmail":"b@example.com"}`))
+
+	s.ErrorIs(err, writeErr)
+	s.Empty(*published)
+}
+
+func (s *ServiceTestSuite) TestAFailedCommitPublishesNothing() {
+	store := newEntityStoreInterfaceMock(s.T())
+	current := verificationUser(`{"workEmail":"a@example.com"}`, verifiedWorkEmail)
+	store.On("GetEntity", mock.Anything, "user-1").Return(current, nil).Once()
+	store.On("LockEntity", mock.Anything, "user-1").Return(current, nil).Once()
+	store.On("UpdateAttributes", mock.Anything, "user-1", mock.Anything).Return(nil).Once()
+	store.On("UpdateSystemAttributes", mock.Anything, "user-1", withoutVerification()).Return(nil).Once()
+	obs, published := s.captureEvents()
+	svc := s.verificationService(store, contactTypeService(s.T()))
+	svc.observability = obs
+	commitErr := errors.New("commit failed")
+	tx := transactionmock.NewTransactionerMock(s.T())
+	tx.EXPECT().Transact(mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, txFunc func(context.Context) error) error {
+			if err := txFunc(ctx); err != nil {
+				return err
+			}
+			return commitErr
+		}).Once()
+	svc.transactioner = tx
+
+	err := svc.UpdateAttributes(context.Background(), "user-1", json.RawMessage(`{"workEmail":"b@example.com"}`))
+
+	s.ErrorIs(err, commitErr)
+	s.Empty(*published)
+}
+
+// schemaReadOutsideTransaction is contactTypeService read only outside a markingTransactioner transaction.
+func schemaReadOutsideTransaction(t *testing.T) *entitytypemock.EntityTypeServiceInterfaceMock {
+	schema := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	schema.On("GetAttributes", outsideTransaction(), entitytype.TypeCategoryUser, "person",
+		entitytype.AttributeFilter{AllowNonCredential: true}).
+		Return([]entitytype.AttributeInfo{{Attribute: "workEmail", Type: "email"}}, nil).Once()
+	return schema
+}
+
+func (s *ServiceTestSuite) TestRecordFaultsAreErrors() {
+	readErr := errors.New("read failed")
+	for name, locked := range map[string]func(*entityStoreInterfaceMock){
+		"schema read": nil,
+		"entity lock": func(store *entityStoreInterfaceMock) {
+			store.On("LockEntity", mock.Anything, "user-1").Return(providers.Entity{}, readErr).Once()
+		},
+		"malformed attributes": func(store *entityStoreInterfaceMock) {
+			store.On("LockEntity", mock.Anything, "user-1").
+				Return(verificationUser(`[`, verifiedWorkEmail), nil).Once()
+		},
+		"malformed metadata": func(store *entityStoreInterfaceMock) {
+			store.On("LockEntity", mock.Anything, "user-1").Return(
+				verificationUser(`{"workEmail":"a@example.com"}`, `{"attributeVerification":[]}`), nil).Once()
+		},
+	} {
+		s.Run(name, func() {
+			store := newEntityStoreInterfaceMock(s.T())
+			schema := entitytype.EntityTypeServiceInterface(contactTypeService(s.T()))
+			if locked == nil {
+				failing := entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
+				failing.On("GetAttributes", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(nil, &tidcommon.InternalServerError).Once()
+				schema = failing
+			} else {
+				locked(store)
+			}
+			svc := s.verificationService(store, schema)
+
+			applied, err := recordWorkEmail(svc, time.Now())
+
+			s.Error(err)
+			s.False(applied)
+		})
+	}
+}
+
+func (s *ServiceTestSuite) TestRecordWritesOnlyTheVerificationUnderTheEntityLock() {
+	current := verificationUser(`{"workEmail":"a@example.com"}`, `{"keep":true}`)
+	store := newEntityStoreInterfaceMock(s.T())
+	store.On("LockEntity", inTransaction(), "user-1").Return(current, nil).Once()
+	var written json.RawMessage
+	store.On("UpdateSystemAttributes", inTransaction(), "user-1", mock.Anything).
+		Run(func(args mock.Arguments) { written = args.Get(2).(json.RawMessage) }).Return(nil).Once()
+	svc := s.verificationService(store, schemaReadOutsideTransaction(s.T()))
+
+	applied, err := recordWorkEmail(svc, time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC))
+
+	s.Require().NoError(err)
+	s.True(applied)
+	s.JSONEq(`{"keep":true,"attributeVerification":{"workEmail":{"verifiedAt":"2026-10-16T12:00:00Z"}}}`,
+		string(written))
+}
+
+func (s *ServiceTestSuite) TestRecordAgainRefreshesVerifiedAt() {
+	svc, store := s.lockedUser(verificationUser(`{"workEmail":"a@example.com"}`, verifiedWorkEmail))
+	var written json.RawMessage
+	store.On("UpdateSystemAttributes", mock.Anything, "user-1", mock.Anything).
+		Run(func(args mock.Arguments) { written = args.Get(2).(json.RawMessage) }).Return(nil).Once()
+	at := time.Date(2026, 10, 16, 13, 0, 0, 0, time.UTC)
+
+	applied, err := recordWorkEmail(svc, at)
+
+	s.Require().NoError(err)
+	s.True(applied)
+	entries, err := identitygovernance.ReadVerifiedAttributes(written)
+	s.Require().NoError(err)
+	s.Equal(providers.VerifiedAttribute{VerifiedAt: at.Format(time.RFC3339Nano)}, entries["workEmail"])
+}
+
+func (s *ServiceTestSuite) TestAChangeWhileIneligibleClearsTheVerification() {
+	store := newEntityStoreInterfaceMock(s.T())
+	expectAttributeUpdate(store, verificationUser(`{"workEmail":"a@example.com"}`, verifiedWorkEmail))
+	store.On("UpdateAttributes", inTransaction(), "user-1", mock.Anything).Return(nil).Once()
+	store.On("UpdateSystemAttributes", inTransaction(), "user-1", withoutVerification()).Return(nil).Once()
+	svc := s.verificationService(store,
+		schemaService(s.T(), []entitytype.AttributeInfo{{Attribute: "workEmail", Type: "string"}}))
+
+	err := svc.UpdateAttributes(context.Background(), "user-1", json.RawMessage(`{"workEmail":"A@example.com"}`))
+
+	s.NoError(err)
+}
+
+func (s *ServiceTestSuite) TestACommittedUpdatePublishesEachClearedVerification() {
+	store := newEntityStoreInterfaceMock(s.T())
+	expectAttributeUpdate(store, verificationUser(`{"workEmail":"a@example.com","mobile":"+94771234567"}`,
+		verifiedWorkEmail))
+	store.On("UpdateAttributes", inTransaction(), "user-1", mock.Anything).Return(nil).Once()
+	store.On("UpdateSystemAttributes", inTransaction(), "user-1", withoutVerification()).Return(nil).Once()
+	obs, published := s.captureEvents()
+	svc := s.verificationService(store, contactTypeService(s.T()))
+	svc.observability = obs
+
+	err := svc.UpdateAttributes(context.Background(), "user-1", json.RawMessage(`{}`))
+
+	s.Require().NoError(err)
+	s.Require().Len(*published, 1)
+	evt := (*published)[0]
+	s.Equal(string(event.EventTypeAttributeVerificationInvalidated), evt.Type)
+	s.Equal("user-1", evt.Data[event.DataKey.Subject])
+	s.Equal(event.PrincipalTypeUser, evt.Data[event.DataKey.SubjectType])
+	s.Equal("workEmail", evt.Data[event.DataKey.Attribute])
+	s.Equal(string(identitygovernance.VerificationValueRemoved), evt.Data[event.DataKey.Reason])
+	s.NotContains(evt.Data, event.DataKey.ActorSub, "an update without a caller names no actor")
+	for key, value := range evt.Data {
+		s.NotContains(fmt.Sprint(value), "a@example.com", "field %s carries the contact", key)
+	}
+}
+
+func (s *ServiceTestSuite) TestMalformedMetadataRefusesTheContactWrite() {
+	s.Run("self update", func() {
+		store := newEntityStoreInterfaceMock(s.T())
+		expectAttributeUpdate(store, verificationUser(`{"workEmail":"a@example.com"}`, `{"attributeVerification":[]}`))
+		svc := s.verificationService(store, contactTypeService(s.T()))
+
+		err := svc.UpdateAttributes(context.Background(), "user-1", json.RawMessage(`{"workEmail":"b@example.com"}`))
+
+		s.Require().Error(err)
+		store.AssertNotCalled(s.T(), "UpdateAttributes", mock.Anything, mock.Anything, mock.Anything)
+	})
+	s.Run("administrator update", func() {
+		current := verificationUser(`{"workEmail":"a@example.com"}`,
+			`{"attributeVerification":{"workEmail":"forged"}}`)
+		store := newEntityStoreInterfaceMock(s.T())
+		store.On("LockEntity", inTransaction(), current.ID).Return(current, nil).Once()
+		svc := s.verificationService(store, contactTypeService(s.T()))
+		next := current
+		next.Attributes = json.RawMessage(`{"workEmail":"b@example.com"}`)
+
+		_, err := svc.UpdateEntity(context.Background(), current.ID, &next)
+
+		s.Require().Error(err)
+		store.AssertNotCalled(s.T(), "UpdateEntity", mock.Anything, mock.Anything)
+	})
 }

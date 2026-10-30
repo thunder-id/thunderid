@@ -15,13 +15,16 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/observabilityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
+	"github.com/thunder-id/thunderid/tests/testhelpers"
 )
 
 type ServiceTestSuite struct {
@@ -41,7 +44,7 @@ func (s *ServiceTestSuite) SetupTest() {
 	s.port = newEntityStateProviderMock(s.T())
 	s.source = newAccountAccessSourceInterfaceMock(s.T())
 	s.now = time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
-	s.svc = newIdentityGovernanceService(s.port, s.source, nil, nil, nil)
+	s.svc = newIdentityGovernanceService(s.port, nil, s.source, nil, nil, nil)
 	s.svc.now = func() time.Time { return s.now }
 	s.ctx = context.Background()
 }
@@ -51,7 +54,7 @@ func newTestService(t *testing.T, port entityStateProvider, cfg accountAccessVal
 	authorizer sysauthz.SystemAuthorizationServiceInterface) *identityGovernanceService {
 	source := newAccountAccessSourceInterfaceMock(t)
 	source.EXPECT().Current(mock.Anything).Return(cfg).Maybe()
-	return newIdentityGovernanceService(port, source, notifier, authorizer, nil)
+	return newIdentityGovernanceService(port, nil, source, notifier, authorizer, nil)
 }
 
 // admittedFailure returns RecordFailure's error and requires an attempt that read cleanly to be
@@ -138,7 +141,8 @@ func (s *ServiceTestSuite) TestIdentityHoldAppliesAtEveryPlane() {
 
 	for _, plane := range []providers.AccessPlane{
 		providers.AccessPlaneAuthentication, providers.AccessPlaneDispatch, providers.AccessPlaneRecovery,
-		providers.AccessPlaneSession, providers.AccessPlaneIssuance, providers.AccessPlaneApplication,
+		providers.AccessPlaneVerification, providers.AccessPlaneSession, providers.AccessPlaneIssuance,
+		providers.AccessPlaneApplication,
 	} {
 		decision, err := s.svc.EvaluateAccess(s.ctx, entity.ID, plane, testMethod)
 		s.Require().Nil(err)
@@ -871,7 +875,8 @@ func (s *ServiceTestSuite) TestASuspensionRefusesAtEveryPlane() {
 
 	for _, plane := range []providers.AccessPlane{
 		providers.AccessPlaneAuthentication, providers.AccessPlaneDispatch, providers.AccessPlaneRecovery,
-		providers.AccessPlaneSession, providers.AccessPlaneIssuance, providers.AccessPlaneApplication,
+		providers.AccessPlaneVerification, providers.AccessPlaneSession, providers.AccessPlaneIssuance,
+		providers.AccessPlaneApplication,
 	} {
 		decision, err := s.svc.EvaluateAccess(s.ctx, entity.ID, plane, testMethod)
 		s.Require().Nil(err)
@@ -2373,6 +2378,53 @@ func (s *ServiceTestSuite) TestAFailureOnAHeldIdentityIsRefusedWithoutCounting()
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
+// A contact proof is not a sign-in: an automatic lock on any method gives way at the verification
+// plane, the account-wide lock included.
+func (s *ServiceTestSuite) TestAtTheVerificationPlaneALockGivesWay() {
+	entity := s.activeEntity()
+	putLockEntry(&entity.AccessState, testMethod, LockEntry{LockCount: 1, UnlockAt: s.at(5 * time.Minute)})
+	putLockEntry(&entity.AccessState, providers.AuthenticationMethodOTP,
+		LockEntry{LockCount: 1, UnlockAt: s.at(5 * time.Minute)})
+	putLockEntry(&entity.AccessState, AuthenticationMethodAccount,
+		LockEntry{LockCount: 1, UnlockAt: s.at(5 * time.Minute)})
+	s.expectRead(entity)
+	s.expectConfig(methodGranularityConfig())
+
+	for _, method := range []providers.AuthenticationMethod{testMethod, providers.AuthenticationMethodOTP} {
+		decision, err := s.svc.EvaluateAccess(s.ctx, entity.ID, providers.AccessPlaneVerification, method)
+		s.Require().Nil(err)
+		s.True(decision.Admitted, string(method))
+	}
+}
+
+func (s *ServiceTestSuite) TestAtTheVerificationPlaneASuspensionRefuses() {
+	entity := s.activeEntity()
+	entity.State = providers.EntityStateSuspended
+	s.expectRead(entity)
+	s.expectConfig(methodGranularityConfig())
+
+	decision, err := s.svc.EvaluateAccess(s.ctx, entity.ID, providers.AccessPlaneVerification,
+		providers.AuthenticationMethodOTP)
+
+	s.Require().Nil(err)
+	s.False(decision.Admitted)
+	s.Equal(providers.AccessRefusalReasonSuspended, decision.Reason)
+}
+
+// A wrong verification code counts nothing and reads nothing, so it can neither form nor reveal a lock.
+func (s *ServiceTestSuite) TestAWrongVerificationCodeIsNotCounted() {
+	entity := s.activeEntity()
+
+	for _, method := range []providers.AuthenticationMethod{providers.AuthenticationMethodOTP, testMethod} {
+		decision, err := s.svc.RecordFailure(s.ctx, entity.ID, providers.AccessPlaneVerification, method)
+		s.Require().Nil(err)
+		s.True(decision.Admitted, string(method))
+	}
+	s.port.AssertNotCalled(s.T(), "GetGovernedEntity", mock.Anything, mock.Anything, mock.Anything)
+	s.port.AssertNotCalled(s.T(), "IncrementFailure",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
 // A wrong recovery code is admitted without a read, so a hold, a suspension included, cannot change its
 // answer: the lock gives way to the code there, and only a correct code states the hold.
 func (s *ServiceTestSuite) TestAWrongRecoveryCodeIsAdmittedWithoutARead() {
@@ -2637,7 +2689,7 @@ func (s *ServiceTestSuite) TestReadEntityAccessReportsCurrentStatus() {
 			if tc.category != providers.EntityCategoryApp {
 				source.EXPECT().Current(s.ctx).Return(cfg).Once()
 			}
-			svc := newIdentityGovernanceService(newEntityStateProviderMock(s.T()), source, nil, nil, nil)
+			svc := newIdentityGovernanceService(newEntityStateProviderMock(s.T()), nil, source, nil, nil, nil)
 			svc.now = func() time.Time { return s.now }
 			stored := RuntimeAttributes{AccessState: AccessState{LastLoginAt: "2026-09-07T10:00:00Z"}}
 			if tc.unlockAt != "" {
@@ -3143,4 +3195,567 @@ func (s *ServiceTestSuite) TestARecordedLockOnAMethodThatDoesNotLockIsIgnored() 
 
 	s.Require().Nil(err)
 	s.True(decision.Admitted)
+}
+
+const testContactValue = "Private.Contact@example.com"
+
+// verificationService returns a governance service over the port whose events land in the returned slice.
+func (s *ServiceTestSuite) verificationService() (*identityGovernanceService, *[]*providers.Event) {
+	svc, published := auditedService(s.T(), s.port, nil)
+	svc.now = func() time.Time { return s.now }
+	svc.entityTypes = verificationSchema(s.T())
+	return svc, published
+}
+
+func (s *ServiceTestSuite) pin() *providers.AttributeVerificationPin {
+	return &providers.AttributeVerificationPin{Subject: "user-a", Attribute: "email",
+		Value: testContactValue, Channel: providers.VerificationChannelEmail}
+}
+
+// expectStoredEmail stubs one profile read of user-a, a person whose email holds the pinned value.
+func (s *ServiceTestSuite) expectStoredEmail(port *entityStateProviderMock) {
+	port.On("GetEntityProfile", mock.Anything, "user-a").Return(&providers.Entity{ID: "user-a",
+		Category: providers.EntityCategoryUser, Type: "person",
+		Attributes: json.RawMessage(`{"email":"` + testContactValue + `"}`)}, nil).Once()
+}
+
+// activeUser is the governed state of the user the tests prepare, neither locked nor suspended.
+func (s *ServiceTestSuite) activeUser() *GovernedEntity {
+	return &GovernedEntity{ID: "user-a", Category: providers.EntityCategoryUser, State: providers.EntityStateActive}
+}
+
+// requireNoContactValue checks that no event field carries the contact value.
+func (s *ServiceTestSuite) requireNoContactValue(published []*providers.Event) {
+	for _, evt := range published {
+		for key, value := range evt.Data {
+			s.Require().NotContains(fmt.Sprint(value), testContactValue, "field %s carries the contact", key)
+		}
+	}
+}
+
+func (s *ServiceTestSuite) TestSelfPrepareProfileReadFaultIsAServerError() {
+	s.port.On("GetGovernedEntity", mock.Anything, "user-a", false).Return(s.activeUser(), nil).Twice()
+	s.port.On("GetEntityProfile", mock.Anything, "user-a").Return(nil, errors.New("database unavailable")).Once()
+	svc, published := s.verificationService()
+	pin, err := svc.PrepareAttributeVerification(security.WithRuntimeContext(context.Background()),
+		"user-a", "email")
+	s.Nil(pin)
+	s.requireServiceError(err, tidcommon.InternalServerError)
+	s.Empty(*published)
+}
+
+// A user acting on themself is pinned and named as the event's actor. An automatic lock does not refuse it.
+func (s *ServiceTestSuite) TestSelfPrepareAdmitsALockedUser() {
+	s.port.On("GetGovernedEntity", mock.Anything, "user-a", false).Return(&GovernedEntity{ID: "user-a",
+		Category: providers.EntityCategoryUser, State: providers.EntityStateActive,
+		AccessState: lockedState(AuthenticationMethodAccount, LockEntry{LockCount: 1, UnlockAt: permanentUnlockAt}),
+	}, nil).Once()
+	s.port.On("GetEntityProfile", mock.MatchedBy(security.IsRuntimeContext), "user-a").
+		Return(&providers.Entity{ID: "user-a", Category: providers.EntityCategoryUser, Type: "person",
+			Attributes: json.RawMessage(`{"email":"` + testContactValue + `"}`)}, nil).Once()
+	svc, published := s.verificationService()
+
+	pin, err := svc.PrepareAttributeVerification(security.WithRuntimeContext(context.Background()),
+		"user-a", "email")
+
+	s.Require().Nil(err)
+	s.Equal(*s.pin(), *pin)
+	s.Require().Len(*published, 1)
+	s.Equal(string(event.EventTypeAttributeVerificationRequested), (*published)[0].Type)
+	s.Equal("user-a", (*published)[0].Data[event.DataKey.ActorSub])
+	s.requireNoContactValue(*published)
+}
+
+func (s *ServiceTestSuite) TestSelfPrepareRefusesASuspendedUser() {
+	for name, governed := range map[string]*GovernedEntity{
+		"state": {ID: "user-a", Category: providers.EntityCategoryUser, State: providers.EntityStateSuspended},
+		"member": {ID: "user-a", Category: providers.EntityCategoryUser, State: providers.EntityStateActive,
+			AccessState: AccessState{Suspend: &SuspendState{SuspendedAt: "2026-10-01T00:00:00Z"}}},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.port.On("GetGovernedEntity", mock.Anything, "user-a", false).Return(governed, nil).Once()
+			svc, published := s.verificationService()
+
+			pin, err := svc.PrepareAttributeVerification(security.WithRuntimeContext(context.Background()),
+				"user-a", "email")
+
+			s.Nil(pin)
+			s.requireServiceError(err, ErrorNotApplicable)
+			s.Empty(*published)
+		})
+	}
+}
+
+func (s *ServiceTestSuite) TestSelfPrepareRefusesATargetThatIsNotAUser() {
+	for name, governed := range map[string]*GovernedEntity{
+		"unknown": nil,
+		"app":     {ID: "user-a", Category: providers.EntityCategoryApp, State: providers.EntityStateActive},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.port.On("GetGovernedEntity", mock.Anything, "user-a", false).Return(governed, nil).Once()
+			svc, _ := s.verificationService()
+
+			_, err := svc.PrepareAttributeVerification(security.WithRuntimeContext(context.Background()),
+				"user-a", "email")
+
+			s.requireServiceError(err, ErrorNotApplicable)
+		})
+	}
+}
+
+func (s *ServiceTestSuite) TestSelfPrepareStateReadFaultIsAServerError() {
+	s.port.On("GetGovernedEntity", mock.Anything, "user-a", false).Return(nil, errors.New("down")).Once()
+	svc, _ := s.verificationService()
+
+	_, err := svc.PrepareAttributeVerification(security.WithRuntimeContext(context.Background()),
+		"user-a", "email")
+
+	s.requireServiceError(err, tidcommon.InternalServerError)
+}
+
+func (s *ServiceTestSuite) TestSelfPrepareAndRecordRequireTheRuntime() {
+	svc, published := s.verificationService()
+	ctx := callerContext("user-a")
+
+	_, err := svc.PrepareAttributeVerification(ctx, "user-a", "email")
+	s.requireServiceError(err, tidcommon.ErrorUnauthorized)
+	s.requireServiceError(svc.RecordAttributeVerification(ctx, *s.pin()), tidcommon.ErrorUnauthorized)
+	s.Empty(*published)
+}
+
+// A value collected for a user not created yet is pinned without reading a user, and no event is
+// published until it is recorded.
+func (s *ServiceTestSuite) TestNewUserPreparePinsWithoutAnEvent() {
+	pin := *s.pin()
+	pin.Subject = ""
+
+	svc, published := s.verificationService()
+
+	prepared, err := svc.PrepareNewUserAttributeVerification(security.WithRuntimeContext(context.Background()),
+		"Customer", "email", testContactValue)
+
+	s.Require().Nil(err)
+	s.Equal(pin, *prepared)
+	s.Empty(*published)
+}
+
+func (s *ServiceTestSuite) TestNewUserPrepareRequiresTheRuntime() {
+	svc, _ := s.verificationService()
+
+	_, err := svc.PrepareNewUserAttributeVerification(callerContext("user-a"), "Customer", "email",
+		"a@example.com")
+
+	s.requireServiceError(err, tidcommon.ErrorUnauthorized)
+}
+
+func (s *ServiceTestSuite) TestRecordPublishesTheVerification() {
+	pin := *s.pin()
+	s.port.On("GetGovernedEntity", mock.Anything, "user-a", false).Return(s.activeUser(), nil).Once()
+	s.expectStoredEmail(s.port)
+	s.port.On("RecordAttributeVerification", mock.Anything, "user-a", "person", "email",
+		testContactValue, s.now).Return(true, nil).Once()
+	svc, published := s.verificationService()
+
+	s.Require().Nil(svc.RecordAttributeVerification(security.WithRuntimeContext(context.Background()), pin))
+
+	s.Require().Len(*published, 1)
+	evt := (*published)[0]
+	s.Equal(string(event.EventTypeAttributeVerificationVerified), evt.Type)
+	s.Equal(providers.StatusSuccess, evt.Status)
+	s.Equal("user-a", evt.Data[event.DataKey.Subject])
+	s.Equal(event.PrincipalTypeUser, evt.Data[event.DataKey.SubjectType])
+	s.Equal("user-a", evt.Data[event.DataKey.ActorSub])
+	s.Equal("email", evt.Data[event.DataKey.Attribute])
+	s.requireNoContactValue(*published)
+}
+
+func (s *ServiceTestSuite) TestRecordWithoutObservabilityPublishesNothing() {
+	s.port.On("GetGovernedEntity", mock.Anything, "user-a", false).Return(s.activeUser(), nil).Once()
+	s.expectStoredEmail(s.port)
+	s.port.On("RecordAttributeVerification", mock.Anything, "user-a", "person", "email",
+		testContactValue, s.now).Return(true, nil).Once()
+	svc, _ := s.verificationService()
+	svc.observability = nil
+
+	s.Nil(svc.RecordAttributeVerification(security.WithRuntimeContext(context.Background()), *s.pin()))
+}
+
+func (s *ServiceTestSuite) TestRecordRefusals() {
+	refused := []string{string(event.EventTypeAttributeVerificationRefused)}
+	for name, test := range map[string]struct {
+		applied   bool
+		err       error
+		want      tidcommon.ServiceError
+		published []string
+	}{
+		"stale or ineligible": {false, nil, ErrorNotApplicable, refused},
+		"fault":               {false, errors.New("database unavailable"), tidcommon.InternalServerError, []string{}},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.port.On("GetGovernedEntity", mock.Anything, "user-a", false).Return(s.activeUser(), nil).Once()
+			s.expectStoredEmail(s.port)
+			s.port.On("RecordAttributeVerification", mock.Anything, "user-a", "person", "email",
+				testContactValue, s.now).Return(test.applied, test.err).Once()
+			svc, published := s.verificationService()
+
+			s.requireServiceError(svc.RecordAttributeVerification(
+				security.WithRuntimeContext(context.Background()), *s.pin()), test.want)
+
+			types := make([]string, 0, len(*published))
+			for _, evt := range *published {
+				types = append(types, evt.Type)
+				s.Equal(providers.StatusFailure, evt.Status)
+			}
+			s.ElementsMatch(test.published, types)
+			s.requireNoContactValue(*published)
+		})
+	}
+}
+
+func (s *ServiceTestSuite) TestRecordRefusesAnIneligibleIdentity() {
+	for name, governed := range map[string]*GovernedEntity{
+		"suspended":  {ID: "user-a", Category: providers.EntityCategoryUser, State: providers.EntityStateSuspended},
+		"not a user": {ID: "user-a", Category: providers.EntityCategoryApp, State: providers.EntityStateActive},
+		"suspended by member": {ID: "user-a", Category: providers.EntityCategoryUser,
+			State:       providers.EntityStateActive,
+			AccessState: AccessState{Suspend: &SuspendState{SuspendedAt: "2026-10-01T00:00:00Z"}}},
+		"deleted": nil,
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.port.On("GetGovernedEntity", mock.Anything, "user-a", false).Return(governed, nil).Once()
+			svc, published := s.verificationService()
+
+			s.requireServiceError(svc.RecordAttributeVerification(
+				security.WithRuntimeContext(context.Background()), *s.pin()), ErrorNotApplicable)
+
+			s.Require().Len(*published, 1)
+			s.Equal(string(event.EventTypeAttributeVerificationRefused), (*published)[0].Type)
+			s.Equal(providers.StatusFailure, (*published)[0].Status)
+			s.requireNoContactValue(*published)
+			s.port.AssertNotCalled(s.T(), "RecordAttributeVerification", mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+// The stored contact is checked against the pin before the write, so a changed value, a changed
+// channel or an attribute that is no longer a contact is refused without writing.
+func (s *ServiceTestSuite) TestRecordRefusesAContactThatNoLongerMatchesThePin() {
+	for name, tc := range map[string]struct {
+		attributes string
+		mutate     func(*providers.AttributeVerificationPin)
+	}{
+		"other value": {`{"email":"other@example.com"}`, func(*providers.AttributeVerificationPin) {}},
+		"other channel": {`{"email":"` + testContactValue + `"}`,
+			func(p *providers.AttributeVerificationPin) { p.Channel = providers.VerificationChannelSMS }},
+		"not a contact": {`{"nickname":"` + testContactValue + `"}`,
+			func(p *providers.AttributeVerificationPin) { p.Attribute = "nickname" }},
+		"removed": {`{}`, func(*providers.AttributeVerificationPin) {}},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.port.On("GetGovernedEntity", mock.Anything, "user-a", false).Return(s.activeUser(), nil).Once()
+			s.port.On("GetEntityProfile", mock.Anything, "user-a").Return(&providers.Entity{ID: "user-a",
+				Category: providers.EntityCategoryUser, Type: "person",
+				Attributes: json.RawMessage(tc.attributes)}, nil).Once()
+			svc, published := s.verificationService()
+			pin := *s.pin()
+			tc.mutate(&pin)
+
+			s.requireServiceError(svc.RecordAttributeVerification(
+				security.WithRuntimeContext(context.Background()), pin), ErrorNotApplicable)
+
+			s.Require().Len(*published, 1)
+			s.Equal(string(event.EventTypeAttributeVerificationRefused), (*published)[0].Type)
+			s.requireNoContactValue(*published)
+			s.port.AssertNotCalled(s.T(), "RecordAttributeVerification", mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (s *ServiceTestSuite) TestRecordStateReadFaultIsAServerError() {
+	s.port.On("GetGovernedEntity", mock.Anything, "user-a", false).Return(nil, errors.New("down")).Once()
+	svc, published := s.verificationService()
+
+	s.requireServiceError(svc.RecordAttributeVerification(
+		security.WithRuntimeContext(context.Background()), *s.pin()), tidcommon.InternalServerError)
+
+	s.Empty(*published)
+	s.port.AssertNotCalled(s.T(), "RecordAttributeVerification", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything)
+}
+
+// Every server fault is logged with its cause, without the contact value.
+func (s *ServiceTestSuite) TestServerFaultsAreLogged() {
+	runtime := security.WithRuntimeContext(context.Background())
+	for name, test := range map[string]struct {
+		arrange func(*entityStateProviderMock)
+		call    func(*identityGovernanceService) *tidcommon.ServiceError
+		message string
+	}{
+		"identity read": {
+			arrange: func(port *entityStateProviderMock) {
+				port.On("GetGovernedEntity", mock.Anything, "user-a", false).Return(nil, errors.New("down")).Once()
+			},
+			call: func(svc *identityGovernanceService) *tidcommon.ServiceError {
+				_, err := svc.PrepareAttributeVerification(runtime, "user-a", "email")
+				return err
+			},
+			message: "Failed to read the identity for attribute verification",
+		},
+		"record write": {
+			arrange: func(port *entityStateProviderMock) {
+				port.On("GetGovernedEntity", mock.Anything, "user-a", false).Return(s.activeUser(), nil).Once()
+				s.expectStoredEmail(port)
+				port.On("RecordAttributeVerification", mock.Anything, "user-a", "person", "email",
+					testContactValue, s.now).Return(false, errors.New("database unavailable")).Once()
+			},
+			call: func(svc *identityGovernanceService) *tidcommon.ServiceError {
+				return svc.RecordAttributeVerification(runtime, *s.pin())
+			},
+			message: "Failed to record attribute verification",
+		},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			test.arrange(s.port)
+			svc, _ := s.verificationService()
+
+			var svcErr *tidcommon.ServiceError
+			logged := testhelpers.CaptureLogs(s.T(), "DEBUG", func() { svcErr = test.call(svc) })
+
+			s.requireServiceError(svcErr, tidcommon.InternalServerError)
+			s.Contains(logged, test.message)
+			s.NotContains(logged, testContactValue)
+		})
+	}
+}
+
+// verificationSchema declares scalar contacts and ineligible attribute types.
+func verificationSchema(t *testing.T) *entitytypemock.EntityTypeServiceInterfaceMock {
+	t.Helper()
+	schema := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	schema.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, mock.Anything,
+		entitytype.AttributeFilter{AllowNonCredential: true}).Return([]entitytype.AttributeInfo{
+		{Attribute: "email", Type: "email"}, {Attribute: "mobile", Type: "mobile"},
+		{Attribute: "nickname", Type: "string"}, {Attribute: "nested", Type: "object"},
+		{Attribute: "many", Type: "array"},
+	}, nil).Maybe()
+	return schema
+}
+
+func (s *ServiceTestSuite) TestPreparePinsCanonicalContactsWithoutWriting() {
+	for _, tc := range []struct {
+		attribute, value, canonical string
+		channel                     providers.VerificationChannel
+	}{
+		{"email", " User@Example.com ", "User@example.com", providers.VerificationChannelEmail},
+		{"mobile", "+94771234567", "+94771234567", providers.VerificationChannelSMS},
+	} {
+		s.Run(tc.attribute, func() {
+			s.SetupTest()
+			s.port.On("GetGovernedEntity", mock.Anything, "user-a", false).Return(s.activeUser(), nil).Once()
+			values, err := json.Marshal(map[string]string{tc.attribute: tc.value})
+			s.Require().NoError(err)
+			s.port.On("GetEntityProfile", mock.Anything, "user-a").Return(&providers.Entity{
+				ID: "user-a", Category: providers.EntityCategoryUser, Type: "person", Attributes: values}, nil).Once()
+			svc, published := s.verificationService()
+			runtime := security.WithRuntimeContext(context.Background())
+			pin, svcErr := svc.PrepareAttributeVerification(runtime, "user-a", tc.attribute)
+			s.Require().Nil(svcErr)
+			s.Equal(providers.AttributeVerificationPin{Subject: "user-a", Attribute: tc.attribute,
+				Value: tc.canonical, Channel: tc.channel}, *pin)
+			s.Len(*published, 1)
+			pin, svcErr = svc.PrepareNewUserAttributeVerification(runtime, "person", tc.attribute, tc.value)
+			s.Require().Nil(svcErr)
+			s.Equal(providers.AttributeVerificationPin{Attribute: tc.attribute,
+				Value: tc.canonical, Channel: tc.channel}, *pin)
+			s.Len(*published, 1)
+		})
+	}
+}
+
+func (s *ServiceTestSuite) TestPrepareRefusesIneligibleProfiles() {
+	for name, tc := range map[string]struct {
+		attribute, attributes string
+		readOnly              bool
+		category              providers.EntityCategory
+	}{
+		"no attributes":    {"email", "", false, providers.EntityCategoryUser},
+		"missing":          {"email", `{}`, false, providers.EntityCategoryUser},
+		"blank":            {"email", `{"email":"  "}`, false, providers.EntityCategoryUser},
+		"not a string":     {"email", `{"email":42}`, false, providers.EntityCategoryUser},
+		"undeclared":       {"other", `{"other":"a@example.com"}`, false, providers.EntityCategoryUser},
+		"string":           {"nickname", `{"nickname":"a@example.com"}`, false, providers.EntityCategoryUser},
+		"object":           {"nested", `{"nested":{"email":"a@example.com"}}`, false, providers.EntityCategoryUser},
+		"array":            {"many", `{"many":["a@example.com"]}`, false, providers.EntityCategoryUser},
+		"read only":        {"email", `{"email":"a@example.com"}`, true, providers.EntityCategoryUser},
+		"changed category": {"email", `{"email":"a@example.com"}`, false, providers.EntityCategoryAgent},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.port.On("GetGovernedEntity", mock.Anything, "user-a", false).Return(s.activeUser(), nil).Once()
+			s.port.On("GetEntityProfile", mock.Anything, "user-a").Return(&providers.Entity{
+				ID: "user-a", Category: tc.category, Type: "person", IsReadOnly: tc.readOnly,
+				Attributes: json.RawMessage(tc.attributes)}, nil).Once()
+			svc, published := s.verificationService()
+			pin, svcErr := svc.PrepareAttributeVerification(security.WithRuntimeContext(context.Background()),
+				"user-a", tc.attribute)
+			s.Nil(pin)
+			s.requireServiceError(svcErr, ErrorNotApplicable)
+			s.Empty(*published)
+		})
+	}
+}
+
+func (s *ServiceTestSuite) TestNewUserPrepareRefusesIneligibleValues() {
+	for name, tc := range map[string]struct{ userType, attribute, value string }{
+		"no type":    {"", "email", "a@example.com"},
+		"blank":      {"person", "email", "  "},
+		"empty":      {"person", "email", ""},
+		"undeclared": {"person", "other", "a@example.com"},
+		"string":     {"person", "nickname", "a@example.com"},
+		"object":     {"person", "nested", "a@example.com"},
+		"array":      {"person", "many", "a@example.com"},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			svc, published := s.verificationService()
+			pin, svcErr := svc.PrepareNewUserAttributeVerification(security.WithRuntimeContext(context.Background()),
+				tc.userType, tc.attribute, tc.value)
+			s.Nil(pin)
+			s.requireServiceError(svcErr, ErrorNotApplicable)
+			s.Empty(*published)
+		})
+	}
+}
+
+func (s *ServiceTestSuite) TestPreparationSchemaFailures() {
+	for _, existing := range []bool{false, true} {
+		for _, missing := range []bool{false, true} {
+			s.Run(fmt.Sprintf("existing=%t/missing=%t", existing, missing), func() {
+				s.SetupTest()
+				svc, published := s.verificationService()
+				svc.entityTypes = nil
+				want := ErrorNotApplicable
+				if !missing {
+					schema := entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
+					schema.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, "person", mock.Anything).
+						Return(nil, &tidcommon.InternalServerError).Once()
+					svc.entityTypes = schema
+					want = tidcommon.InternalServerError
+				}
+				runtime := security.WithRuntimeContext(context.Background())
+				var pin *providers.AttributeVerificationPin
+				var svcErr *tidcommon.ServiceError
+				if existing {
+					s.port.On("GetGovernedEntity", mock.Anything, "user-a", false).Return(s.activeUser(), nil).Once()
+					s.port.On("GetEntityProfile", mock.Anything, "user-a").Return(&providers.Entity{
+						ID: "user-a", Category: providers.EntityCategoryUser, Type: "person",
+						Attributes: json.RawMessage(`{"email":"a@example.com"}`)}, nil).Once()
+					pin, svcErr = svc.PrepareAttributeVerification(runtime, "user-a", "email")
+				} else {
+					pin, svcErr = svc.PrepareNewUserAttributeVerification(runtime, "person", "email", "a@example.com")
+				}
+				s.Nil(pin)
+				s.requireServiceError(svcErr, want)
+				s.Empty(*published)
+			})
+		}
+	}
+}
+
+func (s *ServiceTestSuite) TestPrepareRefusesAUserDeletedBeforeTheProfileRead() {
+	s.port.On("GetGovernedEntity", mock.Anything, "user-a", false).Return(s.activeUser(), nil).Once()
+	s.port.On("GetEntityProfile", mock.Anything, "user-a").Return(nil, errors.New("not found")).Once()
+	s.port.On("GetGovernedEntity", mock.Anything, "user-a", false).Return(nil, nil).Once()
+	svc, published := s.verificationService()
+	pin, svcErr := svc.PrepareAttributeVerification(security.WithRuntimeContext(context.Background()),
+		"user-a", "email")
+	s.Nil(pin)
+	s.requireServiceError(svcErr, ErrorNotApplicable)
+	s.Empty(*published)
+}
+
+func (s *ServiceTestSuite) TestPrepareMalformedAttributesIsAServerError() {
+	s.port.On("GetGovernedEntity", mock.Anything, "user-a", false).Return(s.activeUser(), nil).Once()
+	s.port.On("GetEntityProfile", mock.Anything, "user-a").Return(&providers.Entity{
+		ID: "user-a", Category: providers.EntityCategoryUser, Type: "person",
+		Attributes: json.RawMessage(`[`)}, nil).Once()
+	svc, published := s.verificationService()
+	pin, svcErr := svc.PrepareAttributeVerification(security.WithRuntimeContext(context.Background()),
+		"user-a", "email")
+	s.Nil(pin)
+	s.requireServiceError(svcErr, tidcommon.InternalServerError)
+	s.Empty(*published)
+}
+
+// verificationEntity supplies a mutable user's loaded attributes and verification metadata.
+func verificationEntity(metadata string) providers.Entity {
+	return providers.Entity{ID: "user-1", Category: providers.EntityCategoryUser, Type: "person",
+		Attributes: json.RawMessage(`{"workEmail":"a@example.com"}`), SystemAttributes: json.RawMessage(metadata)}
+}
+
+// Every recorded verification with a valid time is returned, whatever the attribute now holds, and no
+// schema is read.
+func (s *ServiceTestSuite) TestGetVerifiedAttributes() {
+	user := providers.Entity{ID: "user-1", Category: providers.EntityCategoryUser, Type: "person",
+		Attributes: json.RawMessage(`{"workEmail":"a@example.com","mobile":"","nickname":"n",` +
+			`"homeEmail":"h@example.com"}`),
+		SystemAttributes: json.RawMessage(`{"attributeVerification":{` +
+			`"workEmail":{"verifiedAt":"2026-10-15T00:00:00Z"},` +
+			`"mobile":{"verifiedAt":"2026-10-15T00:00:00Z"},` +
+			`"nickname":{"verifiedAt":"2026-10-15T00:00:00Z"},` +
+			`"homeEmail":{"verifiedAt":"forged"},` +
+			`"removedEmail":{"verifiedAt":"2026-10-15T00:00:00Z"}}}`)}
+	svc := s.svc
+
+	verified, ok := svc.GetVerifiedAttributes(context.Background(), user)
+
+	s.True(ok)
+	s.Equal(map[string]providers.VerifiedAttribute{
+		"workEmail":    {VerifiedAt: "2026-10-15T00:00:00Z"},
+		"mobile":       {VerifiedAt: "2026-10-15T00:00:00Z"},
+		"nickname":     {VerifiedAt: "2026-10-15T00:00:00Z"},
+		"removedEmail": {VerifiedAt: "2026-10-15T00:00:00Z"},
+	}, verified)
+}
+
+// A user with no recorded verification, a declarative user and an entity that is not a user have none.
+func (s *ServiceTestSuite) TestGetVerifiedAttributesIsEmptyWithoutAVerification() {
+	user := verificationEntity(
+		`{"attributeVerification":{"workEmail":{"verifiedAt":"2026-10-15T00:00:00Z"}}}`)
+	declarative := user
+	declarative.IsReadOnly = true
+	app := user
+	app.Category = providers.EntityCategoryApp
+	unverified := verificationEntity(`{"attributeVerification":{}}`)
+	noMetadata := verificationEntity("")
+	svc := s.svc
+
+	for name, entity := range map[string]providers.Entity{"declarative": declarative, "app": app,
+		"unverified": unverified, "no metadata": noMetadata} {
+		verified, ok := svc.GetVerifiedAttributes(context.Background(), entity)
+		s.True(ok, name)
+		s.NotNil(verified, name)
+		s.Empty(verified, name)
+	}
+}
+
+// Verification metadata that cannot be read is reported as unreadable rather than as no verification.
+func (s *ServiceTestSuite) TestGetVerifiedAttributesReportsAnUnreadableState() {
+	svc := s.svc
+
+	for name, metadata := range map[string]string{"system attributes": `[`,
+		"entries": `{"attributeVerification":[]}`, "null entries": `{"attributeVerification":null}`} {
+		verified, ok := svc.GetVerifiedAttributes(context.Background(),
+			verificationEntity(metadata))
+		s.False(ok, name)
+		s.Nil(verified, name)
+	}
 }

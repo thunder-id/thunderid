@@ -49,8 +49,8 @@ func (_m *FlowExecServiceInterfaceMock) EXPECT() *FlowExecServiceInterfaceMock_E
 }
 
 // Execute provides a mock function for the type FlowExecServiceInterfaceMock
-func (_mock *FlowExecServiceInterfaceMock) Execute(ctx context.Context, appID string, executionID string, flowType string, verbose bool, action string, inputs map[string]string, challengeToken string, flowSecret string, attestationToken string, sessionData []flowexec.SessionData) (*flowexec.FlowStep, *common.ServiceError) {
-	ret := _mock.Called(ctx, appID, executionID, flowType, verbose, action, inputs, challengeToken, flowSecret, attestationToken, sessionData)
+func (_mock *FlowExecServiceInterfaceMock) Execute(ctx context.Context, appID string, executionID string, flowType string, handle string, verbose bool, action string, inputs map[string]string, challengeToken string, flowSecret string, attestationToken string, sessionData []flowexec.SessionData) (*flowexec.FlowStep, *common.ServiceError) {
+	ret := _mock.Called(ctx, appID, executionID, flowType, handle, verbose, action, inputs, challengeToken, flowSecret, attestationToken, sessionData)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Execute")
@@ -58,18 +58,18 @@ func (_mock *FlowExecServiceInterfaceMock) Execute(ctx context.Context, appID st
 
 	var r0 *flowexec.FlowStep
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, bool, string, map[string]string, string, string, string, []flowexec.SessionData) (*flowexec.FlowStep, *common.ServiceError)); ok {
-		return returnFunc(ctx, appID, executionID, flowType, verbose, action, inputs, challengeToken, flowSecret, attestationToken, sessionData)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, bool, string, map[string]string, string, string, string, []flowexec.SessionData) (*flowexec.FlowStep, *common.ServiceError)); ok {
+		return returnFunc(ctx, appID, executionID, flowType, handle, verbose, action, inputs, challengeToken, flowSecret, attestationToken, sessionData)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, bool, string, map[string]string, string, string, string, []flowexec.SessionData) *flowexec.FlowStep); ok {
-		r0 = returnFunc(ctx, appID, executionID, flowType, verbose, action, inputs, challengeToken, flowSecret, attestationToken, sessionData)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, bool, string, map[string]string, string, string, string, []flowexec.SessionData) *flowexec.FlowStep); ok {
+		r0 = returnFunc(ctx, appID, executionID, flowType, handle, verbose, action, inputs, challengeToken, flowSecret, attestationToken, sessionData)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*flowexec.FlowStep)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, bool, string, map[string]string, string, string, string, []flowexec.SessionData) *common.ServiceError); ok {
-		r1 = returnFunc(ctx, appID, executionID, flowType, verbose, action, inputs, challengeToken, flowSecret, attestationToken, sessionData)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, string, bool, string, map[string]string, string, string, string, []flowexec.SessionData) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, appID, executionID, flowType, handle, verbose, action, inputs, challengeToken, flowSecret, attestationToken, sessionData)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common.ServiceError)
@@ -88,6 +88,7 @@ type FlowExecServiceInterfaceMock_Execute_Call struct {
 //   - appID string
 //   - executionID string
 //   - flowType string
+//   - handle string
 //   - verbose bool
 //   - action string
 //   - inputs map[string]string
@@ -95,11 +96,11 @@ type FlowExecServiceInterfaceMock_Execute_Call struct {
 //   - flowSecret string
 //   - attestationToken string
 //   - sessionData []flowexec.SessionData
-func (_e *FlowExecServiceInterfaceMock_Expecter) Execute(ctx any, appID any, executionID any, flowType any, verbose any, action any, inputs any, challengeToken any, flowSecret any, attestationToken any, sessionData any) *FlowExecServiceInterfaceMock_Execute_Call {
-	return &FlowExecServiceInterfaceMock_Execute_Call{Call: _e.mock.On("Execute", ctx, appID, executionID, flowType, verbose, action, inputs, challengeToken, flowSecret, attestationToken, sessionData)}
+func (_e *FlowExecServiceInterfaceMock_Expecter) Execute(ctx any, appID any, executionID any, flowType any, handle any, verbose any, action any, inputs any, challengeToken any, flowSecret any, attestationToken any, sessionData any) *FlowExecServiceInterfaceMock_Execute_Call {
+	return &FlowExecServiceInterfaceMock_Execute_Call{Call: _e.mock.On("Execute", ctx, appID, executionID, flowType, handle, verbose, action, inputs, challengeToken, flowSecret, attestationToken, sessionData)}
 }
 
-func (_c *FlowExecServiceInterfaceMock_Execute_Call) Run(run func(ctx context.Context, appID string, executionID string, flowType string, verbose bool, action string, inputs map[string]string, challengeToken string, flowSecret string, attestationToken string, sessionData []flowexec.SessionData)) *FlowExecServiceInterfaceMock_Execute_Call {
+func (_c *FlowExecServiceInterfaceMock_Execute_Call) Run(run func(ctx context.Context, appID string, executionID string, flowType string, handle string, verbose bool, action string, inputs map[string]string, challengeToken string, flowSecret string, attestationToken string, sessionData []flowexec.SessionData)) *FlowExecServiceInterfaceMock_Execute_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -117,21 +118,21 @@ func (_c *FlowExecServiceInterfaceMock_Execute_Call) Run(run func(ctx context.Co
 		if args[3] != nil {
 			arg3 = args[3].(string)
 		}
-		var arg4 bool
+		var arg4 string
 		if args[4] != nil {
-			arg4 = args[4].(bool)
+			arg4 = args[4].(string)
 		}
-		var arg5 string
+		var arg5 bool
 		if args[5] != nil {
-			arg5 = args[5].(string)
+			arg5 = args[5].(bool)
 		}
-		var arg6 map[string]string
+		var arg6 string
 		if args[6] != nil {
-			arg6 = args[6].(map[string]string)
+			arg6 = args[6].(string)
 		}
-		var arg7 string
+		var arg7 map[string]string
 		if args[7] != nil {
-			arg7 = args[7].(string)
+			arg7 = args[7].(map[string]string)
 		}
 		var arg8 string
 		if args[8] != nil {
@@ -141,9 +142,13 @@ func (_c *FlowExecServiceInterfaceMock_Execute_Call) Run(run func(ctx context.Co
 		if args[9] != nil {
 			arg9 = args[9].(string)
 		}
-		var arg10 []flowexec.SessionData
+		var arg10 string
 		if args[10] != nil {
-			arg10 = args[10].([]flowexec.SessionData)
+			arg10 = args[10].(string)
+		}
+		var arg11 []flowexec.SessionData
+		if args[11] != nil {
+			arg11 = args[11].([]flowexec.SessionData)
 		}
 		run(
 			arg0,
@@ -157,6 +162,7 @@ func (_c *FlowExecServiceInterfaceMock_Execute_Call) Run(run func(ctx context.Co
 			arg8,
 			arg9,
 			arg10,
+			arg11,
 		)
 	})
 	return _c
@@ -167,7 +173,7 @@ func (_c *FlowExecServiceInterfaceMock_Execute_Call) Return(flowStep *flowexec.F
 	return _c
 }
 
-func (_c *FlowExecServiceInterfaceMock_Execute_Call) RunAndReturn(run func(ctx context.Context, appID string, executionID string, flowType string, verbose bool, action string, inputs map[string]string, challengeToken string, flowSecret string, attestationToken string, sessionData []flowexec.SessionData) (*flowexec.FlowStep, *common.ServiceError)) *FlowExecServiceInterfaceMock_Execute_Call {
+func (_c *FlowExecServiceInterfaceMock_Execute_Call) RunAndReturn(run func(ctx context.Context, appID string, executionID string, flowType string, handle string, verbose bool, action string, inputs map[string]string, challengeToken string, flowSecret string, attestationToken string, sessionData []flowexec.SessionData) (*flowexec.FlowStep, *common.ServiceError)) *FlowExecServiceInterfaceMock_Execute_Call {
 	_c.Call.Return(run)
 	return _c
 }

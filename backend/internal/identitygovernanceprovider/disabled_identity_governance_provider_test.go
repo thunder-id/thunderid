@@ -64,3 +64,19 @@ func (s *DisabledIdentityGovernanceProviderTestSuite) TestDisabledProviderAdmits
 func (s *DisabledIdentityGovernanceProviderTestSuite) TestDisabledProviderRecordsNothing() {
 	s.Nil(newDisabledIdentityGovernanceProvider().RecordLogin(context.Background(), "e1"))
 }
+
+func (s *DisabledIdentityGovernanceProviderTestSuite) TestDisabledProviderRefusesVerification() {
+	provider := newDisabledIdentityGovernanceProvider()
+	pin, err := provider.PrepareAttributeVerification(context.Background(), "user-a", "email")
+	s.Nil(pin)
+	s.Require().NotNil(err)
+	s.Equal(errGovernanceUnavailable.Code, err.Code)
+	pin, err = provider.PrepareNewUserAttributeVerification(context.Background(), "Customer", "email",
+		"a@example.com")
+	s.Nil(pin)
+	s.Require().NotNil(err)
+	s.Equal(errGovernanceUnavailable.Code, err.Code)
+	err = provider.RecordAttributeVerification(context.Background(), providers.AttributeVerificationPin{})
+	s.Require().NotNil(err)
+	s.Equal(errGovernanceUnavailable.Code, err.Code)
+}

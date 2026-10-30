@@ -389,8 +389,9 @@ func (ts *RecoveryReleaseTestSuite) TestTheShippedRecoveryFlowsReleaseTheLock() 
 
 	for _, handle := range []string{defaultFlowHandle, "console-app-flow"} {
 		ts.Run(handle, func() {
-			recoveryFlowID, _ := copyShippedFlowWithSender(ts.T(), handle, "RECOVERY", "send_recovery_email",
-				emailSenderID, map[string]string{"call_authentication": ts.authFlowID})
+			recoveryFlowID, _ := copyShippedFlowWithSenders(ts.T(), handle, "RECOVERY",
+				map[string]string{"send_recovery_email": emailSenderID},
+				map[string]string{"call_authentication": ts.authFlowID})
 			appID := ts.newApp(handle, "Governance Shipped Recovery "+handle+" Test App",
 				"governance_shipped_"+strings.ReplaceAll(handle, "-", "_"),
 				"Application that recovers through a copy of a shipped recovery flow", ts.authFlowID, recoveryFlowID)

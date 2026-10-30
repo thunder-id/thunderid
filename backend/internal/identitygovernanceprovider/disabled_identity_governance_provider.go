@@ -59,3 +59,23 @@ func (p *disabledIdentityGovernanceProvider) Unsuspend(_ context.Context, _ stri
 ) *tidcommon.ServiceError {
 	return &errGovernanceUnavailable
 }
+
+// PrepareAttributeVerification refuses: there is no authority to pin a contact.
+func (p *disabledIdentityGovernanceProvider) PrepareAttributeVerification(_ context.Context,
+	_, _ string) (
+	*providers.AttributeVerificationPin, *tidcommon.ServiceError) {
+	return nil, &errGovernanceUnavailable
+}
+
+// PrepareNewUserAttributeVerification refuses: there is no authority to pin a contact.
+func (p *disabledIdentityGovernanceProvider) PrepareNewUserAttributeVerification(_ context.Context,
+	_, _, _ string) (
+	*providers.AttributeVerificationPin, *tidcommon.ServiceError) {
+	return nil, &errGovernanceUnavailable
+}
+
+// RecordAttributeVerification refuses: there is no authority to record proof.
+func (p *disabledIdentityGovernanceProvider) RecordAttributeVerification(_ context.Context,
+	_ providers.AttributeVerificationPin) *tidcommon.ServiceError {
+	return &errGovernanceUnavailable
+}

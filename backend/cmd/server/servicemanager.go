@@ -211,7 +211,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Initialize entity service
 	entityService, err := entity.Initialize(cacheManager, hashService, entityTypeService, ouService,
-		sharingService)
+		sharingService, observabilitySvc)
 	fatalOnError(ctx, logger, err, "Failed to initialize EntityService")
 
 	// Initialize entity provider
@@ -282,7 +282,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Identity governance reads the accountAccess section and the lock email's default sender through
 	// the server-config service.
 	governanceService, lockNotifier, err := identitygovernance.Initialize(
-		entityService, serverConfigService, governanceCfg, &identitygovernance.NotificationDependencies{
+		entityService, entityTypeService, serverConfigService, governanceCfg,
+		&identitygovernance.NotificationDependencies{
 			Templates:   notifTemplateRenderer,
 			Senders:     notifSenderSvc,
 			EntityTypes: entityTypeService,

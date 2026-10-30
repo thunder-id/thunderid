@@ -113,6 +113,11 @@ func (n *promptNode) Execute(ctx *providers.NodeContext) (*common.NodeResponse, 
 		return nodeResp, nil
 	}
 
+	// A prompt re-shown for a failure waits for the user, so a preselection cannot loop back into it.
+	if nodeResp.Error == nil {
+		n.applyPreselectedAction(ctx)
+	}
+
 	if n.variant == providers.NodeVariantLoginOptions {
 		return n.executeLoginOptions(ctx, nodeResp)
 	}
@@ -224,6 +229,24 @@ func (n *promptNode) applyValidationFailureRePrompt(ctx *providers.NodeContext, 
 		nodeResp.Meta = n.appendSyntheticMetaComponents(trimmed, nodeResp.Inputs)
 	}
 	return true
+}
+
+// applyPreselectedAction selects the action the preselectAction property resolves to, replacing any
+// action the request selected. The key is read from runtime data only, never from user inputs. A value
+// that names none of the prompt's actions leaves the selection unchanged.
+func (n *promptNode) applyPreselectedAction(ctx *providers.NodeContext) {
+	placeholder, _ := n.GetProperties()[common.NodePropertyPreselectAction].(string)
+	key, ok := RuntimeDataKey(placeholder)
+	if !ok {
+		return
+	}
+	ref := ctx.RuntimeData[key]
+	if n.findActionByRef(ref) == nil {
+		return
+	}
+	ctx.CurrentAction = ref
+	n.logger.Debug(ctx.Context, "Preselected action from runtime data",
+		log.String(log.LoggerKeyExecutionID, ctx.ExecutionID), log.String("actionRef", ref))
 }
 
 // findActionByRef returns a copy of the action with the given ref, or nil if no match exists.

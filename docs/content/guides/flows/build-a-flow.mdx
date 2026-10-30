@@ -243,6 +243,30 @@ A flow has no effect until it is assigned to an application.
 
 </details>
 
+<details>
+  <summary>Build a self-service attribute verification flow</summary>
+
+  A **Self Service** flow runs an operation that a signed-in user performs on their own account. It is never assigned to an application. Your application starts it through the Flow Execution API with `flowType` set to `SELF_SERVICE`, the flow's `handle`, and the user's access token. <ProductName /> binds the user of that token to the execution, so a later request continues the flow with its `executionId` and `challengeToken` alone. See [API Reference](../../../apis).
+
+  <ProductName /> ships `default-self-attribute-verification-flow`, which records that the user controls their email address or mobile number. Start it with the attribute to verify:
+
+  ```bash
+  curl -kL -X POST https://localhost:8090/flow/execute \
+    -H "Authorization: Bearer $USER_ACCESS_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{ "flowType": "SELF_SERVICE", "handle": "default-self-attribute-verification-flow", "inputs": { "attribute": "email" }, "verbose": true }'
+  ```
+
+  The flow prepares the attribute, takes the email or mobile branch from the attribute's type, sends a one-time code to the stored address or number, checks the code, and records the verification. The application does not choose the branch: the branch prompt selects its action from the `preselectAction` property, set to `{{ctx(contactType)}}`.
+
+  To run a flow of your own, start it with its handle. A flow that prepares an attribute must also record it, and a flow that records an attribute must also prepare it, or the flow is rejected when you save it.
+
+  The **Send Email** node sends only through the email provider that it names, and the **Send SMS** node only through the SMS sender that it names. In `default-self-attribute-verification-flow`, the **Send Email** node ships without an email provider and the **Send SMS** node with the `{{SENDER_ID}}` placeholder, so neither branch sends anything until you select your email provider and your SMS sender on those nodes. See [Configure an Email Provider](../../notifications/email-providers) and [Configure an SMS Provider](../../notifications/sms-providers). The code branches send the `otp` email and SMS templates. See [Default Templates](../../declarative-configurations/import-resources#default-templates).
+
+  Every `SELF_SERVICE` flow, user attribute verification included, expires after `selfServiceFlow.expirySeconds`, 30 minutes by default. Every `SELF_SERVICE` start requires a flow handle. Clients use `default-self-attribute-verification-flow` for the shipped verification flow, or supply a custom flow's handle. See [Flow Defaults](../../../deployment/configuration#flow-defaults).
+
+</details>
+
 ## Development Tips
 
 ### Always Wire Failure Outputs

@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/testhelpers"
 )
 
@@ -803,6 +804,34 @@ func (s *SchemaValidateTestSuite) TestIsStringBackedType() {
 	}
 	for _, attrType := range []string{TypeNumber, TypeBoolean, TypeObject, TypeArray} {
 		s.False(IsStringBackedType(attrType), attrType)
+	}
+}
+
+func (s *SchemaValidateTestSuite) TestIsContactType() {
+	for attrType, expected := range map[string]bool{
+		TypeEmail: true, TypeMobile: true, TypeString: false, TypeObject: false, "": false,
+	} {
+		s.Equal(expected, IsContactType(attrType), attrType)
+	}
+}
+
+func (s *SchemaValidateTestSuite) TestContactChannel() {
+	s.Equal(providers.VerificationChannelEmail, ContactChannel(TypeEmail))
+	s.Equal(providers.VerificationChannelSMS, ContactChannel(TypeMobile))
+}
+
+func (s *SchemaValidateTestSuite) TestCanonicalContactValue() {
+	for _, test := range []struct{ name, attrType, value, expected string }{
+		{"email domain and whitespace", TypeEmail, "  User@EXAMPLE.COM  ", "User@example.com"},
+		{"email local case", TypeEmail, "user@example.com", "user@example.com"},
+		{"email without a domain", TypeEmail, " User ", "User"},
+		{"mobile exact", TypeMobile, "+94771234567", "+94771234567"},
+		{"mobile whitespace preserved", TypeMobile, " +94771234567 ", " +94771234567 "},
+		{"other type unchanged", TypeString, " Private@EXAMPLE.COM ", " Private@EXAMPLE.COM "},
+	} {
+		s.Run(test.name, func() {
+			s.Equal(test.expected, CanonicalContactValue(test.attrType, test.value))
+		})
 	}
 }
 

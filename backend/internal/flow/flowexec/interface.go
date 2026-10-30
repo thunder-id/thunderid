@@ -12,7 +12,7 @@ import (
 // FlowExecServiceInterface defines the interface for flow orchestration and acts as the
 // entry point for flow execution.
 type FlowExecServiceInterface interface {
-	Execute(ctx context.Context, appID, executionID, flowType string, verbose bool,
+	Execute(ctx context.Context, appID, executionID, flowType, handle string, verbose bool,
 		action string, inputs map[string]string, challengeToken, flowSecret, attestationToken string,
 		sessionData []SessionData) (*FlowStep, *tidcommon.ServiceError)
 	ExecuteByID(ctx context.Context, flowID, executionID string, verbose bool,

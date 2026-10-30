@@ -9,6 +9,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -1457,7 +1458,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithGroups()
 		Return(userGroups, nil)
 
 	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.UserAttributeGroups},
-		nil, "user-123", "", "", "")
+		nil, nil, "user-123", "", "", "")
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), attrs)
@@ -1478,7 +1479,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithGroups_F
 		Return(nil, &entityprovider.EntityProviderError{Message: "groups_fetch_failed", Description: "database error"})
 
 	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.UserAttributeGroups},
-		nil, "user-123", "", "", "")
+		nil, nil, "user-123", "", "", "")
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), attrs)
@@ -1494,7 +1495,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithGroups_E
 	}
 
 	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.UserAttributeGroups},
-		nil, "", "", "", "")
+		nil, nil, "", "", "", "")
 
 	assert.NoError(suite.T(), err)
 	// Groups attribute should not be present when UserID is empty
@@ -1518,7 +1519,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_StoredProfil
 	}
 
 	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{"email", "picture"},
-		map[string]interface{}{"email": "alice@corp.com"}, "user-123", "", "", "")
+		map[string]interface{}{"email": "alice@corp.com"}, nil, "user-123", "", "", "")
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "alice@corp.com", attrs["email"])
@@ -1536,7 +1537,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_ExtensionAns
 	}
 
 	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{"email", "pin"},
-		map[string]interface{}{"email": "alice@corp.com"}, "user-123", "", "", "")
+		map[string]interface{}{"email": "alice@corp.com"}, nil, "user-123", "", "", "")
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), map[string]interface{}{"email": "alice@corp.com"}, attrs)
@@ -1550,7 +1551,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithUserType
 	}
 
 	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.ClaimUserType},
-		nil, "user-123", "", "INTERNAL", "")
+		nil, nil, "user-123", "", "INTERNAL", "")
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), attrs)
@@ -1569,7 +1570,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_UserType_Emi
 		Return(&entitytype.EntityType{Handle: "retail-customer", DisplayName: "Retail Customer"}, nil)
 
 	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.ClaimUserType},
-		nil, "user-123", string(providers.EntityCategoryUser), "retail-customer", "")
+		nil, nil, "user-123", string(providers.EntityCategoryUser), "retail-customer", "")
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), attrs)
@@ -1590,7 +1591,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_UserTypeHand
 
 	attrs, err := suite.executor.resolveUserAttributes(ctx,
 		[]string{oauth2const.ClaimUserTypeHandle, oauth2const.ClaimUserTypeName},
-		nil, "user-123", string(providers.EntityCategoryUser), "retail-customer", "")
+		nil, nil, "user-123", string(providers.EntityCategoryUser), "retail-customer", "")
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), attrs)
@@ -1619,7 +1620,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_UserType_Loo
 		oauth2const.ClaimUserTypeName,
 	}
 	attrs, err := suite.executor.resolveUserAttributes(ctx, configured,
-		nil, "user-123", string(providers.EntityCategoryUser), "person", "")
+		nil, nil, "user-123", string(providers.EntityCategoryUser), "person", "")
 
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "failed to fetch entity type details for handle person")
@@ -1635,7 +1636,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_UserTypeHand
 	}
 
 	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.ClaimUserTypeHandle},
-		nil, "user-123", string(providers.EntityCategoryUser), "person", "")
+		nil, nil, "user-123", string(providers.EntityCategoryUser), "person", "")
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "person", attrs[oauth2const.ClaimUserTypeHandle])
@@ -1651,7 +1652,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithEmptyUse
 	}
 
 	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.ClaimUserType},
-		nil, "user-123", "", "", "")
+		nil, nil, "user-123", "", "", "")
 
 	assert.NoError(suite.T(), err)
 	_, hasUserType := attrs[oauth2const.ClaimUserType]
@@ -1670,7 +1671,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithOUDetail
 
 	attrs, err := suite.executor.resolveUserAttributes(ctx,
 		[]string{oauth2const.ClaimOUID, oauth2const.ClaimOUName, oauth2const.ClaimOUHandle},
-		nil, "user-123", "", "", testAuthOUID)
+		nil, nil, "user-123", "", "", testAuthOUID)
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), attrs)
@@ -1696,7 +1697,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithOUDetail
 		})
 
 	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.ClaimOUID},
-		nil, "user-123", "", "", "ou-invalid")
+		nil, nil, "user-123", "", "", "ou-invalid")
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), attrs)
@@ -1712,7 +1713,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithOUDetail
 	}
 
 	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.ClaimOUID},
-		nil, "user-123", "", "", "")
+		nil, nil, "user-123", "", "", "")
 
 	assert.NoError(suite.T(), err)
 	_, hasOUID := attrs[oauth2const.ClaimOUID]
@@ -1734,7 +1735,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_RawJWT_Bypas
 		providers.RawJWTAttributeKey: "header.payload.signature",
 	}
 
-	attrs, err := suite.executor.resolveUserAttributes(ctx, nil, fetchedAttributes, "user-123", "", "", "")
+	attrs, err := suite.executor.resolveUserAttributes(ctx, nil, fetchedAttributes, nil, "user-123", "", "", "")
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), map[string]interface{}{
@@ -2276,5 +2277,218 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_UnresolvedEntityReferenceI
 			suite.mockJWTService.AssertNotCalled(suite.T(), "GenerateJWT", mock.Anything, mock.Anything,
 				mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		})
+	}
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestExecute_VerificationClaims() {
+	contactSchema := []entitytype.AttributeInfo{
+		{Attribute: "email", Type: "email"},
+		{Attribute: "mobile", Type: "mobile"},
+		{Attribute: "nickname", Type: "string"},
+	}
+	verifiedEmail := map[string]*providers.AttributeResponse{
+		"email": {Value: testEmail,
+			AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{IsVerified: true}},
+		"mobile": {Value: "+94771234567",
+			AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{IsVerified: false}},
+		"nickname": {Value: "ally",
+			AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{IsVerified: true}},
+	}
+	tests := []struct {
+		name        string
+		requested   []string
+		runtimeData map[string]string
+		schema      []entitytype.AttributeInfo
+		fetched     map[string]*providers.AttributeResponse
+		want        map[string]interface{}
+		absent      []string
+	}{
+		{
+			name:      "verified and unverified contacts",
+			requested: []string{"email", "email_verified", "mobile", "mobile_verified"},
+			schema:    contactSchema,
+			fetched:   verifiedEmail,
+			want:      map[string]interface{}{"email_verified": true, "mobile_verified": false},
+		},
+		{
+			name:      "verified mobile",
+			requested: []string{"mobile", "mobile_verified"},
+			schema:    contactSchema,
+			fetched: map[string]*providers.AttributeResponse{
+				"mobile": {Value: "+94771234567",
+					AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{IsVerified: true}},
+			},
+			want: map[string]interface{}{"mobile_verified": true},
+		},
+		{
+			name:        "contact not released",
+			requested:   []string{"mobile", "email_verified"},
+			runtimeData: map[string]string{"email_verified": "true"},
+			schema:      contactSchema,
+			fetched:     verifiedEmail,
+			absent:      []string{"email_verified"},
+		},
+		{
+			name:      "not a contact",
+			requested: []string{"nickname", "nickname_verified"},
+			schema:    contactSchema,
+			fetched:   verifiedEmail,
+			absent:    []string{"nickname_verified"},
+		},
+		{
+			name:        "released value differs from the verified one",
+			requested:   []string{"email", "email_verified"},
+			runtimeData: map[string]string{"email": "other@example.com"},
+			schema:      contactSchema,
+			fetched:     verifiedEmail,
+			want:        map[string]interface{}{"email": "other@example.com", "email_verified": false},
+		},
+		{
+			name:        "runtime data does not set the server claim",
+			requested:   []string{"mobile", "mobile_verified"},
+			runtimeData: map[string]string{"mobile_verified": "true"},
+			schema:      contactSchema,
+			fetched:     verifiedEmail,
+			want:        map[string]interface{}{"mobile_verified": false},
+		},
+		{
+			name:      "schema defines the claim",
+			requested: []string{"email", "email_verified"},
+			schema: append(slices.Clone(contactSchema),
+				entitytype.AttributeInfo{Attribute: "email_verified", Type: "string"}),
+			fetched: map[string]*providers.AttributeResponse{
+				"email": {Value: testEmail,
+					AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{IsVerified: true}},
+				"email_verified": {Value: "false"},
+			},
+			want: map[string]interface{}{"email_verified": "false"},
+		},
+		{
+			name:      "schema defines the claim without a stored value",
+			requested: []string{"email", "email_verified"},
+			schema: append(slices.Clone(contactSchema),
+				entitytype.AttributeInfo{Attribute: "email_verified", Type: "boolean"}),
+			fetched: verifiedEmail,
+			absent:  []string{"email_verified"},
+		},
+	}
+
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			ctx := newVerificationClaimContext(tc.requested, tc.runtimeData)
+			suite.setupUserEntityReference()
+			suite.setupGetUserAttributesWith(tc.fetched)
+			suite.mockEntityTypeService.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, "person",
+				entitytype.AttributeFilter{AllowNonCredential: true}).Return(tc.schema, nil).Once()
+			var claims map[string]interface{}
+			suite.mockJWTService.On("GenerateJWT", mock.Anything, "user-123", mock.Anything, mock.Anything,
+				mock.MatchedBy(func(c map[string]interface{}) bool {
+					claims = c
+					return true
+				}), mock.Anything, mock.Anything).Return("jwt-token", int64(3600), nil)
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecComplete, resp.Status)
+			for name, value := range tc.want {
+				suite.Equal(value, claims[name], name)
+			}
+			for _, name := range tc.absent {
+				suite.NotContains(claims, name)
+			}
+		})
+	}
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestExecute_VerificationClaims_SchemaNotReadUnlessRequested() {
+	ctx := newVerificationClaimContext([]string{"email"}, nil)
+	suite.setupUserEntityReference()
+	suite.setupGetUserAttributesWith(map[string]*providers.AttributeResponse{"email": {Value: testEmail}})
+	suite.mockJWTService.On("GenerateJWT", mock.Anything, "user-123", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).Return("jwt-token", int64(3600), nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.mockEntityTypeService.AssertNotCalled(suite.T(), "GetAttributes", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything)
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestExecute_VerificationClaims_NotForAgents() {
+	ctx := newVerificationClaimContext([]string{"email", "email_verified"}, nil)
+	suite.assertGenericVerificationName(ctx, string(providers.EntityCategoryAgent), "assistant")
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestExecute_VerificationClaims_WithoutEntityTypeService() {
+	suite.executor.entityTypeService = nil
+	ctx := newVerificationClaimContext([]string{"email", "email_verified"}, nil)
+	suite.assertGenericVerificationName(ctx, string(providers.EntityCategoryUser), "person")
+}
+
+// assertGenericVerificationName checks that, without a server verification claim, email_verified
+// resolves like any attribute: from runtime data, not from the provider's verification.
+func (suite *AuthAssertExecutorTestSuite) assertGenericVerificationName(ctx *providers.NodeContext,
+	category, entityType string) {
+	ctx.RuntimeData = map[string]string{"email_verified": "from-flow"}
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.EntityReference{EntityID: "user-123",
+			EntityCategory: category, EntityType: entityType},
+			(*tidcommon.ServiceError)(nil))
+	suite.setupGetUserAttributesWith(map[string]*providers.AttributeResponse{
+		"email": {Value: testEmail, AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{IsVerified: true}},
+	})
+	suite.mockJWTService.On("GenerateJWT", mock.Anything, "user-123", mock.Anything, mock.Anything,
+		mock.MatchedBy(func(c map[string]interface{}) bool {
+			return c["email_verified"] == "from-flow"
+		}), mock.Anything, mock.Anything).Return("jwt-token", int64(3600), nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.mockEntityTypeService.AssertNotCalled(suite.T(), "GetAttributes", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything)
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestExecute_VerificationClaims_SchemaReadFails() {
+	ctx := newVerificationClaimContext([]string{"email", "email_verified"}, nil)
+	suite.setupUserEntityReference()
+	suite.setupGetUserAttributesWith(map[string]*providers.AttributeResponse{"email": {Value: testEmail}})
+	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, "person",
+		mock.Anything).Return(nil, &tidcommon.InternalServerError).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Error(err)
+	suite.Nil(resp)
+	suite.mockJWTService.AssertNotCalled(suite.T(), "GenerateJWT", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// setupUserEntityReference resolves the authenticated user to a user of the person type.
+func (suite *AuthAssertExecutorTestSuite) setupUserEntityReference() {
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.EntityReference{EntityID: "user-123",
+			EntityCategory: string(providers.EntityCategoryUser), EntityType: "person"},
+			(*tidcommon.ServiceError)(nil))
+}
+
+// newVerificationClaimContext builds an authentication context that releases the given attributes.
+func newVerificationClaimContext(requested []string, runtimeData map[string]string) *providers.NodeContext {
+	return &providers.NodeContext{
+		ExecutionID:      "flow-123",
+		EntityID:         "app-123",
+		FlowType:         providers.FlowTypeAuthentication,
+		AuthUser:         newTestAuthenticatedAuthUser(),
+		RuntimeData:      runtimeData,
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+		Application: providers.Application{
+			InboundAuthProfile: providers.InboundAuthProfile{
+				Assertion: &inboundmodel.AssertionConfig{UserAttributes: requested},
+			},
+		},
 	}
 }

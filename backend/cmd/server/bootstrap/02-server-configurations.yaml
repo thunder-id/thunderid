@@ -14,6 +14,8 @@ value:
   userOnboardingFlow:
     defaultHandle: default-flow
     expirySeconds: 86400
+  selfServiceFlow:
+    expirySeconds: 1800
   userDeletionFlow:
     defaultHandle: default-user-deletion-flow
   applicationDeletionFlow:

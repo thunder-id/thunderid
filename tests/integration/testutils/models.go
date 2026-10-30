@@ -37,6 +37,11 @@ type User struct {
 	IsOwnedByOU    *bool           `json:"isOwnedByOU,omitempty"`
 }
 
+// VerifiedAttribute is one entry of a user response's verifiedAttributes.
+type VerifiedAttribute struct {
+	VerifiedAt string `json:"verifiedAt"`
+}
+
 // Application represents an application in the system
 type Application struct {
 	ID                        string                   `json:"id,omitempty"`

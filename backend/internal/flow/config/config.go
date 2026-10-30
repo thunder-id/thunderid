@@ -27,7 +27,7 @@ type Config struct {
 	TokenLeeway time.Duration
 }
 
-// FlowTypeConfig holds the server-level defaults for one flow type.
+// FlowTypeConfig holds the server-level defaults for a flow operation.
 type FlowTypeConfig struct {
 	DefaultHandle string `json:"defaultHandle,omitempty"`
 	ExpirySeconds int64  `json:"expirySeconds,omitempty"`
@@ -43,6 +43,7 @@ type FlowSectionConfig struct {
 	UserOnboardingFlow      FlowTypeConfig `json:"userOnboardingFlow"`
 	RecoveryFlow            FlowTypeConfig `json:"recoveryFlow"`
 	SignOutFlow             FlowTypeConfig `json:"signOutFlow"`
+	SelfServiceFlow         FlowTypeConfig `json:"selfServiceFlow"`
 	UserDeletionFlow        FlowTypeConfig `json:"userDeletionFlow"`
 	ApplicationDeletionFlow FlowTypeConfig `json:"applicationDeletionFlow"`
 	SecretRegenerationFlow  FlowTypeConfig `json:"secretRegenerationFlow"`

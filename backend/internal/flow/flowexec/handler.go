@@ -53,6 +53,7 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 	flowID := sysutils.SanitizeString(flowR.FlowID)
 	executionID := sysutils.SanitizeString(flowR.ExecutionID)
 	flowTypeStr := sysutils.SanitizeString(flowR.FlowType)
+	handle := sysutils.SanitizeString(flowR.Handle)
 	verbose := flowR.Verbose
 	action := sysutils.SanitizeString(flowR.Action)
 	inputs := sysutils.SanitizeStringMap(flowR.Inputs)
@@ -93,7 +94,7 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 			ctx, flowID, executionID, verbose, action, inputs, challengeToken, sessionData)
 	} else {
 		flowStep, flowErr = h.flowExecService.Execute(
-			ctx, appID, executionID, flowTypeStr, verbose, action, inputs, challengeToken,
+			ctx, appID, executionID, flowTypeStr, handle, verbose, action, inputs, challengeToken,
 			flowSecret, attestationToken, sessionData)
 	}
 
@@ -172,7 +173,7 @@ func handleFlowError(ctx context.Context, w http.ResponseWriter, flowErr *tidcom
 			statusCode = http.StatusForbidden
 		case ErrorFlowSecretRequired.Code, ErrorFlowSecretInvalid.Code,
 			ErrorAttestationRequired.Code, ErrorAttestationInvalid.Code,
-			ErrorAdministrationAuthenticationRequired.Code:
+			ErrorFlowAuthenticationRequired.Code:
 			statusCode = http.StatusUnauthorized
 		default:
 			statusCode = http.StatusBadRequest

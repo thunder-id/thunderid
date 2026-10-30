@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package security
@@ -438,6 +438,13 @@ func (s *SecurityContextTestSuite) TestGetSecurityContext() {
 			t.Error("Expected nil security context for context with wrong type")
 		}
 	})
+}
+
+func (s *SecurityContextTestSuite) TestIsSelfIssued() {
+	s.False(IsSelfIssued(context.Background()), "no security context")
+	s.False(IsSelfIssued(withSecurityContext(context.Background(),
+		newSecurityContext("user", "ou", "token", nil, nil))), "a context not marked self-issued")
+	s.False(IsSelfIssued(WithRuntimeContext(context.Background())), "a runtime context")
 }
 
 func (s *SecurityContextTestSuite) TestWithRuntimeContext() {

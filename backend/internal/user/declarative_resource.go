@@ -250,11 +250,13 @@ func (e *userExporter) ViewResource(_ context.Context, document *yaml.Node) (int
 	return declarativeresource.DecodeView(document, func(exported *userDeclarativeResource) (
 		interface{}, error) {
 		attributes, err := json.Marshal(exported.Attributes)
+		// A declarative user is never verified, so the view shows none, as its read does.
 		return &providers.User{
-			ID:         exported.ID,
-			OUID:       exported.OUID,
-			Type:       exported.Type,
-			Attributes: attributes,
+			ID:                 exported.ID,
+			OUID:               exported.OUID,
+			Type:               exported.Type,
+			Attributes:         attributes,
+			VerifiedAttributes: map[string]providers.VerifiedAttribute{},
 		}, err
 	})
 }

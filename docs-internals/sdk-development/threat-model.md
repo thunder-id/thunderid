@@ -38,6 +38,7 @@ This model covers:
 - Sign-out, revocation, and clearing of local state.
 - Receipt of a back-channel logout token by an SDK that runs on a server, and the ending of the
   local sessions it names.
+- Starting a verification of the signed-in user's own email address or mobile number.
 - Configuration supplied by the host application, where it can weaken the above.
 
 Out of scope:
@@ -519,6 +520,64 @@ sequenceDiagram
 | 4 | [Denial of Service] | A `REDIRECTION` returned for a submitted callback is rendered as an empty step, so a federated sign-up that leads into account-linking verification cannot finish | [No] | The SDK follows every `REDIRECTION` step, including one returned for a callback it submitted, in sign-in and sign-up alike (AC4.15) |
 | 5 | [Information Disclosure] | The provider's authorization code, or the callback URL that carries it, reaches a log or a crash report, where a reader can redeem it before the flow does | [No] | Authorization codes and the callback URLs that carry them are never logged, at any level, and the rule applies before any caller-supplied logger. The same values are kept out of the error messages and crash reports the SDK produces |
 
+#### 08: Starting a self user attribute verification
+
+**Description**
+
+A signed-in user verifies an email address or mobile number in their own profile. The SDK
+starts a `SELF_SERVICE` flow on the flow execution endpoint with the user's access token, the
+flow handle and the attribute. The server takes the user from the token, binds it to the
+execution and sends a code or a link to the stored value. The SDK renders the steps the server
+describes and submits the code; the server records the verification, and the SDK reads the
+status back from `/users/me`.
+
+**Assets involved**
+
+| Initiator | Intermediate | Target |
+| --- | --- | --- |
+| Host application | SDK flow driver, authenticated transport | Flow execution endpoint, `/users/me`, the user's mailbox or phone |
+
+**Data flow**
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant A as Host application
+  participant S as SDK
+  participant F as Flow execution endpoint
+  participant U as User's mailbox or phone
+  participant M as /users/me
+  A->>S: verify attribute
+  S->>F: access token, SELF_SERVICE, handle, attribute
+  F->>U: code or link to the stored value
+  F->>S: code step, masked destination
+  S->>F: executionId, challenge token, code
+  F->>S: COMPLETE
+  S->>M: read the profile
+  M->>S: verifiedAttributes
+```
+
+**Security considerations**
+
+| Area | Response | Comments |
+| --- | --- | --- |
+| Data confidentiality | [C-High] | The access token, and the code that proves control of the contact |
+| Communication medium | [M-NT] | |
+| Transport security | [TLS] | |
+| Authentication | Bearer access token on the start | The server binds the user from it |
+| Accessibility | [Restricted] | A signed-in user, for attributes of their own profile |
+| Authorization and Access Control | Server-side: the token's subject, and the flow | |
+
+**Threat assessment**
+
+| ID | Category | Threat | Materializable | Mitigation / comment |
+| --- | --- | --- | --- | --- |
+| 1 | [Elevation of Privilege] | A caller names another user to verify that user's contact | [No] | The SDK sends no user identifier; the server takes the user only from the access token on the start and keeps it for the execution (AC10.1) |
+| 2 | [Information Disclosure] | A call that names an explicit URL sends the access token to a host other than the server | [No] | The request goes through the SDK's authenticated transport, so the attachment rules of interaction 04 apply. Where storage is not isolated, the application already holds the token |
+| 3 | [Denial of Service] | A component that restarts verification on every render, or a caller holding the token, floods the user's mailbox or phone and uses up paid SMS volume | [Yes] | A component starts once per showing and never retries automatically (AC10.3). The server caps codes per execution, but not new executions. Recorded as a residual |
+| 4 | [Tampering] | The application shows an attribute as verified that the server never recorded | [No] | Status comes only from the read-only `verifiedAttributes` of `/users/me`, re-read after `COMPLETE`; the SDK never marks an attribute verified locally, and an absent field shows neither status (AC10.4) |
+| 5 | [Information Disclosure] | The code reaches a log or a crash report | [No] | The code is a credential under interaction 03 and is never logged (AC10.5) |
+
 ## Security Review Checklist
 
 ### Security considerations
@@ -608,6 +667,9 @@ identifiers a user supplies during authentication and recovery.
   lifetime, and is accepted.
 - An SDK that cannot decrypt an encrypted logout token does not support back-channel logout for
   a client configured for ID token encryption. Each such SDK documents it.
+- Each self user attribute verification sends a message to the user's contact. The server caps
+  codes per execution, not new executions, so send volume across executions is limited by the
+  deployment's rate limits and the provider's quotas.
 
 ## Appendix
 
@@ -629,3 +691,4 @@ identifiers a user supplies during authentication and recovery.
 | 0.1 | 2026-09-10 | Initial threat model. |
 | 0.2 | 2026-10-06 | Interaction 06 added for receiving a back-channel logout token in SDKs with a server runtime. |
 | 0.3 | 2026-10-12 | Interaction 07 added for a federated redirect inside an embedded flow. A callback without a `state` is never submitted, and mobile SDKs reject one that does not echo the request's `state`. Authorization codes, and callback URLs that carry one, are never logged. |
+| 0.4 | 2026-10-26 | Interaction 08 added for starting a self user attribute verification. |

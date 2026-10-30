@@ -4,6 +4,7 @@
 package security
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -186,6 +187,8 @@ func TestAuthenticateGrantsTheRootSystemPermission(t *testing.T) {
 	// There is nothing to revoke, so the revocation step must see an empty identity and pass.
 	assert.Empty(t, securityCtx.revocationID)
 	assert.Empty(t, securityCtx.tokenFamilyID)
+	assert.False(t, IsSelfIssued(withSecurityContext(context.Background(), securityCtx)),
+		"a management API key is not a token this deployment issued")
 }
 
 // Authenticate re-checks rather than trusting that CanHandle ran, so a direct call cannot bypass it.

@@ -679,3 +679,208 @@ func (suite *SMSExecutorTestSuite) TestResolveTemplateData_ExternalClaims() {
 func TestSMSExecutorSuite(t *testing.T) {
 	suite.Run(t, new(SMSExecutorTestSuite))
 }
+
+// testPinnedMobile is the number a mobile verification test pins.
+const testPinnedMobile = "+94714627887"
+
+// A skipped send reports the SMS as sent, unless a contact is pinned.
+func (suite *SMSExecutorTestSuite) TestAttributeVerificationSkippedDeliveryDoesNotReportSent() {
+	for want, shared := range map[string]map[string]string{
+		dataValueTrue:  {},
+		dataValueFalse: verificationEvidenceData(suite.T(), &verificationEvidence{Pin: mobilePin()}),
+	} {
+		response, err := suite.executor.Execute(&providers.NodeContext{
+			FlowType:          providers.FlowTypeSelfService,
+			ExecutorMode:      ExecutorModeSend,
+			RuntimeData:       map[string]string{common.RuntimeKeySkipDelivery: dataValueTrue},
+			SharedRuntimeData: shared,
+		})
+		suite.Require().NoError(err)
+		suite.Equal(providers.ExecComplete, response.Status)
+		suite.Equal(want, response.AdditionalData[common.DataSMSSent])
+	}
+}
+
+// verificationSMSContext is a send step with the given runtime number, inputs and evidence, if any.
+func verificationSMSContext(t *testing.T, flowType providers.FlowType, runtimeNumber string, inputs map[string]string,
+	proof *verificationEvidence) *providers.NodeContext {
+	shared := map[string]string{}
+	if proof != nil {
+		shared = verificationEvidenceData(t, proof)
+	}
+	return &providers.NodeContext{
+		FlowType:          flowType,
+		ExecutorMode:      ExecutorModeSend,
+		UserInputs:        inputs,
+		RuntimeData:       map[string]string{common.AttributeMobileNumber: runtimeNumber},
+		SharedRuntimeData: shared,
+		NodeProperties: map[string]interface{}{
+			propertyKeyNotificationSenderID: "sender-uuid-001",
+			propertyKeySMSTemplate:          smsSelfRegistrationProperty,
+		},
+	}
+}
+
+// mobilePin is a pinned mobile contact for user-a.
+func mobilePin() *providers.AttributeVerificationPin {
+	return &providers.AttributeVerificationPin{Subject: "user-a", Attribute: "mobile_number",
+		Value: testPinnedMobile, Channel: providers.VerificationChannelSMS}
+}
+
+// expectSMS expects one SMS to the given number.
+func (suite *SMSExecutorTestSuite) expectSMS(recipient string) {
+	suite.mockTemplateRenderer.On("Resolve", mock.Anything, notificationtemplate.ChannelTypeSMS,
+		smsSelfRegistrationHandle, mock.Anything).
+		Return(&notificationtemplate.ResolvedContent{Body: testRenderedSMSBody}, nil).Once()
+	suite.mockSMSSenderSvc.On("SendMessage", mock.Anything, mock.Anything, "sender-uuid-001",
+		notifcm.MessageData{Recipient: recipient, Body: testRenderedSMSBody}).Return(nil).Once()
+}
+
+// A pin is enforced in any flow type that has one.
+func (suite *SMSExecutorTestSuite) TestAttributeVerificationRecordsDeliveryToThePinnedNumber() {
+	for _, flowType := range []providers.FlowType{providers.FlowTypeSelfService, providers.FlowTypeAdministration} {
+		suite.Run(string(flowType), func() {
+			suite.SetupTest()
+			suite.expectSMS(testPinnedMobile)
+
+			response, err := suite.executor.Execute(verificationSMSContext(suite.T(), flowType, testPinnedMobile,
+				map[string]string{}, &verificationEvidence{Pin: mobilePin(), Challenge: "session-1"}))
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecComplete, response.Status)
+			suite.Equal([]verificationReceipt{{Channel: "sms", Value: testPinnedMobile}},
+				evidenceIn(suite.T(), response.SharedRuntimeData).Receipts)
+			suite.Equal("sms", response.AdditionalData[common.DataVerificationChannel])
+			suite.Equal("•••"+testPinnedMobile[len(testPinnedMobile)-2:],
+				response.AdditionalData[common.DataMaskedDestination])
+		})
+	}
+}
+
+func (suite *SMSExecutorTestSuite) TestAttributeVerificationRefusesAnEmailPin() {
+	response, err := suite.executor.Execute(verificationSMSContext(suite.T(),
+		providers.FlowTypeSelfService, testPinnedMobile, map[string]string{},
+		&verificationEvidence{Pin: emailPin(), Challenge: "session-1"}))
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, response.Status)
+	suite.Equal(ErrVerificationChannelUnavailable.Code, response.Error.Code)
+	suite.mockSMSSenderSvc.AssertNotCalled(suite.T(), "SendMessage", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything)
+}
+
+func (suite *SMSExecutorTestSuite) TestAttributeVerificationIgnoresAnInputNumber() {
+	for _, flowType := range []providers.FlowType{providers.FlowTypeSelfService, providers.FlowTypeAuthentication} {
+		suite.Run(string(flowType), func() {
+			suite.SetupTest()
+			suite.expectSMS(testPinnedMobile)
+
+			response, err := suite.executor.Execute(verificationSMSContext(suite.T(), flowType, testPinnedMobile,
+				map[string]string{common.AttributeMobileNumber: "+94770000000"},
+				&verificationEvidence{Pin: mobilePin(), Challenge: "session-1"}))
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecComplete, response.Status)
+			suite.Equal([]verificationReceipt{{Channel: "sms", Value: testPinnedMobile}},
+				evidenceIn(suite.T(), response.SharedRuntimeData).Receipts)
+		})
+	}
+}
+
+func (suite *SMSExecutorTestSuite) TestAttributeVerificationRefusesAnUnpinnedDelivery() {
+	for name, test := range map[string]struct {
+		runtimeNumber string
+		inputs        map[string]string
+		challenge     string
+	}{
+		"another number": {runtimeNumber: "+94770000000", challenge: "session-1"},
+		"an input number with none pinned in runtime data": {
+			inputs: map[string]string{common.AttributeMobileNumber: "+94770000000"}, challenge: "session-1"},
+		"no code issued": {runtimeNumber: testPinnedMobile},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+
+			response, err := suite.executor.Execute(verificationSMSContext(suite.T(),
+				providers.FlowTypeSelfService, test.runtimeNumber, test.inputs,
+				&verificationEvidence{Pin: mobilePin(), Challenge: test.challenge}))
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecFailure, response.Status)
+			suite.Equal(ErrVerificationChannelUnavailable.Code, response.Error.Code)
+			suite.Empty(response.SharedRuntimeData[common.RuntimeKeyAttributeVerificationEvidence])
+			suite.mockSMSSenderSvc.AssertNotCalled(suite.T(), "SendMessage", mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything)
+		})
+	}
+}
+
+// Without a pin a send behaves as before in every flow type: an input number comes first.
+func (suite *SMSExecutorTestSuite) TestSendWithoutAPinTakesTheInputNumber() {
+	for _, flowType := range []providers.FlowType{providers.FlowTypeSelfService, providers.FlowTypeAuthentication} {
+		suite.Run(string(flowType), func() {
+			suite.SetupTest()
+			suite.expectSMS("+94770000000")
+
+			response, err := suite.executor.Execute(verificationSMSContext(suite.T(), flowType,
+				testPinnedMobile, map[string]string{common.AttributeMobileNumber: "+94770000000"}, nil))
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecComplete, response.Status)
+			suite.Empty(response.SharedRuntimeData[common.RuntimeKeyAttributeVerificationEvidence])
+		})
+	}
+}
+
+func (suite *SMSExecutorTestSuite) TestAttributeVerificationFailedSendAddsNoReceipt() {
+	suite.mockTemplateRenderer.On("Resolve", mock.Anything, notificationtemplate.ChannelTypeSMS,
+		smsSelfRegistrationHandle, mock.Anything).
+		Return(&notificationtemplate.ResolvedContent{Body: testRenderedSMSBody}, nil).Once()
+	suite.mockSMSSenderSvc.On("SendMessage", mock.Anything, mock.Anything, "sender-uuid-001", mock.Anything).
+		Return(&tidcommon.InternalServerError).Once()
+
+	response, err := suite.executor.Execute(verificationSMSContext(suite.T(),
+		providers.FlowTypeSelfService, testPinnedMobile, map[string]string{},
+		&verificationEvidence{Pin: mobilePin(), Challenge: "session-1"}))
+
+	suite.Error(err)
+	suite.Nil(response)
+}
+
+func (suite *SMSExecutorTestSuite) TestAttributeVerificationCorruptEvidenceIsAnError() {
+	_, err := suite.executor.Execute(&providers.NodeContext{
+		FlowType:          providers.FlowTypeSelfService,
+		ExecutorMode:      ExecutorModeSend,
+		RuntimeData:       map[string]string{common.AttributeMobileNumber: testPinnedMobile},
+		SharedRuntimeData: map[string]string{common.RuntimeKeyAttributeVerificationEvidence: "{"},
+	})
+
+	suite.Error(err)
+	suite.mockSMSSenderSvc.AssertNotCalled(suite.T(), "SendMessage", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything)
+}
+
+// In a self-service flow, an unresolved or unknown sender fails the node as an unconfigured provider.
+func (suite *SMSExecutorTestSuite) TestExecute_SendMode_SelfService_ClientError_ReturnsExecFailure() {
+	for _, senderID := range []string{"{{SENDER_ID}}", "unknown-sender"} {
+		suite.Run(senderID, func() {
+			suite.SetupTest()
+			suite.mockTemplateRenderer.On("Resolve", mock.Anything, notificationtemplate.ChannelTypeSMS,
+				smsSelfRegistrationHandle, mock.Anything).
+				Return(&notificationtemplate.ResolvedContent{Body: testRenderedSMSBody}, nil).Once()
+			suite.mockSMSSenderSvc.On("SendMessage", mock.Anything, notifcm.ChannelTypeSMS, senderID, mock.Anything).
+				Return(&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "MNS-1001"}).Once()
+			ctx := verificationSMSContext(suite.T(), providers.FlowTypeSelfService, testPinnedMobile,
+				map[string]string{}, &verificationEvidence{Pin: mobilePin(), Challenge: "session-1"})
+			ctx.NodeProperties[propertyKeyNotificationSenderID] = senderID
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecFailure, resp.Status)
+			suite.Equal(ErrSMSProviderNotConfigured.Code, resp.Error.Code)
+			suite.NotEqual(dataValueTrue, resp.AdditionalData[common.DataSMSSent])
+			suite.Empty(resp.SharedRuntimeData[common.RuntimeKeyAttributeVerificationEvidence], "nothing was delivered")
+		})
+	}
+}

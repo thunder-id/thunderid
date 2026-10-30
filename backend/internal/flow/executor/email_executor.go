@@ -84,9 +84,19 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 		RuntimeData:    make(map[string]string),
 	}
 
+	proof, err := pinnedVerificationEvidence(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	if skip, ok := ctx.RuntimeData[common.RuntimeKeySkipDelivery]; ok && skip == dataValueTrue {
 		logger.Debug(ctx.Context, "Delivery marked as skipped, completing without sending email")
-		execResp.AdditionalData[common.DataEmailSent] = dataValueTrue
+		// A skipped send delivers no challenge to a pinned contact.
+		sent := dataValueTrue
+		if proof != nil {
+			sent = dataValueFalse
+		}
+		execResp.AdditionalData[common.DataEmailSent] = sent
 		execResp.Status = providers.ExecComplete
 		return execResp, nil
 	}
@@ -113,6 +123,12 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 	recipient, err := e.resolveRecipientEmail(ctx, logger)
 	if err != nil {
 		return failOrSkip(err)
+	}
+	// A pinned contact's challenge goes only to the pinned address.
+	if !deliveryAllowed(proof, providers.VerificationChannelEmail, recipient) {
+		execResp.Status = providers.ExecFailure
+		execResp.Error = &ErrVerificationChannelUnavailable
+		return execResp, nil
 	}
 	if recipient == "" {
 		logger.Debug(ctx.Context, "Email recipient not found")
@@ -181,6 +197,8 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 
 	logger.Debug(ctx.Context, "Email sent successfully", log.MaskedString("recipient", recipient))
 
+	recordVerificationReceipt(execResp, proof, providers.VerificationChannelEmail, recipient)
+	addVerificationDestination(execResp, proof)
 	execResp.AdditionalData[common.DataEmailSent] = dataValueTrue
 	execResp.Status = providers.ExecComplete
 	return execResp, nil

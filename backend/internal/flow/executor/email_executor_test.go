@@ -1514,3 +1514,174 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_ApplicationNameInTempl
 	suite.NotNil(resp)
 	suite.Equal(providers.ExecComplete, resp.Status)
 }
+
+// A skipped send reports the email as sent, unless a contact is pinned.
+func (suite *EmailExecutorTestSuite) TestAttributeVerificationSkippedDeliveryDoesNotReportSent() {
+	for want, shared := range map[string]map[string]string{
+		dataValueTrue:  {},
+		dataValueFalse: verificationEvidenceData(suite.T(), &verificationEvidence{Pin: emailPin()}),
+	} {
+		response, err := suite.executor.Execute(&providers.NodeContext{
+			FlowType:          providers.FlowTypeSelfService,
+			ExecutorMode:      ExecutorModeSend,
+			RuntimeData:       map[string]string{common.RuntimeKeySkipDelivery: dataValueTrue},
+			SharedRuntimeData: shared,
+		})
+		suite.Require().NoError(err)
+		suite.Equal(providers.ExecComplete, response.Status)
+		suite.Equal(want, response.AdditionalData[common.DataEmailSent])
+	}
+}
+
+func (suite *EmailExecutorTestSuite) TestAttributeVerificationRefusesAMobilePin() {
+	ctx := &providers.NodeContext{
+		FlowType:     providers.FlowTypeAdministration,
+		ExecutorMode: ExecutorModeSend,
+		RuntimeData:  map[string]string{userAttributeEmail: "user@example.com"},
+		SharedRuntimeData: verificationEvidenceData(suite.T(),
+			&verificationEvidence{Pin: mobilePin(), Challenge: "session-1"}),
+		NodeProperties: map[string]interface{}{propertyKeyEmailTemplate: "otp"},
+	}
+
+	response, err := suite.executor.Execute(ctx)
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, response.Status)
+	suite.Equal(ErrVerificationChannelUnavailable.Code, response.Error.Code)
+	suite.mockNotifSenderSvc.AssertNotCalled(suite.T(), "SendEmail", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// verificationEmailContext is a send step for a pinned email with the given evidence.
+func (suite *EmailExecutorTestSuite) verificationEmailContext(recipient string,
+	shared map[string]string) *providers.NodeContext {
+	return &providers.NodeContext{
+		FlowType:          providers.FlowTypeSelfService,
+		ExecutorMode:      ExecutorModeSend,
+		RuntimeData:       map[string]string{userAttributeEmail: recipient},
+		SharedRuntimeData: shared,
+		NodeProperties:    map[string]interface{}{propertyKeyEmailTemplate: "otp"},
+	}
+}
+
+// expectEmail expects one email to the given address.
+func (suite *EmailExecutorTestSuite) expectEmail(recipient string) {
+	suite.mockTemplateRenderer.On("Resolve", mock.Anything, notificationtemplate.ChannelTypeEmail,
+		mock.Anything, mock.Anything).
+		Return(&notificationtemplate.ResolvedContent{Subject: "Code", Body: "code"}, nil).Once()
+	suite.mockNotifSenderSvc.On("SendEmail", mock.Anything, "", mock.MatchedBy(func(email notifcm.EmailData) bool {
+		return len(email.To) == 1 && email.To[0] == recipient
+	})).Return((*tidcommon.ServiceError)(nil)).Once()
+}
+
+// The receipt holds the canonical recipient, which record compares with the pin.
+func (suite *EmailExecutorTestSuite) TestAttributeVerificationRecordsDeliveryToThePinnedEmail() {
+	suite.expectEmail(" User@EXAMPLE.COM ")
+
+	response, err := suite.executor.Execute(suite.verificationEmailContext(" User@EXAMPLE.COM ",
+		verificationEvidenceData(suite.T(), &verificationEvidence{Pin: emailPin(), Challenge: "session-1"})))
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, response.Status)
+	suite.Equal(dataValueTrue, response.AdditionalData[common.DataEmailSent])
+	suite.Equal([]verificationReceipt{{Channel: providers.VerificationChannelEmail, Value: "User@example.com"}},
+		evidenceIn(suite.T(), response.SharedRuntimeData).Receipts)
+	suite.Equal("email", response.AdditionalData[common.DataVerificationChannel])
+	suite.Equal("U•••@example.com", response.AdditionalData[common.DataMaskedDestination])
+}
+
+func (suite *EmailExecutorTestSuite) TestAttributeVerificationRefusesAnUnpinnedDelivery() {
+	for name, test := range map[string]struct {
+		recipient string
+		challenge string
+	}{
+		"another address":     {recipient: "other@example.com", challenge: "session-1"},
+		"another local case":  {recipient: "user@example.com", challenge: "session-1"},
+		"no challenge issued": {recipient: "User@example.com"},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			shared := verificationEvidenceData(suite.T(),
+				&verificationEvidence{Pin: emailPin(), Challenge: test.challenge})
+
+			response, err := suite.executor.Execute(suite.verificationEmailContext(test.recipient, shared))
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecFailure, response.Status)
+			suite.Equal(ErrVerificationChannelUnavailable.Code, response.Error.Code)
+			suite.Empty(response.SharedRuntimeData[common.RuntimeKeyAttributeVerificationEvidence])
+			suite.mockNotifSenderSvc.AssertNotCalled(suite.T(), "SendEmail", mock.Anything, mock.Anything,
+				mock.Anything)
+		})
+	}
+}
+
+// Without a pin a send behaves as before in every flow type, a self-service one included.
+func (suite *EmailExecutorTestSuite) TestSendWithoutAPinBehavesAsBefore() {
+	for _, flowType := range []providers.FlowType{providers.FlowTypeSelfService, providers.FlowTypeAuthentication} {
+		suite.Run(string(flowType), func() {
+			suite.SetupTest()
+			ctx := suite.verificationEmailContext("other@example.com", map[string]string{})
+			ctx.FlowType = flowType
+			suite.expectEmail("other@example.com")
+
+			response, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecComplete, response.Status)
+			suite.Equal(dataValueTrue, response.AdditionalData[common.DataEmailSent])
+			suite.Empty(response.SharedRuntimeData)
+		})
+	}
+}
+
+// Forwarded data comes before runtime data in recipient resolution, so a forwarded address is checked
+// against the pin like any other.
+func (suite *EmailExecutorTestSuite) TestAttributeVerificationRefusesAForwardedAddress() {
+	ctx := suite.verificationEmailContext("User@example.com",
+		verificationEvidenceData(suite.T(), &verificationEvidence{Pin: emailPin(), Challenge: "session-1"}))
+	ctx.ForwardedData = map[string]interface{}{userAttributeEmail: "other@example.com"}
+
+	response, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, response.Status)
+	suite.Equal(ErrVerificationChannelUnavailable.Code, response.Error.Code)
+	suite.mockNotifSenderSvc.AssertNotCalled(suite.T(), "SendEmail", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *EmailExecutorTestSuite) TestAttributeVerificationIgnoresAnInputAddress() {
+	ctx := suite.verificationEmailContext("User@example.com",
+		verificationEvidenceData(suite.T(), &verificationEvidence{Pin: emailPin(), Challenge: "session-1"}))
+	ctx.UserInputs = map[string]string{userAttributeEmail: "other@example.com"}
+	suite.expectEmail("User@example.com")
+
+	response, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, response.Status)
+}
+
+func (suite *EmailExecutorTestSuite) TestAttributeVerificationBestEffortFailureAddsNoReceipt() {
+	ctx := suite.verificationEmailContext("User@example.com",
+		verificationEvidenceData(suite.T(), &verificationEvidence{Pin: emailPin(), Challenge: "session-1"}))
+	ctx.NodeProperties[propertyKeyBestEffort] = true
+	suite.mockTemplateRenderer.On("Resolve", mock.Anything, notificationtemplate.ChannelTypeEmail,
+		mock.Anything, mock.Anything).
+		Return(&notificationtemplate.ResolvedContent{Subject: "Code", Body: "code"}, nil).Once()
+	suite.mockNotifSenderSvc.On("SendEmail", mock.Anything, "", mock.Anything).
+		Return(&tidcommon.InternalServerError).Once()
+
+	response, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, response.Status)
+	suite.Equal(dataValueFalse, response.AdditionalData[common.DataEmailSent])
+	suite.Empty(response.SharedRuntimeData)
+}
+
+func (suite *EmailExecutorTestSuite) TestAttributeVerificationCorruptEvidenceIsAnError() {
+	_, err := suite.executor.Execute(suite.verificationEmailContext("User@example.com",
+		map[string]string{common.RuntimeKeyAttributeVerificationEvidence: "{"}))
+
+	suite.Error(err)
+	suite.mockNotifSenderSvc.AssertNotCalled(suite.T(), "SendEmail", mock.Anything, mock.Anything, mock.Anything)
+}

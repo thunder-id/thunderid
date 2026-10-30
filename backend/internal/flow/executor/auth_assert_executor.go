@@ -396,11 +396,15 @@ func (a *authAssertExecutor) generateAuthAssertion(ctx *providers.NodeContext,
 	}
 
 	fetchedAttributes := make(map[string]interface{})
+	verifiedContacts := make(map[string]bool)
 
 	if attrResp != nil && len(attrResp.Attributes) > 0 {
 		for attrName, attrResp := range attrResp.Attributes {
 			if attrResp != nil {
 				fetchedAttributes[attrName] = attrResp.Value
+				if attrResp.AssuranceMetadataResponse != nil && attrResp.AssuranceMetadataResponse.IsVerified {
+					verifiedContacts[attrName] = true
+				}
 			}
 		}
 	}
@@ -409,8 +413,14 @@ func (a *authAssertExecutor) generateAuthAssertion(ctx *providers.NodeContext,
 		entityRef.EntityID)
 	addSubjectIdentityClaims(jwtClaims, entityRef.EntityID, entityRef.EntityCategory)
 
+	verificationClaims, claimErr := a.resolveVerificationClaims(ctx.Context, requiredAttributes,
+		entityRef.EntityCategory, entityRef.EntityType, verifiedContacts)
+	if claimErr != nil {
+		return "", claimErr
+	}
+
 	resolvedAttributes, attrErr := a.resolveUserAttributes(ctx, requiredAttributes, fetchedAttributes,
-		entityRef.EntityID, entityRef.EntityCategory, entityRef.EntityType, entityRef.OUID)
+		verificationClaims, entityRef.EntityID, entityRef.EntityCategory, entityRef.EntityType, entityRef.OUID)
 	if attrErr != nil {
 		return "", attrErr
 	}
@@ -553,6 +563,7 @@ func (a *authAssertExecutor) resolveUserAttributes(
 	ctx *providers.NodeContext,
 	requestedAttributes []string,
 	fetchedAttributes map[string]interface{},
+	verificationClaims map[string]verificationClaim,
 	userID, entityCategory, userType, ouID string,
 ) (map[string]interface{}, error) {
 	// An opaque JWT/JWE from the authn provider is passed through as-is, bypassing the
@@ -587,6 +598,10 @@ func (a *authAssertExecutor) resolveUserAttributes(
 		if slices.Contains(standardClaims, attr) {
 			continue
 		}
+		// Verification claims come only from the server's verification state
+		if _, ok := verificationClaims[attr]; ok {
+			continue
+		}
 
 		// Check runtime data
 		if val, exists := ctx.RuntimeData[attr]; exists && val != "" {
@@ -608,6 +623,8 @@ func (a *authAssertExecutor) resolveUserAttributes(
 		}
 	}
 
+	appendVerificationClaims(attributes, fetchedAttributes, verificationClaims)
+
 	// Append computed attributes (groups, roles, userType, OU details)
 	if err := a.appendComputedAttributes(ctx, requestedAttributes, attributes,
 		userID, entityCategory, userType, ouID); err != nil {
@@ -615,6 +632,48 @@ func (a *authAssertExecutor) resolveUserAttributes(
 	}
 
 	return attributes, nil
+}
+
+// resolveVerificationClaims returns the requested verification claims the server issues, keyed by
+// claim name.
+func (a *authAssertExecutor) resolveVerificationClaims(ctx context.Context, requestedAttributes []string,
+	entityCategory, userType string, verifiedContacts map[string]bool) (map[string]verificationClaim, error) {
+	if !slices.ContainsFunc(requestedAttributes, isVerificationClaimName) {
+		return nil, nil
+	}
+	contacts, err := verificationClaimContacts(ctx, a.entityTypeService, entityCategory, userType)
+	if err != nil {
+		return nil, err
+	}
+	claims := make(map[string]verificationClaim)
+	for name, contact := range contacts {
+		if slices.Contains(requestedAttributes, name) {
+			claims[name] = verificationClaim{contact: contact, verified: verifiedContacts[contact]}
+		}
+	}
+	return claims, nil
+}
+
+// isVerificationClaimName reports whether an attribute name has the verification claim suffix.
+func isVerificationClaimName(name string) bool {
+	return strings.HasSuffix(name, oauth2const.VerifiedClaimSuffix)
+}
+
+// appendVerificationClaims adds each verification claim whose contact is released with the value the
+// verification status was read for.
+func appendVerificationClaims(attributes, fetchedAttributes map[string]interface{},
+	verificationClaims map[string]verificationClaim) {
+	for name, claim := range verificationClaims {
+		released, ok := attributes[claim.contact].(string)
+		if !ok {
+			continue
+		}
+		if fetched, ok := fetchedAttributes[claim.contact].(string); ok && fetched == released {
+			attributes[name] = claim.verified
+		} else {
+			attributes[name] = false
+		}
+	}
 }
 
 // appendComputedAttributes appends computed/derived attributes (groups, roles, userType, OU details) to the claims.

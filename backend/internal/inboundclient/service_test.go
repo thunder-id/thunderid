@@ -239,6 +239,39 @@ func (suite *InboundClientServiceTestSuite) TestCreateInboundClient_PrunesSeeded
 		p.Token.IDToken.UserAttributes)
 }
 
+func (suite *InboundClientServiceTestSuite) TestCreateInboundClient_SeededDefaultsKeepContactVerificationClaim() {
+	store := newInboundClientStoreInterfaceMock(suite.T())
+	store.EXPECT().IsDeclarative(mock.Anything, "p1").Return(false)
+	store.EXPECT().CreateInboundClient(mock.Anything, mock.Anything).Return(nil)
+	store.EXPECT().CreateOAuthProfile(mock.Anything, "p1", mock.Anything).Return(nil)
+
+	et := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	et.EXPECT().
+		GetEntityTypeList(mock.Anything, entitytypepkg.TypeCategoryUser, mock.Anything, mock.Anything, false).
+		Return(&entitytypepkg.EntityTypeListResponse{
+			TotalResults: 1,
+			Types:        []entitytypepkg.EntityTypeListItem{{Handle: "users"}},
+		}, nil)
+	et.EXPECT().
+		GetAttributes(mock.Anything, entitytypepkg.TypeCategoryUser, "users",
+			entitytypepkg.AttributeFilter{AllowNonCredential: true}).
+		Return([]entitytypepkg.AttributeInfo{{Attribute: "email", Type: "email"}}, nil)
+
+	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(),
+		nil, nil, nil, nil, nil, et, nil, nil, noopCIMDService{}, nil, nil)
+
+	client := ptrInboundClient()
+	client.AllowedUserTypes = []string{"users"}
+	p := validOAuthProfile()
+
+	err := svc.CreateInboundClient(context.Background(), client, p, true)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), []string{"email", "email_verified"}, p.ScopeClaims["email"])
+	assert.ElementsMatch(suite.T(), []string{"email", "email_verified", "roles"},
+		p.Token.IDToken.UserAttributes)
+}
+
 func (suite *InboundClientServiceTestSuite) TestCreateInboundClient_KeepsSuppliedScopeClaimsAsSent() {
 	store := newInboundClientStoreInterfaceMock(suite.T())
 	store.EXPECT().IsDeclarative(mock.Anything, "p1").Return(false)
@@ -3328,6 +3361,37 @@ func (suite *InboundClientServiceTestSuite) TestValidateUserAttributes_InvalidAs
 	assertion := &inboundmodel.AssertionConfig{UserAttributes: []string{"banana"}}
 	assert.ErrorIs(suite.T(), svc.validateUserAttributesAgainstAllowedTypes(
 		context.Background(), []string{"employee"}, assertion, nil), ErrInvalidUserAttribute)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateUserAttributes_VerificationClaims() {
+	tests := []struct {
+		name      string
+		attribute string
+		wantErr   error
+	}{
+		{name: "email contact", attribute: "email_verified"},
+		{name: "mobile contact", attribute: "mobile_verified"},
+		{name: "not a contact", attribute: "name_verified", wantErr: ErrInvalidUserAttribute},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			us := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+			us.EXPECT().GetAttributes(mock.Anything, entitytypepkg.TypeCategoryUser, "employee",
+				entitytypepkg.AttributeFilter{AllowNonCredential: true}).
+				Return([]entitytypepkg.AttributeInfo{{Attribute: "email", Type: "email"},
+					{Attribute: "mobile", Type: "mobile"}, {Attribute: "name", Type: "string"}}, nil)
+			svc := &inboundClientService{entityType: us, logger: log.GetLogger()}
+
+			assertion := &inboundmodel.AssertionConfig{UserAttributes: []string{tc.attribute}}
+			err := svc.validateUserAttributesAgainstAllowedTypes(
+				context.Background(), []string{"employee"}, assertion, nil)
+			if tc.wantErr != nil {
+				assert.ErrorIs(suite.T(), err, tc.wantErr)
+				return
+			}
+			assert.NoError(suite.T(), err)
+		})
+	}
 }
 
 func (suite *InboundClientServiceTestSuite) TestValidateUserAttributes_ValidAccessTokenAttribute() {

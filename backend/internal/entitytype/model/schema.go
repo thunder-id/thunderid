@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // JSON Schema type constants.
@@ -132,6 +133,33 @@ func (cs *Schema) ValidateAsPrimaryContact(name, contactType string) PrimaryCont
 // IsStringBackedType reports whether values of the attribute type are JSON strings.
 func IsStringBackedType(attrType string) bool {
 	return attrType == TypeString || attrType == TypeEmail || attrType == TypeMobile
+}
+
+// IsContactType reports whether the attribute type is a verifiable contact: an email or a mobile number.
+func IsContactType(attrType string) bool {
+	return attrType == TypeEmail || attrType == TypeMobile
+}
+
+// ContactChannel returns the verification channel of a contact type: SMS for a mobile number, email
+// otherwise.
+func ContactChannel(attrType string) providers.VerificationChannel {
+	if attrType == TypeMobile {
+		return providers.VerificationChannelSMS
+	}
+	return providers.VerificationChannelEmail
+}
+
+// CanonicalContactValue returns the comparable form of a contact value: an email address is trimmed and
+// its domain lowercased. A value of any other type is returned unchanged.
+func CanonicalContactValue(attrType, value string) string {
+	if attrType != TypeEmail {
+		return value
+	}
+	value = strings.TrimSpace(value)
+	if at := strings.LastIndexByte(value, '@'); at >= 0 {
+		value = value[:at+1] + strings.ToLower(value[at+1:])
+	}
+	return value
 }
 
 // AttributeInfo holds an attribute name, its required and credential status, and its human-readable

@@ -182,7 +182,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	exporters = append(exporters, agentTypeExporter)
 
 	entityService, err := entity.Initialize(cacheManager, hashService, entityTypeService, ouService,
-		sharingService)
+		sharingService, observabilitySvc)
 	fatalOnError(ctx, logger, err, "Failed to initialize EntityService")
 
 	entityProvider := entityprovider.InitializeEntityProvider(entityService)
@@ -239,8 +239,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Identity governance derives the status management reads report. The Control Plane sends no lock
 	// email.
-	governanceService, _, err := identitygovernance.Initialize(entityService, serverConfigService, governanceCfg,
-		nil, ouAuthzService, observabilitySvc)
+	governanceService, _, err := identitygovernance.Initialize(entityService, entityTypeService, serverConfigService,
+		governanceCfg, nil, ouAuthzService, observabilitySvc)
 	fatalOnError(ctx, logger, err, "Failed to initialize IdentityGovernanceService")
 
 	userService, ouUserResolver, userExporter, err := user.Initialize(

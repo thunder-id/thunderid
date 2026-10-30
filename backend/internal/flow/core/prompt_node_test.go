@@ -3552,3 +3552,117 @@ func (s *PromptOnlyNodeTestSuite) TestBuildSyntheticComponentList_KeepsExistingS
 
 	s.Empty(promotions)
 }
+
+// chooserNode is a prompt with an email and a mobile action and no inputs, preselected from the given
+// property value.
+func chooserNode(preselect interface{}) NodeInterface {
+	node := newPromptNode("choose_channel",
+		map[string]interface{}{common.NodePropertyPreselectAction: preselect}, false, false)
+	node.(PromptNodeInterface).SetPrompts([]common.Prompt{
+		{Action: &common.Action{Ref: "email", NextNode: "email_branch"}},
+		{Action: &common.Action{Ref: "mobile", NextNode: "mobile_branch"}},
+	})
+	return node
+}
+
+func (s *PromptOnlyNodeTestSuite) TestPreselectAction_TakesTheActionFromRuntimeData() {
+	for name, currentAction := range map[string]string{"no action": "", "client action": "email"} {
+		s.Run(name, func() {
+			ctx := &providers.NodeContext{ExecutionID: "test-flow", CurrentAction: currentAction,
+				UserInputs: map[string]string{}, RuntimeData: map[string]string{"contactType": "mobile"}}
+
+			resp, err := chooserNode("{{ctx(contactType)}}").Execute(ctx)
+
+			s.Nil(err)
+			s.Equal(common.NodeStatusComplete, resp.Status)
+			s.Equal("mobile_branch", resp.NextNodeID)
+			s.Empty(resp.Actions)
+		})
+	}
+}
+
+func (s *PromptOnlyNodeTestSuite) TestPreselectAction_IgnoresSurroundingSpaces() {
+	ctx := &providers.NodeContext{ExecutionID: "test-flow", UserInputs: map[string]string{},
+		RuntimeData: map[string]string{"contactType": "email"}}
+
+	resp, err := chooserNode(" {{ctx(contactType)}} ").Execute(ctx)
+
+	s.Nil(err)
+	s.Equal(common.NodeStatusComplete, resp.Status)
+	s.Equal("email_branch", resp.NextNodeID)
+}
+
+// A preselected action with inputs completes only once they are present.
+func (s *PromptOnlyNodeTestSuite) TestPreselectAction_WaitsForTheActionInputs() {
+	node := newPromptNode("prompt-1",
+		map[string]interface{}{common.NodePropertyPreselectAction: "{{ctx(choice)}}"}, false, false)
+	node.(PromptNodeInterface).SetPrompts([]common.Prompt{
+		{Inputs: []providers.Input{{Identifier: "otp", Required: true}},
+			Action: &common.Action{Ref: "verify", NextNode: "check"}},
+		{Action: &common.Action{Ref: "skip", NextNode: "end"}},
+	})
+	ctx := &providers.NodeContext{ExecutionID: "test-flow", UserInputs: map[string]string{},
+		RuntimeData: map[string]string{"choice": "verify"}}
+
+	resp, err := node.Execute(ctx)
+
+	s.Nil(err)
+	s.Equal(common.NodeStatusIncomplete, resp.Status)
+	s.Require().Len(resp.Inputs, 1)
+	s.Equal("otp", resp.Inputs[0].Identifier)
+
+	ctx.UserInputs["otp"] = "123456"
+	resp, err = node.Execute(ctx)
+
+	s.Nil(err)
+	s.Equal(common.NodeStatusComplete, resp.Status)
+	s.Equal("check", resp.NextNodeID)
+}
+
+// Without a matching runtime value the prompt behaves as without the property; a user input never
+// selects the action.
+func (s *PromptOnlyNodeTestSuite) TestPreselectAction_FallsBackToTheActions() {
+	for name, test := range map[string]struct {
+		property    interface{}
+		runtimeData map[string]string
+		userInputs  map[string]string
+	}{
+		"key only in user inputs": {"{{ctx(contactType)}}", map[string]string{},
+			map[string]string{"contactType": "mobile"}},
+		"unknown ref":       {"{{ctx(contactType)}}", map[string]string{"contactType": "fax"}, map[string]string{}},
+		"empty value":       {"{{ctx(contactType)}}", map[string]string{"contactType": ""}, map[string]string{}},
+		"not a placeholder": {"mobile", map[string]string{"mobile": "mobile"}, map[string]string{}},
+		"placeholder with text": {"x{{ctx(contactType)}}", map[string]string{"contactType": "mobile"},
+			map[string]string{}},
+		"not a string":     {42, map[string]string{"contactType": "mobile"}, map[string]string{}},
+		"cleared property": {"", map[string]string{"contactType": "mobile", "": "mobile"}, map[string]string{}},
+		"blank property":   {"  ", map[string]string{"contactType": "mobile"}, map[string]string{}},
+	} {
+		s.Run(name, func() {
+			ctx := &providers.NodeContext{ExecutionID: "test-flow", UserInputs: test.userInputs,
+				RuntimeData: test.runtimeData}
+
+			resp, err := chooserNode(test.property).Execute(ctx)
+
+			s.Nil(err)
+			s.Equal(common.NodeStatusIncomplete, resp.Status)
+			s.Len(resp.Actions, 2)
+			s.Empty(ctx.CurrentAction)
+		})
+	}
+}
+
+// A prompt shown for a failure waits for the user rather than preselect its way back into the failure.
+func (s *PromptOnlyNodeTestSuite) TestPreselectAction_NotAppliedWhenHandlingAFailure() {
+	failure, _ := json.Marshal(tidcommon.ServiceError{Code: "FET-1042"})
+	ctx := &providers.NodeContext{ExecutionID: "test-flow", UserInputs: map[string]string{},
+		RuntimeData: map[string]string{"contactType": "mobile", "failureReasonJSON": string(failure)}}
+
+	resp, err := chooserNode("{{ctx(contactType)}}").Execute(ctx)
+
+	s.Nil(err)
+	s.Equal(common.NodeStatusIncomplete, resp.Status)
+	s.Require().NotNil(resp.Error)
+	s.Equal("FET-1042", resp.Error.Code)
+	s.Len(resp.Actions, 2)
+}

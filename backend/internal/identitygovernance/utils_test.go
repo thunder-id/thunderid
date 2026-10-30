@@ -4,6 +4,7 @@
 package identitygovernance
 
 import (
+	"context"
 	"encoding/json"
 	"slices"
 	"testing"
@@ -12,6 +13,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	sysconfig "github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/observability/event"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -970,4 +973,57 @@ func (s *UtilsTestSuite) TestAccessReadReportsByTheGivenTime() {
 	s.Equal(providers.AccessStatusLocked, accessReadFor(&entity, lockEnforcement{}, s.now).Status.Value)
 	s.Equal(providers.AccessStatusActive,
 		accessReadFor(&entity, lockEnforcement{}, s.now.Add(10*time.Minute)).Status.Value, "the lock has ended")
+}
+
+func (s *UtilsTestSuite) TestReadVerifiedAttributesRejectsMalformedStoredMetadata() {
+	for _, raw := range []string{`{"attributeVerification":null}`, `{"attributeVerification":[]}`,
+		`{"attributeVerification":{"email":"t"}}`, `{"attributeVerification":{"email":{"verifiedAt":5}}}`} {
+		_, err := ReadVerifiedAttributes(json.RawMessage(raw))
+		s.Require().Error(err, raw)
+	}
+	// An entry without a valid verification time records nothing.
+	entries, err := ReadVerifiedAttributes(json.RawMessage(
+		`{"attributeVerification":{"email":{},"mobile":null,"workEmail":{"revision":1},` +
+			`"homeEmail":{"verifiedAt":"forged"}}}`))
+	s.Require().NoError(err)
+	s.Require().Empty(entries)
+}
+
+// Writing the entries keeps every other system attribute and reads back as written.
+func (s *UtilsTestSuite) TestWithVerifiedAttributesReplacesOnlyTheEntries() {
+	entries := map[string]providers.VerifiedAttribute{"email": {VerifiedAt: "2026-10-16T12:00:00Z"}}
+	for _, stored := range []string{``, `{"keep":true,"attributeVerification":{"mobile":{"verifiedAt":"x"}}}`} {
+		written, err := WithVerifiedAttributes(json.RawMessage(stored), entries)
+		s.Require().NoError(err)
+		read, err := ReadVerifiedAttributes(written)
+		s.Require().NoError(err)
+		s.Equal(entries, read)
+		if stored != "" {
+			s.JSONEq(`{"keep":true,"attributeVerification":{"email":{"verifiedAt":"2026-10-16T12:00:00Z"}}}`,
+				string(written))
+		}
+	}
+	_, err := WithVerifiedAttributes(json.RawMessage(`[`), entries)
+	s.Error(err)
+}
+
+// An invalidation names the attribute and its reason, never the value, and the caller as actor only
+// outside a runtime context.
+func (s *UtilsTestSuite) TestNewVerificationInvalidatedEvent() {
+	caller := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("operator", "ou1", "", nil, nil))
+
+	evt := NewVerificationInvalidatedEvent(caller, "user-a", "email", VerificationValueChanged)
+
+	s.Equal(string(event.EventTypeAttributeVerificationInvalidated), evt.Type)
+	s.Equal(event.ComponentIdentityGovernance, evt.Component)
+	s.Equal("user-a", evt.Data[event.DataKey.Subject])
+	s.Equal(event.PrincipalTypeUser, evt.Data[event.DataKey.SubjectType])
+	s.Equal("operator", evt.Data[event.DataKey.ActorSub])
+	s.Equal("email", evt.Data[event.DataKey.Attribute])
+	s.Equal("value_changed", evt.Data[event.DataKey.Reason])
+
+	runtime := NewVerificationInvalidatedEvent(security.WithRuntimeContext(caller), "user-a", "email",
+		VerificationValueChanged)
+	s.NotContains(runtime.Data, event.DataKey.ActorSub)
 }

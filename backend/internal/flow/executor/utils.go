@@ -10,15 +10,18 @@ import (
 	"fmt"
 	"maps"
 	"strconv"
+	"strings"
 	"time"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/idp"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -502,6 +505,34 @@ func governanceFault(svcErr *tidcommon.ServiceError) error {
 	return fmt.Errorf("identity governance check failed: %s", svcErr.Error.DefaultValue)
 }
 
+// verificationClaimContacts returns the verification claims the server issues for a user type, mapped to
+// their contact attribute: <contact>_verified for each email or mobile attribute, unless the type's
+// schema defines that name itself. Another category, or no entity type service, has none.
+func verificationClaimContacts(ctx context.Context, entityTypeService entitytype.EntityTypeServiceInterface,
+	entityCategory, userType string) (map[string]string, error) {
+	if entityTypeService == nil || userType == "" ||
+		providers.EntityCategory(entityCategory) != providers.EntityCategoryUser {
+		return nil, nil
+	}
+	attributes, svcErr := entityTypeService.GetAttributes(ctx, entitytype.TypeCategoryUser, userType,
+		entitytype.AttributeFilter{AllowNonCredential: true})
+	if svcErr != nil {
+		return nil, fmt.Errorf("failed to fetch attributes of user type %s: code: %s", userType, svcErr.Code)
+	}
+	declared := make(map[string]bool, len(attributes))
+	for _, attribute := range attributes {
+		declared[attribute.Attribute] = true
+	}
+	contacts := make(map[string]string)
+	for _, attribute := range attributes {
+		name := attribute.Attribute + oauth2const.VerifiedClaimSuffix
+		if entitytypemodel.IsContactType(attribute.Type) && !declared[name] {
+			contacts[name] = attribute.Attribute
+		}
+	}
+	return contacts, nil
+}
+
 // dispatchPlaneFor maps the flow a challenge belongs to onto the plane it is checked at. A lock gives
 // way at the recovery plane, so recovery and registration challenges still go out; every other flow
 // is checked at the dispatch plane.
@@ -511,5 +542,101 @@ func dispatchPlaneFor(flowType providers.FlowType) providers.AccessPlane {
 		return providers.AccessPlaneRecovery
 	default:
 		return providers.AccessPlaneDispatch
+	}
+}
+
+// sharedVerificationEvidence returns shared runtime data carrying the evidence. The evidence holds only
+// strings and booleans, so it always encodes.
+func sharedVerificationEvidence(proof verificationEvidence) map[string]string {
+	encoded, _ := json.Marshal(proof)
+	return map[string]string{common.RuntimeKeyAttributeVerificationEvidence: string(encoded)}
+}
+
+// pinnedVerificationEvidence returns the attribute verification evidence an earlier node recorded on
+// shared runtime data, or nil when no contact is pinned. Evidence that does not decode, or names no pin,
+// is an error.
+func pinnedVerificationEvidence(ctx *providers.NodeContext) (*verificationEvidence, error) {
+	raw := ctx.SharedRuntimeData[common.RuntimeKeyAttributeVerificationEvidence]
+	if raw == "" {
+		return nil, nil
+	}
+	var proof verificationEvidence
+	if err := json.Unmarshal([]byte(raw), &proof); err != nil {
+		return nil, errors.New("invalid verification evidence")
+	}
+	if proof.Pin == nil {
+		return nil, errors.New("missing verification pin")
+	}
+	return &proof, nil
+}
+
+// deliveryAllowed reports whether a send may go ahead. With a pinned contact, the send is allowed only
+// on the pin's channel, once a challenge was issued for the pin, to the pinned value. Without one, every
+// send is allowed.
+func deliveryAllowed(proof *verificationEvidence, channel providers.VerificationChannel, recipient string) bool {
+	if proof == nil {
+		return true
+	}
+	return proof.Pin.Channel == channel && proof.Challenge != "" &&
+		canonicalRecipient(channel, recipient) == proof.Pin.Value
+}
+
+// recordVerificationReceipt adds the receipt of a completed send to the evidence of a pinned contact.
+func recordVerificationReceipt(resp *providers.ExecutorResponse, proof *verificationEvidence,
+	channel providers.VerificationChannel, recipient string) {
+	if proof == nil {
+		return
+	}
+	proof.Receipts = append(proof.Receipts, verificationReceipt{Channel: channel,
+		Value: canonicalRecipient(channel, recipient)})
+	resp.SharedRuntimeData = sharedVerificationEvidence(*proof)
+}
+
+// addVerificationDestination returns the channel and the masked pinned contact a challenge was sent to,
+// for display.
+func addVerificationDestination(resp *providers.ExecutorResponse, proof *verificationEvidence) {
+	if proof == nil {
+		return
+	}
+	resp.AdditionalData[common.DataVerificationChannel] = string(proof.Pin.Channel)
+	if masked, ok := maskContact(proof.Pin.Channel, proof.Pin.Value); ok {
+		resp.AdditionalData[common.DataMaskedDestination] = masked
+	}
+}
+
+// canonicalRecipient returns the comparable form of a recipient on the channel.
+func canonicalRecipient(channel providers.VerificationChannel, recipient string) string {
+	contactType, _ := channelContact(channel)
+	return entitytypemodel.CanonicalContactValue(contactType, recipient)
+}
+
+// channelContact returns the contact attribute type a channel delivers to, and the input identifier the
+// shipped sender on the channel resolves its recipient by.
+func channelContact(channel providers.VerificationChannel) (string, string) {
+	if channel == providers.VerificationChannelSMS {
+		return entitytypemodel.TypeMobile, common.AttributeMobileNumber
+	}
+	return entitytypemodel.TypeEmail, userAttributeEmail
+}
+
+// maskContact returns the contact for display: an email address keeps its first character and its
+// domain, a mobile number its last digits. It returns false for a value that is not a contact of the
+// channel.
+func maskContact(channel providers.VerificationChannel, value string) (string, bool) {
+	switch channel {
+	case providers.VerificationChannelEmail:
+		local, domain, found := strings.Cut(value, "@")
+		if !found || local == "" || domain == "" {
+			return "", false
+		}
+		return string([]rune(local)[:1]) + contactMask + "@" + domain, true
+	case providers.VerificationChannelSMS:
+		runes := []rune(value)
+		if len(runes) <= maskedMobileVisibleDigits {
+			return "", false
+		}
+		return contactMask + string(runes[len(runes)-maskedMobileVisibleDigits:]), true
+	default:
+		return "", false
 	}
 }

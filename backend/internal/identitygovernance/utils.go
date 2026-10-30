@@ -4,7 +4,9 @@
 package identitygovernance
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -14,6 +16,9 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/serverconfig"
 	sysconfig "github.com/thunder-id/thunderid/internal/system/config"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
+	"github.com/thunder-id/thunderid/internal/system/observability/event"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -143,6 +148,8 @@ func lockAppliesAt(plane providers.AccessPlane, method providers.AuthenticationM
 		return true
 	case providers.AccessPlaneRecovery:
 		return heldAtRecovery[method]
+	case providers.AccessPlaneVerification:
+		return false
 	default:
 		// Locks never apply at the session, issuance or application planes, so failed logins cannot
 		// end sessions. Unknown planes do not enforce locks.
@@ -818,4 +825,80 @@ func accountAccessNotificationsFrom(n sysconfig.AccessNotificationsConfig) *acco
 	return &accountAccessNotifications{OnLock: &accountAccessLockNotification{Email: &accountAccessLockEmail{
 		Enabled: email.Enabled,
 	}}}
+}
+
+// newVerificationEvent builds an attribute verification event about a user's attribute. It names the
+// attribute, never its value. The user verifies their own contact, so the user is also the actor.
+func newVerificationEvent(ctx context.Context, eventType providers.EventType,
+	pin providers.AttributeVerificationPin, status string) *providers.Event {
+	return event.NewEvent(syscontext.GetTraceID(ctx), string(eventType), event.ComponentIdentityGovernance).
+		WithStatus(status).
+		WithData(event.DataKey.Subject, pin.Subject).
+		WithData(event.DataKey.SubjectType, event.PrincipalTypeUser).
+		WithData(event.DataKey.Attribute, pin.Attribute).
+		WithData(event.DataKey.ActorSub, pin.Subject)
+}
+
+// NewVerificationInvalidatedEvent describes a write that cleared a recorded verification. It names the
+// attribute, never its value, and names the caller as the actor outside a runtime context.
+func NewVerificationInvalidatedEvent(ctx context.Context, entityID, attribute string,
+	reason VerificationInvalidationReason) *providers.Event {
+	evt := event.NewEvent(syscontext.GetTraceID(ctx), string(event.EventTypeAttributeVerificationInvalidated),
+		event.ComponentIdentityGovernance).
+		WithStatus(providers.StatusSuccess).
+		WithData(event.DataKey.Subject, entityID).
+		WithData(event.DataKey.SubjectType, event.PrincipalTypeUser).
+		WithData(event.DataKey.Attribute, attribute).
+		WithData(event.DataKey.Reason, string(reason))
+	if actor := security.GetSubject(ctx); actor != "" && !security.IsRuntimeContext(ctx) {
+		evt.WithData(event.DataKey.ActorSub, actor)
+	}
+	return evt
+}
+
+// WithVerifiedAttributes returns the system attributes with the recorded verification replaced by entries.
+func WithVerifiedAttributes(systemAttributes json.RawMessage,
+	entries map[string]providers.VerifiedAttribute) (json.RawMessage, error) {
+	var attributes map[string]json.RawMessage
+	if len(systemAttributes) > 0 {
+		if err := json.Unmarshal(systemAttributes, &attributes); err != nil {
+			return nil, err
+		}
+	}
+	if attributes == nil {
+		attributes = make(map[string]json.RawMessage)
+	}
+	encoded, err := json.Marshal(entries)
+	if err != nil {
+		return nil, err
+	}
+	attributes[SystemAttrAttributeVerification] = encoded
+	return json.Marshal(attributes)
+}
+
+// ReadVerifiedAttributes decodes recorded verification, dropping entries without a valid timestamp.
+func ReadVerifiedAttributes(systemAttributes json.RawMessage) (map[string]providers.VerifiedAttribute, error) {
+	var attributes map[string]json.RawMessage
+	if len(systemAttributes) > 0 {
+		if err := json.Unmarshal(systemAttributes, &attributes); err != nil {
+			return nil, fmt.Errorf("failed to read verification metadata: %w", err)
+		}
+	}
+	raw, exists := attributes[SystemAttrAttributeVerification]
+	if !exists {
+		return map[string]providers.VerifiedAttribute{}, nil
+	}
+	var entries map[string]providers.VerifiedAttribute
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		return nil, fmt.Errorf("failed to read verification entries: %w", err)
+	}
+	if entries == nil {
+		return nil, errors.New("invalid verification entries")
+	}
+	for name, entry := range entries {
+		if _, err := time.Parse(time.RFC3339Nano, entry.VerifiedAt); err != nil {
+			delete(entries, name)
+		}
+	}
+	return entries, nil
 }

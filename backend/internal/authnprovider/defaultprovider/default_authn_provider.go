@@ -173,27 +173,16 @@ func (p *defaultAuthnProvider) GetAttributes(
 		Verifications: make(map[string]*providers.VerificationResponse),
 	}
 
+	verified, _ := p.governance.GetVerifiedAttributes(ctx, *entityResult)
 	if consentedAttributes != nil && len(consentedAttributes.Attributes) > 0 {
 		for attrName := range consentedAttributes.Attributes {
 			if val, ok := allAttributes[attrName]; ok {
-				attributesResponse.Attributes[attrName] = &providers.AttributeResponse{
-					Value: val,
-					AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{
-						IsVerified:     false,
-						VerificationID: "",
-					},
-				}
+				attributesResponse.Attributes[attrName] = buildAttributeResponse(attrName, val, verified)
 			}
 		}
 	} else {
 		for attrName, val := range allAttributes {
-			attributesResponse.Attributes[attrName] = &providers.AttributeResponse{
-				Value: val,
-				AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{
-					IsVerified:     false,
-					VerificationID: "",
-				},
-			}
+			attributesResponse.Attributes[attrName] = buildAttributeResponse(attrName, val, verified)
 		}
 	}
 
@@ -440,7 +429,8 @@ func (p *defaultAuthnProvider) buildEntityAuthnResult(
 			return nil, p.logAndReturnServerError(ctx, "Failed to get attributes", log.String("error", err.Error()))
 		}
 	}
-	result.Attributes = buildAttributesResponse(attributes)
+	verified, _ := p.governance.GetVerifiedAttributes(ctx, *entityResult)
+	result.Attributes = buildAttributesResponse(attributes, verified)
 	return result, nil
 }
 
@@ -754,8 +744,8 @@ func (p *defaultAuthnProvider) handleEntityAuthError(
 	return p.logAndReturnServerError(ctx, serverMsg, log.String("error", err.Error()))
 }
 
-// checkAuthenticationAccess submits a verified identity to governance, at the recovery plane inside a
-// recovery flow.
+// checkAuthenticationAccess submits a verified identity to governance, at the plane the proof is
+// submitted at.
 func (p *defaultAuthnProvider) checkAuthenticationAccess(ctx context.Context,
 	method providers.AuthenticationMethod, result *providers.AuthnResult) *tidcommon.ServiceError {
 	if result.EntityReference == nil || result.EntityReference.EntityID == "" {
@@ -766,8 +756,8 @@ func (p *defaultAuthnProvider) checkAuthenticationAccess(ctx context.Context,
 	authorityCtx := security.WithRuntimeContext(ctx)
 	var decision providers.AccessDecision
 	var svcErr *tidcommon.ServiceError
-	if proofPlane(ctx) == providers.AccessPlaneRecovery {
-		decision, svcErr = p.governance.EvaluateAccess(authorityCtx, entityID, providers.AccessPlaneRecovery, method)
+	if plane := proofPlane(ctx); plane != providers.AccessPlaneAuthentication {
+		decision, svcErr = p.governance.EvaluateAccess(authorityCtx, entityID, plane, method)
 	} else {
 		decision, svcErr = p.governance.AdmitAuthenticationStep(authorityCtx, entityID, method)
 	}
@@ -827,20 +817,26 @@ func (p *defaultAuthnProvider) logAndReturnServerError(
 	return &err
 }
 
-func buildAttributesResponse(attrs map[string]interface{}) *providers.AttributesResponse {
+func buildAttributesResponse(attrs map[string]interface{},
+	verified map[string]providers.VerifiedAttribute) *providers.AttributesResponse {
 	resp := &providers.AttributesResponse{
 		Attributes:    make(map[string]*providers.AttributeResponse),
 		Verifications: make(map[string]*providers.VerificationResponse),
 	}
 	for k, v := range attrs {
-		resp.Attributes[k] = &providers.AttributeResponse{
-			Value: v,
-			AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{
-				IsVerified: false,
-			},
-		}
+		resp.Attributes[k] = buildAttributeResponse(k, v, verified)
 	}
 	return resp
+}
+
+// buildAttributeResponse returns an attribute value marked verified when it is a verified contact.
+func buildAttributeResponse(name string, value interface{},
+	verified map[string]providers.VerifiedAttribute) *providers.AttributeResponse {
+	_, isVerified := verified[name]
+	return &providers.AttributeResponse{
+		Value:                     value,
+		AssuranceMetadataResponse: &providers.AssuranceMetadataResponse{IsVerified: isVerified},
+	}
 }
 
 func newClientError(code, msg, desc string) *tidcommon.ServiceError {

@@ -1672,6 +1672,22 @@ var (
 		},
 	}
 
+	// ErrVerificationChannelUnavailable is returned when a contact cannot be verified where it is asked:
+	// the flow has no user to verify, the sender's channel is not the pinned contact's, no challenge was
+	// issued for the pin, or the recipient is not the pinned value.
+	ErrVerificationChannelUnavailable = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1119",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.verification_channel_unavailable",
+			DefaultValue: "Verification not available",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.verification_channel_unavailable_description",
+			DefaultValue: "This contact cannot be verified here",
+		},
+	}
+
 	// ErrFederatedUserSyncFailed is returned when a federated user cannot be updated with
 	// the attributes received from the identity provider.
 	ErrFederatedUserSyncFailed = tidcommon.ServiceError{

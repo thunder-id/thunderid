@@ -103,3 +103,29 @@ func (s *DefaultIdentityGovernanceProviderTestSuite) TestLifecycleErrorsPassThro
 		s.Equal(svcErr, newDefaultIdentityGovernanceProvider(svc).Suspend(s.ctx, "e1", ""))
 	}
 }
+
+// Self preparation and recording run on a runtime context: the user acts on themself.
+func (s *DefaultIdentityGovernanceProviderTestSuite) TestVerificationRunsOnTheRuntime() {
+	pin := providers.AttributeVerificationPin{Subject: "user-a", Attribute: "email",
+		Value: "a@example.com", Channel: "email"}
+	s.svc.EXPECT().PrepareAttributeVerification(mock.MatchedBy(security.IsRuntimeContext),
+		pin.Subject, pin.Attribute).Return(&pin, nil).Once()
+
+	prepared, err := s.provider.PrepareAttributeVerification(s.ctx, pin.Subject, pin.Attribute)
+
+	s.Require().Nil(err)
+	s.Equal(pin, *prepared)
+	s.svc.EXPECT().RecordAttributeVerification(mock.MatchedBy(security.IsRuntimeContext), pin).Return(nil).Once()
+	s.Nil(s.provider.RecordAttributeVerification(s.ctx, pin))
+}
+
+func (s *DefaultIdentityGovernanceProviderTestSuite) TestNewUserVerificationRunsOnTheRuntime() {
+	pin := providers.AttributeVerificationPin{Attribute: "email", Value: "a@example.com", Channel: "email"}
+	s.svc.EXPECT().PrepareNewUserAttributeVerification(mock.MatchedBy(security.IsRuntimeContext),
+		"Customer", "email", "a@example.com").Return(&pin, nil).Once()
+
+	prepared, err := s.provider.PrepareNewUserAttributeVerification(s.ctx, "Customer", "email", "a@example.com")
+
+	s.Require().Nil(err)
+	s.Equal(pin, *prepared)
+}

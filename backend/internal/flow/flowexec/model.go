@@ -85,6 +85,9 @@ type EngineContext struct {
 	// flow fetched when the context is loaded. Transient; used by the SSO-Check node to reject
 	// sessions established at an incompatible flow version.
 	SSOFlowVersion int
+	// boundSubject is the user a self-service flow was started for, taken from the caller's token at the
+	// start. Persisted with the context and shared by every call frame; executors read it, never write it.
+	boundSubject string
 	// SessionFlowID overrides the flow whose SSO session this execution operates on. It is set for
 	// sign-out flows, which run a different flow than the one that owns the session: the login (auth)
 	// flow id is carried here so the inbound cookie, SSO inputs, and cookie clear all resolve under
@@ -301,6 +304,7 @@ type FlowRequest struct {
 	FlowID         string            `json:"flowId,omitempty"`
 	ApplicationID  string            `json:"applicationId"`
 	FlowType       string            `json:"flowType"`
+	Handle         string            `json:"handle,omitempty"`
 	Verbose        bool              `json:"verbose,omitempty"`
 	ExecutionID    string            `json:"executionId"`
 	ChallengeToken string            `json:"challengeToken,omitempty"`
@@ -377,6 +381,7 @@ type flowContextContent struct {
 	InitiatorRequest      *string `json:"initiatorRequest,omitempty"`
 	PromptInputs          *string `json:"promptInputs,omitempty"`
 	PromptNodeID          *string `json:"promptNodeId,omitempty"`
+	BoundSubject          string  `json:"boundSubject,omitempty"`
 }
 
 // graphResolverFunc resolves a flow graph by its flow ID. Used during context deserialization to
@@ -587,6 +592,7 @@ func (f *FlowContextDB) ToEngineContext(ctx context.Context,
 		sharedRuntimeData:     sharedRuntimeData,
 		CurrentPromptInputs:   promptInputs,
 		CurrentPromptNodeID:   promptNodeID,
+		boundSubject:          content.BoundSubject,
 	}
 	engineCtx.SetInitiatorRequest(initiatorRequest)
 
@@ -765,6 +771,7 @@ func (f *FlowContextDB) FromEngineContext(ctx EngineContext) error {
 		InitiatorRequest:      initiatorRequestStr,
 		PromptInputs:          promptInputsStr,
 		PromptNodeID:          promptNodeIDStr,
+		BoundSubject:          ctx.boundSubject,
 	}
 
 	contextJSON, err := json.Marshal(content)

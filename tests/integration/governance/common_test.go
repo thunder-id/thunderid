@@ -1064,37 +1064,23 @@ func tokenActive(t *testing.T, token, clientID, clientSecret string) bool {
 	return active
 }
 
-// copyShippedFlowWithSender creates a copy of a shipped flow under its own handle, with senderID named
-// on one of its email nodes as an operator must name one, since a flow email node has no default
-// sender. calls maps a CALL node's ID to the flow the copy calls there instead, so the copy can serve
-// an application whose flows must reference one another. The shipped flow is left as it is, and the
-// copy is deleted when t ends. It returns the copy's ID and handle.
-func copyShippedFlowWithSender(t *testing.T, handle, flowType, nodeID, senderID string,
-	calls map[string]string) (flowID, copyHandle string) {
+// copyShippedFlowWithSenders creates a copy of a shipped flow under its own handle, with each sender
+// named on its node, and calls mapping a CALL node's ID to the flow the copy calls there instead, as
+// testutils.CopyFlowWithSenders does. The copy is deleted when t ends. It returns the copy's ID and
+// handle.
+func copyShippedFlowWithSenders(t *testing.T, handle, flowType string, senders, calls map[string]string) (
+	flowID, copyHandle string) {
 	t.Helper()
 
-	shippedID, err := testutils.GetFlowIDByHandle(handle, flowType)
-	require.NoError(t, err, "the %s %s flow must ship", handle, flowType)
-	var flow testutils.Flow
-	require.NoError(t, json.Unmarshal(getManagement(t, "/flows/"+shippedID), &flow))
-	require.NoError(t, testutils.SetFlowNodeProperty(&flow, nodeID, "senderId", senderID),
-		"flow %s must carry a %s node", handle, nodeID)
-	for callNodeID, calledFlowID := range calls {
-		require.NoError(t, testutils.ModifyFlowNode(&flow, callNodeID, func(node map[string]interface{}) {
-			node["flow"] = map[string]interface{}{"ref": calledFlowID}
-		}), "flow %s must carry a %s node", handle, callNodeID)
-	}
-
-	flow.Name += " with a sender"
-	flow.Handle = handle + "-with-sender"
-	flowID, err = testutils.CreateFlow(flow)
+	copyHandle = handle + "-with-sender"
+	flowID, err := testutils.CopyFlowWithSenders(handle, flowType, copyHandle, senders, calls)
 	require.NoError(t, err, "failed to copy the %s flow", handle)
 	t.Cleanup(func() {
 		if err := testutils.DeleteFlow(flowID); err != nil {
 			t.Logf("teardown: failed to delete the copy of %s: %v", handle, err)
 		}
 	})
-	return flowID, flow.Handle
+	return flowID, copyHandle
 }
 
 // putManagement writes one management resource as the administrator and returns the status and the

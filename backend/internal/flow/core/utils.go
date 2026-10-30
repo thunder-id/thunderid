@@ -49,6 +49,16 @@ func resolveVariables(value interface{}, ctx *providers.NodeContext) interface{}
 // TODO: Extend to support {{user(key)}}, {{env(key)}}, etc.
 var placeholderPattern = regexp.MustCompile(`{{\s*ctx\(\s*(\w+)\s*\)\s*}}`)
 
+// RuntimeDataKey returns the key of a value that is a single {{ctx(key)}} placeholder.
+func RuntimeDataKey(value string) (string, bool) {
+	value = strings.TrimSpace(value)
+	submatches := placeholderPattern.FindStringSubmatch(value)
+	if len(submatches) < 2 || submatches[0] != value {
+		return "", false
+	}
+	return submatches[1], true
+}
+
 // requestPlaceholderPattern matches {{request(<selector>)}} with optional whitespace, capturing the
 // raw selector so it can be parsed into an optional source, a type (header/query) and a name.
 var requestPlaceholderPattern = regexp.MustCompile(`{{\s*request\(\s*([^)]*?)\s*\)\s*}}`)

@@ -196,6 +196,223 @@ func (_c *IdentityGovernanceProviderMock_EvaluateAccess_Call) RunAndReturn(run f
 	return _c
 }
 
+// PrepareAttributeVerification provides a mock function for the type IdentityGovernanceProviderMock
+func (_mock *IdentityGovernanceProviderMock) PrepareAttributeVerification(ctx context.Context, subject string, attribute string) (*providers.AttributeVerificationPin, *common.ServiceError) {
+	ret := _mock.Called(ctx, subject, attribute)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PrepareAttributeVerification")
+	}
+
+	var r0 *providers.AttributeVerificationPin
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*providers.AttributeVerificationPin, *common.ServiceError)); ok {
+		return returnFunc(ctx, subject, attribute)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *providers.AttributeVerificationPin); ok {
+		r0 = returnFunc(ctx, subject, attribute)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*providers.AttributeVerificationPin)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, subject, attribute)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// IdentityGovernanceProviderMock_PrepareAttributeVerification_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PrepareAttributeVerification'
+type IdentityGovernanceProviderMock_PrepareAttributeVerification_Call struct {
+	*mock.Call
+}
+
+// PrepareAttributeVerification is a helper method to define mock.On call
+//   - ctx context.Context
+//   - subject string
+//   - attribute string
+func (_e *IdentityGovernanceProviderMock_Expecter) PrepareAttributeVerification(ctx any, subject any, attribute any) *IdentityGovernanceProviderMock_PrepareAttributeVerification_Call {
+	return &IdentityGovernanceProviderMock_PrepareAttributeVerification_Call{Call: _e.mock.On("PrepareAttributeVerification", ctx, subject, attribute)}
+}
+
+func (_c *IdentityGovernanceProviderMock_PrepareAttributeVerification_Call) Run(run func(ctx context.Context, subject string, attribute string)) *IdentityGovernanceProviderMock_PrepareAttributeVerification_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *IdentityGovernanceProviderMock_PrepareAttributeVerification_Call) Return(attributeVerificationPin *providers.AttributeVerificationPin, serviceError *common.ServiceError) *IdentityGovernanceProviderMock_PrepareAttributeVerification_Call {
+	_c.Call.Return(attributeVerificationPin, serviceError)
+	return _c
+}
+
+func (_c *IdentityGovernanceProviderMock_PrepareAttributeVerification_Call) RunAndReturn(run func(ctx context.Context, subject string, attribute string) (*providers.AttributeVerificationPin, *common.ServiceError)) *IdentityGovernanceProviderMock_PrepareAttributeVerification_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// PrepareNewUserAttributeVerification provides a mock function for the type IdentityGovernanceProviderMock
+func (_mock *IdentityGovernanceProviderMock) PrepareNewUserAttributeVerification(ctx context.Context, userType string, attribute string, value string) (*providers.AttributeVerificationPin, *common.ServiceError) {
+	ret := _mock.Called(ctx, userType, attribute, value)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PrepareNewUserAttributeVerification")
+	}
+
+	var r0 *providers.AttributeVerificationPin
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) (*providers.AttributeVerificationPin, *common.ServiceError)); ok {
+		return returnFunc(ctx, userType, attribute, value)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) *providers.AttributeVerificationPin); ok {
+		r0 = returnFunc(ctx, userType, attribute, value)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*providers.AttributeVerificationPin)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, userType, attribute, value)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// IdentityGovernanceProviderMock_PrepareNewUserAttributeVerification_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PrepareNewUserAttributeVerification'
+type IdentityGovernanceProviderMock_PrepareNewUserAttributeVerification_Call struct {
+	*mock.Call
+}
+
+// PrepareNewUserAttributeVerification is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userType string
+//   - attribute string
+//   - value string
+func (_e *IdentityGovernanceProviderMock_Expecter) PrepareNewUserAttributeVerification(ctx any, userType any, attribute any, value any) *IdentityGovernanceProviderMock_PrepareNewUserAttributeVerification_Call {
+	return &IdentityGovernanceProviderMock_PrepareNewUserAttributeVerification_Call{Call: _e.mock.On("PrepareNewUserAttributeVerification", ctx, userType, attribute, value)}
+}
+
+func (_c *IdentityGovernanceProviderMock_PrepareNewUserAttributeVerification_Call) Run(run func(ctx context.Context, userType string, attribute string, value string)) *IdentityGovernanceProviderMock_PrepareNewUserAttributeVerification_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *IdentityGovernanceProviderMock_PrepareNewUserAttributeVerification_Call) Return(attributeVerificationPin *providers.AttributeVerificationPin, serviceError *common.ServiceError) *IdentityGovernanceProviderMock_PrepareNewUserAttributeVerification_Call {
+	_c.Call.Return(attributeVerificationPin, serviceError)
+	return _c
+}
+
+func (_c *IdentityGovernanceProviderMock_PrepareNewUserAttributeVerification_Call) RunAndReturn(run func(ctx context.Context, userType string, attribute string, value string) (*providers.AttributeVerificationPin, *common.ServiceError)) *IdentityGovernanceProviderMock_PrepareNewUserAttributeVerification_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RecordAttributeVerification provides a mock function for the type IdentityGovernanceProviderMock
+func (_mock *IdentityGovernanceProviderMock) RecordAttributeVerification(ctx context.Context, pin providers.AttributeVerificationPin) *common.ServiceError {
+	ret := _mock.Called(ctx, pin)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RecordAttributeVerification")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.AttributeVerificationPin) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, pin)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// IdentityGovernanceProviderMock_RecordAttributeVerification_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RecordAttributeVerification'
+type IdentityGovernanceProviderMock_RecordAttributeVerification_Call struct {
+	*mock.Call
+}
+
+// RecordAttributeVerification is a helper method to define mock.On call
+//   - ctx context.Context
+//   - pin providers.AttributeVerificationPin
+func (_e *IdentityGovernanceProviderMock_Expecter) RecordAttributeVerification(ctx any, pin any) *IdentityGovernanceProviderMock_RecordAttributeVerification_Call {
+	return &IdentityGovernanceProviderMock_RecordAttributeVerification_Call{Call: _e.mock.On("RecordAttributeVerification", ctx, pin)}
+}
+
+func (_c *IdentityGovernanceProviderMock_RecordAttributeVerification_Call) Run(run func(ctx context.Context, pin providers.AttributeVerificationPin)) *IdentityGovernanceProviderMock_RecordAttributeVerification_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 providers.AttributeVerificationPin
+		if args[1] != nil {
+			arg1 = args[1].(providers.AttributeVerificationPin)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *IdentityGovernanceProviderMock_RecordAttributeVerification_Call) Return(serviceError *common.ServiceError) *IdentityGovernanceProviderMock_RecordAttributeVerification_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *IdentityGovernanceProviderMock_RecordAttributeVerification_Call) RunAndReturn(run func(ctx context.Context, pin providers.AttributeVerificationPin) *common.ServiceError) *IdentityGovernanceProviderMock_RecordAttributeVerification_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // RecordLogin provides a mock function for the type IdentityGovernanceProviderMock
 func (_mock *IdentityGovernanceProviderMock) RecordLogin(ctx context.Context, entityID string) *common.ServiceError {
 	ret := _mock.Called(ctx, entityID)

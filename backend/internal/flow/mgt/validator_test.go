@@ -715,9 +715,34 @@ func (s *ValidatorTestSuite) TestValidatePromptNode_Interactive_Valid() {
 	s.Nil(err)
 }
 
-// ---------------------------------------------------------------------------
-// validateCallNode
-// ---------------------------------------------------------------------------
+func (s *ValidatorTestSuite) TestValidatePromptNode_PreselectActionPlaceholder() {
+	node := &providers.NodeDefinition{
+		ID:         "prompt",
+		Type:       string(common.NodeTypePrompt),
+		Properties: map[string]interface{}{"preselectAction": " {{ ctx(contactType) }} "},
+		Prompts: []providers.PromptDefinition{
+			{Action: &providers.ActionDefinition{Ref: "email", NextNode: "end"}},
+		},
+	}
+	s.Nil(s.v.validatePromptNode(node))
+}
+
+func (s *ValidatorTestSuite) TestValidatePromptNode_PreselectActionNotAPlaceholder() {
+	for _, value := range []interface{}{"email", "{{ctx(contactType)}} email", "{{request(header.X)}}", 1} {
+		node := &providers.NodeDefinition{
+			ID:         "prompt",
+			Type:       string(common.NodeTypePrompt),
+			Properties: map[string]interface{}{"preselectAction": value},
+			Prompts: []providers.PromptDefinition{
+				{Action: &providers.ActionDefinition{Ref: "email", NextNode: "end"}},
+			},
+		}
+		err := s.v.validatePromptNode(node)
+		s.Require().NotNil(err, "value %v", value)
+		s.Equal(ErrorInvalidNodeConfig.Code, err.Code)
+		s.Equal("error.flowmgtservice.preselect_action_not_placeholder_description", err.ErrorDescription.Key)
+	}
+}
 
 func (s *ValidatorTestSuite) TestValidateCallNode_Valid() {
 	node := &providers.NodeDefinition{
@@ -2445,6 +2470,46 @@ func (s *ValidatorTestSuite) TestValidateOUResolverExecutor() {
 	}
 }
 
+// attributeVerificationNodes is a flow running AttributeVerificationExecutor in each of the given modes.
+func attributeVerificationNodes(modes ...string) []providers.NodeDefinition {
+	names := make([]string, len(modes))
+	for i := range modes {
+		names[i] = executor.ExecutorNameAttributeVerification
+	}
+	nodes := companionNodes(names...)
+	for i, mode := range modes {
+		nodes[i+1].Executor.Mode = mode
+	}
+	return nodes
+}
+
+// A flow of any type that prepares a contact must record it, and one that records must prepare.
+func (s *ValidatorTestSuite) TestValidateCompanionExecutors_AttributeVerificationPair() {
+	s.Nil(s.v.validateCompanionExecutors(
+		attributeVerificationNodes(executor.ExecutorModePrepare, executor.ExecutorModeRecord)))
+
+	for name, test := range map[string]struct {
+		modes   []string
+		missing string
+	}{
+		"prepare without record": {[]string{executor.ExecutorModePrepare}, executor.ExecutorModeRecord},
+		"record without prepare": {[]string{executor.ExecutorModeRecord}, executor.ExecutorModePrepare},
+		"two prepares": {[]string{executor.ExecutorModePrepare, executor.ExecutorModePrepare},
+			executor.ExecutorModeRecord},
+	} {
+		s.Run(name, func() {
+			err := s.v.validateCompanionExecutors(attributeVerificationNodes(test.modes...))
+
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+			s.Equal("error.flowmgtservice.companion_executor_missing_description", err.ErrorDescription.Key)
+			s.Equal(executor.ExecutorNameAttributeVerification, err.ErrorDescription.Params["executorName"])
+			s.Equal(executor.ExecutorNameAttributeVerification, err.ErrorDescription.Params["companionExecutorName"])
+			s.Equal(test.missing, err.ErrorDescription.Params["companionExecutorMode"])
+		})
+	}
+}
+
 func (s *ValidatorTestSuite) TestValidateOUResolverExecutor_Inputs() {
 	const unsupported = "error.flowmgtservice.unsupported_ou_resolver_property_description"
 	const invalidInputs = "error.flowmgtservice.invalid_ou_resolver_inputs_description"
@@ -2783,4 +2848,16 @@ func (s *ValidatorVariablesTestSuite) TestValidateVariablesConnectionInputs() {
 		s.Require().NotNil(svcErr)
 		s.Equal(tidcommon.InternalServerError.Code, svcErr.Code, "a failed lookup is not a missing connection")
 	})
+}
+
+// The executor is allowed in every flow type, and no flow type requires it.
+func (s *ValidatorTestSuite) TestAttributeVerificationExecutorFitsAnyFlowType() {
+	meta, ok := executormeta.MetaFor(executor.ExecutorNameAttributeVerification)
+	s.Require().True(ok)
+	node := attributeVerificationNodes(executor.ExecutorModePrepare)[1]
+	for _, flowType := range providers.ValidFlowTypes {
+		s.Nil(s.v.validateExecutorFlowType(&node, &meta, flowType), string(flowType))
+	}
+	s.Nil(s.v.validateFlowTypeBasedConstraints(providers.FlowTypeSelfService,
+		companionNodes(executor.ExecutorNameOTPExecutor)))
 }

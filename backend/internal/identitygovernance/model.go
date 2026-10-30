@@ -318,3 +318,10 @@ func (p accountAccessPolicy) isEmpty() bool {
 	return p.Enabled == nil && p.Threshold == nil && p.FailureWindowSeconds == nil &&
 		len(p.LockDurationsSeconds) == 0 && p.LockDecaySeconds == nil && p.MaxConsecutiveFailures == nil
 }
+
+// storedContact is a user's stored contact: the pin of its canonical value and the user type the record
+// compares under the entity lock.
+type storedContact struct {
+	pin      providers.AttributeVerificationPin
+	userType string
+}

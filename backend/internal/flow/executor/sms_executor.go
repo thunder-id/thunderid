@@ -75,10 +75,19 @@ func (e *smsExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRe
 		RuntimeData:    make(map[string]string),
 	}
 
-	// A dispatch marked as skipped sends nothing and reports the SMS as sent.
+	proof, err := pinnedVerificationEvidence(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// A dispatch marked as skipped sends nothing and reports the SMS as sent, unless a contact is pinned.
 	if skip, ok := ctx.RuntimeData[common.RuntimeKeySkipDelivery]; ok && skip == dataValueTrue {
 		logger.Debug(ctx.Context, "Delivery marked as skipped, completing without sending SMS")
-		execResp.AdditionalData[common.DataSMSSent] = dataValueTrue
+		sent := dataValueTrue
+		if proof != nil {
+			sent = dataValueFalse
+		}
+		execResp.AdditionalData[common.DataSMSSent] = sent
 		execResp.Status = providers.ExecComplete
 		return execResp, nil
 	}
@@ -89,7 +98,13 @@ func (e *smsExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRe
 
 	phoneAttr := resolveInputIdentifierByType(ctx, providers.InputTypePhone, common.AttributeMobileNumber)
 
-	recipient := e.resolveRecipientMobile(ctx, phoneAttr)
+	recipient := e.resolveRecipientMobile(ctx, phoneAttr, proof != nil)
+	// A pinned contact's challenge goes only to the pinned number.
+	if !deliveryAllowed(proof, providers.VerificationChannelSMS, recipient) {
+		execResp.Status = providers.ExecFailure
+		execResp.Error = &ErrVerificationChannelUnavailable
+		return execResp, nil
+	}
 	if recipient == "" {
 		logger.Debug(ctx.Context, "SMS recipient not found in user inputs or runtime data")
 		execResp.Status = providers.ExecFailure
@@ -142,7 +157,8 @@ func (e *smsExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRe
 	notifSvcErr := e.notifSenderSvc.SendMessage(ctx.Context, notifcm.ChannelTypeSMS, senderID,
 		notifcm.MessageData{Recipient: recipient, Body: rendered.Body})
 	if notifSvcErr != nil {
-		if ctx.FlowType == providers.FlowTypeUserOnboarding && notifSvcErr.Type == tidcommon.ClientErrorType {
+		if (ctx.FlowType == providers.FlowTypeUserOnboarding || ctx.FlowType == providers.FlowTypeSelfService) &&
+			notifSvcErr.Type == tidcommon.ClientErrorType {
 			execResp.Status = providers.ExecFailure
 			execResp.Error = &ErrSMSProviderNotConfigured
 			return execResp, nil
@@ -152,6 +168,8 @@ func (e *smsExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRe
 
 	logger.Debug(ctx.Context, "SMS sent successfully", log.MaskedString("recipient", recipient))
 
+	recordVerificationReceipt(execResp, proof, providers.VerificationChannelSMS, recipient)
+	addVerificationDestination(execResp, proof)
 	execResp.AdditionalData[common.DataSMSSent] = dataValueTrue
 	execResp.Status = providers.ExecComplete
 	return execResp, nil
@@ -199,8 +217,12 @@ func (e *smsExecutor) resolveTemplateData(ctx *providers.NodeContext) map[string
 }
 
 // resolveRecipientMobile retrieves the recipient mobile number from user inputs, runtime data,
-// or the entity provider (via RuntimeData["userID"]), in that order.
-func (e *smsExecutor) resolveRecipientMobile(ctx *providers.NodeContext, phoneAttr string) string {
+// or the entity provider (via RuntimeData["userID"]), in that order. With a pinned contact it reads
+// runtime data first, so an input cannot replace the pinned number.
+func (e *smsExecutor) resolveRecipientMobile(ctx *providers.NodeContext, phoneAttr string, pinned bool) string {
+	if mobile := ctx.RuntimeData[phoneAttr]; mobile != "" && pinned {
+		return mobile
+	}
 	if mobile, ok := ctx.UserInputs[phoneAttr]; ok && mobile != "" {
 		return mobile
 	}

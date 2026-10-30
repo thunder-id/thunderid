@@ -52,6 +52,8 @@ func (suite *DefaultAuthnProviderTestSuite) SetupTest() {
 	suite.mockFederated = commonmock.NewFederatedAuthenticatorMock(suite.T())
 	suite.mockOTP = otpmock.NewOTPAuthnServiceInterfaceMock(suite.T())
 	suite.mockGovernance = identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+	suite.mockGovernance.On("GetVerifiedAttributes", mock.Anything, mock.Anything).
+		Return(map[string]providers.VerifiedAttribute{}, true).Maybe()
 	suite.provider = Initialize(suite.mockService, nil, nil, nil, nil, nil, suite.admitAll())
 }
 
@@ -722,6 +724,81 @@ func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_Success_Filtered()
 	suite.NotNil(result)
 	suite.Equal("test@example.com", result.Attributes["email"].Value)
 	suite.NotContains(result.Attributes, "age")
+}
+
+func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_MarksVerifiedContacts() {
+	svc := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	governance := suite.admitAll()
+	governance.On("GetVerifiedAttributes", mock.Anything, mock.Anything).Unset()
+	provider := Initialize(svc, nil, nil, nil, nil, nil, governance)
+	entityObj := &providers.Entity{
+		ID:               "user123",
+		Category:         providers.EntityCategoryUser,
+		Type:             "customer",
+		Attributes:       json.RawMessage(`{"email":"test@example.com","mobile":"+94771234567"}`),
+		SystemAttributes: json.RawMessage(`{"attributeVerification":{}}`),
+	}
+	svc.On("GetEntityProfile", mock.Anything, "user123").Return(entityObj, nil).Once()
+	governance.On("GetVerifiedAttributes", mock.Anything, *entityObj).
+		Return(map[string]providers.VerifiedAttribute{"email": {VerifiedAt: "2026-10-27T00:00:00Z"}}, true).Once()
+
+	result, err := provider.GetAttributes(context.Background(), map[string]interface{}{"userID": "user123"},
+		nil, nil)
+
+	suite.Nil(err)
+	suite.True(result.Attributes["email"].AssuranceMetadataResponse.IsVerified)
+	suite.False(result.Attributes["mobile"].AssuranceMetadataResponse.IsVerified)
+}
+
+func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_Consented_MarksVerifiedContacts() {
+	svc := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	governance := suite.admitAll()
+	governance.On("GetVerifiedAttributes", mock.Anything, mock.Anything).Unset()
+	provider := Initialize(svc, nil, nil, nil, nil, nil, governance)
+	entityObj := &providers.Entity{
+		ID:         "user123",
+		Category:   providers.EntityCategoryUser,
+		Type:       "customer",
+		Attributes: json.RawMessage(`{"email":"test@example.com","mobile":"+94771234567"}`),
+	}
+	svc.On("GetEntityProfile", mock.Anything, "user123").Return(entityObj, nil).Once()
+	governance.On("GetVerifiedAttributes", mock.Anything, *entityObj).
+		Return(map[string]providers.VerifiedAttribute{"email": {VerifiedAt: "2026-10-27T00:00:00Z"}}, true).Once()
+
+	result, err := provider.GetAttributes(context.Background(), map[string]interface{}{"userID": "user123"},
+		&providers.RequestedAttributes{Attributes: map[string]*providers.AttributeMetadataRequest{"email": nil}}, nil)
+
+	suite.Nil(err)
+	suite.True(result.Attributes["email"].AssuranceMetadataResponse.IsVerified)
+	suite.NotContains(result.Attributes, "mobile")
+}
+
+func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_MarksVerifiedContacts() {
+	svc := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	governance := suite.admitAll()
+	governance.On("GetVerifiedAttributes", mock.Anything, mock.Anything).Unset()
+	provider := Initialize(svc, nil, nil, nil, nil, nil, governance)
+	identifiers := map[string]interface{}{"username": "testuser"}
+	credentials := map[string]interface{}{"password": "password123"}
+	entityObj := &providers.Entity{
+		ID:         "user123",
+		Category:   providers.EntityCategoryUser,
+		Type:       "customer",
+		State:      providers.EntityStateActive,
+		Attributes: json.RawMessage(`{"email":"test@example.com","mobile":"+94771234567"}`),
+	}
+	svc.On("AuthenticateEntity", mock.Anything, identifiers, credentials).
+		Return(&entity.AuthenticateResult{EntityID: "user123", EntityCategory: providers.EntityCategoryUser,
+			EntityType: "customer"}, "", nil).Once()
+	svc.On("GetEntityProfile", mock.Anything, "user123").Return(entityObj, nil).Once()
+	governance.On("GetVerifiedAttributes", mock.Anything, *entityObj).
+		Return(map[string]providers.VerifiedAttribute{"mobile": {VerifiedAt: "2026-10-27T00:00:00Z"}}, true).Once()
+
+	result, err := provider.Authenticate(context.Background(), identifiers, credentials, nil)
+
+	suite.Nil(err)
+	suite.False(result.Attributes.Attributes["email"].AssuranceMetadataResponse.IsVerified)
+	suite.True(result.Attributes.Attributes["mobile"].AssuranceMetadataResponse.IsVerified)
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_EmptyAttributes() {
@@ -1931,6 +2008,8 @@ func provisionedEntity(entityID string) map[string]interface{} {
 func (suite *DefaultAuthnProviderTestSuite) admitAll() *identitygovernancemock.IdentityGovernanceServiceInterfaceMock {
 	admitted := providers.AccessDecision{Admitted: true}
 	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+	governance.On("GetVerifiedAttributes", mock.Anything, mock.Anything).
+		Return(map[string]providers.VerifiedAttribute{}, true).Maybe()
 	governance.EXPECT().AdmitAuthenticationStep(mock.Anything, mock.Anything, mock.Anything).
 		Return(admitted, nil).Maybe()
 	governance.EXPECT().EvaluateAccess(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -2225,6 +2304,33 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_RecoveryFlow_WrongP
 		providers.AccessPlaneRecovery, providers.AuthenticationMethodCredential).Return(admitted, nil).Once()
 
 	suite.Require().NotNil(suite.authenticate(recoveryFlow, credentials))
+}
+
+func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_VerificationFlow_CodeIsCheckedAsAContactProof() {
+	admitted := providers.AccessDecision{Admitted: true}
+	verification := authnprovidercm.WithVerificationFlow(authnprovidercm.WithRecoveryFlow(context.Background()))
+	suite.expectCodeVerified("u1")
+	suite.mockGovernance.On("EvaluateAccess", mock.MatchedBy(security.IsRuntimeContext), "u1",
+		providers.AccessPlaneVerification, providers.AuthenticationMethodOTP).
+		Return(admitted, nil).Once()
+
+	suite.Nil(suite.authenticate(verification, otpCredentials("123456")))
+	suite.assertNothingChecked()
+}
+
+func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_VerificationFlow_WrongCodeIsNotASignInFailure() {
+	admitted := providers.AccessDecision{Admitted: true}
+	verification := authnprovidercm.WithVerificationFlow(context.Background())
+	suite.mockOTP.On("Authenticate", mock.Anything, "session-1", "000000").
+		Return(nil, &otp.VerificationFailure{
+			RecipientAttr: authnprovidercm.UserAttributeUserID, Recipient: "u1",
+		}, &otp.ErrorIncorrectOTP).Once()
+	suite.mockGovernance.On("RecordFailure", mock.Anything, "u1",
+		providers.AccessPlaneVerification, providers.AuthenticationMethodOTP).Return(admitted, nil).Once()
+
+	svcErr := suite.authenticate(verification, otpCredentials("000000"))
+	suite.Require().NotNil(svcErr)
+	suite.Equal(authnprovidercm.ErrorCodeAuthenticationFailed, svcErr.Code)
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_UnreadableAuthorityRefuses() {

@@ -10,7 +10,7 @@ description: Learn how flows define the step-by-step journeys users take when si
 
 A **flow** defines the step-by-step journey a user takes during a specific interaction with your application, signing in, creating an account, or resetting a password. <ProductName /> executes the assigned flow whenever a user initiates that action.
 
-<ProductName /> supports four flow types:
+<ProductName /> supports these flow types:
 
 | Type | Purpose | Assigned To |
 |------|---------|-------------|
@@ -18,6 +18,7 @@ A **flow** defines the step-by-step journey a user takes during a specific inter
 | **Registration** | Controls how new users create accounts and provide profile data | Application → Registration Flow (toggle must be enabled) |
 | **Recovery** | Controls how users regain access to their account, such as resetting a forgotten password | Application → Recovery Flow (toggle must be enabled) |
 | **User Onboarding** | Controls how admins create and onboard new users, directly or via an invite link | System-level |
+| **Self Service** | Controls an operation a signed-in user performs on their own account, such as verifying their email address or mobile number | Started by its handle with the user's access token |
 
 Each flow is a **named, versioned definition**. One flow can be assigned to multiple applications. Every time you save a flow, <ProductName /> creates a new version. The version number appears in the Version column on the Flows list page; previous versions are preserved and can be restored via API. See [Flow Versioning API Reference](../../../apis#tag/flow-versioning).
 

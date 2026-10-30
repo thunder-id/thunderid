@@ -364,6 +364,8 @@ const (
 	UserAttributeGroups = "groups"
 	// UserAttributeRoles is the constant for user's roles attribute.
 	UserAttributeRoles = "roles"
+	// VerifiedClaimSuffix names the claim that carries a contact attribute's verification status.
+	VerifiedClaimSuffix = "_verified"
 	// DefaultGroupListLimit is the default limit for group list retrieval.
 	DefaultGroupListLimit = 20
 )

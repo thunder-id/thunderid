@@ -1167,6 +1167,37 @@ func (s *ModelTestSuite) TestToEngineContext_WithSharedRuntimeData_RoundTrip() {
 	s.Equal("shared-value", val)
 }
 
+func (s *ModelTestSuite) TestBoundSubject_RoundTrip() {
+	mockGraph := coremock.NewGraphInterfaceMock(s.T())
+	mockGraph.On("GetID").Return("self-graph")
+	mockGraph.On("GetType").Return(providers.FlowTypeSelfService)
+	ctx := EngineContext{
+		Context: context.Background(), ExecutionID: "exec-bound", FlowType: providers.FlowTypeSelfService,
+		Graph: mockGraph, UserInputs: map[string]string{}, RuntimeData: map[string]string{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{}, boundSubject: "user-1",
+	}
+
+	dbModel := &FlowContextDB{}
+	s.Require().NoError(dbModel.FromEngineContext(ctx))
+	s.Equal("user-1", s.getContextContent(dbModel).BoundSubject)
+	resultCtx, err := dbModel.ToEngineContext(context.Background(), mockGraph, nil)
+
+	s.Require().NoError(err)
+	s.Equal("user-1", resultCtx.boundSubject)
+	s.False(resultCtx.AuthUser.IsAuthenticated())
+	s.Empty(resultCtx.AuthenticatedUser.UserID)
+}
+
+func (s *ModelTestSuite) TestBoundSubject_OmittedWhenUnset() {
+	mockGraph := coremock.NewGraphInterfaceMock(s.T())
+	mockGraph.On("GetID").Return("auth-graph")
+	dbModel := &FlowContextDB{}
+
+	s.Require().NoError(dbModel.FromEngineContext(EngineContext{ExecutionID: "exec", Graph: mockGraph}))
+
+	s.NotContains(dbModel.Context, "boundSubject")
+}
+
 func (s *ModelTestSuite) TestToEngineContext_WithFrameStack_NilResolver_Empty() {
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())
 	mockGraph.On("GetID").Return("callee-graph-id")

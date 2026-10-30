@@ -56,9 +56,12 @@ func accessRefusal(decision providers.AccessDecision, svcErr *tidcommon.ServiceE
 	return nil
 }
 
-// proofPlane returns the plane a proof is submitted at: recovery inside a recovery flow, authentication
-// otherwise.
+// proofPlane returns the plane a proof is submitted at: verification for a contact verification, recovery
+// inside a recovery flow, authentication otherwise.
 func proofPlane(ctx context.Context) providers.AccessPlane {
+	if authnprovidercm.IsVerificationFlow(ctx) {
+		return providers.AccessPlaneVerification
+	}
 	if authnprovidercm.IsRecoveryFlow(ctx) {
 		return providers.AccessPlaneRecovery
 	}

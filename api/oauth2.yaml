@@ -1330,6 +1330,10 @@ components:
           type: string
         email_verified:
           type: boolean
+          description: |
+            Whether the user verified the `email` in this response, as recorded at sign-in. Released only with
+            `email`. Any top-level `email` or `mobile` attribute can release `<attribute>_verified` the same way;
+            a user type that defines the name itself releases its stored value instead.
         gender:
           type: string
         birthdate:
@@ -1342,6 +1346,7 @@ components:
           type: string
         phone_number_verified:
           type: boolean
+          description: Whether the user verified the `phone_number` in this response, as `email_verified` describes.
         updated_at:
           type: integer
           format: int64

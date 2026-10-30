@@ -241,9 +241,17 @@ type companionExecutor struct {
 // flow that terminates without it would therefore delete sessions while their tokens stay live, so
 // the pairing is required rather than conventional. Only the revoke mode counts: the advance_cutoff
 // mode writes nothing for a revoke-all plan, so it alone would leave those tokens live.
+//
+// AttributeVerificationExecutor has no default mode, so each of its nodes prepares or records. A flow
+// that prepares must record, or it completes without verifying anything, and a flow that records must
+// prepare, or it has no pin to record.
 var companionExecutors = map[string][]companionExecutor{
 	executormeta.ExecutorNameSessionRevocation: {
 		{name: executormeta.ExecutorNameCriteriaRevocation, mode: executormeta.ExecutorModeRevoke},
+	},
+	executormeta.ExecutorNameAttributeVerification: {
+		{name: executormeta.ExecutorNameAttributeVerification, mode: executormeta.ExecutorModePrepare},
+		{name: executormeta.ExecutorNameAttributeVerification, mode: executormeta.ExecutorModeRecord},
 	},
 }
 
@@ -315,10 +323,11 @@ func (v *flowValidator) validateCompanionExecutors(
 			return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
 				Key: "error.flowmgtservice.companion_executor_missing_description",
 				DefaultValue: "Executor '{{param(executorName)}}' requires executor " +
-					"'{{param(companionExecutorName)}}' in the same flow",
+					"'{{param(companionExecutorName)}}' in mode '{{param(companionExecutorMode)}}' in the same flow",
 				Params: map[string]string{
 					"executorName":          name,
 					"companionExecutorName": companion.name,
+					"companionExecutorMode": companion.mode,
 				},
 			})
 		}
@@ -878,7 +887,27 @@ func (v *flowValidator) validateInteractivePromptNode(node *providers.NodeDefini
 			return err
 		}
 	}
-	return nil
+	return validatePreselectAction(node)
+}
+
+// validatePreselectAction checks that a PROMPT node's preselectAction, when set, is a single
+// {{ctx(key)}} placeholder.
+func validatePreselectAction(node *providers.NodeDefinition) *tidcommon.ServiceError {
+	value, exists := node.Properties[common.NodePropertyPreselectAction]
+	if !exists {
+		return nil
+	}
+	if placeholder, ok := value.(string); ok {
+		if _, ok := core.RuntimeDataKey(placeholder); ok {
+			return nil
+		}
+	}
+	return tidcommon.CustomServiceError(ErrorInvalidNodeConfig, tidcommon.I18nMessage{
+		Key: "error.flowmgtservice.preselect_action_not_placeholder_description",
+		DefaultValue: "PROMPT node '{{param(nodeID)}}': preselectAction must be a single " +
+			"{{ctx(key)}} placeholder",
+		Params: map[string]string{"nodeID": node.ID},
+	})
 }
 
 // validateInputDefinitions validates input definitions for valid types and validation rules.

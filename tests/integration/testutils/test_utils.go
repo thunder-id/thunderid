@@ -1266,9 +1266,19 @@ func QueryConfigDB(sqlQuery string) (string, error) {
 func QueryRuntimeDB(sqlQuery string) (string, error) {
 	ensureInitialized()
 	if dbType == "postgres" {
-		return queryPostgresRuntimeDB(sqlQuery)
+		return queryPostgresDB("runtime_persistent", sqlQuery)
 	}
 	return querySQLiteDB("runtime_persistent.db", sqlQuery)
+}
+
+// QueryEntityDB runs one SQL statement against the entity database and returns the trimmed CLI
+// output, for tests that must see what the server stores outside its APIs, as QueryRuntimeDB does.
+func QueryEntityDB(sqlQuery string) (string, error) {
+	ensureInitialized()
+	if dbType == "postgres" {
+		return queryPostgresDB("entity", sqlQuery)
+	}
+	return querySQLiteDB("entitydb.db", sqlQuery)
 }
 
 // DeleteRuntimeRow removes an entity's runtime row, so the entity reads as one governance has never
@@ -1297,18 +1307,18 @@ func querySQLiteDB(fileName, sqlQuery string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// queryPostgresRuntimeDB runs one SQL statement with psql against the runtime persistent database the
-// deployment's database.runtime_persistent.postgres section names, and returns the trimmed output.
-func queryPostgresRuntimeDB(sqlQuery string) (string, error) {
+// queryPostgresDB runs one SQL statement with psql against the database the deployment's
+// database.<name>.postgres section names, and returns the trimmed output.
+func queryPostgresDB(name, sqlQuery string) (string, error) {
 	section, err := ReadDeploymentConfigKey("database")
 	if err != nil {
 		return "", err
 	}
 	database, _ := section.(map[string]interface{})
-	persistent, _ := database["runtime_persistent"].(map[string]interface{})
-	conn, _ := persistent["postgres"].(map[string]interface{})
+	named, _ := database[name].(map[string]interface{})
+	conn, _ := named["postgres"].(map[string]interface{})
 	if conn == nil {
-		return "", fmt.Errorf("deployment.yaml has no database.runtime_persistent.postgres section")
+		return "", fmt.Errorf("deployment.yaml has no database.%s.postgres section", name)
 	}
 	value := func(key string) string { return fmt.Sprint(conn[key]) }
 

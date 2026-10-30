@@ -721,6 +721,10 @@ func CreateApplication(app Application) (string, error) {
 		appData["inboundAuthConfig"] = inboundAuthConfig
 	}
 
+	if app.SignOutFlowID != "" {
+		appData["signOutFlowId"] = app.SignOutFlowID
+	}
+
 	// Add allowed_user_types if provided
 	if len(app.AllowedUserTypes) > 0 {
 		appData["allowedUserTypes"] = app.AllowedUserTypes
@@ -2581,6 +2585,58 @@ func GetFlowIDByHandle(handle string, flowType string) (string, error) {
 	}
 
 	return "", fmt.Errorf("flow with handle '%s' not found", handle)
+}
+
+// GetFlow reads a flow by ID as the definition an update takes.
+func GetFlow(flowID string) (Flow, error) {
+	var flow Flow
+	resp, err := GetHTTPClient().Get(TestServerURL + "/flows/" + flowID)
+	if err != nil {
+		return flow, fmt.Errorf("flow read request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return flow, fmt.Errorf("failed to read flow response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return flow, fmt.Errorf("failed to read flow, status %d: %s", resp.StatusCode, string(body))
+	}
+	if err := json.Unmarshal(body, &flow); err != nil {
+		return flow, fmt.Errorf("failed to decode flow: %w", err)
+	}
+	return flow, nil
+}
+
+// CopyFlowWithSenders creates a copy of a shipped flow under copyHandle, with each sender named on its
+// node as an operator must name one, since a flow sender node has no default sender. calls maps a CALL
+// node's ID to the flow the copy calls there instead. The shipped flow is left as it is; the caller
+// deletes the copy. It returns the copy's ID.
+func CopyFlowWithSenders(handle, flowType, copyHandle string, senders, calls map[string]string) (string, error) {
+	shippedID, err := GetFlowIDByHandle(handle, flowType)
+	if err != nil {
+		return "", err
+	}
+	flow, err := GetFlow(shippedID)
+	if err != nil {
+		return "", err
+	}
+	for nodeID, senderID := range senders {
+		if err := SetFlowNodeProperty(&flow, nodeID, "senderId", senderID); err != nil {
+			return "", fmt.Errorf("flow %s must carry a %s node: %w", handle, nodeID, err)
+		}
+	}
+	for nodeID, calledFlowID := range calls {
+		if err := ModifyFlowNode(&flow, nodeID, func(node map[string]interface{}) {
+			node["flow"] = map[string]interface{}{"ref": calledFlowID}
+		}); err != nil {
+			return "", fmt.Errorf("flow %s must carry a %s node: %w", handle, nodeID, err)
+		}
+	}
+	flow.Name += " with a sender"
+	flow.Handle = copyHandle
+	return CreateFlow(flow)
 }
 
 // senderVendorRegistryMu guards senderVendorRegistry.

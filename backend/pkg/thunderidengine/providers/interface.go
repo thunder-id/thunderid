@@ -393,4 +393,17 @@ type IdentityGovernanceProvider interface {
 	// recovery or an unlock clears; an agent keeps any automatic lock still in force, and an
 	// application becomes active.
 	Unsuspend(ctx context.Context, entityID string) *common.ServiceError
+
+	// PrepareAttributeVerification pins the stored contact of an existing user. The caller must have
+	// established the subject; it makes no scope check.
+	PrepareAttributeVerification(ctx context.Context, subject, attribute string) (
+		*AttributeVerificationPin, *common.ServiceError)
+
+	// PrepareNewUserAttributeVerification pins a contact value collected for a user of the given type
+	// that is not created yet. The pin names no subject until the contact is recorded.
+	PrepareNewUserAttributeVerification(ctx context.Context, userType, attribute, value string) (
+		*AttributeVerificationPin, *common.ServiceError)
+
+	// RecordAttributeVerification records the pinned contact after trusted proof if it is still current.
+	RecordAttributeVerification(ctx context.Context, pin AttributeVerificationPin) *common.ServiceError
 }

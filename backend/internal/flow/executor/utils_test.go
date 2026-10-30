@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package executor
@@ -1017,4 +1017,85 @@ func (s *UtilsTestSuite) TestStatedDecision_StatesOnlyANamedHold() {
 	s.Equal(&ErrAccountLocked, statedDecision(providers.AccessDecision{Reason: providers.AccessRefusalReasonLocked}))
 	s.Equal(&ErrAccountSuspended,
 		statedDecision(providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended}))
+}
+
+// A send for a pinned contact is allowed only on the pin's channel, after a challenge was issued, to the
+// pinned value in canonical form. Without a pin every send is allowed.
+func (s *UtilsTestSuite) TestDeliveryAllowed() {
+	issued := &verificationEvidence{Pin: emailPin(), Challenge: "session-1"}
+	for name, test := range map[string]struct {
+		proof     *verificationEvidence
+		channel   providers.VerificationChannel
+		recipient string
+		allowed   bool
+	}{
+		"no pin":             {nil, providers.VerificationChannelSMS, "+94771234567", true},
+		"the pinned address": {issued, providers.VerificationChannelEmail, " User@EXAMPLE.COM ", true},
+		"another channel":    {issued, providers.VerificationChannelSMS, "User@example.com", false},
+		"another address":    {issued, providers.VerificationChannelEmail, "other@example.com", false},
+		"another local case": {issued, providers.VerificationChannelEmail, "user@example.com", false},
+		"no recipient":       {issued, providers.VerificationChannelEmail, "", false},
+		"no challenge issued": {&verificationEvidence{Pin: emailPin()}, providers.VerificationChannelEmail,
+			"User@example.com", false},
+	} {
+		s.Run(name, func() {
+			s.Equal(test.allowed, deliveryAllowed(test.proof, test.channel, test.recipient))
+		})
+	}
+}
+
+func (s *UtilsTestSuite) TestRecordVerificationReceipt() {
+	resp := &providers.ExecutorResponse{}
+	recordVerificationReceipt(resp, nil, providers.VerificationChannelEmail, "User@example.com")
+	s.Empty(resp.SharedRuntimeData)
+
+	proof := &verificationEvidence{Pin: emailPin(), Challenge: "session-1"}
+	recordVerificationReceipt(resp, proof, providers.VerificationChannelEmail, " User@EXAMPLE.COM ")
+	s.Equal([]verificationReceipt{{Channel: providers.VerificationChannelEmail, Value: "User@example.com"}},
+		evidenceIn(s.T(), resp.SharedRuntimeData).Receipts)
+}
+
+func (s *UtilsTestSuite) TestAddVerificationDestination() {
+	resp := &providers.ExecutorResponse{AdditionalData: map[string]string{}}
+	addVerificationDestination(resp, nil)
+	s.Empty(resp.AdditionalData)
+
+	addVerificationDestination(resp, &verificationEvidence{Pin: emailPin()})
+	s.Equal(map[string]string{common.DataVerificationChannel: "email",
+		common.DataMaskedDestination: "U•••@example.com"}, resp.AdditionalData)
+}
+
+// Evidence that has no pin is an error rather than an absent proof.
+func (s *UtilsTestSuite) TestCorruptVerificationEvidenceIsAnError() {
+	for _, raw := range []string{"{", `{"challenge":"session-1","passed":true}`} {
+		_, err := pinnedVerificationEvidence(&providers.NodeContext{
+			SharedRuntimeData: map[string]string{common.RuntimeKeyAttributeVerificationEvidence: raw}})
+		s.Error(err, raw)
+	}
+	proof, err := pinnedVerificationEvidence(&providers.NodeContext{})
+	s.NoError(err)
+	s.Nil(proof)
+}
+
+func (s *UtilsTestSuite) TestMaskContact() {
+	for _, test := range []struct {
+		channel       providers.VerificationChannel
+		value, masked string
+		ok            bool
+	}{
+		{"email", "alex@example.com", "a•••@example.com", true},
+		{"email", "ü@example.com", "ü•••@example.com", true},
+		{"email", "alex", "", false},
+		{"email", "@example.com", "", false},
+		{"email", "alex@", "", false},
+		{"sms", "+94771234567", "•••67", true},
+		{"sms", "+12", "•••12", true},
+		{"sms", "12", "", false},
+		{"sms", "+٩٤٧٧١٢٣٤٥٦", "•••٥٦", true},
+		{"push", "alex@example.com", "", false},
+	} {
+		masked, ok := maskContact(test.channel, test.value)
+		s.Equal(test.ok, ok, "%s %q", test.channel, test.value)
+		s.Equal(test.masked, masked, "%s %q", test.channel, test.value)
+	}
 }

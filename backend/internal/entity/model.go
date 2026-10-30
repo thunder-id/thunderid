@@ -7,6 +7,7 @@ package entity
 import (
 	"encoding/json"
 
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -106,4 +107,10 @@ type entityRuntimeData struct {
 	State      providers.EntityState
 	Attributes json.RawMessage
 	Revision   int64
+}
+
+// clearedVerification names a verified attribute a write invalidated.
+type clearedVerification struct {
+	attribute string
+	reason    identitygovernance.VerificationInvalidationReason
 }

@@ -349,3 +349,26 @@ func (s *FlowConfigHandlerTestSuite) TestMerge_WritableWinsForEveryAdministratio
 	s.Require().True(ok)
 	s.Equal(wr, merged)
 }
+
+// Attribute verification configures expiry; each self-service request names its flow.
+func (s *FlowConfigHandlerTestSuite) TestSelfServiceFlowConfiguration() {
+	decoded, err := s.handler.Decode(json.RawMessage(`{"selfServiceFlow":{"expirySeconds":600}}`))
+	s.Require().NoError(err)
+	cfg := decoded.(flowconfig.FlowSectionConfig)
+	s.Equal(int64(600), cfg.SelfServiceFlow.ExpirySeconds)
+	s.NoError(s.handler.Validate(cfg, nil, nil))
+
+	merged := s.handler.Merge(cfg, flowconfig.FlowSectionConfig{
+		SelfServiceFlow: flowconfig.FlowTypeConfig{ExpirySeconds: 1200}}).(flowconfig.FlowSectionConfig)
+	s.Equal(int64(1200), merged.SelfServiceFlow.ExpirySeconds)
+	merged = s.handler.Merge(cfg, flowconfig.FlowSectionConfig{}).(flowconfig.FlowSectionConfig)
+	s.Equal(int64(600), merged.SelfServiceFlow.ExpirySeconds)
+
+	s.ErrorContains(s.handler.Validate(flowconfig.FlowSectionConfig{
+		SelfServiceFlow: flowconfig.FlowTypeConfig{ExpirySeconds: -1}}, nil, nil),
+		"selfServiceFlow.expirySeconds must be >= 0")
+	s.ErrorContains(s.handler.Validate(flowconfig.FlowSectionConfig{
+		SelfServiceFlow: flowconfig.FlowTypeConfig{
+			DefaultHandle: "default-self-attribute-verification-flow"}},
+		nil, nil), "selfServiceFlow.defaultHandle is not supported")
+}

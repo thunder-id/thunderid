@@ -807,7 +807,7 @@ Use these values in any `categories` list to filter which events a subscriber re
 | `observability.authentication` | Token issuance and revocation events, back-channel logout delivery, revocation store outages, automatic account locks, and unlocks by a recovery flow |
 | `observability.authorization` | Authorization-related events |
 | `observability.flows` | Authentication and registration flow execution events |
-| `observability.administration` | Suspend, unsuspend, and unlock operations by an administrator, and server configuration writes |
+| `observability.administration` | Suspend, unsuspend, and unlock operations by an administrator, server configuration writes, and email address and mobile number verification |
 
 ### Example
 
@@ -1125,20 +1125,22 @@ A declarative default takes precedence and locks the setting: while `defaultReso
 
 ## Flow Defaults
 
-Controls server-wide default flows and context expiry times for each flow type. These settings are stored in the server-config `flow` section, not in `deployment.yaml`.
+Controls server-wide default flows and context expiry times for flow operations. These settings are stored in the server-config `flow` section, not in `deployment.yaml`.
 
-Each flow type has two fields:
+Flow operations support the following fields, with operation-specific restrictions below:
 
 | Field | Description |
 |-------|-------------|
 | `<type>.defaultHandle` | Handle of the flow to use when the application and the organization unit do not pin a specific flow. Empty string means no server default, and the flow type is treated as not configured at the server level. |
 | `<type>.expirySeconds` | How long (in seconds) a started flow context remains valid before it expires. Must be a positive integer. |
 
-Supported flow types are `authFlow`, `registrationFlow`, `userOnboardingFlow`, `recoveryFlow`, `signOutFlow`, and `userDeletionFlow`.
+Supported flow configurations include `authFlow`, `registrationFlow`, `userOnboardingFlow`, `recoveryFlow`, `signOutFlow`, `selfServiceFlow`, and `userDeletionFlow`.
+
+`selfServiceFlow` sets the execution expiry of every `SELF_SERVICE` flow, 30 minutes by default. It has no `defaultHandle`: each start request names its flow by `handle`, such as the shipped `default-self-attribute-verification-flow` or the handle of a custom `SELF_SERVICE` flow. See [Build a Flow](../../guides/flows/build-a-flow#go-further).
 
 `userDeletionFlow` is resolved differently from the others: it names an administration flow that runs when a user is deleted from the Console, rather than a flow an inbound request starts. Its shipped default revokes the user's tokens and terminates their sessions before the record is removed. Deleting a user through the `DELETE /users/{id}` API removes the record only and does not run this flow. See [Token Revocation](../../guides/protocols/oauth-oidc/token-revocation#user-deletion).
 
-The account lifecycle administration flows have their own types: `userSuspendFlow`, `userUnsuspendFlow`, `userUnlockFlow`, `agentSuspendFlow`, `agentUnsuspendFlow`, `agentUnlockFlow`, `applicationSuspendFlow`, and `applicationUnsuspendFlow`. Like `userDeletionFlow`, each names an administration flow run against an existing identity, not a flow an inbound request starts. See [Customize the Lifecycle Flows](../../guides/account-protection/suspend-and-restore-accounts#customize-the-lifecycle-flows).
+The account lifecycle administration flows have separate configuration entries: `userSuspendFlow`, `userUnsuspendFlow`, `userUnlockFlow`, `agentSuspendFlow`, `agentUnsuspendFlow`, `agentUnlockFlow`, `applicationSuspendFlow`, and `applicationUnsuspendFlow`. Like `userDeletionFlow`, each names an `ADMINISTRATION` flow run against an existing identity, not a flow an inbound request starts. See [Customize the Lifecycle Flows](../../guides/account-protection/suspend-and-restore-accounts#customize-the-lifecycle-flows).
 
 **Resolution order:** When an inbound request starts a flow, the effective flow is resolved as follows:
 
@@ -1147,6 +1149,8 @@ The account lifecycle administration flows have their own types: `userSuspendFlo
 3. Server default from this section (the handle is looked up to find the flow ID)
 
 If none of the layers supplies a value, registration, recovery, user-onboarding, and sign-out are left not configured (the feature is treated as disabled for that client). Authentication has no such fallback: a missing auth flow causes startup validation to fail.
+
+A `SELF_SERVICE` start requires a `handle` naming an existing `SELF_SERVICE` flow. A missing or unknown handle is refused before any node runs.
 
 Configure flow defaults in either of these ways:
 
