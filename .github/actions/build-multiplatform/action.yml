@@ -1,5 +1,5 @@
 name: 'Build Multi-Platform'
-description: 'Builds product frontend and backend for all supported platforms'
+description: 'Builds product frontend, backend and Control Plane for all supported platforms'
 author: 'The ThunderID Authors'
 
 runs:
@@ -29,6 +29,8 @@ runs:
           ARCH="${platform#*:}"
           echo "🔨 Building product backend for $OS/$ARCH..."
           make build_backend OS=$OS ARCH=$ARCH
+          echo "🔨 Building Control Plane for $OS/$ARCH..."
+          make build_cp_backend OS=$OS ARCH=$ARCH
           sleep 1
         done
 

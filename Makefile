@@ -135,6 +135,12 @@ docker-build:
 docker-build-latest:
 	docker build -t $(BINARY_NAME):latest .
 
+docker-build-cp:
+	docker build -f Dockerfile.cp -t $(BINARY_NAME)-cp:$(VERSION) .
+
+docker-build-cp-latest:
+	docker build -f Dockerfile.cp -t $(BINARY_NAME)-cp:latest .
+
 docker-build-multiarch:
 	docker buildx build --platform linux/amd64,linux/arm64 -t $(BINARY_NAME):$(VERSION) .
 
@@ -262,6 +268,8 @@ help:
 	@echo "  run_docs                      - Run the documentation development server with live reload."
 	@echo "  docker-build                  - Build single-arch Docker image with version tag."
 	@echo "  docker-build-latest           - Build single-arch Docker image with latest tag."
+	@echo "  docker-build-cp               - Build the single-arch Control Plane Docker image with version tag."
+	@echo "  docker-build-cp-latest        - Build the single-arch Control Plane Docker image with latest tag."
 	@echo "  docker-build-multiarch        - Build multi-arch Docker image with version tag."
 	@echo "  docker-build-multiarch-latest - Build multi-arch Docker image with latest tag."
 	@echo "  docker-build-multiarch-push   - Build and push multi-arch images to registry."
@@ -292,7 +300,7 @@ help:
 	@echo "  help                          - Show this help message."
 
 .PHONY: all prepare clean build build_backend build_cp_backend build_quickstart build_frontend build_docs package_samples package_cp package_quickstart run
-.PHONY: docker-build docker-build-latest docker-build-multiarch
+.PHONY: docker-build docker-build-latest docker-build-cp docker-build-cp-latest docker-build-multiarch
 .PHONY: docker-build-multiarch-latest docker-build-multiarch-push
 .PHONY: test_unit test_integration test_integration_cp build_with_coverage build_with_coverage_only test
 .PHONY: help go_install_tool
