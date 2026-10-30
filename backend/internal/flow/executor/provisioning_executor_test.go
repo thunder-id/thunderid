@@ -8,6 +8,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"encoding/json"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -1554,6 +1555,52 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_NameOn
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	require.NotNil(suite.T(), received)
 	assert.JSONEq(suite.T(), `{"name":"support-bot"}`, string(received.Attributes))
+}
+
+func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_ContactAttributesCarryTypeAndRegex() {
+	mobileRegex := regexp.MustCompile(`^\+[1-9]\d{1,14}$`)
+	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, testUserType,
+		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+		Return([]model.AttributeInfo{
+			{Attribute: "email", Required: true, Type: model.TypeEmail},
+			{Attribute: "mobile_number", Required: false, Type: model.TypeMobile, Regex: mobileRegex},
+		}, nil).Once()
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAdministration,
+		NodeProperties: map[string]interface{}{
+			propertyKeyDynamicInputsIncludeOptional: true,
+		},
+		UserInputs: map[string]string{},
+		RuntimeData: map[string]string{
+			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryUser),
+			categoryTypeKey: testUserType,
+		},
+		NodeInputs: []providers.Input{},
+	}
+	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+	suite.False(suite.executor.HasRequiredInputs(ctx, execResp))
+
+	byID := make(map[string]providers.Input, len(execResp.Inputs))
+	for _, inp := range execResp.Inputs {
+		byID[inp.Identifier] = inp
+	}
+
+	emailInput, ok := byID["email"]
+	suite.Require().True(ok)
+	suite.Equal(providers.InputTypeEmail, emailInput.Type)
+	suite.Empty(emailInput.Validation, "no regex is declared, so none is carried")
+
+	mobileInput, ok := byID["mobile_number"]
+	suite.Require().True(ok)
+	suite.Equal(providers.InputTypePhone, mobileInput.Type)
+	suite.Require().Len(mobileInput.Validation, 1)
+	suite.Equal(providers.ValidationTypeRegex, mobileInput.Validation[0].Type)
+	suite.Equal(mobileRegex.String(), mobileInput.Validation[0].Value)
+	suite.Same(mobileRegex, mobileInput.Validation[0].CompiledRegex)
 }
 
 // An attribute the schema restricts to a fixed set is offered as a choice. A prompt node that

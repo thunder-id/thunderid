@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -147,6 +148,9 @@ type AttributeInfo struct {
 	// Enum holds the permitted values in schema order when the property constrains them, and is
 	// empty otherwise.
 	Enum []string
+	// Regex is the pattern the schema declares, or nil when it declares none. Contact types are
+	// still checked against their default pattern when it is nil.
+	Regex *regexp.Regexp
 }
 
 // AttributeFilter selects top-level schema properties by their characteristics. Credential and
@@ -181,7 +185,7 @@ func (cs *Schema) GetAttributes(filter AttributeFilter) []AttributeInfo {
 		if filter.Type != "" && prop.getType() != filter.Type {
 			continue
 		}
-		result = append(result, AttributeInfo{
+		info := AttributeInfo{
 			Attribute:   attr,
 			DisplayName: prop.getDisplayName(),
 			Type:        prop.getType(),
@@ -189,7 +193,11 @@ func (cs *Schema) GetAttributes(filter AttributeFilter) []AttributeInfo {
 			Credential:  isCredential,
 			Unique:      prop.isUnique(),
 			Enum:        prop.getEnum(),
-		})
+		}
+		if strProp, ok := prop.(*str); ok {
+			info.Regex = strProp.regex
+		}
+		result = append(result, info)
 	}
 	return result
 }

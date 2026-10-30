@@ -3473,6 +3473,29 @@ func (s *PromptOnlyNodeTestSuite) TestFilteredMeta_FilteredOutActionsDropped() {
 	s.Nil(resp.Meta, "meta is not returned for a completed (auto-selected) chooser node")
 }
 
+func (s *PromptOnlyNodeTestSuite) TestBuildSyntheticComponentList_CarriesValidation() {
+	node := &promptNode{}
+	rules := []providers.ValidationRule{{Type: providers.ValidationTypeRegex, Value: `^\+[1-9]\d{1,14}$`}}
+	inputs := []providers.Input{
+		{Identifier: "mobile_number", Type: providers.InputTypePhone, Validation: rules},
+		{Identifier: "nickname", Type: providers.InputTypeText},
+	}
+
+	synthetic, _ := node.buildSyntheticComponentList(
+		inputs, map[string]map[string]interface{}{}, map[string]struct{}{})
+
+	s.Require().Len(synthetic, 2)
+	mobile, ok := synthetic[0].(map[string]interface{})
+	s.Require().True(ok)
+	s.Equal(providers.InputTypePhone, mobile["type"])
+	s.Equal(rules, mobile["validation"])
+
+	nickname, ok := synthetic[1].(map[string]interface{})
+	s.Require().True(ok)
+	_, hasValidation := nickname["validation"]
+	s.False(hasValidation)
+}
+
 func (s *PromptOnlyNodeTestSuite) TestBuildSyntheticComponentList_SelectCarriesOptions() {
 	node := &promptNode{}
 	inputs := []providers.Input{

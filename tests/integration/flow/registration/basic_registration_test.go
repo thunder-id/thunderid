@@ -1074,6 +1074,158 @@ func (ts *BasicRegistrationFlowTestSuite) TestSchemaDriverInputs_DisplayNameUsed
 		"identifier must be used as fallback label when displayName is absent")
 }
 
+// mobileNumberRegex is the E.164 pattern the contact-input user type declares for its mobile number.
+const mobileNumberRegex = `^\+[1-9]\d{1,14}$`
+
+// startContactInputPrompt registers through a flow whose provisioning executor prompts for the
+// contact attributes of its own user type, and returns the verbose step that asks for them. The
+// type has a required email with no regex, an optional mobile number with a regex, which the
+// executor's includeOptional property brings into the prompt, and an optional work email the
+// executor declares statically as a text input.
+func (ts *BasicRegistrationFlowTestSuite) startContactInputPrompt(handle string) *common.FlowStep {
+	ts.T().Helper()
+
+	userType := testutils.UserType{
+		Handle:      handle,
+		DisplayName: "Contact Input " + handle,
+		OUID:        ts.testOUID,
+		Schema: map[string]interface{}{
+			"username":      map[string]interface{}{"type": "string"},
+			"password":      map[string]interface{}{"type": "string", "credential": true},
+			"email":         map[string]interface{}{"type": "email", "required": true},
+			"mobile_number": map[string]interface{}{"type": "mobile", "regex": mobileNumberRegex},
+			"work_email":    map[string]interface{}{"type": "email"},
+		},
+		AllowSelfRegistration: true,
+	}
+	typeID, err := testutils.CreateUserType(userType)
+	ts.Require().NoError(err, "Failed to create the contact input user type")
+	ts.T().Cleanup(func() {
+		if err := testutils.DeleteUserType(typeID); err != nil {
+			ts.T().Logf("Failed to delete the contact input user type: %v", err)
+		}
+	})
+
+	// The suite flow with a provisioning executor that prompts optional attributes and declares
+	// only the work email itself.
+	suiteNodes, ok := testRegFlow.Nodes.([]map[string]interface{})
+	ts.Require().True(ok, "the suite flow nodes should be a list of nodes")
+	nodes := make([]map[string]interface{}, 0, len(suiteNodes))
+	for _, node := range suiteNodes {
+		if node["id"] == "provisioning" {
+			node = map[string]interface{}{
+				"id":   "provisioning",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "ProvisioningExecutor",
+					"inputs": []map[string]interface{}{
+						{"ref": "input_work_email", "identifier": "work_email", "type": "TEXT_INPUT", "required": false},
+					},
+				},
+				"properties":   map[string]interface{}{"includeOptional": true},
+				"onSuccess":    "auth_assert",
+				"onIncomplete": "prompt_schema_attrs",
+			}
+		}
+		nodes = append(nodes, node)
+	}
+	flowID, err := testutils.CreateFlow(testutils.Flow{
+		Name:     "Contact Input Registration Flow " + handle,
+		Handle:   handle + "-flow",
+		FlowType: "REGISTRATION",
+		Nodes:    nodes,
+	})
+	ts.Require().NoError(err, "Failed to create the contact input flow")
+	ts.T().Cleanup(func() {
+		if err := testutils.DeleteFlow(flowID); err != nil {
+			ts.T().Logf("Failed to delete the contact input flow: %v", err)
+		}
+	})
+
+	appID, err := testutils.CreateApplication(testutils.Application{
+		OUID:                      ts.testOUID,
+		Name:                      "Contact Input App " + handle,
+		IsRegistrationFlowEnabled: true,
+		RegistrationFlowID:        flowID,
+		AuthFlowID:                ts.isolatedAuthFlowID,
+		ClientID:                  handle + "_client",
+		ClientSecret:              handle + "_secret",
+		RedirectURIs:              []string{"http://localhost:3000/callback"},
+		AllowedUserTypes:          []string{handle},
+	})
+	ts.Require().NoError(err, "Failed to create the contact input app")
+	ts.T().Cleanup(func() {
+		if err := testutils.DeleteApplication(appID); err != nil {
+			ts.T().Logf("Failed to delete the contact input app: %v", err)
+		}
+	})
+
+	flowStep, err := common.InitiateRegistrationFlow(appID, true, nil, "")
+	ts.Require().NoError(err)
+	flowStep, err = common.CompleteFlow(flowStep.ExecutionID, map[string]string{
+		"username": common.GenerateUniqueUsername(handle),
+		"password": "testpassword123",
+	}, "action_credentials", flowStep.ChallengeToken)
+	ts.Require().NoError(err)
+	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus, "Provisioning should prompt for the contact attributes")
+	return flowStep
+}
+
+// metaComponents returns the components of a verbose step's meta.
+func (ts *BasicRegistrationFlowTestSuite) metaComponents(flowStep *common.FlowStep) []interface{} {
+	ts.T().Helper()
+	metaMap, ok := flowStep.Data.Meta.(map[string]interface{})
+	ts.Require().True(ok, "meta should be a JSON object in verbose mode")
+	comps, ok := metaMap["components"].([]interface{})
+	ts.Require().True(ok, "meta.components should be an array")
+	return comps
+}
+
+// Schema-prompted contact attributes are forwarded with their contact input type, and a regex the
+// schema declares travels with the input and its generated component, while the default contact
+// pattern does not.
+func (ts *BasicRegistrationFlowTestSuite) TestSchemaDriverInputs_ContactAttrsPromptedWithContactTypes() {
+	flowStep := ts.startContactInputPrompt("contact-input-schema")
+
+	email := findResolverInput(flowStep.Data.Inputs, "email")
+	ts.Require().NotNil(email, "the required email must be prompted")
+	ts.Equal("EMAIL_INPUT", email.Type, "an email attribute must be prompted as an email input")
+	ts.Empty(email.Validation, "an email attribute without a declared regex must carry no rule")
+
+	mobile := findResolverInput(flowStep.Data.Inputs, "mobile_number")
+	ts.Require().NotNil(mobile, "the optional mobile number must be prompted under includeOptional")
+	ts.Equal("PHONE_INPUT", mobile.Type, "a mobile attribute must be prompted as a phone input")
+	ts.Equal([]common.ValidationRule{{Type: "regex", Value: mobileNumberRegex}}, mobile.Validation,
+		"a mobile attribute must carry the regex its schema declares")
+
+	comps := ts.metaComponents(flowStep)
+
+	emailComp := findMetaComponent(comps, "email")
+	ts.Require().NotNil(emailComp, "a component must be generated for the email")
+	ts.Equal("EMAIL_INPUT", emailComp["type"], "the email component must be an email input")
+	ts.NotContains(emailComp, "validation", "the email component must carry no rule")
+
+	mobileComp := findMetaComponent(comps, "mobile_number")
+	ts.Require().NotNil(mobileComp, "a component must be generated for the mobile number")
+	ts.Equal("PHONE_INPUT", mobileComp["type"], "the mobile component must be a phone input")
+	ts.Equal([]interface{}{map[string]interface{}{"type": "regex", "value": mobileNumberRegex}},
+		mobileComp["validation"], "the mobile component must carry the schema's regex")
+}
+
+// An input the provisioning executor declares itself keeps its declared type even when the schema
+// attribute behind it is a contact type.
+func (ts *BasicRegistrationFlowTestSuite) TestSchemaDriverInputs_DeclaredContactInputKeepsItsType() {
+	flowStep := ts.startContactInputPrompt("contact-input-declared")
+
+	workEmail := findResolverInput(flowStep.Data.Inputs, "work_email")
+	ts.Require().NotNil(workEmail, "the declared work email must be prompted")
+	ts.Equal("TEXT_INPUT", workEmail.Type, "a declared input must keep its declared type")
+
+	workEmailComp := findMetaComponent(ts.metaComponents(flowStep), "work_email")
+	ts.Require().NotNil(workEmailComp, "a component must be generated for the declared work email")
+	ts.Equal("TEXT_INPUT", workEmailComp["type"], "the declared input's component must keep its declared type")
+}
+
 // collectMetaComponentRefs recursively collects "ref" and "id" values from a meta components tree.
 func collectMetaComponentRefs(components []interface{}) map[string]bool {
 	refs := make(map[string]bool)
@@ -1119,6 +1271,16 @@ func collectMetaComponentTypes(components []interface{}) map[string]bool {
 
 // findMetaComponentLabel recursively searches for a component by ref or id and returns its label.
 func findMetaComponentLabel(components []interface{}, ref string) (string, bool) {
+	comp := findMetaComponent(components, ref)
+	if comp == nil {
+		return "", false
+	}
+	label, ok := comp["label"].(string)
+	return label, ok
+}
+
+// findMetaComponent recursively searches for a component by ref or id and returns it, or nil.
+func findMetaComponent(components []interface{}, ref string) map[string]interface{} {
 	for _, c := range components {
 		comp, ok := c.(map[string]interface{})
 		if !ok {
@@ -1127,15 +1289,13 @@ func findMetaComponentLabel(components []interface{}, ref string) (string, bool)
 		compRef, _ := comp["ref"].(string)
 		compID, _ := comp["id"].(string)
 		if compRef == ref || compID == ref {
-			if label, ok := comp["label"].(string); ok {
-				return label, true
-			}
+			return comp
 		}
 		if children, ok := comp["components"].([]interface{}); ok {
-			if label, found := findMetaComponentLabel(children, ref); found {
-				return label, found
+			if found := findMetaComponent(children, ref); found != nil {
+				return found
 			}
 		}
 	}
-	return "", false
+	return nil
 }

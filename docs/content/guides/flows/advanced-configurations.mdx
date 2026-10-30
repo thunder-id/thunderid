@@ -416,7 +416,7 @@ Use the **Add input** option in the executor's properties to specify which input
 
 Each executor input has a `type` field that tells the client how to render the field and what client-side validation to apply.
 
-When an executor forwards inputs dynamically to a PROMPT node via its `onIncomplete` edge, the default type is `TEXT_INPUT` for non-credential inputs and `PASSWORD_INPUT` for credential inputs. The **Provisioning** executor forwards user attributes that define a fixed set of allowed values (`enum`) as `SELECT` inputs. To apply stricter client-side validation for a specific attribute (for example, email format validation), declare the input explicitly in the executor's `inputs` array with the appropriate type. The executor preserves the configured `type` when forwarding the input to the prompt node.
+When an executor forwards inputs dynamically to a PROMPT node via its `onIncomplete` edge, the default type is `TEXT_INPUT` for non-credential inputs and `PASSWORD_INPUT` for credential inputs. The **Provisioning** executor forwards user attributes that define a fixed set of allowed values (`enum`) as `SELECT` inputs, `email` attributes as `EMAIL_INPUT`, and `mobile` attributes as `PHONE_INPUT`. When the attribute defines a `regex`, the forwarded input carries it as a `regex` validation rule so clients can check the format before submitting. To use a different type for a specific attribute, declare the input explicitly in the executor's `inputs` array with the appropriate type. The executor preserves the configured `type` when forwarding the input to the prompt node.
 
 | Type | Description |
 |---|---|

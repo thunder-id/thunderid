@@ -189,6 +189,10 @@ func findInputByType(inputs []providers.Input, inputType string) (providers.Inpu
 // prompt for it. Types without a dedicated input type are prompted as text.
 func inputTypeForSchemaType(schemaType string) string {
 	switch schemaType {
+	case entitytypemodel.TypeEmail:
+		return providers.InputTypeEmail
+	case entitytypemodel.TypeMobile:
+		return providers.InputTypePhone
 	case entitytypemodel.TypeBoolean:
 		return providers.InputTypeBoolean
 	case entitytypemodel.TypeNumber:

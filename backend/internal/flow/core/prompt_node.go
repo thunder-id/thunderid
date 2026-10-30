@@ -812,6 +812,9 @@ func (n *promptNode) buildSyntheticComponentList(
 		if inputType == providers.InputTypeSelect && len(input.Options) > 0 {
 			syntheticComp["options"] = input.Options
 		}
+		if len(input.Validation) > 0 {
+			syntheticComp["validation"] = input.Validation
+		}
 		synthetic = append(synthetic, syntheticComp)
 	}
 	return synthetic, promotions

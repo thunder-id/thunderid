@@ -486,6 +486,28 @@ func (s *SchemaValidateTestSuite) TestGetAttributes_EnumKeepsDeclaredOrder() {
 	s.Empty(attrMap["active"].Enum, "a non-string property carries no permitted values")
 }
 
+func (s *SchemaValidateTestSuite) TestGetAttributes_RegexIsTheDeclaredPattern() {
+	schema, err := CompileSchema(json.RawMessage(`{
+		"email":    {"type": "email"},
+		"mobile":   {"type": "mobile", "regex": "^\\+94\\d{9}$"},
+		"nickname": {"type": "string", "pattern": "^[a-z]+$"},
+		"age":      {"type": "number"}
+	}`))
+	s.Require().NoError(err)
+
+	attrMap := make(map[string]AttributeInfo)
+	for _, a := range schema.GetAttributes(AttributeFilter{AllowNonCredential: true}) {
+		attrMap[a.Attribute] = a
+	}
+
+	s.Nil(attrMap["email"].Regex, "a contact type's built-in default is not a declared regex")
+	s.Require().NotNil(attrMap["mobile"].Regex)
+	s.Equal(`^\+94\d{9}$`, attrMap["mobile"].Regex.String())
+	s.Require().NotNil(attrMap["nickname"].Regex)
+	s.Equal("^[a-z]+$", attrMap["nickname"].Regex.String())
+	s.Nil(attrMap["age"].Regex)
+}
+
 func (s *SchemaValidateTestSuite) TestGetAttributes_NonCredentialRequiredOnly_EmptySchema() {
 	schema := &Schema{properties: map[string]property{}}
 

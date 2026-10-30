@@ -775,6 +775,14 @@ func (p *provisioningExecutor) buildMissingInputs(
 					input.Ref = attr.Attribute
 				}
 			}
+			// Carry the schema's regex so clients can check the format before submitting.
+			if attr.Regex != nil && len(input.Validation) == 0 {
+				input.Validation = []providers.ValidationRule{{
+					Type:          providers.ValidationTypeRegex,
+					Value:         attr.Regex.String(),
+					CompiledRegex: attr.Regex,
+				}}
+			}
 			input.Required = effectiveRequired
 			if effectiveRequired {
 				ncRequired = append(ncRequired, input)
