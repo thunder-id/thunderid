@@ -15,18 +15,21 @@ interface UseGetAllCandidatesOptions {
   path: string;
   itemsKey: string;
   enabled: boolean;
+  /** Filter expression, for example `ouId eq "<id>"`. */
+  filter?: string;
 }
 
 export default function useGetAllCandidates<T>({
   path,
   itemsKey,
   enabled,
+  filter = undefined,
 }: UseGetAllCandidatesOptions): UseQueryResult<T[]> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
 
   return useQuery<T[]>({
-    queryKey: ['group-add-member-candidates', path],
+    queryKey: ['group-add-member-candidates', path, filter],
     queryFn: async (): Promise<T[]> => {
       const serverUrl: string = getServerUrl();
       const candidates: T[] = [];
@@ -40,6 +43,9 @@ export default function useGetAllCandidates<T>({
           offset: offset.toString(),
           include: 'display',
         });
+        if (filter) {
+          queryParams.append('filter', filter);
+        }
         const response: {data: CandidatePage<T>} = await http.request({
           url: `${serverUrl}${path}?${queryParams.toString()}`,
           method: 'GET',

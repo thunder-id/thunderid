@@ -29,11 +29,13 @@ vi.mock('../edit-group/members-settings/ManageMembersSection', () => ({
 vi.mock('../edit-group/members-settings/AddMemberDialog', () => ({
   default: ({
     open,
+    ouId = undefined,
     onClose,
     onAdd,
     error,
   }: {
     open: boolean;
+    ouId?: string;
     onClose: () => void;
     onAdd: (members: {id: string; type: string}[]) => void;
     error?: string | null;
@@ -41,6 +43,7 @@ vi.mock('../edit-group/members-settings/AddMemberDialog', () => ({
   }) =>
     open ? (
       <div data-testid="add-member-dialog">
+        <span data-testid="dialog-ou-id">{ouId}</span>
         {error && <div role="alert">{error}</div>}
         <button type="button" onClick={onClose}>
           Close
@@ -98,6 +101,15 @@ describe('EditMembersSettings', () => {
     await waitFor(() => {
       expect(screen.getByTestId('add-member-dialog')).toBeInTheDocument();
     });
+  });
+
+  it("should pass the group's organization unit to the dialog", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<EditMembersSettings group={mockGroup} />);
+
+    await user.click(screen.getByText('Add member'));
+
+    expect(screen.getByTestId('dialog-ou-id')).toHaveTextContent('ou1');
   });
 
   it('should call addGroupMembers when members are added', async () => {
