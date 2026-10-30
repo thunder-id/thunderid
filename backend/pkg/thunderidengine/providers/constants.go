@@ -249,6 +249,8 @@ const (
 	EntityCategoryApp EntityCategory = "app"
 	// EntityCategoryAgent represents an agent entity.
 	EntityCategoryAgent EntityCategory = "agent"
+	// EntityCategoryOrganization represents an organization entity.
+	EntityCategoryOrganization EntityCategory = "organization"
 )
 
 // String returns the string representation of the entity category.

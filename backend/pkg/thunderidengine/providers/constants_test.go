@@ -79,6 +79,7 @@ func (suite *ConstantsTestSuite) TestEntityCategory_String() {
 	assert.Equal(suite.T(), "user", EntityCategoryUser.String())
 	assert.Equal(suite.T(), "app", EntityCategoryApp.String())
 	assert.Equal(suite.T(), "agent", EntityCategoryAgent.String())
+	assert.Equal(suite.T(), "organization", EntityCategoryOrganization.String())
 }
 
 func (suite *ConstantsTestSuite) TestEntityState_String() {

@@ -73,6 +73,8 @@ func typeCategoryOf(category providers.EntityCategory) (TypeCategory, bool) {
 		return TypeCategoryUser, true
 	case providers.EntityCategoryAgent:
 		return TypeCategoryAgent, true
+	case providers.EntityCategoryOrganization:
+		return TypeCategoryOrganization, true
 	default:
 		return "", false
 	}

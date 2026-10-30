@@ -15,6 +15,8 @@ const (
 	TypeCategoryUser TypeCategory = "user"
 	// TypeCategoryAgent categorizes schemas used to native agent entities.
 	TypeCategoryAgent TypeCategory = "agent"
+	// TypeCategoryOrganization categorizes schemas used to organization entities.
+	TypeCategoryOrganization TypeCategory = "organization"
 )
 
 // DefaultAgentTypeHandle is the only agent type handle allowed; agent types are restricted
@@ -23,7 +25,7 @@ const DefaultAgentTypeHandle = "default"
 
 // IsValid reports whether the category is one of the known fixed values.
 func (c TypeCategory) IsValid() bool {
-	return c == TypeCategoryUser || c == TypeCategoryAgent
+	return c == TypeCategoryUser || c == TypeCategoryAgent || c == TypeCategoryOrganization
 }
 
 // Note: Complex JSON schema type definitions (array, boolean, number, object, schema, string)
