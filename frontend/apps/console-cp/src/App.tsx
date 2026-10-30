@@ -22,6 +22,9 @@ import {ProtectedRoute} from '@thunderid/react-router';
 import {lazy, Suspense, type JSX} from 'react';
 import {BrowserRouter, Navigate, Outlet, Route, Routes} from 'react-router';
 import RouteConfig, {ROUTE_SEGMENTS} from './configs/RouteConfig';
+import ProjectCreatePage from './features/projects/ProjectCreatePage';
+import ProjectsListPage from './features/projects/ProjectsListPage';
+import SelectedProjectScope from './features/projects/SelectedProjectScope';
 import DashboardLayout from './layouts/DashboardLayout';
 import FullScreenLayout from './layouts/FullScreenLayout';
 
@@ -261,6 +264,7 @@ export default function App(): JSX.Element {
                     element={<ResourceServerEditPage />}
                   />
                   <Route path={ROUTE_SEGMENTS.settings} element={<SettingsPage />} />
+                  <Route path={ROUTE_SEGMENTS.projects} element={<ProjectsListPage />} />
                   <Route path={ROUTE_SEGMENTS.gateways} element={<GatewaysListPage />} />
                   <Route path={`${ROUTE_SEGMENTS.gateways}/:gatewayId`} element={<GatewayDetailPage />} />
                 </Route>
@@ -311,6 +315,16 @@ export default function App(): JSX.Element {
                   }
                 >
                   <Route index element={<CreateRolePage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.projects.create()}
+                  element={
+                    <ProtectedRoute>
+                      <FullScreenLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<ProjectCreatePage />} />
                 </Route>
                 <Route
                   path={RouteConfig.users.add()}
@@ -369,9 +383,11 @@ export default function App(): JSX.Element {
                 <Route
                   element={
                     <ProtectedRoute>
-                      <ApplicationCreateProvider>
-                        <Outlet />
-                      </ApplicationCreateProvider>
+                      <SelectedProjectScope>
+                        <ApplicationCreateProvider>
+                          <Outlet />
+                        </ApplicationCreateProvider>
+                      </SelectedProjectScope>
                     </ProtectedRoute>
                   }
                 >

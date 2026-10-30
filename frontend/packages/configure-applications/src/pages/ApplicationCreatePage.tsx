@@ -21,7 +21,7 @@ import {
 } from '@thunderid/configure-organization-units';
 import {isRowEmpty, useGetCorsConfig, useUpdateCorsConfig} from '@thunderid/configure-settings';
 import {useGetUserTypes} from '@thunderid/configure-user-types';
-import {useToast} from '@thunderid/contexts';
+import {useProjectScope, useToast} from '@thunderid/contexts';
 import {DefaultTheme, useGetTheme, type Theme} from '@thunderid/design';
 import {useTemplateLiteralResolver} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
@@ -170,7 +170,14 @@ export default function ApplicationCreatePage(): JSX.Element {
   const {data: applicationsData} = useGetApplications({limit: 100});
   const {data: corsConfigData} = useGetCorsConfig();
   const updateCorsConfig = useUpdateCorsConfig();
-  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs();
+  const ouLookup = useHasMultipleOUs();
+  const {projectId, rootOuId: projectOuId} = useProjectScope();
+  // Inside a project, the application belongs to the project's root organization unit, so there
+  // is no organization unit to pick.
+  const isInProject = Boolean(projectId && projectOuId);
+  const hasMultipleOUs = !isInProject && ouLookup.hasMultipleOUs;
+  const isOuLoading = !isInProject && ouLookup.isLoading;
+  const defaultOuId: string | undefined = isInProject ? projectOuId : ouLookup.ouList[0]?.id;
 
   const handleBackToTemplates = (): void => {
     void navigate(isWelcomeFlow ? '/welcome/get-started/applications/types' : '/applications/types');
@@ -178,7 +185,7 @@ export default function ApplicationCreatePage(): JSX.Element {
 
   // The organization unit whose defaults are offered on the Details step: the picked one when
   // there are multiple, or the deployment's sole one otherwise.
-  const resolvedOuId: string | undefined = hasMultipleOUs ? ouId || undefined : ouList[0]?.id;
+  const resolvedOuId: string | undefined = hasMultipleOUs ? ouId || undefined : defaultOuId;
   const {data: resolvedOrganizationUnit} = useGetOrganizationUnit(resolvedOuId, Boolean(resolvedOuId));
 
   // When the Details step snapshots the organization unit's theme, the preview should reflect
@@ -649,7 +656,7 @@ export default function ApplicationCreatePage(): JSX.Element {
       return undefined;
     })();
 
-    const effectiveOuId = hasMultipleOUs ? ouId : ouList[0]?.id;
+    const effectiveOuId = hasMultipleOUs ? ouId : defaultOuId;
 
     const templateId = selectedTemplateConfig?.id;
     const finalTemplateId =
@@ -711,6 +718,7 @@ export default function ApplicationCreatePage(): JSX.Element {
         }),
       ...(finalAuthFlowId && {authFlowId: finalAuthFlowId}),
       ...(effectiveOuId && {ouId: effectiveOuId}),
+      ...(isInProject && {projectId}),
       ...(applicationType && {type: applicationType}),
       ...(finalTemplateId && {template: finalTemplateId}),
       ...(includesDesign && {
@@ -861,7 +869,7 @@ export default function ApplicationCreatePage(): JSX.Element {
       };
 
       // The generated flow belongs to the organization unit of the application.
-      const flowOuId = hasMultipleOUs ? ouId : ouList[0]?.id;
+      const flowOuId = hasMultipleOUs ? ouId : defaultOuId;
       if (!flowOuId) {
         setError(t('flows:create.organizationUnit.required', 'Organization unit is required'));
         return;

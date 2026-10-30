@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import type {Theme} from '@thunderid/design';
 import {fireEvent, render, screen, waitFor, within} from '@thunderid/test-utils';
 import type {JSX} from 'react';
@@ -1176,6 +1177,57 @@ describe('ApplicationCreatePage', () => {
       await user.click(logoButton);
 
       expect(screen.getByTestId('preview-logo')).toHaveTextContent('test-logo.png');
+    });
+  });
+
+  describe('Inside a project', () => {
+    const renderInProject = () =>
+      render(
+        <ProjectScopeProvider projectId="project-1" rootOuId="project-ou">
+          <ApplicationCreateProvider>
+            <ApplicationCreatePage />
+            <TemplateSeeder />
+          </ApplicationCreateProvider>
+        </ProjectScopeProvider>,
+      );
+
+    beforeEach(() => {
+      mockUseHasMultipleOUs.mockReturnValue({
+        hasMultipleOUs: true,
+        isLoading: false,
+        ouList: [{id: 'ou-1', name: 'Default'}],
+      });
+    });
+
+    it('does not ask for an organization unit', () => {
+      renderInProject();
+
+      expect(screen.queryByTestId('ou-picker-screen')).not.toBeInTheDocument();
+      expect(screen.getByTestId('application-configure-name')).toBeInTheDocument();
+    });
+
+    it("creates the application in the project's root organization unit", async () => {
+      mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
+        onSuccess({id: 'app-123', name: 'My App'} as Application);
+      });
+
+      renderInProject();
+
+      await goToDesignStep();
+      // DESIGN → CONFIGURE
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
+      });
+      // CONFIGURE → Create
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+
+      await waitFor(() => {
+        expect(mockCreateApplication).toHaveBeenCalled();
+      });
+      expect(mockCreateApplication.mock.calls[0][0]).toEqual(
+        expect.objectContaining({projectId: 'project-1', ouId: 'project-ou'}),
+      );
     });
   });
 

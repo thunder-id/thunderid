@@ -1,7 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useConfig} from '@thunderid/contexts';
+import {useConfig, useProjectScope} from '@thunderid/contexts';
 import {waitFor, renderHook} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import ApplicationQueryKeys from '../../constants/application-query-keys';
@@ -21,6 +21,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   return {
     ...actual,
     useConfig: vi.fn(),
+    useProjectScope: vi.fn(() => ({})),
   };
 });
 
@@ -59,6 +60,7 @@ describe('useGetApplications', () => {
     vi.mocked(useConfig).mockReturnValue({
       getServerUrl: mockGetServerUrl,
     } as unknown as ReturnType<typeof useConfig>);
+    vi.mocked(useProjectScope).mockReturnValue({});
   });
 
   afterEach(() => {
@@ -208,6 +210,44 @@ describe('useGetApplications', () => {
     const callArgs = mockHttpRequest.mock.calls[0][0];
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     expect(callArgs.url).toContain('filter=ouId+eq+%22ou-1%22');
+  });
+
+  it('should scope the list to the selected project', async () => {
+    vi.mocked(useProjectScope).mockReturnValue({projectId: 'project-1'});
+    mockHttpRequest.mockResolvedValueOnce({
+      data: mockApplicationListResponse,
+    });
+
+    const {result, queryClient} = renderHook(() => useGetApplications());
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const callArgs = mockHttpRequest.mock.calls[0][0];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    expect(callArgs.url).toContain('projectId=project-1');
+    expect(
+      queryClient.getQueryCache().findAll({queryKey: [ApplicationQueryKeys.APPLICATIONS, {projectId: 'project-1'}]}),
+    ).toHaveLength(1);
+  });
+
+  it('should not scope the list without a selected project', async () => {
+    mockHttpRequest.mockResolvedValueOnce({
+      data: mockApplicationListResponse,
+    });
+
+    renderHook(() => useGetApplications());
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalledTimes(1);
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const callArgs = mockHttpRequest.mock.calls[0][0];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    expect(callArgs.url).not.toContain('projectId');
   });
 
   it('should use correct query key with pagination params', async () => {

@@ -33,6 +33,10 @@ export interface ConsoleRoutePaths {
   settings: {
     list: () => string;
   };
+  projects: {
+    list: () => string;
+    create: () => string;
+  };
 }
 
 /**
@@ -101,6 +105,7 @@ export const ROUTE_SEGMENTS = {
   importConfiguration: 'import-configuration',
   welcome: 'welcome',
   settings: 'settings',
+  projects: 'projects',
   gateways: 'gateways',
   deploy: 'deploy',
 } as const;
@@ -219,6 +224,10 @@ const RouteConfig: RouteConfig = {
   },
   settings: {
     list: () => `/${ROUTE_SEGMENTS.settings}`,
+  },
+  projects: {
+    list: () => `/${ROUTE_SEGMENTS.projects}`,
+    create: () => `/${ROUTE_SEGMENTS.projects}/create`,
   },
   gateways: {
     list: () => `/${ROUTE_SEGMENTS.gateways}`,

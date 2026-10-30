@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen, waitFor} from '@testing-library/react';
+import type {ReactNode} from 'react';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import App from '../App';
 
@@ -153,6 +154,10 @@ vi.mock('../layouts/DashboardLayout', async () => {
   const {Outlet} = await import('react-router');
   return {default: () => <Outlet />};
 });
+
+vi.mock('../features/projects/SelectedProjectScope', () => ({
+  default: ({children}: {children: ReactNode}) => children,
+}));
 
 vi.mock('../layouts/FullScreenLayout', async () => {
   const {Outlet} = await import('react-router');

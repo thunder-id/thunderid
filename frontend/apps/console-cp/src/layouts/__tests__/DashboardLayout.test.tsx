@@ -1,8 +1,10 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useProjectScope} from '@thunderid/contexts';
 import {render, screen, userEvent, waitFor} from '@thunderid/test-utils';
 import {afterEach, describe, it, expect, vi, beforeEach} from 'vitest';
+import {PROJECT_SELECTION_STORAGE_KEY} from '../../features/projects/useProjectSelection';
 import DashboardLayout from '../DashboardLayout';
 
 const mockNavigate = vi.fn();
@@ -26,10 +28,15 @@ interface MockUseGetApplicationsResult {
 const mockUseGetApplications = vi.fn<(params: unknown) => MockUseGetApplicationsResult>();
 let mockDiscovery: {wellKnown?: {end_session_endpoint?: string}} | undefined;
 let mockIsTrustedIssuerGenericOidc = false;
+const mockUseGetProjects = vi.fn<() => {data?: {projects: {id: string; displayName: string}[]}}>();
 
 vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-applications')>()),
   useGetApplications: (params: unknown) => mockUseGetApplications(params),
+}));
+
+vi.mock('../../features/projects/useGetProjects', () => ({
+  default: () => mockUseGetProjects(),
 }));
 
 // Mock ThunderID
@@ -86,7 +93,11 @@ vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
   return {
     ...actual,
-    Outlet: () => <div data-testid="outlet">Outlet Content</div>,
+    Outlet: () => (
+      <div data-testid="outlet" data-project-id={useProjectScope().projectId ?? ''}>
+        Outlet Content
+      </div>
+    ),
     Link: ({children, to}: {children: React.ReactNode; to: string}) => (
       <a href={to} data-testid="router-link">
         {children}
@@ -100,9 +111,11 @@ describe('DashboardLayout', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sessionStorage.clear();
+    localStorage.clear();
     mockUserData.mockReturnValue({name: 'Test User', email: 'test@example.com'});
     mockIsTrustedIssuerGenericOidc = false;
     mockDiscovery = undefined;
+    mockUseGetProjects.mockReturnValue({data: undefined});
     mockUseGetApplications.mockReturnValue({
       data: {applications: []},
       isLoading: false,
@@ -147,7 +160,6 @@ describe('DashboardLayout', () => {
     // Check for navigation items using translation keys
     expect(screen.getByText('navigation:pages.users')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.userTypes')).toBeInTheDocument();
-    expect(screen.getByText('navigation:pages.applications')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.connections')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.flows')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.gateways')).toBeInTheDocument();
@@ -156,14 +168,14 @@ describe('DashboardLayout', () => {
   it.each([false, true])('keeps navigation icon sizes consistent when collapseSidebar is %s', (collapseSidebar) => {
     render(<DashboardLayout collapseSidebar={collapseSidebar} />);
 
-    const applicationIcon = screen.getByRole('button', {name: 'navigation:pages.applications'}).querySelector('svg');
-    expect(applicationIcon).toBeInTheDocument();
+    const usersIcon = screen.getByRole('button', {name: 'navigation:pages.users'}).querySelector('svg');
+    expect(usersIcon).toBeInTheDocument();
 
     const navigationIcons = screen.getByRole('navigation').querySelectorAll('.MuiListItemIcon-root svg');
     expect(navigationIcons.length).toBeGreaterThan(0);
     navigationIcons.forEach((icon) => {
-      expect(icon).toHaveAttribute('width', applicationIcon?.getAttribute('width'));
-      expect(icon).toHaveAttribute('height', applicationIcon?.getAttribute('height'));
+      expect(icon).toHaveAttribute('width', usersIcon?.getAttribute('width'));
+      expect(icon).toHaveAttribute('height', usersIcon?.getAttribute('height'));
     });
   });
 
@@ -172,6 +184,77 @@ describe('DashboardLayout', () => {
 
     const currentYear = new Date().getFullYear();
     expect(screen.getByText(new RegExp(currentYear.toString()))).toBeInTheDocument();
+  });
+
+  it('shows the project selector in the header', () => {
+    mockUseGetProjects.mockReturnValue({
+      data: {
+        projects: [
+          {id: 'p1', displayName: 'Shop'},
+          {id: 'p2', displayName: 'Support'},
+        ],
+      },
+    });
+
+    render(<DashboardLayout />);
+
+    expect(screen.getByLabelText('common:header.project')).toHaveTextContent('Shop');
+  });
+
+  it('leads the sidebar with Projects once the project selection is cleared', () => {
+    localStorage.setItem(PROJECT_SELECTION_STORAGE_KEY, '');
+    mockUseGetProjects.mockReturnValue({data: {projects: [{id: 'p1', displayName: 'Shop'}]}});
+
+    render(<DashboardLayout />);
+
+    expect(screen.getByText('navigation:pages.projects')).toBeInTheDocument();
+  });
+
+  it('offers only Applications in the sidebar while a project is selected', () => {
+    mockUseGetProjects.mockReturnValue({data: {projects: [{id: 'p1', displayName: 'Shop'}]}});
+
+    render(<DashboardLayout />);
+
+    const navigation = screen.getByRole('navigation');
+    expect(navigation.querySelectorAll('.MuiListItemIcon-root')).toHaveLength(1);
+    expect(screen.getByRole('button', {name: 'navigation:pages.applications'})).toBeInTheDocument();
+    expect(screen.queryByText('navigation:pages.projects')).not.toBeInTheDocument();
+    expect(screen.queryByText('navigation:pages.users')).not.toBeInTheDocument();
+  });
+
+  it('hides Applications from the sidebar while no project is selected', () => {
+    localStorage.setItem(PROJECT_SELECTION_STORAGE_KEY, '');
+    mockUseGetProjects.mockReturnValue({data: {projects: [{id: 'p1', displayName: 'Shop'}]}});
+
+    render(<DashboardLayout />);
+
+    expect(screen.queryByText('navigation:pages.applications')).not.toBeInTheDocument();
+    expect(screen.getByText('navigation:pages.users')).toBeInTheDocument();
+  });
+
+  it('scopes the page to the selected project', () => {
+    mockUseGetProjects.mockReturnValue({data: {projects: [{id: 'p1', displayName: 'Shop'}]}});
+
+    render(<DashboardLayout />);
+
+    expect(screen.getByTestId('outlet')).toHaveAttribute('data-project-id', 'p1');
+  });
+
+  it('does not scope the page while no project is selected', () => {
+    localStorage.setItem(PROJECT_SELECTION_STORAGE_KEY, '');
+    mockUseGetProjects.mockReturnValue({data: {projects: [{id: 'p1', displayName: 'Shop'}]}});
+
+    render(<DashboardLayout />);
+
+    expect(screen.getByTestId('outlet')).toHaveAttribute('data-project-id', '');
+  });
+
+  it('shows no project selector when there are no projects', () => {
+    mockUseGetProjects.mockReturnValue({data: {projects: []}});
+
+    render(<DashboardLayout />);
+
+    expect(screen.queryByLabelText('common:header.project')).not.toBeInTheDocument();
   });
 
   it('does not start a second sign-in after signing out', async () => {
