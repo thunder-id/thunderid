@@ -25,8 +25,12 @@ import (
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
-// maxCallDepth is the maximum number of nested call frames allowed
-const maxCallDepth = 10
+const (
+	// maxCallDepth is the maximum number of nested call frames allowed.
+	maxCallDepth = 10
+	// runtimeValueTrue is the string representation of a true runtime-data flag.
+	runtimeValueTrue = "true"
+)
 
 // flowEngineInterface defines the interface for the flow engine.
 type flowEngineInterface interface {
@@ -891,8 +895,13 @@ func (fe *flowEngine) handleDisplayOnlyPromptResponse(ctx *EngineContext,
 
 	// If the next node is END, complete the flow
 	if nextNode.GetType() == common.NodeTypeEnd {
-		flowStep.Status = providers.FlowStatusComplete
-		continueExecution = true
+		if ctx.FlowType == providers.FlowTypeDeviceGrant &&
+			ctx.RuntimeData[common.RuntimeKeyDeviceCallFailed] == runtimeValueTrue {
+			flowStep.Status = providers.FlowStatusError
+		} else {
+			flowStep.Status = providers.FlowStatusComplete
+			continueExecution = true
+		}
 	} else {
 		// Set current node to the next node so that flow can be resumed from there in the next execution
 		ctx.CurrentNode = nextNode
@@ -1007,30 +1016,55 @@ func (fe *flowEngine) handleCallResponse(ctx *EngineContext,
 		return nil, &ErrorMaxCallDepthExceeded
 	}
 
-	flow, svcErr := fe.flowProvider.GetFlow(ctx.Context, nodeResp.CallTargetFlowID)
+	targetFlowID := nodeResp.CallTargetFlowID
+	flow, svcErr := fe.flowProvider.GetFlow(ctx.Context, targetFlowID)
 	if svcErr != nil {
 		logger.Error(ctx.Context, "Failed to get call target flow",
-			log.String("targetFlowID", nodeResp.CallTargetFlowID))
+			log.String("targetFlowID", targetFlowID))
+		return nil, &tidcommon.InternalServerError
+	}
+	if isDeviceApplicationAuthenticationCall(ctx, flow.FlowType) &&
+		ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID] == "" {
+		return nil, &tidcommon.InternalServerError
+	}
+	if isDeviceApplicationAuthenticationCall(ctx, flow.FlowType) &&
+		targetFlowID != ctx.Application.AuthFlowID {
 		return nil, &tidcommon.InternalServerError
 	}
 
 	calleeGraph, svcErr := fe.graphBuilder.GetGraph(ctx.Context, flow)
 	if svcErr != nil {
 		logger.Error(ctx.Context, "Failed to build call target graph",
-			log.String("targetFlowID", nodeResp.CallTargetFlowID))
+			log.String("targetFlowID", targetFlowID))
 		return nil, &tidcommon.InternalServerError
 	}
 
-	return fe.switchContextToCallee(ctx, nodeResp, calleeGraph, logger)
+	if flow.FlowType == providers.FlowTypeAuthentication {
+		ctx.SSOFlowVersion = flow.ActiveVersion
+	}
+	return fe.switchContextToCallee(ctx, nodeResp, calleeGraph, flow.FlowType, logger)
 }
 
 // switchContextToCallee switches the engine context to the callee flow's graph and
 // sets the current node to the start node.
 func (fe *flowEngine) switchContextToCallee(ctx *EngineContext,
-	nodeResp *common.NodeResponse, calleeGraph core.GraphInterface, logger *log.Logger) (
+	nodeResp *common.NodeResponse, calleeGraph core.GraphInterface, calleeFlowType providers.FlowType,
+	logger *log.Logger) (
 	core.NodeInterface, *tidcommon.ServiceError) {
 	// Push the current frame before switching to the callee
 	resumeCallNodeID := ctx.CurrentNode.GetID()
+	deviceRequestID := ""
+	var deviceRequestData map[string]string
+	if isDeviceApplicationAuthenticationCall(ctx, calleeFlowType) {
+		deviceRequestID = ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID]
+		// Preserve the Device Grant identity across nested calls, which reset per-flow RuntimeData.
+		ctx.setSharedRuntimeData(common.RuntimeKeyCallbackType, string(providers.GrantTypeDeviceCode))
+		deviceRequestData = map[string]string{
+			common.RuntimeKeyRequestedPermissions:       ctx.RuntimeData[common.RuntimeKeyRequestedPermissions],
+			common.RuntimeKeyResourceServerIdentifier:   ctx.RuntimeData[common.RuntimeKeyResourceServerIdentifier],
+			common.RuntimeKeyRequiredOptionalAttributes: ctx.RuntimeData[common.RuntimeKeyRequiredOptionalAttributes],
+		}
+	}
 	ctx.pushFrame(resumeCallNodeID)
 
 	// Switch context to the callee flow. Per-frame transient state is reset so the callee
@@ -1039,6 +1073,16 @@ func (fe *flowEngine) switchContextToCallee(ctx *EngineContext,
 	ctx.Graph = calleeGraph
 	ctx.FlowType = calleeGraph.GetType()
 	ctx.RuntimeData = make(map[string]string)
+	if deviceRequestID != "" {
+		ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID] = deviceRequestID
+		ctx.RuntimeData[common.RuntimeKeyCallbackType] = string(providers.GrantTypeDeviceCode)
+		// Require explicit approval for each Device Grant request, even when the user
+		// has already consented to the same permissions in a previous session.
+		ctx.RuntimeData[common.RuntimeKeyForceConsentReprompt] = "true"
+		for key, value := range deviceRequestData {
+			ctx.RuntimeData[key] = value
+		}
+	}
 	ctx.ForwardedData = nil
 	ctx.AdditionalData = make(map[string]string)
 	ctx.CurrentNodeResponse = nil
@@ -1056,6 +1100,15 @@ func (fe *flowEngine) switchContextToCallee(ctx *EngineContext,
 	ctx.CurrentNode = startNode
 
 	return startNode, nil
+}
+
+// isDeviceApplicationAuthenticationCall reports whether a CALL enters the verified application's
+// Authentication flow from a Device Grant flow. It uses the resolved callee type so both fixed and
+// flow-type references carry the Device Grant request context into the called flow.
+func isDeviceApplicationAuthenticationCall(ctx *EngineContext, calleeFlowType providers.FlowType) bool {
+	return ctx.FlowType == providers.FlowTypeDeviceGrant &&
+		calleeFlowType == providers.FlowTypeAuthentication &&
+		ctx.RuntimeData[common.RuntimeKeyCallbackType] == string(providers.GrantTypeDeviceCode)
 }
 
 // handleCalleeReturn is called when the callee flow's END node completes while there is a
@@ -1107,6 +1160,7 @@ func (fe *flowEngine) handleCalleeReturn(ctx *EngineContext, logger *log.Logger)
 func (fe *flowEngine) handleCalleeFailure(ctx *EngineContext, nodeResp *common.NodeResponse,
 	flowStep *FlowStep, logger *log.Logger) (
 	core.NodeInterface, bool, *tidcommon.ServiceError) {
+	calleeFlowType := ctx.FlowType
 	savedFrame := ctx.popFrame()
 	if savedFrame == nil {
 		logger.Error(ctx.Context, "Frame stack underflow on callee failure")
@@ -1141,6 +1195,13 @@ func (fe *flowEngine) handleCalleeFailure(ctx *EngineContext, nodeResp *common.N
 		logger.Error(ctx.Context, "Call onFailure node not found",
 			log.String("onFailureID", onFailureID))
 		return nil, false, &tidcommon.InternalServerError
+	}
+	if ctx.FlowType == providers.FlowTypeDeviceGrant &&
+		calleeFlowType == providers.FlowTypeAuthentication &&
+		ctx.RuntimeData[common.RuntimeKeyCallbackType] == string(providers.GrantTypeDeviceCode) &&
+		ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID] != "" {
+		ctx.RuntimeData[common.RuntimeKeyDeviceCallFailed] = runtimeValueTrue
+		flowStep.Error = nodeResp.Error
 	}
 
 	ctx.CurrentNode = nextNode

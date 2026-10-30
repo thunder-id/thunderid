@@ -47,6 +47,7 @@ type Application struct {
 	IsRegistrationFlowEnabled bool                     `json:"isRegistrationFlowEnabled"`
 	IsRecoveryFlowEnabled     bool                     `json:"isRecoveryFlowEnabled,omitempty"`
 	AuthFlowID                string                   `json:"authFlowId,omitempty"`
+	DeviceGrantFlowID         string                   `json:"deviceGrantFlowId,omitempty"`
 	RegistrationFlowID        string                   `json:"registrationFlowId,omitempty"`
 	RecoveryFlowID            string                   `json:"recoveryFlowId,omitempty"`
 	SignOutFlowID             string                   `json:"signOutFlowId,omitempty"`

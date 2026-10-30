@@ -254,6 +254,7 @@ type ExecutorDependencies struct {
 	IdentityGovernance     providers.IdentityGovernanceProvider
 	ArtifactLifetime       artifactLifetimeResolver
 	tokenLeeway            time.Duration
+	DeviceCodeVerifier     DeviceCodeVerifier
 }
 
 type builtInExecutorRegistrar func(ExecutorRegistryInterface, ExecutorDependencies)
@@ -261,6 +262,10 @@ type builtInExecutorRegistrar func(ExecutorRegistryInterface, ExecutorDependenci
 // newBuiltInExecutorRegistrars creates a new map of built-in executor registrars.
 func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 	return map[string]builtInExecutorRegistrar{
+		ExecutorNameDeviceCode: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameDeviceCode,
+				newDeviceCodeExecutor(deps.FlowFactory, deps.DeviceCodeVerifier))
+		},
 		ExecutorNameCredentialsAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameCredentialsAuth, newCredentialsAuthExecutor(
 				deps.FlowFactory, deps.EntityProvider, deps.AuthnProvider))

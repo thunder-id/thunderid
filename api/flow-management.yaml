@@ -79,6 +79,7 @@ paths:
             enum:
               - AUTHENTICATION
               - REGISTRATION
+              - DEVICE_GRANT
         - name: limit
           in: query
           description: Maximum number of flows to return
@@ -844,6 +845,7 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - DEVICE_GRANT
         name:
           type: string
           description: Name of the flow
@@ -901,6 +903,7 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - DEVICE_GRANT
           description: |
             Type of flow
           example: AUTHENTICATION
@@ -1156,6 +1159,7 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - DEVICE_GRANT
           description: |
             Type of flow
           example: AUTHENTICATION
@@ -1230,6 +1234,7 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - DEVICE_GRANT
           description: |
             Type of flow
           example: AUTHENTICATION

@@ -7,6 +7,7 @@ package providers
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -323,6 +324,14 @@ type RuntimeStoreProvider interface {
 	// assumed to be JSON documents.
 	CompareFieldAndSwap(
 		ctx context.Context, namespace RuntimeStoreNamespace, key, field, expected string, newValue []byte,
+	) (bool, error)
+
+	// CompareFieldAndSwapBeforeExpiry atomically replaces the value at key only when the top-level
+	// JSON string field equals expected and the supplied application-level expiry is still in the
+	// future. It preserves the existing store TTL and returns whether the swap occurred.
+	CompareFieldAndSwapBeforeExpiry(
+		ctx context.Context, namespace RuntimeStoreNamespace, key, field, expected string,
+		expiresAt time.Time, newValue []byte,
 	) (bool, error)
 }
 

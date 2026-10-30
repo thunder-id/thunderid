@@ -17,6 +17,7 @@ import (
 	oauth2authz "github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/callback"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/deviceauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/granthandlers"
@@ -102,6 +103,12 @@ func Initialize(
 		cibaService = ciba.Initialize(mux, jwtService, actorProvider, authnProvider, flowExecService,
 			discoveryService, resourceService, runtimeStore, jtiStore, governance, cfg)
 	}
+	var deviceAuthService deviceauth.DeviceAuthServiceInterface
+	if len(cfg.OAuth.AllowedGrantTypes) == 0 ||
+		slices.Contains(cfg.OAuth.AllowedGrantTypes, string(providers.GrantTypeDeviceCode)) {
+		deviceAuthService = deviceauth.Initialize(mux, jwtService, actorProvider, authnProvider, discoveryService,
+			resourceService, runtimeStore, jtiStore, governance, cfg)
+	}
 
 	// A device secret lasts as long as an SSO session can. The embedded engine has no session service,
 	// so it issues none.
@@ -112,7 +119,7 @@ func Initialize(
 	grantHandlerProvider := granthandlers.Initialize(
 		jwtService, oauth2AuthzService, tokenBuilder, tokenValidator,
 		attributeCacheSvc, ouService, authzService, actorProvider, resourceService,
-		cibaService, revocationSvc, revocationSvc, enforcementService, governance, authzDetails,
+		cibaService, deviceAuthService, revocationSvc, revocationSvc, enforcementService, governance, authzDetails,
 		deviceSecretValidity, cfg)
 
 	token.Initialize(mux, jwtService, actorProvider, authnProvider, grantHandlerProvider,
@@ -122,7 +129,7 @@ func Initialize(
 	userinfo.Initialize(mux, jwtService, jweService, resolver,
 		tokenValidator, actorProvider, attributeCacheSvc,
 		discoveryService, dpopVerifier, governance, cfg)
-	callback.Initialize(mux, oauth2AuthzService, cibaService, cfg)
+	callback.Initialize(mux, oauth2AuthzService, cibaService, deviceAuthService, cfg)
 
 	if cfg.OAuth.Logout.IsEnabled() {
 		oauth2logout.Initialize(mux, jwtService, actorProvider, flowExecService, runtimeStore, cfg)

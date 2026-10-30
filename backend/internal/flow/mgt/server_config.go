@@ -69,6 +69,7 @@ func (h *FlowConfigHandler) Validate(incoming, _, _ any) error {
 	}
 	entries := []entry{
 		{cfg.AuthFlow, providers.FlowTypeAuthentication, "authFlow"},
+		{cfg.DeviceGrantFlow, providers.FlowTypeDeviceGrant, "deviceGrantFlow"},
 		{cfg.RegistrationFlow, providers.FlowTypeRegistration, "registrationFlow"},
 		{cfg.UserOnboardingFlow, providers.FlowTypeUserOnboarding, "userOnboardingFlow"},
 		{cfg.RecoveryFlow, providers.FlowTypeRecovery, "recoveryFlow"},
@@ -117,6 +118,7 @@ func (h *FlowConfigHandler) Merge(readOnly, writable any) any {
 	wr, _ := writable.(flowconfig.FlowSectionConfig)
 	return flowconfig.FlowSectionConfig{
 		AuthFlow:           mergeFlowTypeConfig(ro.AuthFlow, wr.AuthFlow),
+		DeviceGrantFlow:    mergeFlowTypeConfig(ro.DeviceGrantFlow, wr.DeviceGrantFlow),
 		RegistrationFlow:   mergeFlowTypeConfig(ro.RegistrationFlow, wr.RegistrationFlow),
 		UserOnboardingFlow: mergeFlowTypeConfig(ro.UserOnboardingFlow, wr.UserOnboardingFlow),
 		RecoveryFlow:       mergeFlowTypeConfig(ro.RecoveryFlow, wr.RecoveryFlow),

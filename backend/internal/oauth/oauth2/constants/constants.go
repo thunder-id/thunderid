@@ -63,6 +63,7 @@ const (
 
 	// RequestParamAuthorizationDetails is the RFC 9396 authorization request parameter.
 	RequestParamAuthorizationDetails string = "authorization_details"
+	RequestParamDeviceCode          string = "device_code"
 )
 
 // OAuth2 HTTP headers.
@@ -130,6 +131,7 @@ const (
 	OAuth2BackchannelAuthEndpoint           string = "/oauth2/bc-authorize"
 	OAuth2BackchannelAuthCallbackEndpoint   string = "/oauth2/bc-authorize/callback"
 	OAuth2AuthorizationDetailsTypesEndpoint string = "/oauth2/authorization-details-types"
+	OAuth2DeviceAuthorizationEndpoint     string = "/oauth2/device-authorize"
 )
 
 // OAuth2 token types.
@@ -394,6 +396,15 @@ const (
 	CIBADefaultIntervalSeconds = 5
 	// CIBAMaxExpiresInSeconds is the maximum lifetime in seconds a client may request via requested_expiry.
 	CIBAMaxExpiresInSeconds = 600
+	// DeviceAuthorizationDefaultExpiresInSeconds is the default lifetime for a device request.
+	DeviceAuthorizationDefaultExpiresInSeconds = 600
+	// DeviceAuthorizationDefaultIntervalSeconds is the minimum interval between token polls.
+	DeviceAuthorizationDefaultIntervalSeconds = 5
+	// DeviceAuthorizationSlowDownIncrementSeconds is added after each early token poll.
+	DeviceAuthorizationSlowDownIncrementSeconds = 5
+	// DeviceAuthorizationExpiredRecordRetentionSeconds keeps an expired request available long enough
+	// for the token endpoint to return expired_token instead of treating the device code as unknown.
+	DeviceAuthorizationExpiredRecordRetentionSeconds = 60
 )
 
 const (

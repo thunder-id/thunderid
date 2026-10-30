@@ -53,6 +53,7 @@ func (s *OAuthConfigTestSuite) TestFromServerRuntime() {
 			Hostname: "localhost",
 			Port:     3000,
 		},
+		Crypto: config.CryptoConfig{Encryption: engineconfig.EncryptionConfig{Key: "test-device-code-hash-key"}},
 	}
 	err := config.InitializeServerRuntime("/tmp/test-oauth-config", cfg)
 	s.Require().NoError(err)
@@ -65,6 +66,7 @@ func (s *OAuthConfigTestSuite) TestFromServerRuntime() {
 	s.Equal("https://thunder.io", result.JWT.Issuer)
 	s.Equal(int64(600), result.OAuth.PAR.ExpiresIn)
 	s.Equal("localhost", result.GateClient.Hostname)
+	s.Equal([]byte("test-device-code-hash-key"), result.DeviceAuthUserCodeIndexKey)
 
 	s.NotEmpty(result.OAuth.DefaultScopeClaimsMapping, "default mapping should be seeded")
 	s.Len(result.OAuth.DefaultScopeClaimsMapping, len(constants.StandardOIDCScopes))

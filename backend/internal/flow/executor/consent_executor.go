@@ -221,12 +221,15 @@ func (e *consentExecutor) handleConsentDecisions(ctx *providers.NodeContext, exe
 	}
 
 	failOnDeny, _ := ctx.NodeProperties[propertyKeyConsentFailOnDeny].(bool)
+	isDeviceGrant := ctx.RuntimeData[common.RuntimeKeyCallbackType] == string(providers.GrantTypeDeviceCode) ||
+		ctx.SharedRuntimeData[common.RuntimeKeyCallbackType] == string(providers.GrantTypeDeviceCode)
+	failConsent := failOnDeny || isDeviceGrant
 
 	// A timed out prompt is not a user decision, so nothing is recorded and nothing is consented.
 	// The expiry check below is skipped because such a submission is expected to arrive late.
 	if decisions.Reason == providers.ConsentDecisionReasonTimeout {
-		if failOnDeny {
-			logger.Debug(ctx.Context, "Consent prompt timed out and failOnDeny is enabled. Failing the flow")
+		if failConsent {
+			logger.Debug(ctx.Context, "Consent prompt timed out and flow policy requires failure")
 			execResp.Status = providers.ExecFailure
 			execResp.Error = &ErrConsentPromptTimedOut
 			return execResp, nil
@@ -285,10 +288,10 @@ func (e *consentExecutor) handleConsentDecisions(ctx *providers.NodeContext, exe
 		return nil, errors.New("failed to record consent")
 	}
 
-	// Fail the flow when the node opts into strict denial handling and the user did not approve
-	// the prompt. This is verified with the IsApproved flag on the consent decisions struct.
-	if failOnDeny && !decisions.Approved {
-		logger.Debug(ctx.Context, "User denied consent and failOnDeny is enabled",
+	// Fail the flow when strict denial handling is enabled or when this consent belongs to
+	// Device Grant. A Device Grant request cannot be approved after the user rejects consent.
+	if failConsent && !decisions.Approved {
+		logger.Debug(ctx.Context, "User denied consent and flow policy requires failure",
 			log.String("consentID", consentRecord.ID))
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrConsentDenied

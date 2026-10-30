@@ -4,6 +4,9 @@ value:
   authFlow:
     defaultHandle: default-flow
     expirySeconds: 3600
+  deviceGrantFlow:
+    defaultHandle: default-device-grant-flow
+    expirySeconds: 600
   registrationFlow:
     expirySeconds: 3600
   recoveryFlow:

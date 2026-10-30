@@ -39,6 +39,8 @@ var (
 	ErrFKInvalidRecoveryFlow = errors.New("invalid recovery flow ID")
 	// ErrFKInvalidSignOutFlow is returned when the sign-out flow ID does not exist.
 	ErrFKInvalidSignOutFlow = errors.New("invalid sign-out flow ID")
+	// ErrFKInvalidDeviceGrantFlow is returned when a Device Grant flow ID is invalid.
+	ErrFKInvalidDeviceGrantFlow = errors.New("invalid Device Grant flow ID")
 	// ErrFKFlowDefinitionRetrievalFailed is returned when a flow definition cannot be retrieved.
 	ErrFKFlowDefinitionRetrievalFailed = errors.New("error retrieving flow definition")
 	// ErrFKFlowServerError is returned when a server error occurs while resolving a flow.

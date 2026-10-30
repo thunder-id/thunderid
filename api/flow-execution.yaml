@@ -36,7 +36,8 @@ paths:
         A flow is initiated either by `applicationId` and `flowType`, or, for administration flows
         only, by `flowId`. Initiating by `flowId` requires an access token carrying the `system`
         scope, and the referenced flow must be of type `ADMINISTRATION`; any other flow type is
-        rejected with `403`. Supplying the step's inputs on the initiating request runs the flow
+        rejected with `403`. A `DEVICE_GRANT` request starts the Device Grant flow assigned to the
+        specified application. Supplying the step's inputs on the initiating request runs the flow
         through to its terminal state in a single call; omitting them returns the required inputs and
         an `executionId` to continue with.
       tags:
@@ -80,6 +81,13 @@ paths:
                 value:
                   applicationId: "550e8400-e29b-41d4-a716-446655440000"
                   flowType: "SIGNOUT"
+              initialDeviceGrantRequest:
+                summary: Initial request to start the Device Grant flow assigned to an application
+                value:
+                  applicationId: "550e8400-e29b-41d4-a716-446655440000"
+                  flowType: "DEVICE_GRANT"
+                  inputs: {}
+                  verbose: true
               administrativeFlowSingleCall:
                 summary: Administration flow run to completion in one call (inputs supplied up front)
                 value:
@@ -103,6 +111,14 @@ paths:
                     "username": "thor",
                     "password": "thor@123"
                   }
+              subSequentDeviceGrantRequest:
+                summary: Subsequent Device Grant request that submits the user code
+                value:
+                  executionId: "2c6d4c45-3de9-4a70-ae6b-ba1d034af6bc"
+                  challengeToken: "a3f2e1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2"
+                  action: "device-code-submit"
+                  inputs:
+                    user_code: "BCDF-GHJK"
       responses:
         "200":
           description: |
@@ -305,6 +321,7 @@ components:
           description: Type of the flow to execute
           enum:
             - AUTHENTICATION
+            - DEVICE_GRANT
             - REGISTRATION
             - RECOVERY
             - SIGNOUT

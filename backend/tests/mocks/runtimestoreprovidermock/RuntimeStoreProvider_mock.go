@@ -6,6 +6,7 @@ package runtimestoreprovidermock
 
 import (
 	"context"
+	"time"
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -133,6 +134,102 @@ func (_c *RuntimeStoreProviderMock_CompareFieldAndSwap_Call) Return(b bool, err 
 }
 
 func (_c *RuntimeStoreProviderMock_CompareFieldAndSwap_Call) RunAndReturn(run func(ctx context.Context, namespace providers.RuntimeStoreNamespace, key string, field string, expected string, newValue []byte) (bool, error)) *RuntimeStoreProviderMock_CompareFieldAndSwap_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// CompareFieldAndSwapBeforeExpiry provides a mock function for the type RuntimeStoreProviderMock
+func (_mock *RuntimeStoreProviderMock) CompareFieldAndSwapBeforeExpiry(ctx context.Context, namespace providers.RuntimeStoreNamespace, key string, field string, expected string, expiresAt time.Time, newValue []byte) (bool, error) {
+	ret := _mock.Called(ctx, namespace, key, field, expected, expiresAt, newValue)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CompareFieldAndSwapBeforeExpiry")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.RuntimeStoreNamespace, string, string, string, time.Time, []byte) (bool, error)); ok {
+		return returnFunc(ctx, namespace, key, field, expected, expiresAt, newValue)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.RuntimeStoreNamespace, string, string, string, time.Time, []byte) bool); ok {
+		r0 = returnFunc(ctx, namespace, key, field, expected, expiresAt, newValue)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, providers.RuntimeStoreNamespace, string, string, string, time.Time, []byte) error); ok {
+		r1 = returnFunc(ctx, namespace, key, field, expected, expiresAt, newValue)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// RuntimeStoreProviderMock_CompareFieldAndSwapBeforeExpiry_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CompareFieldAndSwapBeforeExpiry'
+type RuntimeStoreProviderMock_CompareFieldAndSwapBeforeExpiry_Call struct {
+	*mock.Call
+}
+
+// CompareFieldAndSwapBeforeExpiry is a helper method to define mock.On call
+//   - ctx context.Context
+//   - namespace providers.RuntimeStoreNamespace
+//   - key string
+//   - field string
+//   - expected string
+//   - expiresAt time.Time
+//   - newValue []byte
+func (_e *RuntimeStoreProviderMock_Expecter) CompareFieldAndSwapBeforeExpiry(ctx any, namespace any, key any, field any, expected any, expiresAt any, newValue any) *RuntimeStoreProviderMock_CompareFieldAndSwapBeforeExpiry_Call {
+	return &RuntimeStoreProviderMock_CompareFieldAndSwapBeforeExpiry_Call{Call: _e.mock.On("CompareFieldAndSwapBeforeExpiry", ctx, namespace, key, field, expected, expiresAt, newValue)}
+}
+
+func (_c *RuntimeStoreProviderMock_CompareFieldAndSwapBeforeExpiry_Call) Run(run func(ctx context.Context, namespace providers.RuntimeStoreNamespace, key string, field string, expected string, expiresAt time.Time, newValue []byte)) *RuntimeStoreProviderMock_CompareFieldAndSwapBeforeExpiry_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 providers.RuntimeStoreNamespace
+		if args[1] != nil {
+			arg1 = args[1].(providers.RuntimeStoreNamespace)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		var arg4 string
+		if args[4] != nil {
+			arg4 = args[4].(string)
+		}
+		var arg5 time.Time
+		if args[5] != nil {
+			arg5 = args[5].(time.Time)
+		}
+		var arg6 []byte
+		if args[6] != nil {
+			arg6 = args[6].([]byte)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+			arg5,
+			arg6,
+		)
+	})
+	return _c
+}
+
+func (_c *RuntimeStoreProviderMock_CompareFieldAndSwapBeforeExpiry_Call) Return(b bool, err error) *RuntimeStoreProviderMock_CompareFieldAndSwapBeforeExpiry_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *RuntimeStoreProviderMock_CompareFieldAndSwapBeforeExpiry_Call) RunAndReturn(run func(ctx context.Context, namespace providers.RuntimeStoreNamespace, key string, field string, expected string, expiresAt time.Time, newValue []byte) (bool, error)) *RuntimeStoreProviderMock_CompareFieldAndSwapBeforeExpiry_Call {
 	_c.Call.Return(run)
 	return _c
 }

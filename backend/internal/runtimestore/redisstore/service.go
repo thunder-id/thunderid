@@ -39,6 +39,19 @@ redis.call('SET', KEYS[1], ARGV[3], 'KEEPTTL')
 return 1
 `)
 
+// compareFieldAndSwapBeforeExpiryScript also checks an application-level expiry against Redis time.
+var compareFieldAndSwapBeforeExpiryScript = redis.NewScript(`
+local val = redis.call('GET', KEYS[1])
+if not val then return 0 end
+local data = cjson.decode(val)
+if data[ARGV[1]] ~= ARGV[2] then return 0 end
+local now = redis.call('TIME')
+local nowMillis = (tonumber(now[1]) * 1000) + math.floor(tonumber(now[2]) / 1000)
+if tonumber(ARGV[3]) <= nowMillis then return 0 end
+redis.call('SET', KEYS[1], ARGV[4], 'KEEPTTL')
+return 1
+`)
+
 // keyFormat is the format string used to build Redis store keys.
 const keyFormat = "%s:runtime:%s:%s:%s"
 
@@ -178,6 +191,23 @@ func (r *redisStore) CompareFieldAndSwap(ctx context.Context, namespace provider
 			return false, nil
 		}
 		return false, fmt.Errorf("failed to compare-and-swap in Redis: %w", err)
+	}
+	return n == 1, nil
+}
+
+// CompareFieldAndSwapBeforeExpiry updates a value only when its JSON field matches and the
+// supplied application-level expiry has not passed.
+func (r *redisStore) CompareFieldAndSwapBeforeExpiry(ctx context.Context,
+	namespace providers.RuntimeStoreNamespace, key, field, expected string, expiresAt time.Time,
+	newValue []byte,
+) (bool, error) {
+	n, err := compareFieldAndSwapBeforeExpiryScript.Run(ctx, r.client,
+		[]string{r.getFormattedKey(namespace, key)}, field, expected, expiresAt.UnixMilli(), newValue).Int64()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to compare-and-swap before expiry in Redis: %w", err)
 	}
 	return n == 1, nil
 }

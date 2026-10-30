@@ -7,9 +7,12 @@ package flowexec
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/deviceauth"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/internal/actorprovider"
@@ -37,6 +40,11 @@ type serverConfigProvider interface {
 	GetMergedConfig(ctx context.Context, name string) (any, *tidcommon.ServiceError)
 }
 
+// deviceGrantFlowResolver resolves a submitted user code to its trusted application and flow.
+type deviceGrantFlowResolver interface {
+	ResolveDeviceGrantApplication(ctx context.Context, userCode string) (applicationID, flowID string, err error)
+}
+
 // flowExecService is the implementation of FlowExecServiceInterface
 type flowExecService struct {
 	flowEngine          flowEngineInterface
@@ -51,6 +59,7 @@ type flowExecService struct {
 	jwtService          jwt.JWTServiceInterface
 	serverConfigSvc     serverConfigProvider
 	governance          providers.IdentityGovernanceProvider
+	deviceGrantResolver deviceGrantFlowResolver
 	cfg                 flowconfig.Config
 	// ssoHandleTTL is how long a handle returned in the response body stays usable.
 	ssoHandleTTL time.Duration
@@ -68,6 +77,7 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 	jwtService jwt.JWTServiceInterface,
 	serverConfigSvc serverConfigProvider,
 	governance providers.IdentityGovernanceProvider,
+	deviceGrantResolver deviceGrantFlowResolver,
 	cfg flowconfig.Config,
 	ssoHandleTTL time.Duration) FlowExecServiceInterface {
 	return &flowExecService{
@@ -83,6 +93,7 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 		jwtService:          jwtService,
 		serverConfigSvc:     serverConfigSvc,
 		governance:          governance,
+		deviceGrantResolver: deviceGrantResolver,
 		cfg:                 cfg,
 		ssoHandleTTL:        ssoHandleTTL,
 	}
@@ -117,8 +128,12 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 	var loadErr *tidcommon.ServiceError
 
 	if isNewFlow(executionID) {
-		engineCtx, loadErr = s.loadNewContext(ctx, flowID, appID, flowType, verbose, action, inputs,
-			flowSecret, attestationToken, logger)
+		if providers.FlowType(flowType) == providers.FlowTypeDeviceGrant {
+			engineCtx, loadErr = s.loadNewDeviceGrantContext(ctx, appID, verbose, action, inputs, logger)
+		} else {
+			engineCtx, loadErr = s.loadNewContext(ctx, flowID, appID, flowType, verbose, action, inputs,
+				flowSecret, attestationToken, logger)
+		}
 		if loadErr != nil {
 			logger.Error(ctx, "Failed to load new flow context",
 				log.String("appID", appID),
@@ -208,6 +223,10 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 				flowStep.Data.AdditionalData = make(map[string]string)
 			}
 			flowStep.Data.AdditionalData[common.DataCallbackType] = callbackType
+			if callbackType == string(providers.GrantTypeDeviceCode) {
+				flowStep.Data.AdditionalData[common.DataAuthID] =
+					engineCtx.RuntimeData[common.RuntimeKeyAuthorizationRequestID]
+			}
 		}
 	}
 
@@ -247,6 +266,58 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 	}
 
 	return &flowStep, nil
+}
+
+// loadNewDeviceGrantContext resolves the application's Device Grant flow for a new execution.
+func (s *flowExecService) loadNewDeviceGrantContext(
+	ctx context.Context, appID string, verbose bool, action string, inputs map[string]string, logger *log.Logger,
+) (*EngineContext, *tidcommon.ServiceError) {
+	var flowID string
+	if appID != "" {
+		var svcErr *tidcommon.ServiceError
+		flowID, svcErr = s.getFlowGraph(ctx, appID, providers.FlowTypeDeviceGrant, logger)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+	} else {
+		if s.deviceGrantResolver == nil {
+			logger.Error(ctx, "Device Grant flow resolver is not configured")
+			return nil, &tidcommon.InternalServerError
+		}
+		userCode := inputs["user_code"]
+		if userCode == "" {
+			return nil, &ErrorInvalidDeviceGrantCode
+		}
+		resolvedAppID, resolvedFlowID, err := s.deviceGrantResolver.ResolveDeviceGrantApplication(ctx, userCode)
+		if err != nil {
+			var deviceAuthErr *deviceauth.DeviceAuthError
+			if errors.As(err, &deviceAuthErr) && deviceAuthErr.Code == constants.ErrorInvalidRequest {
+				logger.Debug(ctx, "Device Grant user code is unavailable", log.Error(err))
+				return nil, &ErrorInvalidDeviceGrantCode
+			}
+			logger.Error(ctx, "Failed to resolve Device Grant flow from user code", log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+		appID = resolvedAppID
+		flowID = resolvedFlowID
+	}
+	if flowID == "" {
+		logger.Error(ctx, "Device Grant flow is not configured for the application",
+			log.String("appID", appID))
+		return nil, &tidcommon.InternalServerError
+	}
+	flow, svcErr := s.flowProvider.GetFlow(ctx, flowID)
+	if svcErr != nil || flow == nil || flow.FlowType != providers.FlowTypeDeviceGrant {
+		logger.Error(ctx, "Configured Device Grant flow is invalid",
+			log.String("flowID", flowID), log.String("appID", appID))
+		return nil, &tidcommon.InternalServerError
+	}
+	engineCtx, svcErr := s.initContext(ctx, flow.ID, appID, providers.FlowTypeDeviceGrant, flow, verbose, logger)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	prepareContext(engineCtx, action, inputs)
+	return engineCtx, nil
 }
 
 // buildErrorAssertion signs an assertion binding the flow error type and description to the OAuth
@@ -835,9 +906,9 @@ func (s *flowExecService) encryptEngineContext(ctx context.Context, engineCtx *E
 // Entity-agnostic: works for any entity (application, agent, ...) that has an inbound-client row.
 func (s *flowExecService) getFlowGraph(ctx context.Context, appID string, flowType providers.FlowType,
 	logger *log.Logger) (string, *tidcommon.ServiceError) {
-	// Handle app-independent system flows
+	// Handle the application-independent onboarding flow.
 	if flowType == providers.FlowTypeUserOnboarding {
-		return s.getSystemFlowGraph(ctx, flowType, logger)
+		return s.getApplicationIndependentFlowGraph(ctx, flowType, logger)
 	}
 
 	if appID == "" {
@@ -888,6 +959,15 @@ func (s *flowExecService) getFlowGraph(ctx context.Context, appID string, flowTy
 		return client.SignOutFlowID, nil
 	}
 
+	if flowType == providers.FlowTypeDeviceGrant {
+		if client.DeviceGrantFlowID == "" {
+			logger.Error(ctx, "Device Grant flow is not configured for the application",
+				log.String("appID", appID))
+			return "", &tidcommon.InternalServerError
+		}
+		return client.DeviceGrantFlowID, nil
+	}
+
 	// Default to authentication flow ID
 	if client.AuthFlowID == "" {
 		logger.Error(ctx, "Authentication flow is not configured for the entity",
@@ -902,7 +982,8 @@ func (s *flowExecService) getFlowGraph(ctx context.Context, appID string, flowTy
 func validateFlowType(flowTypeStr string) (providers.FlowType, *tidcommon.ServiceError) {
 	switch providers.FlowType(flowTypeStr) {
 	case providers.FlowTypeAuthentication, providers.FlowTypeRegistration, providers.FlowTypeUserOnboarding,
-		providers.FlowTypeRecovery, providers.FlowTypeSignOut, providers.FlowTypeAdministration:
+		providers.FlowTypeRecovery, providers.FlowTypeSignOut, providers.FlowTypeAdministration,
+		providers.FlowTypeDeviceGrant:
 		return providers.FlowType(flowTypeStr), nil
 	default:
 		return "", &ErrorInvalidFlowType
@@ -914,16 +995,18 @@ func isNewFlow(executionID string) bool {
 	return executionID == ""
 }
 
-// getSystemFlowGraph retrieves the flow graph for system flows by handle.
-func (s *flowExecService) getSystemFlowGraph(ctx context.Context, flowType providers.FlowType,
+// getApplicationIndependentFlowGraph retrieves an application-independent flow graph by handle.
+func (s *flowExecService) getApplicationIndependentFlowGraph(ctx context.Context, flowType providers.FlowType,
 	logger *log.Logger) (string, *tidcommon.ServiceError) {
-	switch flowType {
-	case providers.FlowTypeUserOnboarding:
-	default:
+	if flowType != providers.FlowTypeUserOnboarding {
 		return "", &ErrorInvalidFlowType
 	}
 
 	handle := s.resolveDefaultFlowHandle(ctx, flowType)
+	if handle == "" {
+		logger.Error(ctx, "System flow handle is not configured", log.String("flowType", string(flowType)))
+		return "", &tidcommon.InternalServerError
+	}
 
 	flow, err := s.flowProvider.GetFlowByHandle(ctx, handle, flowType)
 	if err != nil {
@@ -995,8 +1078,9 @@ func (s *flowExecService) InitiateFlow(ctx context.Context,
 		return "", svcErr
 	}
 
-	// Application ID is required for all flows except Invite Registration
-	if flowType != providers.FlowTypeUserOnboarding && initContext.ApplicationID == "" {
+	// Application-independent flows do not need an application ID at initiation.
+	if flowType != providers.FlowTypeUserOnboarding &&
+		initContext.ApplicationID == "" {
 		return "", &ErrorInvalidFlowInitContext
 	}
 
@@ -1058,7 +1142,8 @@ func (s *flowExecService) InitiateAndExecute(ctx context.Context,
 		return nil, svcErr
 	}
 
-	if flowType != providers.FlowTypeUserOnboarding && initContext.ApplicationID == "" {
+	if flowType != providers.FlowTypeUserOnboarding &&
+		initContext.ApplicationID == "" {
 		return nil, &ErrorInvalidFlowInitContext
 	}
 
@@ -1226,6 +1311,8 @@ func (s *flowExecService) getFlowExpirySeconds(ctx context.Context, flowType pro
 		return firstPositiveExpiry(cfg.RegistrationFlow.ExpirySeconds, defaultRegistrationFlowExpiry)
 	case providers.FlowTypeUserOnboarding:
 		return firstPositiveExpiry(cfg.UserOnboardingFlow.ExpirySeconds, defaultUserOnboardingFlowExpiry)
+	case providers.FlowTypeDeviceGrant:
+		return firstPositiveExpiry(cfg.DeviceGrantFlow.ExpirySeconds, defaultDeviceGrantFlowExpiry)
 	case providers.FlowTypeRecovery:
 		return firstPositiveExpiry(cfg.RecoveryFlow.ExpirySeconds, defaultRecoveryFlowExpiry)
 	case providers.FlowTypeSignOut:
@@ -1243,6 +1330,8 @@ func (s *flowExecService) resolveDefaultFlowHandle(ctx context.Context, flowType
 	switch flowType {
 	case providers.FlowTypeAuthentication:
 		return cfg.AuthFlow.DefaultHandle
+	case providers.FlowTypeDeviceGrant:
+		return cfg.DeviceGrantFlow.DefaultHandle
 	case providers.FlowTypeRegistration:
 		return cfg.RegistrationFlow.DefaultHandle
 	case providers.FlowTypeUserOnboarding:

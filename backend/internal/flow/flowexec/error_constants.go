@@ -312,3 +312,18 @@ var ErrorFlowApplicationNotUsable = tidcommon.ServiceError{
 		DefaultValue: "The flow cannot be executed for the requested application",
 	},
 }
+
+// ErrorInvalidDeviceGrantCode defines the generic error returned when a Device Grant flow cannot
+// be resolved from the submitted user code.
+var ErrorInvalidDeviceGrantCode = tidcommon.ServiceError{
+	Code: "FES-1022",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.invalid_device_grant_code",
+		DefaultValue: "This code is invalid or no longer available. Try again.",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.invalid_device_grant_code_description",
+		DefaultValue: "The code is invalid or no longer available",
+	},
+}

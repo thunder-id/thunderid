@@ -218,6 +218,7 @@ func (v *flowValidator) validateMetadata(
 // requiredExecutorsByFlowType maps flow type → executor names that must appear at least once.
 var requiredExecutorsByFlowType = map[providers.FlowType][]string{
 	providers.FlowTypeAuthentication: {executormeta.ExecutorNameAuthAssert},
+	providers.FlowTypeDeviceGrant:    {executormeta.ExecutorNameDeviceCode},
 	providers.FlowTypeRegistration: {
 		executormeta.ExecutorNameProvisioning, executormeta.ExecutorNameUserTypeResolver,
 	},
@@ -267,6 +268,11 @@ func (v *flowValidator) validateFlowTypeBasedConstraints(
 	if svcErr := v.validateModeFlowTypes(flowType, nodes); svcErr != nil {
 		return svcErr
 	}
+	if flowType == providers.FlowTypeDeviceGrant {
+		if svcErr := validateDeviceGrantAuthenticationCall(nodes); svcErr != nil {
+			return svcErr
+		}
+	}
 	return v.validateCompanionExecutors(nodes)
 }
 
@@ -294,6 +300,73 @@ func (v *flowValidator) validateModeFlowTypes(
 				"flowType":     string(flowType),
 			},
 		})
+	}
+	return nil
+}
+
+// validateDeviceGrantAuthenticationCall requires the Device Grant flow to call the requesting
+// application's Authentication flow only after successful user-code verification.
+func validateDeviceGrantAuthenticationCall(nodes []providers.NodeDefinition) *tidcommon.ServiceError {
+	authCalls := make(map[string]bool)
+	startID := ""
+	for _, node := range nodes {
+		if node.Type == string(common.NodeTypeStart) {
+			startID = node.ID
+		}
+		if node.Type != string(common.NodeTypeCall) || node.Flow == nil {
+			continue
+		}
+		if node.Flow.Ref != "" {
+			authCalls[node.ID] = true
+		}
+	}
+	if len(authCalls) == 0 {
+		return tidcommon.CustomServiceError(ErrorInvalidNodeConfig, tidcommon.I18nMessage{
+			Key: "error.flowmgtservice.device_grant_authentication_call_missing_description",
+			DefaultValue: "Device Grant flows require a Call node configured for the requesting application's " +
+				"Authentication flow",
+		})
+	}
+
+	// Follow only paths where the device code has not been verified. The executor's
+	// onSuccess edge is the only path that establishes a verified request.
+	adjacency := buildAdjacencyList(nodes)
+	for _, node := range nodes {
+		if node.Type != string(common.NodeTypeTaskExecution) || node.Executor == nil ||
+			node.Executor.Name != executormeta.ExecutorNameDeviceCode {
+			continue
+		}
+		adjacency[node.ID] = nil
+		if node.OnIncomplete != "" {
+			adjacency[node.ID] = append(adjacency[node.ID], node.OnIncomplete)
+		}
+		if node.OnFailure != "" {
+			adjacency[node.ID] = append(adjacency[node.ID], node.OnFailure)
+		}
+		if node.Condition != nil && node.Condition.OnSkip != "" {
+			adjacency[node.ID] = append(adjacency[node.ID], node.Condition.OnSkip)
+		}
+	}
+
+	visited := map[string]bool{startID: true}
+	queue := []string{startID}
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		if authCalls[current] {
+			return tidcommon.CustomServiceError(ErrorInvalidNodeConfig, tidcommon.I18nMessage{
+				Key: "error.flowmgtservice.device_grant_authentication_call_before_verification_description",
+				DefaultValue: "Device Grant Call node '{{param(nodeID)}}' must run only after successful " +
+					"user-code verification",
+				Params: map[string]string{"nodeID": current},
+			})
+		}
+		for _, next := range adjacency[current] {
+			if !visited[next] {
+				visited[next] = true
+				queue = append(queue, next)
+			}
+		}
 	}
 	return nil
 }

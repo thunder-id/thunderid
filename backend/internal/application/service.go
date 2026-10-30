@@ -229,6 +229,7 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 
 	appForReturn := *app
 	appForReturn.AuthFlowID = inboundClient.AuthFlowID
+	appForReturn.DeviceGrantFlowID = inboundClient.DeviceGrantFlowID
 	appForReturn.RegistrationFlowID = inboundClient.RegistrationFlowID
 	appForReturn.RecoveryFlowID = inboundClient.RecoveryFlowID
 	appForReturn.SignOutFlowID = inboundClient.SignOutFlowID
@@ -322,6 +323,7 @@ func (as *applicationService) ValidateApplication(ctx context.Context, app *mode
 		return nil, nil, &tidcommon.InternalServerError
 	}
 	processedDTO.AuthFlowID = inboundClient.AuthFlowID
+	processedDTO.DeviceGrantFlowID = inboundClient.DeviceGrantFlowID
 	processedDTO.RegistrationFlowID = inboundClient.RegistrationFlowID
 	processedDTO.RecoveryFlowID = inboundClient.RecoveryFlowID
 	processedDTO.SignOutFlowID = inboundClient.SignOutFlowID
@@ -550,6 +552,7 @@ func (as *applicationService) UpdateApplication(ctx context.Context, appID strin
 
 	appForReturn := *app
 	appForReturn.AuthFlowID = inboundClient.AuthFlowID
+	appForReturn.DeviceGrantFlowID = inboundClient.DeviceGrantFlowID
 	appForReturn.RegistrationFlowID = inboundClient.RegistrationFlowID
 	appForReturn.RecoveryFlowID = inboundClient.RecoveryFlowID
 	appForReturn.SignOutFlowID = inboundClient.SignOutFlowID
@@ -1187,6 +1190,7 @@ func toInboundClient(dto *model.ApplicationProcessedDTO) inboundmodel.InboundCli
 	dao := inboundmodel.InboundClient{
 		ID:                        dto.ID,
 		AuthFlowID:                dto.AuthFlowID,
+		DeviceGrantFlowID:         dto.DeviceGrantFlowID,
 		RegistrationFlowID:        dto.RegistrationFlowID,
 		IsRegistrationFlowEnabled: dto.IsRegistrationFlowEnabled,
 		RecoveryFlowID:            dto.RecoveryFlowID,
@@ -1245,6 +1249,7 @@ func toProcessedDTO(
 		ID: dao.ID,
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                dao.AuthFlowID,
+			DeviceGrantFlowID:         dao.DeviceGrantFlowID,
 			RegistrationFlowID:        dao.RegistrationFlowID,
 			IsRegistrationFlowEnabled: dao.IsRegistrationFlowEnabled,
 			RecoveryFlowID:            dao.RecoveryFlowID,
@@ -1996,6 +2001,8 @@ func translateInboundClientFKError(err error) *tidcommon.ServiceError {
 		return &ErrorInvalidRegistrationFlowID
 	case errors.Is(err, inboundclient.ErrFKInvalidRecoveryFlow):
 		return &ErrorInvalidRecoveryFlowID
+	case errors.Is(err, inboundclient.ErrFKInvalidDeviceGrantFlow):
+		return &ErrorInvalidDeviceGrantFlowID
 	case errors.Is(err, inboundclient.ErrFKFlowDefinitionRetrievalFailed):
 		return &ErrorWhileRetrievingFlowDefinition
 	case errors.Is(err, inboundclient.ErrFKFlowServerError):
@@ -2265,6 +2272,7 @@ func buildApplicationResponse(dto *model.ApplicationProcessedDTO) *providers.App
 		Status:      dto.Status,
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                dto.AuthFlowID,
+			DeviceGrantFlowID:         dto.DeviceGrantFlowID,
 			RegistrationFlowID:        dto.RegistrationFlowID,
 			IsRegistrationFlowEnabled: dto.IsRegistrationFlowEnabled,
 			RecoveryFlowID:            dto.RecoveryFlowID,
@@ -2329,6 +2337,7 @@ func buildBasicApplicationResponse(
 	resp := model.BasicApplicationResponse{
 		ID:                        cfg.ID,
 		AuthFlowID:                cfg.AuthFlowID,
+		DeviceGrantFlowID:         cfg.DeviceGrantFlowID,
 		RegistrationFlowID:        cfg.RegistrationFlowID,
 		IsRegistrationFlowEnabled: cfg.IsRegistrationFlowEnabled,
 		RecoveryFlowID:            cfg.RecoveryFlowID,
@@ -2381,6 +2390,7 @@ func buildBaseApplicationProcessedDTO(appID string, app *model.ApplicationDTO,
 		Description: app.Description,
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                app.AuthFlowID,
+			DeviceGrantFlowID:         app.DeviceGrantFlowID,
 			RegistrationFlowID:        app.RegistrationFlowID,
 			IsRegistrationFlowEnabled: app.IsRegistrationFlowEnabled,
 			RecoveryFlowID:            app.RecoveryFlowID,
@@ -2470,6 +2480,7 @@ func buildReturnApplicationDTO(
 		Description: app.Description,
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                app.AuthFlowID,
+			DeviceGrantFlowID:         app.DeviceGrantFlowID,
 			RegistrationFlowID:        app.RegistrationFlowID,
 			IsRegistrationFlowEnabled: app.IsRegistrationFlowEnabled,
 			RecoveryFlowID:            app.RecoveryFlowID,

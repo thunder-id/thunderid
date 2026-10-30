@@ -62,6 +62,8 @@ func (ah *applicationHandler) HandleApplicationPostRequest(w http.ResponseWriter
 		Description: appRequest.Description,
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                appRequest.AuthFlowID,
+			DeviceGrantFlowHandle:     appRequest.DeviceGrantFlowHandle,
+			DeviceGrantFlowID:         appRequest.DeviceGrantFlowID,
 			RegistrationFlowID:        appRequest.RegistrationFlowID,
 			IsRegistrationFlowEnabled: appRequest.IsRegistrationFlowEnabled,
 			RecoveryFlowID:            appRequest.RecoveryFlowID,
@@ -102,6 +104,7 @@ func (ah *applicationHandler) HandleApplicationPostRequest(w http.ResponseWriter
 		Description: createdAppDTO.Description,
 		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{
 			AuthFlowID:                createdAppDTO.AuthFlowID,
+			DeviceGrantFlowID:         createdAppDTO.DeviceGrantFlowID,
 			RegistrationFlowID:        createdAppDTO.RegistrationFlowID,
 			IsRegistrationFlowEnabled: createdAppDTO.IsRegistrationFlowEnabled,
 			RecoveryFlowID:            createdAppDTO.RecoveryFlowID,
@@ -203,6 +206,7 @@ func toApplicationGetResponse(ctx context.Context, appDTO *providers.Application
 		Description: appDTO.Description,
 		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{
 			AuthFlowID:                appDTO.AuthFlowID,
+			DeviceGrantFlowID:         appDTO.DeviceGrantFlowID,
 			RegistrationFlowID:        appDTO.RegistrationFlowID,
 			IsRegistrationFlowEnabled: appDTO.IsRegistrationFlowEnabled,
 			RecoveryFlowID:            appDTO.RecoveryFlowID,
@@ -333,6 +337,8 @@ func (ah *applicationHandler) HandleApplicationPutRequest(w http.ResponseWriter,
 		Description: appRequest.Description,
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                appRequest.AuthFlowID,
+			DeviceGrantFlowHandle:     appRequest.DeviceGrantFlowHandle,
+			DeviceGrantFlowID:         appRequest.DeviceGrantFlowID,
 			RegistrationFlowID:        appRequest.RegistrationFlowID,
 			IsRegistrationFlowEnabled: appRequest.IsRegistrationFlowEnabled,
 			RecoveryFlowID:            appRequest.RecoveryFlowID,
@@ -373,6 +379,7 @@ func (ah *applicationHandler) HandleApplicationPutRequest(w http.ResponseWriter,
 		Description: updatedAppDTO.Description,
 		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{
 			AuthFlowID:                updatedAppDTO.AuthFlowID,
+			DeviceGrantFlowID:         updatedAppDTO.DeviceGrantFlowID,
 			RegistrationFlowID:        updatedAppDTO.RegistrationFlowID,
 			IsRegistrationFlowEnabled: updatedAppDTO.IsRegistrationFlowEnabled,
 			RecoveryFlowID:            updatedAppDTO.RecoveryFlowID,

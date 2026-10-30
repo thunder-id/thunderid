@@ -458,6 +458,19 @@ var (
 			DefaultValue: "The provided recovery flow ID is invalid",
 		},
 	}
+	// ErrorInvalidDeviceGrantFlowID is returned when an invalid Device Grant flow is assigned.
+	ErrorInvalidDeviceGrantFlowID = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1038",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_device_grant_flow_id",
+			DefaultValue: "Invalid Device Grant flow ID",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_device_grant_flow_id_description",
+			DefaultValue: "The Device Grant flow must call this application's configured Authentication flow",
+		},
+	}
 	// ErrorNativeFlowNotAllowedForSPA is returned when a public client (SPA) is configured for
 	// native (embedded) flow execution instead of a redirect-based authorization_code flow.
 	ErrorNativeFlowNotAllowedForSPA = tidcommon.ServiceError{
