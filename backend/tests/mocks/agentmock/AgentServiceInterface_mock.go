@@ -508,6 +508,76 @@ func (_c *AgentServiceInterfaceMock_GetAgentRoles_Call) RunAndReturn(run func(ct
 	return _c
 }
 
+// GetClientRules provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) GetClientRules(ctx context.Context, agentID string) (*providers.ClientRules, *common.ServiceError) {
+	ret := _mock.Called(ctx, agentID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetClientRules")
+	}
+
+	var r0 *providers.ClientRules
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*providers.ClientRules, *common.ServiceError)); ok {
+		return returnFunc(ctx, agentID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *providers.ClientRules); ok {
+		r0 = returnFunc(ctx, agentID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*providers.ClientRules)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, agentID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AgentServiceInterfaceMock_GetClientRules_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetClientRules'
+type AgentServiceInterfaceMock_GetClientRules_Call struct {
+	*mock.Call
+}
+
+// GetClientRules is a helper method to define mock.On call
+//   - ctx context.Context
+//   - agentID string
+func (_e *AgentServiceInterfaceMock_Expecter) GetClientRules(ctx any, agentID any) *AgentServiceInterfaceMock_GetClientRules_Call {
+	return &AgentServiceInterfaceMock_GetClientRules_Call{Call: _e.mock.On("GetClientRules", ctx, agentID)}
+}
+
+func (_c *AgentServiceInterfaceMock_GetClientRules_Call) Run(run func(ctx context.Context, agentID string)) *AgentServiceInterfaceMock_GetClientRules_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_GetClientRules_Call) Return(clientRules *providers.ClientRules, serviceError *common.ServiceError) *AgentServiceInterfaceMock_GetClientRules_Call {
+	_c.Call.Return(clientRules, serviceError)
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_GetClientRules_Call) RunAndReturn(run func(ctx context.Context, agentID string) (*providers.ClientRules, *common.ServiceError)) *AgentServiceInterfaceMock_GetClientRules_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetResourceDependencies provides a mock function for the type AgentServiceInterfaceMock
 func (_mock *AgentServiceInterfaceMock) GetResourceDependencies(ctx context.Context, resourceType string, id string) ([]resourcedependency.ResourceDependency, error) {
 	ret := _mock.Called(ctx, resourceType, id)

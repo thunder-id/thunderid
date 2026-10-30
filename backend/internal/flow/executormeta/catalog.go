@@ -226,7 +226,7 @@ var catalog = map[string]providers.ExecutorMeta{
 		},
 	},
 	ExecutorNameAgentTypeResolver: {
-		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "AUTHENTICATION"},
+		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "AUTHENTICATION", "REGISTRATION"},
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "allowedAgentTypes"},
 		},

@@ -1564,6 +1564,10 @@ components:
               type: integer
               description: The validity period of the login consent in seconds. Default is 0 (no expiration).
               example: 3600
+            alwaysPrompt:
+              type: boolean
+              description: Ask for consent on every authorization, even when an earlier consent covers it. Defaults to false.
+              example: false
         metadata:
           type: object
           additionalProperties: true
@@ -1718,6 +1722,10 @@ components:
               type: integer
               description: The validity period of the consent in seconds. Default is 0 (no expiration).
               example: 3600
+            alwaysPrompt:
+              type: boolean
+              description: Ask for consent on every authorization, even when an earlier consent covers it. Defaults to false.
+              example: false
         status:
           allOf:
             - $ref: '#/components/schemas/ApplicationAccessStatus'
@@ -1855,6 +1863,10 @@ components:
               type: integer
               description: The validity period of the consent in seconds. Default is 0 (no expiration).
               example: 3600
+            alwaysPrompt:
+              type: boolean
+              description: Ask for consent on every authorization, even when an earlier consent covers it. Defaults to false.
+              example: false
         metadata:
           type: object
           additionalProperties: true

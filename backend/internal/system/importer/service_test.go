@@ -2984,6 +2984,23 @@ func TestImportAgent_StateIgnored(t *testing.T) {
 	}
 }
 
+func TestImportAgent_CreateCarriesKind(t *testing.T) {
+	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{}}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc, nil, nil, nil, nil, nil)
+
+	content := agentYAML + "owner: user-1\nkind: " + string(providers.AgentKindPersonalAssistant) + "\n"
+	resp, svcErr := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	require.Nil(t, svcErr)
+	require.NotNil(t, resp)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	require.Len(t, agentSvc.created, 1)
+	assert.Equal(t, providers.AgentKindPersonalAssistant, agentSvc.created[0].Kind)
+	assert.Equal(t, "user-1", agentSvc.created[0].Owner)
+}
+
 func TestImportAgent_UpsertUpdate(t *testing.T) {
 	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{
 		"agent-1": {ID: "agent-1", Attributes: json.RawMessage(`{"name":"Test Agent"}`)},

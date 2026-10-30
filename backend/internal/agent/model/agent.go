@@ -15,6 +15,14 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
+// AgentSystemAttributes holds the agent fields kept in the entity SystemAttributes blob.
+type AgentSystemAttributes struct {
+	Description string
+	Owner       string
+	ClientID    string
+	Kind        providers.AgentKind
+}
+
 // AgentRequestWithID is the YAML-aware struct used for declarative resource loading.
 // Attributes uses map[string]interface{} (not json.RawMessage) so the YAML library can
 // deserialize nested maps; the entity parser converts it to json.RawMessage before storage.
@@ -27,6 +35,7 @@ type AgentRequestWithID struct {
 	LogoURL     string                 `json:"logoUrl,omitempty"     yaml:"logoUrl,omitempty"`
 	Owner       string                 `json:"owner,omitempty"       yaml:"owner,omitempty"`
 	Attributes  map[string]interface{} `json:"attributes,omitempty"  yaml:"attributes,omitempty"`
+	Kind        providers.AgentKind    `json:"kind,omitempty" yaml:"kind,omitempty"`
 
 	inboundmodel.InboundAuthProfileReq `yaml:",inline"`
 	InboundAuthConfig                  []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
@@ -42,6 +51,8 @@ type CreateAgentRequest struct {
 	Owner       string          `json:"owner,omitempty"`
 	Delegated   bool            `json:"delegated,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
+
+	Kind providers.AgentKind `json:"kind,omitempty"`
 
 	inboundmodel.InboundAuthProfileReq
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
@@ -78,6 +89,8 @@ type AgentCompleteResponse struct {
 	// LastLoginAt is when this agent was last granted access, set on update responses.
 	LastLoginAt string `json:"lastLoginAt,omitempty"`
 
+	Kind providers.AgentKind `json:"kind,omitempty"`
+
 	inboundmodel.InboundAuthProfileReq
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
 }
@@ -104,6 +117,8 @@ type AgentGetResponse struct {
 	// profile write, and absent until a sign-in has been recorded.
 	LastLoginAt string `json:"lastLoginAt,omitempty" yaml:"-"`
 
+	Kind providers.AgentKind `json:"kind,omitempty" yaml:"kind,omitempty"`
+
 	inboundmodel.InboundAuthProfileReq `yaml:",inline"`
 	InboundAuthConfig                  []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
 }
@@ -128,6 +143,8 @@ type BasicAgentResponse struct {
 	LastLoginAt string `json:"lastLoginAt,omitempty"`
 	// IsOwnedByOU says whether the listed organization unit owns the agent rather than being shared it.
 	IsOwnedByOU *bool `json:"isOwnedByOU,omitempty"`
+
+	Kind providers.AgentKind `json:"kind,omitempty"`
 }
 
 // AgentListResponse is the paginated list response.

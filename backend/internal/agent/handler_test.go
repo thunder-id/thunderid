@@ -117,6 +117,12 @@ func (s *InlineStubAgentService) GetResourceDependencies(
 
 func (s *InlineStubAgentService) SetDependencyRegistry(resourcedependency.Registry) {}
 
+func (s *InlineStubAgentService) GetClientRules(
+	ctx context.Context, agentID string,
+) (*providers.ClientRules, *tidcommon.ServiceError) {
+	return nil, nil
+}
+
 func TestHandleAgentPostRequest_Success(t *testing.T) {
 	stubService := &InlineStubAgentService{
 		OnCreateAgent: func(
@@ -273,6 +279,51 @@ func TestHandleAgentPutRequest_InvalidJSONFormat(t *testing.T) {
 
 	handler.HandleAgentPutRequest(w, req)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// The handler forwards the kind as given; the agent service refuses an unknown kind and applies the rules
+// for a personal agent (an owner that is a user, and the personal grant types).
+func TestHandleAgentPostRequest_KindForwarded(t *testing.T) {
+	for _, kind := range []providers.AgentKind{providers.AgentKindPersonalAssistant, "personal_assistant"} {
+		t.Run(string(kind), func(t *testing.T) {
+			var forwarded providers.AgentKind
+			stubService := &InlineStubAgentService{
+				OnCreateAgent: func(
+					ctx context.Context, agent *providers.Agent,
+				) (*model.AgentCompleteResponse, *tidcommon.ServiceError) {
+					forwarded = agent.Kind
+					return &model.AgentCompleteResponse{}, nil
+				},
+			}
+			handler := newAgentHandler(stubService)
+			body := `{"ouId": "ou-123", "type": "worker", "attributes": {"name": "Valid Agent Name"},
+				"kind": "` + string(kind) + `"}`
+			req := httptest.NewRequest(http.MethodPost, "/agents", bytes.NewBufferString(body))
+			w := httptest.NewRecorder()
+
+			handler.HandleAgentPostRequest(w, req)
+			assert.Equal(t, http.StatusCreated, w.Code)
+			assert.Equal(t, kind, forwarded)
+		})
+	}
+}
+
+func TestHandleAgentPutRequest_PersonalAgentForbidden(t *testing.T) {
+	stubService := &InlineStubAgentService{
+		OnUpdateAgent: func(
+			ctx context.Context, id string, req *model.UpdateAgentRequest,
+		) (*model.AgentCompleteResponse, *tidcommon.ServiceError) {
+			return nil, &ErrorCannotUpdatePersonalAgent
+		},
+	}
+	handler := newAgentHandler(stubService)
+	req := httptest.NewRequest(http.MethodPut, "/agents/agent-123",
+		bytes.NewBufferString(`{"attributes": {"name": "Updated Valid Name"}}`))
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentPutRequest(w, req)
+	assert.Equal(t, http.StatusForbidden, w.Code)
 }
 
 func TestHandleAgentGetRequest_Success(t *testing.T) {

@@ -13,7 +13,7 @@ import (
 
 // applyGrantTypes applies the grant policy to an agent being created.
 func applyGrantTypes(agent *providers.Agent) *tidcommon.ServiceError {
-	configs, svcErr := resolveGrantTypes(agent.InboundAuthConfig, agent.Delegated)
+	configs, svcErr := resolveGrantTypes(agent.InboundAuthConfig, agent.Delegated, agent.Kind)
 	if svcErr != nil {
 		return svcErr
 	}
@@ -24,16 +24,17 @@ func applyGrantTypes(agent *providers.Agent) *tidcommon.ServiceError {
 // resolveGrantTypes fills in and checks the OAuth grant types of an agent being created or updated,
 // before the inbound client service sees them. Every agent holds client credentials, except a public
 // client, which cannot use them. A delegated agent also needs a grant type that lets it act for a
-// user, or gets the delegated defaults when it asks for none. The given configs are copied, not
-// mutated.
+// user, or gets the delegated defaults when it asks for none. A personal agent follows its own rules
+// whatever delegated says (resolvePersonalAssistantGrantTypes). The given configs are copied, not mutated.
 //
 // A non-delegated agent with no OAuth configuration gets none, since the caller did not ask for a
-// client. A delegated one always gets one.
+// client. A delegated or personal one always gets one.
 func resolveGrantTypes(
-	inboundConfigs []providers.InboundAuthConfigWithSecret, delegated bool,
+	inboundConfigs []providers.InboundAuthConfigWithSecret, delegated bool, kind providers.AgentKind,
 ) ([]providers.InboundAuthConfigWithSecret, *tidcommon.ServiceError) {
+	isPersonalAssistantKind := kind == providers.AgentKindPersonalAssistant
 	index := oauthConfigIndex(inboundConfigs)
-	if index < 0 && !delegated {
+	if index < 0 && !delegated && !isPersonalAssistantKind {
 		return inboundConfigs, nil
 	}
 
@@ -45,6 +46,14 @@ func resolveGrantTypes(
 	oauthConfig := providers.OAuthConfigWithSecret{}
 	if configs[index].OAuthConfig != nil {
 		oauthConfig = *configs[index].OAuthConfig
+	}
+
+	if isPersonalAssistantKind {
+		if svcErr := resolvePersonalAssistantGrantTypes(&oauthConfig); svcErr != nil {
+			return nil, svcErr
+		}
+		configs[index].OAuthConfig = &oauthConfig
+		return configs, nil
 	}
 
 	givenGrantTypes := slices.Clone(oauthConfig.GrantTypes)
@@ -73,6 +82,26 @@ func resolveGrantTypes(
 
 	configs[index].OAuthConfig = &oauthConfig
 	return configs, nil
+}
+
+// resolvePersonalAssistantGrantTypes applies the grant rules of an agent of the personal assistant kind: it may
+// hold only the personal grants, and gets the authorization code grant when it asks for none. Client credentials
+// are never added, so it cannot act on its own authority. With the authorization code grant it gets response
+// type code and PKCE.
+func resolvePersonalAssistantGrantTypes(oauthConfig *providers.OAuthConfigWithSecret) *tidcommon.ServiceError {
+	grantTypes := slices.Clone(oauthConfig.GrantTypes)
+	if len(grantTypes) == 0 {
+		grantTypes = []providers.GrantType{providers.GrantTypeAuthorizationCode}
+	}
+	if svcErr := validatePersonalAgentGrantTypes(grantTypes); svcErr != nil {
+		return svcErr
+	}
+	if slices.Contains(grantTypes, providers.GrantTypeAuthorizationCode) {
+		oauthConfig.ResponseTypes = []providers.ResponseType{providers.ResponseTypeCode}
+		oauthConfig.PKCERequired = true
+	}
+	oauthConfig.GrantTypes = grantTypes
+	return nil
 }
 
 // isPublicClient reports whether the client authenticates without a secret.

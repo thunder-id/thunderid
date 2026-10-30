@@ -284,6 +284,601 @@ nodes:
       y: 509
 ---
 resource_type: flow
+id: 01900000-0000-7000-8000-000000000092
+ouHandle: default
+name: Default Personal Agent Authentication Flow
+handle: default-personal-agent-auth-flow
+flowType: AUTHENTICATION
+nodes:
+- id: start
+  type: START
+  onSuccess: prompt_credentials
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 248
+      y: 711
+- id: prompt_credentials
+  type: PROMPT
+  meta:
+    components:
+    - alt: '{{ t(signin:images.app_logo.alt) }}'
+      category: DISPLAY
+      height: '60'
+      id: image
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      width: ''
+    - align: center
+      type: TEXT
+      id: text_001
+      label: '{{ t(signin:forms.credentials.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_001
+      components:
+      - id: input_001
+        ref: username
+        type: TEXT_INPUT
+        label: '{{ t(signin:forms.credentials.fields.username.label) }}'
+        required: true
+        placeholder: '{{ t(signin:forms.credentials.fields.username.placeholder) }}'
+      - id: input_002
+        ref: password
+        type: PASSWORD_INPUT
+        label: '{{ t(signin:forms.credentials.fields.password.label) }}'
+        required: true
+        placeholder: '{{ t(signin:forms.credentials.fields.password.placeholder) }}'
+      - category: DISPLAY
+        id: rich_text_forgot_password
+        action:
+          ref: action_forgot_password
+        label: <p data-component-ref="recovery-link" class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.forgot_password.prefix) }} </span><a href="#" data-action-ref="action_forgot_password" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.forgot_password.label) }}</span></a></p>
+        resourceType: ELEMENT
+        type: RICH_TEXT
+      - type: ACTION
+        id: action_001
+        label: '{{ t(signin:forms.credentials.actions.submit.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_001
+      identifier: username
+      type: TEXT_INPUT
+      required: true
+    - ref: input_002
+      identifier: password
+      type: PASSWORD_INPUT
+      required: true
+    action:
+      ref: action_001
+      nextNode: credentials_auth
+  - action:
+      ref: action_forgot_password
+      nextNode: call_recovery
+  layout:
+    size:
+      width: 350
+      height: 834
+    position:
+      x: 562
+      y: 312
+- id: credentials_auth
+  type: TASK_EXECUTION
+  executor:
+    name: CredentialsAuthExecutor
+  onSuccess: authorization_check
+  onIncomplete: prompt_credentials
+  layout:
+    size:
+      width: 217
+      height: 113
+    position:
+      x: 1283
+      y: 470
+- id: authorization_check
+  type: TASK_EXECUTION
+  executor:
+    name: AuthorizationExecutor
+  onSuccess: consent_check
+  layout:
+    size:
+      width: 200
+      height: 113
+    position:
+      x: 1774
+      y: 470
+- id: consent_check
+  type: TASK_EXECUTION
+  executor:
+    name: ConsentExecutor
+  onSuccess: auth_assert
+  onIncomplete: prompt_consent
+  layout:
+    size:
+      width: 244
+      height: 113
+    position:
+      x: 2168
+      y: 469
+- id: prompt_consent
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: consent_heading
+      label: '{{ t(consent:title) }}'
+      variant: HEADING_3
+    - align: center
+      type: TEXT
+      id: consent_agent_message
+      label: '{{ meta(application.name) }} wants to access your resources on your behalf.'
+      variant: BODY_1
+    - align: center
+      type: TEXT
+      id: consent_message
+      label: '{{ t(consent:message) }}'
+      variant: BODY_1
+    - type: BLOCK
+      id: consent_block
+      components:
+      - id: consent_input
+        ref: consent_decisions
+        type: CONSENT_INPUT
+        required: true
+      - type: ACTION
+        id: consent_action_allow
+        label: '{{ t(consent:allow) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+      - type: ACTION
+        id: consent_action_deny
+        label: '{{ t(consent:deny) }}'
+        variant: SECONDARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: consent_input
+      identifier: consent_decisions
+      type: CONSENT_INPUT
+      required: true
+    action:
+      ref: consent_action_allow
+      nextNode: consent_check
+  - inputs:
+    - ref: consent_input
+      identifier: consent_decisions
+      type: CONSENT_INPUT
+      required: true
+    action:
+      ref: consent_action_deny
+      nextNode: consent_check
+  layout:
+    size:
+      width: 350
+      height: 500
+    position:
+      x: 2168
+      y: -100
+- id: auth_assert
+  type: TASK_EXECUTION
+  executor:
+    name: AuthAssertExecutor
+  onSuccess: end
+  layout:
+    size:
+      width: 244
+      height: 113
+    position:
+      x: 2562
+      y: 469
+- id: call_recovery
+  type: CALL
+  flow:
+    ref: 01900000-0000-7000-8000-000000000067
+  onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 129
+    position:
+      x: 1255
+      y: 773
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 2921
+      y: 509
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000093
+ouHandle: default
+name: User and Personal Assistant Registration Flow
+handle: user-and-personal-assistant-registration-flow
+flowType: REGISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: prompt_registration_choice
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 0
+      y: 480
+- id: prompt_registration_choice
+  type: PROMPT
+  meta:
+    components:
+    - alt: '{{ t(signup:images.app_logo.alt) }}'
+      category: DISPLAY
+      height: '60'
+      id: image
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+    - align: center
+      type: TEXT
+      id: heading_registration_choice
+      label: '{{ t(signup:forms.registration_choice.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_registration_choice
+      components:
+      - type: ACTION
+        id: action_register_user
+        label: '{{ t(signup:forms.registration_choice.actions.register_user.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+      - type: ACTION
+        id: action_register_personal_agent
+        label: '{{ t(signup:forms.registration_choice.actions.register_personal_agent.label) }}'
+        variant: SECONDARY
+        eventType: SUBMIT
+  prompts:
+  - action:
+      ref: action_register_user
+      nextNode: user_type_resolver
+  - action:
+      ref: action_register_personal_agent
+      nextNode: call_owner_login
+  layout:
+    size:
+      width: 350
+      height: 320
+    position:
+      x: 180
+      y: 380
+
+# User branch: as the default registration flow.
+- id: user_type_resolver
+  type: TASK_EXECUTION
+  executor:
+    name: UserTypeResolver
+  onSuccess: prompt_credentials
+  onIncomplete: prompt_usertype
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 640
+      y: 0
+- id: prompt_usertype
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: heading_usertype
+      label: '{{ t(signup:forms.user_type.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_usertype
+      components:
+      - type: SELECT
+        id: usertype_input
+        ref: userType
+        label: '{{ t(signup:forms.user_type.fields.user_type.label) }}'
+        placeholder: '{{ t(signup:forms.user_type.fields.user_type.placeholder) }}'
+        required: true
+        options: []
+      - type: ACTION
+        id: action_usertype
+        label: '{{ t(signup:forms.user_type.actions.continue.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: usertype_input
+      identifier: userType
+      type: SELECT
+      required: true
+    action:
+      ref: action_usertype
+      nextNode: user_type_resolver
+  layout:
+    size:
+      width: 350
+      height: 320
+    position:
+      x: 640
+      y: -400
+- id: prompt_credentials
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: heading_credentials
+      label: '{{ t(signup:forms.credentials.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_credentials
+      components:
+      - type: TEXT_INPUT
+        id: input_username
+        ref: username
+        label: '{{ t(signup:forms.credentials.fields.username.label) }}'
+        placeholder: '{{ t(signup:forms.credentials.fields.username.placeholder) }}'
+        required: true
+      - type: PASSWORD_INPUT
+        id: input_password
+        ref: password
+        label: '{{ t(signup:forms.credentials.fields.password.label) }}'
+        placeholder: '{{ t(signup:forms.credentials.fields.password.placeholder) }}'
+        required: true
+      - type: ACTION
+        id: action_credentials
+        label: '{{ t(signup:forms.credentials.actions.continue.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_username
+      identifier: username
+      type: TEXT_INPUT
+      required: true
+    - ref: input_password
+      identifier: password
+      type: PASSWORD_INPUT
+      required: true
+    action:
+      ref: action_credentials
+      nextNode: credentials_auth
+  layout:
+    size:
+      width: 350
+      height: 400
+    position:
+      x: 920
+      y: -400
+- id: credentials_auth
+  type: TASK_EXECUTION
+  executor:
+    name: CredentialsAuthExecutor
+  onSuccess: user_provisioning
+  onFailure: prompt_credentials
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1200
+      y: 0
+- id: user_provisioning
+  type: TASK_EXECUTION
+  executor:
+    name: ProvisioningExecutor
+  onSuccess: end
+  onIncomplete: prompt_schema_attrs
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1480
+      y: 0
+- id: prompt_schema_attrs
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: heading_schema_attrs
+      label: '{{ t(signup:forms.user_info.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_dynamic_user_inputs
+      components:
+      - type: DYNAMIC_INPUT_PLACEHOLDER
+        id: dynamic_inputs
+      - type: ACTION
+        id: action_schema_attrs
+        label: '{{ t(signup:forms.user_info.actions.continue.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs: []
+    action:
+      ref: action_schema_attrs
+      nextNode: user_provisioning
+  layout:
+    size:
+      width: 350
+      height: 320
+    position:
+      x: 1480
+      y: -400
+
+# Personal assistant branch: sign the owner in, then register the agent for them.
+- id: call_owner_login
+  type: CALL
+  flow:
+    ref: 01900000-0000-7000-8000-000000000092
+  onSuccess: agent_type_resolution
+  layout:
+    size:
+      width: 260
+      height: 129
+    position:
+      x: 920
+      y: 900
+- id: agent_type_resolution
+  type: TASK_EXECUTION
+  properties:
+    allowedAgentTypes:
+    - default
+  executor:
+    name: AgentTypeResolver
+  onSuccess: agent_provisioning
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1240
+      y: 910
+- id: prompt_agent_details
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: text_header_agent_details
+      label: '{{ t(signup:forms.personal_agent_details.title) }}'
+      variant: HEADING_1
+    - align: left
+      type: TEXT
+      id: text_subtitle_agent_details
+      label: '{{ t(signup:forms.personal_agent_details.subtitle) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_agent_details
+      components:
+      - type: DYNAMIC_INPUT_PLACEHOLDER
+        id: dynamic_agent_inputs
+      - id: input_agent_redirect_uris
+        ref: redirectUris
+        type: TEXT_INPUT
+        label: '{{ t(signup:forms.personal_agent_details.fields.redirect_uris.label) }}'
+        required: true
+        placeholder: '{{ t(signup:forms.personal_agent_details.fields.redirect_uris.placeholder) }}'
+      - id: input_agent_jwks_uri
+        ref: jwksUri
+        type: TEXT_INPUT
+        label: '{{ t(signup:forms.personal_agent_details.fields.jwks_uri.label) }}'
+        required: false
+        placeholder: '{{ t(signup:forms.personal_agent_details.fields.jwks_uri.placeholder) }}'
+      - id: input_agent_public_key
+        ref: publicKey
+        type: TEXT_INPUT
+        label: '{{ t(signup:forms.personal_agent_details.fields.public_key.label) }}'
+        required: false
+        placeholder: '{{ t(signup:forms.personal_agent_details.fields.public_key.placeholder) }}'
+      - type: ACTION
+        id: action_agent_details
+        label: '{{ t(signup:forms.personal_agent_details.actions.submit.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_agent_redirect_uris
+      identifier: redirectUris
+      type: TEXT_INPUT
+      required: true
+    - ref: input_agent_jwks_uri
+      identifier: jwksUri
+      type: TEXT_INPUT
+      required: false
+    - ref: input_agent_public_key
+      identifier: publicKey
+      type: TEXT_INPUT
+      required: false
+    action:
+      ref: action_agent_details
+      nextNode: agent_provisioning
+  layout:
+    size:
+      width: 350
+      height: 500
+    position:
+      x: 1520
+      y: 400
+- id: agent_provisioning
+  type: TASK_EXECUTION
+  properties:
+    includeOptional: true
+  executor:
+    name: ProvisioningExecutor
+  onSuccess: agent_credentials
+  onIncomplete: prompt_agent_details
+  onFailure: prompt_agent_details
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1520
+      y: 910
+- id: agent_credentials
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: agent_credentials_heading
+      label: '{{ t(signup:forms.personal_agent_credentials.title) }}'
+      variant: HEADING_1
+      color: SUCCESS
+    - align: left
+      type: TEXT
+      id: agent_credentials_message
+      label: '{{ t(signup:forms.personal_agent_credentials.message) }}'
+      variant: HEADING_6
+    - type: COPYABLE_TEXT
+      id: agent_credentials_agent_id
+      label: '{{ t(agentOnboarding:forms.credentials.agent_id_label) }}'
+      source: agentId
+    - type: COPYABLE_TEXT
+      id: agent_credentials_client_id
+      label: '{{ t(agentOnboarding:forms.credentials.client_id_label) }}'
+      source: clientId
+    - type: COPYABLE_TEXT
+      id: agent_credentials_client_secret
+      label: '{{ t(agentOnboarding:forms.credentials.client_secret_label) }}'
+      source: clientSecret
+      masked: true
+  message: Agent registered successfully
+  next: end
+  layout:
+    size:
+      width: 350
+      height: 520
+    position:
+      x: 1800
+      y: 800
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 2160
+      y: 480
+---
+resource_type: flow
 id: 01900000-0000-7000-8000-000000000068
 ouHandle: default
 name: Console App Authentication Flow
@@ -6395,6 +6990,11 @@ translations:
     forms.credentials.agent_id_label: Agent ID
     forms.credentials.client_id_label: Client ID
     forms.credentials.client_secret_label: Client Secret
+  consent:
+    title: Review access
+    message: Review what is being requested and choose what to allow.
+    allow: Allow
+    deny: Deny
   invite:
     validating: Validating your invite link...
     complete.title: Welcome Aboard!
@@ -6604,6 +7204,20 @@ translations:
     forms.email_otp.description: Enter the verification code sent to your email
     forms.magic_link.email_sent.title: Check Your Email
     forms.magic_link.email_sent.description: We sent you a verification link. Please check your inbox and click the link to continue.
+    forms.registration_choice.title: Get Started
+    forms.registration_choice.actions.register_user.label: Create an account
+    forms.registration_choice.actions.register_personal_agent.label: Register a personal assistant
+    forms.personal_agent_details.title: Register your agent
+    forms.personal_agent_details.subtitle: The agent acts only for you. Describe it, tell us where to send you back after you approve it, and give its public key if it has one.
+    forms.personal_agent_details.fields.redirect_uris.label: Redirect URIs
+    forms.personal_agent_details.fields.redirect_uris.placeholder: Where to send you back after you approve the agent. Separate several with commas
+    forms.personal_agent_details.fields.jwks_uri.label: JWKS URI
+    forms.personal_agent_details.fields.jwks_uri.placeholder: Optional. The URI that serves the agent's public keys
+    forms.personal_agent_details.fields.public_key.label: Public Key
+    forms.personal_agent_details.fields.public_key.placeholder: Optional. The agent's public keys as a JWKS document
+    forms.personal_agent_details.actions.submit.label: Register Agent
+    forms.personal_agent_credentials.title: Agent Registered Successfully
+    forms.personal_agent_credentials.message: Copy these values now. When no key was given, the client secret is shown only once and cannot be retrieved later.
   recovery:
     forms.username.title: Password Recovery
     forms.username.subtitle: Enter your username to start the password recovery

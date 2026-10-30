@@ -256,6 +256,18 @@ func (ec EntityCategory) String() string {
 	return string(ec)
 }
 
+// AgentKind is the kind of an agent, fixed once the agent is created. The empty kind is an ordinary agent.
+type AgentKind string
+
+// AgentKindPersonalAssistant is the kind of a personal assistant agent: an agent owned by a user and acting
+// only on that user's behalf.
+const AgentKindPersonalAssistant AgentKind = "personal-assistant"
+
+// IsValid reports whether the kind is a known one. The empty kind, an ordinary agent, is valid.
+func (k AgentKind) IsValid() bool {
+	return k == "" || k == AgentKindPersonalAssistant
+}
+
 // IDTokenResponseType is the response format of the ID token.
 type IDTokenResponseType string
 

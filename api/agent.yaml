@@ -565,6 +565,36 @@ paths:
                     description:
                       key: "error.agentservice.owner_not_found_description"
                       defaultValue: "The specified owner does not match any known user, application, or agent"
+                grant-type-not-allowed-for-personal-agent:
+                  summary: A personal agent is given a grant type it cannot use
+                  value:
+                    code: "AGT-1048"
+                    message:
+                      key: "error.agentservice.grant_type_not_allowed_for_personal_agent"
+                      defaultValue: "Grant type not allowed"
+                    description:
+                      key: "error.agentservice.grant_type_not_allowed_for_personal_agent_description"
+                      defaultValue: "A personal agent can only use the authorization code, CIBA, and refresh token grants"
+                invalid-public-key:
+                  summary: A personal agent's public key is not a JWKS document with a key
+                  value:
+                    code: "AGT-1051"
+                    message:
+                      key: "error.agentservice.invalid_public_key"
+                      defaultValue: "Invalid public key"
+                    description:
+                      key: "error.agentservice.invalid_public_key_description"
+                      defaultValue: "The public key must be a JWKS document with at least one key"
+                invalid-kind:
+                  summary: The kind is not a known agent kind
+                  value:
+                    code: "AGT-1050"
+                    message:
+                      key: "error.agentservice.invalid_kind"
+                      defaultValue: "Invalid kind"
+                    description:
+                      key: "error.agentservice.invalid_kind_description"
+                      defaultValue: "The agent kind is not a known kind"
                 invalid-user-attribute:
                   summary: User attribute not valid for any allowed user type
                   value:
@@ -1110,14 +1140,27 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "AGT-1027"
-                message:
-                  key: "error.agentservice.cannot_modify_declarative_resource"
-                  defaultValue: "Cannot modify declarative resource"
-                description:
-                  key: "error.agentservice.cannot_modify_declarative_resource_description"
-                  defaultValue: "Declaratively managed agents cannot be modified via the API"
+              examples:
+                declarative-resource:
+                  summary: The agent is a declarative resource
+                  value:
+                    code: "AGT-1027"
+                    message:
+                      key: "error.agentservice.cannot_modify_declarative_resource"
+                      defaultValue: "Cannot modify declarative resource"
+                    description:
+                      key: "error.agentservice.cannot_modify_declarative_resource_description"
+                      defaultValue: "Declaratively managed agents cannot be modified via the API"
+                personal-agent:
+                  summary: The agent is a personal agent
+                  value:
+                    code: "AGT-1045"
+                    message:
+                      key: "error.agentservice.cannot_update_personal_agent"
+                      defaultValue: "Cannot update a personal agent"
+                    description:
+                      key: "error.agentservice.cannot_update_personal_agent_description"
+                      defaultValue: "A personal agent can only be managed by its owner"
         "404":
           description: Agent not found
           content:
@@ -1891,8 +1934,16 @@ components:
           format: uuid
           description: |
             ID of the entity that owns this agent. Defaults to the authenticated principal at
-            creation time. Can be transferred by an administrator.
+            creation time. Can be transferred by an administrator, except for a personal agent, whose
+            owner never changes.
           example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+        kind:
+          type: string
+          readOnly: true
+          description: |
+            The agent kind, set when the agent is created and never changed.
+            `personal-assistant` marks a personal agent, which acts only for its owner, a user.
+          example: "personal-assistant"
         attributes:
           type: object
           additionalProperties: true
@@ -1963,7 +2014,8 @@ components:
       required: [ouId, type]
       description: |
         Request to create an agent. What gets persisted depends on which fields are provided:
-        - Always: entity row (`id`, `ouId`, `type`, `description`, `attributes`, `owner`).
+        - Always: entity row (`id`, `ouId`, `type`, `description`, `attributes`, `owner`,
+          `kind`).
         - When any inbound auth field is set: inbound client row (`authFlowId` defaults to the
           system default when omitted).
         - When `inboundAuthConfig` is set: OAuth profile row.
@@ -1999,6 +2051,17 @@ components:
           default: false
           description: Whether the agent acts on behalf of a user. It decides the OAuth grant types the agent is given and allowed, and is not stored. See `inboundAuthConfig`.
           example: false
+        kind:
+          type: string
+          enum: ["", personal-assistant]
+          description: |
+            Optional agent kind, fixed once the agent is created. Omit it, or send an empty string, for an
+            ordinary agent; any other value than the listed ones is refused. `personal-assistant` registers a
+            personal agent for the user named in `owner`, which is then required; the agent may use only the
+            authorization code (the default), CIBA and refresh token grants. Its OAuth client gets response type
+            `code` and PKCE with the authorization code grant, `private_key_jwt` when a key is given and a client
+            secret otherwise, and the personal agent login flow when no `authFlowId` is given. `delegated` does
+            not apply to a personal agent.
         attributes:
           type: object
           additionalProperties: true
@@ -2095,7 +2158,9 @@ components:
         owner:
           type: string
           format: uuid
-          description: Admins can transfer ownership by setting this to a different entity ID.
+          description: |
+            Admins can transfer ownership by setting this to a different entity ID. Does not apply to a
+            personal agent, which cannot be updated.
           example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
         delegated:
           type: boolean
@@ -2179,6 +2244,13 @@ components:
           type: string
           format: uuid
           example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+        kind:
+          type: string
+          readOnly: true
+          description: |
+            The agent kind, set when the agent is created and never changed.
+            `personal-assistant` marks a personal agent, which acts only for its owner, a user.
+          example: "personal-assistant"
         attributes:
           type: object
           additionalProperties: true
@@ -2279,6 +2351,13 @@ components:
           type: string
           format: uuid
           example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+        kind:
+          type: string
+          readOnly: true
+          description: |
+            The agent kind, set when the agent is created and never changed.
+            `personal-assistant` marks a personal agent, which acts only for its owner, a user.
+          example: "personal-assistant"
         attributes:
           type: object
           additionalProperties: true
@@ -2425,6 +2504,12 @@ components:
           type: integer
           description: Consent validity period in seconds. `0` means no expiration.
           example: 86400
+        alwaysPrompt:
+          type: boolean
+          description: |
+            Ask for consent on every authorization, even when an earlier consent covers it. Defaults to
+            false, and to true for a personal agent created without a value.
+          example: true
 
     AccessTokenConfig:
       type: object

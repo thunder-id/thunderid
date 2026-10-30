@@ -91,6 +91,10 @@ type EngineContext struct {
 	// that flow rather than the running sign-out flow. Empty for all other flows. Transient — re-derived
 	// from the application on each context load, never persisted.
 	SessionFlowID string
+	// RequiredSubjectID is the entity ID of the only subject an authentication flow may sign in, from the
+	// client rules of the application's OAuth client, and is empty otherwise.
+	// Transient: re-derived on each context load, never persisted.
+	RequiredSubjectID string
 }
 
 // GetInitiatorRequest returns the original HTTP request that triggered the flow.

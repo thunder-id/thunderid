@@ -174,6 +174,7 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 		nodeCtxContext = authnprovidercm.WithSubjectTypeConstraints(ssoCtx, authnprovidercm.SubjectTypeConstraints{
 			AllowedUserTypes:  ctx.Application.AllowedUserTypes,
 			AllowedAgentTypes: ctx.Application.AllowedAgentTypes,
+			RequiredSubjectID: ctx.RequiredSubjectID,
 		})
 	}
 	// A recovery flow is marked too, so the default provider checks its proofs at the recovery plane.

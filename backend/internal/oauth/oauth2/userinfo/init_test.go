@@ -66,7 +66,7 @@ func (suite *InitTestSuite) TestInitialize() {
 
 	service := Initialize(mux, suite.mockJWTService, nil, nil,
 		suite.mockTokenValidator,
-		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil),
+		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil, nil),
 		suite.mockAttributeCacheService, suite.mockDiscoveryService, suite.mockDPoPVerifier, nil,
 		testhelpers.OAuthConfig())
 
@@ -78,7 +78,7 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 
 	Initialize(mux, suite.mockJWTService, nil, nil,
 		suite.mockTokenValidator,
-		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil),
+		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil, nil),
 		suite.mockAttributeCacheService, suite.mockDiscoveryService, suite.mockDPoPVerifier, nil,
 		testhelpers.OAuthConfig())
 

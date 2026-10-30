@@ -7,6 +7,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/role"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/tests/mocks/agentmgtprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -1459,7 +1461,6 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_UnknownCategory_ReturnsE
 // generated identifier and client credentials, which the create response is the only chance to read.
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_DelegatesToAgentMgtProvider() {
 	suite.expectSchemaForAgentProvisioning()
-	suite.expectProvisionedSignIn(testNewAgentID)
 	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
@@ -2187,7 +2188,9 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Reject
 // Record fields are what provisioning reads off the entity rather than out of its schema, so a
 // flow that collected only one of them still has something to provision.
 func (suite *ProvisioningExecutorTestSuite) TestHasRecordValues() {
-	for _, key := range []string{ownerIDKey, delegatedKey, redirectURIsKey, authFlowIDKey, allowedUserTypesKey} {
+	for _, key := range []string{
+		ownerIDKey, delegatedKey, redirectURIsKey, authFlowIDKey, allowedUserTypesKey, publicKeyKey, jwksURIKey,
+	} {
 		suite.Run(key, func() {
 			ctx := &providers.NodeContext{UserInputs: map[string]string{key: "value"}}
 
@@ -5042,8 +5045,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_UsesRe
 	assert.Equal(suite.T(), "resolved-owner", received.Owner)
 }
 
-// Agents do not self-register yet. The refusal sits in the executor rather than in flow
-// validation, so the capability is not blocked structurally and the guard can simply be removed.
+// A registration flow provisions only personal agents, so an agent without the personal kind is refused.
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_RefusedInARegistrationFlow() {
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
@@ -5579,4 +5581,467 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_UnverifiedCandidateFails
 			assert.Equal(suite.T(), ErrUnverifiedLinkingCandidate.Code, resp.Error.Code)
 		})
 	}
+}
+
+// personalAgentRegistrationContext builds a registration node context that provisions a personal agent for
+// the signed-in owner, with the given inputs. A submitted owner input is added that differs from the
+// signed-in user, so a test can tell that inputs never choose the owner.
+func personalAgentRegistrationContext(userInputs map[string]string) *providers.NodeContext {
+	if _, ok := userInputs[ownerIDKey]; !ok {
+		userInputs[ownerIDKey] = "someone-else"
+	}
+	if _, ok := userInputs[kindKey]; !ok {
+		userInputs[kindKey] = string(providers.AgentKindPersonalAssistant)
+	}
+	return &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeRegistration,
+		UserInputs:  userInputs,
+		RuntimeData: map[string]string{ouIDKey: testOUID, categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testAgentType},
+		AuthUser: newAuthenticatedAuthUser(),
+		Application: providers.Application{
+			InboundAuthConfig: []providers.InboundAuthConfigWithSecret{{
+				Type:        providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{ClientID: testAppClientID},
+			}},
+		},
+	}
+}
+
+// expectPersonalAgentCreate has the signed-in user resolve to user-owner-1 and captures the agent the
+// provider receives.
+func (suite *ProvisioningExecutorTestSuite) expectPersonalAgentCreate() **providers.Agent {
+	suite.expectSchemaForAgentProvisioning()
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.EntityReference{EntityID: "user-owner-1"},
+			(*tidcommon.ServiceError)(nil))
+
+	received := new(*providers.Agent)
+	suite.mockAgentMgtProvider.On("CreateAgent", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			*received = args.Get(1).(*providers.Agent)
+		}).
+		Return(&providers.Agent{ID: testNewAgentID}, nil).Once()
+	return received
+}
+
+// A personal agent belongs to whoever signed in to the registration, whatever owner was submitted as input,
+// and its kind comes from the kind input. The signed-in user stays the flow's user rather than the new agent,
+// and no group or role is assigned since the flow sets none.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_PersonalAgentRegistration_CreatesAPersonalAgent() {
+	received := suite.expectPersonalAgentCreate()
+	ctx := personalAgentRegistrationContext(map[string]string{
+		"name": "my-assistant", redirectURIsKey: "https://a.example.com/cb", authFlowHandleKey: "agent-login",
+	})
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	require.NotNil(suite.T(), resp)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	require.NotNil(suite.T(), *received)
+	agent := *received
+	assert.Equal(suite.T(), "user-owner-1", agent.Owner, "the owner is the signed-in user")
+	assert.Equal(suite.T(), providers.AgentKindPersonalAssistant, agent.Kind)
+	assert.Equal(suite.T(), "agent-login", agent.AuthFlowHandle)
+	require.Len(suite.T(), agent.InboundAuthConfig, 1)
+	assert.Equal(suite.T(), []string{"https://a.example.com/cb"},
+		agent.InboundAuthConfig[0].OAuthConfig.RedirectURIs)
+	assert.Nil(suite.T(), agent.InboundAuthConfig[0].OAuthConfig.Certificate,
+		"without a key the agent service falls back to a client secret")
+	assert.Equal(suite.T(), ctx.AuthUser, resp.AuthUser, "the owner stays signed in")
+	assert.Equal(suite.T(), testNewAgentID, resp.AdditionalData[common.DataAgentID])
+	// The group and role mocks expect nothing, so an assignment would fail the test.
+	suite.mockAuthnProvider.AssertNotCalled(suite.T(), "AuthenticateUser", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A federated identity in the flow belongs to the user who signed in to the registration, so the
+// existing-user rules for its link holders do not stop the personal agent.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_PersonalAgentRegistration_IgnoresTheOwnersFederatedIdentity() {
+	received := suite.expectPersonalAgentCreate()
+	ctx := personalAgentRegistrationContext(map[string]string{
+		"name": "my-assistant", redirectURIsKey: "https://a.example.com/cb",
+	})
+	ctx.RuntimeData[common.RuntimeKeyExternalIdentity] = externalIdentityEntry(testFederatedIdpID,
+		testFederatedSub, federatedTestClaims())
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	require.NotNil(suite.T(), resp)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	require.NotNil(suite.T(), *received)
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "GetLinkedEntities", mock.Anything, mock.Anything)
+}
+
+// A public key or a JWKS URI becomes the agent's certificate, which selects private_key_jwt in the
+// provider. The agent holds one certificate, so given both, the JWKS URI wins.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_PersonalAgentRegistration_Keys() {
+	const jwks = `{"keys":[{"kty":"EC","crv":"P-256","x":"x","y":"y"}]}`
+	tests := []struct {
+		name     string
+		inputs   map[string]string
+		expected *providers.Certificate
+	}{
+		{name: "PublicKey", inputs: map[string]string{publicKeyKey: jwks},
+			expected: &providers.Certificate{Type: providers.CertificateTypeJWKS, Value: jwks}},
+		{name: "JWKSURI", inputs: map[string]string{jwksURIKey: "https://a.example.com/jwks"},
+			expected: &providers.Certificate{
+				Type: providers.CertificateTypeJWKSURI, Value: "https://a.example.com/jwks"}},
+		{name: "BothPreferTheJWKSURI",
+			inputs: map[string]string{publicKeyKey: jwks, jwksURIKey: "https://a.example.com/jwks"},
+			expected: &providers.Certificate{
+				Type: providers.CertificateTypeJWKSURI, Value: "https://a.example.com/jwks"}},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			suite.SetupTest()
+			received := suite.expectPersonalAgentCreate()
+			inputs := map[string]string{"name": "my-assistant", redirectURIsKey: "https://a.example.com/cb"}
+			for k, v := range tt.inputs {
+				inputs[k] = v
+			}
+
+			resp, err := suite.executor.Execute(personalAgentRegistrationContext(inputs))
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+			require.NotNil(suite.T(), *received)
+			require.Len(suite.T(), (*received).InboundAuthConfig, 1)
+			assert.Equal(suite.T(), tt.expected, (*received).InboundAuthConfig[0].OAuthConfig.Certificate)
+		})
+	}
+}
+
+// testAppClientID is the OAuth client of the application that runs the personal agent registration flow.
+const testAppClientID = "registration-app-client"
+
+// tokenContext returns a request context carrying a token for subject issued to the registration
+// application, delegated to an actor when delegated is set.
+func tokenContext(subject string, delegated bool) context.Context {
+	return tokenContextForClient(subject, testAppClientID, delegated)
+}
+
+// tokenContextForClient returns a request context carrying a token for subject issued to clientID, delegated
+// to an actor when delegated is set. An empty clientID leaves the token without a client_id claim.
+func tokenContextForClient(subject, clientID string, delegated bool) context.Context {
+	attributes := map[string]interface{}{}
+	if clientID != "" {
+		attributes["client_id"] = clientID
+	}
+	if delegated {
+		attributes["act"] = map[string]interface{}{"sub": "agent-1"}
+	}
+	return security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest(subject, testOUID, "token", nil, attributes))
+}
+
+// A caller that already has a signed-in user sends that user's token instead of signing them in again,
+// and the token's subject owns the agent. A user the flow signed in takes precedence over the token.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_PersonalAgentRegistration_OwnerFromTheToken() {
+	inputs := map[string]string{"name": "my-assistant", redirectURIsKey: "https://a.example.com/cb"}
+
+	suite.Run("TokenSubject", func() {
+		suite.SetupTest()
+		suite.expectSchemaForAgentProvisioning()
+		suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+			entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
+		var received *providers.Agent
+		suite.mockAgentMgtProvider.On("CreateAgent", mock.Anything, mock.Anything).
+			Run(func(args mock.Arguments) { received = args.Get(1).(*providers.Agent) }).
+			Return(&providers.Agent{ID: testNewAgentID}, nil).Once()
+		ctx := personalAgentRegistrationContext(inputs)
+		ctx.AuthUser = providers.AuthUser{}
+		ctx.Context = tokenContext("user-token-1", false)
+
+		resp, err := suite.executor.Execute(ctx)
+
+		assert.NoError(suite.T(), err)
+		assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+		require.NotNil(suite.T(), received)
+		assert.Equal(suite.T(), "user-token-1", received.Owner)
+		suite.mockAuthnProvider.AssertNotCalled(suite.T(), "GetEntityReference", mock.Anything, mock.Anything)
+	})
+
+	suite.Run("SignedInUserWins", func() {
+		suite.SetupTest()
+		received := suite.expectPersonalAgentCreate()
+		ctx := personalAgentRegistrationContext(inputs)
+		ctx.Context = tokenContext("user-token-1", false)
+
+		resp, err := suite.executor.Execute(ctx)
+
+		assert.NoError(suite.T(), err)
+		assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+		require.NotNil(suite.T(), *received)
+		assert.Equal(suite.T(), "user-owner-1", (*received).Owner)
+	})
+
+	suite.Run("DelegatedTokenIsRefused", func() {
+		suite.SetupTest()
+		suite.expectSchemaForAgentProvisioning()
+		suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+			entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
+		ctx := personalAgentRegistrationContext(inputs)
+		ctx.AuthUser = providers.AuthUser{}
+		ctx.Context = tokenContext("user-token-1", true)
+
+		resp, err := suite.executor.Execute(ctx)
+
+		assert.NoError(suite.T(), err)
+		assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+		assert.Equal(suite.T(), ErrUserNotAuthenticated.Code, resp.Error.Code)
+		suite.mockAgentMgtProvider.AssertNotCalled(suite.T(), "CreateAgent",
+			mock.Anything, mock.Anything)
+	})
+}
+
+// A token issued to another application, or one that names no client, cannot register an agent: that
+// application could otherwise register agents for its users without their involvement.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_PersonalAgentRegistration_TokenOfAnotherApplicationIsRefused() {
+	inputs := map[string]string{"name": "my-assistant", redirectURIsKey: "https://a.example.com/cb"}
+	tests := map[string]string{
+		"IssuedToAnotherApplication": "another-app-client",
+		"NoClientClaim":              "",
+	}
+
+	for name, clientID := range tests {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			suite.expectSchemaForAgentProvisioning()
+			suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+				entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
+			ctx := personalAgentRegistrationContext(inputs)
+			ctx.AuthUser = providers.AuthUser{}
+			ctx.Context = tokenContextForClient("user-token-1", clientID, false)
+
+			resp, err := suite.executor.Execute(ctx)
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+			require.NotNil(suite.T(), resp.Error)
+			assert.Equal(suite.T(), ErrUserNotAuthenticated.Code, resp.Error.Code)
+			suite.mockAgentMgtProvider.AssertNotCalled(suite.T(), "CreateAgent",
+				mock.Anything, mock.Anything)
+		})
+	}
+}
+
+// With neither a signed-in user nor a token there is nobody to own the agent, so nothing is created.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_PersonalAgentRegistration_RequiresASignedInUser() {
+	inputs := map[string]string{"name": "my-assistant", redirectURIsKey: "https://a.example.com/cb"}
+
+	suite.Run("NotAuthenticated", func() {
+		suite.SetupTest()
+		suite.expectSchemaForAgentProvisioning()
+		suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+			entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
+		ctx := personalAgentRegistrationContext(inputs)
+		ctx.AuthUser = providers.AuthUser{}
+
+		resp, err := suite.executor.Execute(ctx)
+
+		assert.NoError(suite.T(), err)
+		assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+		assert.Equal(suite.T(), ErrUserNotAuthenticated.Code, resp.Error.Code)
+		suite.mockAgentMgtProvider.AssertNotCalled(suite.T(), "CreateAgent",
+			mock.Anything, mock.Anything)
+	})
+
+	suite.Run("UnresolvableUser", func() {
+		suite.SetupTest()
+		suite.expectSchemaForAgentProvisioning()
+		suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+			entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
+		suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+			Return(providers.AuthUser{}, (*providers.EntityReference)(nil),
+				&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "AUTHN-MGR-1007"})
+
+		resp, err := suite.executor.Execute(personalAgentRegistrationContext(inputs))
+
+		assert.NoError(suite.T(), err)
+		assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+		assert.Equal(suite.T(), ErrUserNotAuthenticated.Code, resp.Error.Code)
+		suite.mockAgentMgtProvider.AssertNotCalled(suite.T(), "CreateAgent",
+			mock.Anything, mock.Anything)
+	})
+}
+
+// An owner resolver may select the owner. Selecting the registering user needs nothing more; selecting
+// another user needs a token that may create agents for others: the system permission, or the agent
+// management permission in the agent's organization unit. Anyone else is refused before anything is
+// created, and a delegated token never qualifies.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_PersonalAgentRegistration_ResolvedOwner() {
+	security.InitSystemPermissions("")
+	inputs := func() map[string]string {
+		return map[string]string{"name": "my-assistant", redirectURIsKey: "https://a.example.com/cb"}
+	}
+	agentPermission := security.ResolveActionPermission(security.ActionCreateAgent)
+	tests := []struct {
+		name        string
+		selected    string
+		permissions []string
+		tokenOU     string
+		delegated   bool
+		wantOwner   string
+	}{
+		{name: "SystemAdminRegistersForAnotherUser", selected: "user-alice",
+			permissions: []string{"system"}, tokenOU: "other-ou", wantOwner: "user-alice"},
+		{name: "AgentAdminInTheAgentsOU", selected: "user-alice",
+			permissions: []string{agentPermission}, tokenOU: testOUID, wantOwner: "user-alice"},
+		{name: "AgentAdminInAnotherOUIsRefused", selected: "user-alice",
+			permissions: []string{agentPermission}, tokenOU: "other-ou"},
+		{name: "UserWithoutPermissionIsRefused", selected: "user-alice", tokenOU: testOUID},
+		{name: "DelegatedAdminTokenIsRefused", selected: "user-alice",
+			permissions: []string{"system"}, tokenOU: testOUID, delegated: true},
+		{name: "SelectingTheRegisteringUserNeedsNoPermission", selected: "user-owner-1",
+			tokenOU: testOUID, wantOwner: "user-owner-1"},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			suite.SetupTest()
+			suite.expectSchemaForAgentProvisioning()
+			suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+				entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
+			suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+				Return(providers.AuthUser{}, &providers.EntityReference{EntityID: "user-owner-1"},
+					(*tidcommon.ServiceError)(nil)).Maybe()
+			var received *providers.Agent
+			if tt.wantOwner != "" {
+				suite.mockAgentMgtProvider.On("CreateAgent", mock.Anything, mock.Anything).
+					Run(func(args mock.Arguments) { received = args.Get(1).(*providers.Agent) }).
+					Return(&providers.Agent{ID: testNewAgentID}, nil).Once()
+			}
+			var attributes map[string]interface{}
+			if tt.delegated {
+				attributes = map[string]interface{}{"act": map[string]interface{}{"sub": "agent-1"}}
+			}
+			ctx := personalAgentRegistrationContext(inputs())
+			ctx.RuntimeData[ownerIDKey] = tt.selected
+			ctx.Context = security.WithSecurityContextTest(context.Background(),
+				security.NewSecurityContextForTest("admin-1", tt.tokenOU, "token", tt.permissions, attributes))
+
+			resp, err := suite.executor.Execute(ctx)
+
+			assert.NoError(suite.T(), err)
+			if tt.wantOwner == "" {
+				assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+				require.NotNil(suite.T(), resp.Error)
+				assert.Equal(suite.T(), ErrCannotRegisterForAnotherUser.Code, resp.Error.Code)
+				suite.mockAgentMgtProvider.AssertNotCalled(suite.T(), "CreateAgent",
+					mock.Anything, mock.Anything)
+				return
+			}
+			assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+			require.NotNil(suite.T(), received)
+			assert.Equal(suite.T(), tt.wantOwner, received.Owner)
+			assert.Equal(suite.T(), providers.AgentKindPersonalAssistant, received.Kind)
+		})
+	}
+}
+
+// adminAgentContext builds an administration flow context that provisions an agent with the given inputs.
+func adminAgentContext(inputs map[string]string) *providers.NodeContext {
+	userInputs := map[string]string{"model": "claude", "name": "support-bot"}
+	for k, v := range inputs {
+		userInputs[k] = v
+	}
+	return &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAdministration,
+		UserInputs:  userInputs,
+		RuntimeData: map[string]string{ouIDKey: testOUID, categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testAgentType},
+		NodeInputs: []providers.Input{},
+	}
+}
+
+// expectAgentCreate captures the agent the provider receives.
+func (suite *ProvisioningExecutorTestSuite) expectAgentCreate() **providers.Agent {
+	suite.expectSchemaForAgentProvisioning()
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
+	received := new(*providers.Agent)
+	suite.mockAgentMgtProvider.On("CreateAgent", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) { *received = args.Get(1).(*providers.Agent) }).
+		Return(&providers.Agent{ID: testNewAgentID}, nil).Once()
+	return received
+}
+
+// An agent is never the flow's signed-in entity, so creating one does not sign in as it.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_DoesNotSignInAsTheAgent() {
+	suite.expectAgentCreate()
+
+	resp, err := suite.executor.Execute(adminAgentContext(nil))
+
+	assert.NoError(suite.T(), err)
+	require.NotNil(suite.T(), resp)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	assert.False(suite.T(), resp.AuthUser.IsAuthenticated(), "the agent is not signed in")
+	suite.mockAuthnProvider.AssertNotCalled(suite.T(), "AuthenticateUser", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// Any agent may be given a key and whether consent is asked every time; the agent service applies its defaults
+// to what is left out. A login flow belongs to an agent that acts for a signed-in user, so one that acts on its
+// own behalf is not given it.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_AgentInputs() {
+	yes, no := true, false
+	tests := map[string]struct {
+		inputs      map[string]string
+		certificate *providers.Certificate
+		consent     *providers.LoginConsentConfig
+	}{
+		"NoneGiven": {inputs: nil},
+		"Key": {inputs: map[string]string{jwksURIKey: "https://a.example.com/jwks"},
+			certificate: &providers.Certificate{Type: providers.CertificateTypeJWKSURI,
+				Value: "https://a.example.com/jwks"}},
+		"LoginFlow": {inputs: map[string]string{authFlowHandleKey: "agent-login"}},
+		"AlwaysPromptConsent": {inputs: map[string]string{alwaysPromptConsentKey: "true"},
+			consent: &providers.LoginConsentConfig{AlwaysPrompt: &yes}},
+		"ConsentRemembered": {inputs: map[string]string{alwaysPromptConsentKey: "false"},
+			consent: &providers.LoginConsentConfig{AlwaysPrompt: &no}},
+	}
+	for name, tt := range tests {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			received := suite.expectAgentCreate()
+
+			resp, err := suite.executor.Execute(adminAgentContext(tt.inputs))
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+			require.NotNil(suite.T(), *received)
+			agent := *received
+			require.Len(suite.T(), agent.InboundAuthConfig, 1)
+			oauthConfig := agent.InboundAuthConfig[0].OAuthConfig
+			assert.Equal(suite.T(), tt.certificate, oauthConfig.Certificate)
+			if tt.certificate != nil {
+				assert.Equal(suite.T(), providers.TokenEndpointAuthMethodPrivateKeyJWT,
+					oauthConfig.TokenEndpointAuthMethod)
+			}
+			assert.Empty(suite.T(), agent.AuthFlowHandle)
+			assert.Equal(suite.T(), tt.consent, agent.LoginConsent)
+		})
+	}
+}
+
+// A consent setting that is not a boolean is refused rather than read as false.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_RejectsAnUnreadableConsentValue() {
+	suite.expectSchemaForAgentProvisioning()
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
+
+	resp, err := suite.executor.Execute(adminAgentContext(map[string]string{alwaysPromptConsentKey: "sometimes"}))
+
+	assert.NoError(suite.T(), err)
+	require.NotNil(suite.T(), resp)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+	suite.mockAgentMgtProvider.AssertNotCalled(suite.T(), "CreateAgent", mock.Anything, mock.Anything)
 }
