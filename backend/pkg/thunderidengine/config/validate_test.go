@@ -251,7 +251,7 @@ func (suite *ValidateTestSuite) TestTokenRevocationConfig_Validate() {
 
 	suite.T().Run("unsupported source fails when enabled", func(t *testing.T) {
 		assert.ErrorContains(t,
-			(&TokenRevocationConfig{Enabled: boolPtr(true), Source: "events", SyncIntervalSeconds: 30}).Validate(),
+			(&TokenRevocationConfig{Enabled: boolPtr(true), Source: "endpoint", SyncIntervalSeconds: 30}).Validate(),
 			"source")
 	})
 }
@@ -581,4 +581,57 @@ func (suite *ValidateTestSuite) TestAuthorizationDetailsConfig_IsTypeMetadataEna
 	assert.True(suite.T(), AuthorizationDetailsConfig{TypeMetadataEnabled: &enabled}.IsTypeMetadataEnabled())
 	assert.False(suite.T(), AuthorizationDetailsConfig{TypeMetadataEnabled: &disabled}.IsTypeMetadataEnabled())
 	assert.True(suite.T(), AuthorizationDetailsConfig{}.IsTypeMetadataEnabled(), "the endpoint is served by default")
+}
+
+func (suite *ValidateTestSuite) TestTokenRevocationConfig_EventsSource() {
+	t := suite.T()
+	enabled := &TokenRevocationConfig{Enabled: boolPtr(true), Source: "events"}
+	assert.NoError(t, enabled.Validate())
+	assert.True(t, enabled.UsesEvents())
+	assert.False(t, (&TokenRevocationConfig{Enabled: boolPtr(true), Source: "db"}).UsesEvents())
+	assert.Error(t, (&TokenRevocationConfig{Enabled: boolPtr(true), Source: "endpoint"}).Validate())
+}
+
+func (suite *ValidateTestSuite) TestTokenRevocationPushConfig_Validate() {
+	valid := func() TokenRevocationPushConfig {
+		return TokenRevocationPushConfig{
+			Enabled: boolPtr(true), RequestTimeout: 5, MaxAttempts: 5, RetryDelay: 2, QueueSize: 1024,
+			Receivers: []TokenRevocationReceiver{{URL: "https://cp.example.com/revocation/events",
+				Audience: "https://cp.example.com"}},
+		}
+	}
+	t := suite.T()
+	good := valid()
+	assert.NoError(t, good.Validate())
+	disabled := TokenRevocationPushConfig{Enabled: boolPtr(false)}
+	assert.NoError(t, disabled.Validate(), "a disabled push is not validated")
+
+	tests := []struct {
+		name   string
+		mutate func(*TokenRevocationPushConfig)
+	}{
+		{"no receivers", func(c *TokenRevocationPushConfig) { c.Receivers = nil }},
+		{"relative url", func(c *TokenRevocationPushConfig) { c.Receivers[0].URL = "/revocation/events" }},
+		{"url fragment", func(c *TokenRevocationPushConfig) { c.Receivers[0].URL += "#x" }},
+		{"http url", func(c *TokenRevocationPushConfig) { c.Receivers[0].URL = "http://cp.example.com/e" }},
+		{"empty audience", func(c *TokenRevocationPushConfig) { c.Receivers[0].Audience = " " }},
+		{"zero timeout", func(c *TokenRevocationPushConfig) { c.RequestTimeout = 0 }},
+		{"timeout too long", func(c *TokenRevocationPushConfig) { c.RequestTimeout = 31 }},
+		{"zero attempts", func(c *TokenRevocationPushConfig) { c.MaxAttempts = 0 }},
+		{"too many attempts", func(c *TokenRevocationPushConfig) { c.MaxAttempts = 11 }},
+		{"retry delay too long", func(c *TokenRevocationPushConfig) { c.RetryDelay = 61 }},
+		{"zero queue", func(c *TokenRevocationPushConfig) { c.QueueSize = 0 }},
+	}
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			cfg := valid()
+			tt.mutate(&cfg)
+			assert.Error(suite.T(), cfg.Validate())
+		})
+	}
+
+	dev := valid()
+	dev.Receivers[0].URL = "http://localhost:8095/revocation/events"
+	dev.RejectPrivateAddresses = boolPtr(false)
+	assert.NoError(t, dev.Validate(), "http is allowed once private addresses are")
 }

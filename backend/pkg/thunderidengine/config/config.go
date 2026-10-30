@@ -141,9 +141,10 @@ type MCPConfig struct {
 // cache of revoked tokens synced from a source on a fixed interval. When disabled, protected
 // endpoints do not check revocation.
 //
-// Source selects where the deny list is synced from. Only "db" (the runtime persistent database) is supported
-// today; future values may include an endpoint or event stream. SyncIntervalSeconds bounds how stale
-// the cache may be; a non-positive value falls back to the built-in default.
+// Source selects where the deny list comes from. "db" syncs it from the runtime persistent database on
+// a fixed interval. "events" fills it from revocation events pushed by the trusted issuer, for a
+// plane with no runtime database of its own. SyncIntervalSeconds bounds how stale a "db" cache may be
+// and is ignored for "events"; a non-positive value falls back to the built-in default.
 type TokenRevocationConfig struct {
 	// Enabled uses a pointer so an explicit false in deployment.yaml overrides the
 	// default.json default of true; a nil pointer means "not set" and keeps the default.
@@ -158,9 +159,12 @@ func (c TokenRevocationConfig) IsEnabled() bool {
 	return c.Enabled != nil && *c.Enabled
 }
 
-// tokenRevocationSourceDB is the operation-database sync source, the only supported
-// token_revocation.source value today.
-const tokenRevocationSourceDB = "db"
+// The supported token_revocation.source values: the runtime persistent database, and revocation
+// events pushed by the trusted issuer.
+const (
+	tokenRevocationSourceDB     = "db"
+	tokenRevocationSourceEvents = "events"
+)
 
 // KeyConfig holds the key configuration details.
 type KeyConfig struct {
@@ -461,6 +465,53 @@ type OAuthTokenRevocationConfig struct {
 	// so an explicit false in deployment.yaml overrides the default.json default of true; a nil
 	// pointer means "not set" and keeps the default.
 	Enabled *bool `yaml:"enabled" json:"enabled"`
+	// Push configures announcing recorded revocations to remote Resource Servers.
+	Push TokenRevocationPushConfig `yaml:"push" json:"push"`
+}
+
+// TokenRevocationPushConfig holds the settings for pushing recorded revocations to remote Resource
+// Servers, such as a control plane that trusts this server as its issuer, as signed Security Event
+// Tokens (RFC 8417) over push delivery (RFC 8935). Durations are in seconds. The defaults live in
+// default.json.
+type TokenRevocationPushConfig struct {
+	// Enabled controls whether revocations are pushed. It uses a pointer so an explicit false in
+	// deployment.yaml overrides default.json; nil means "not set".
+	Enabled *bool `yaml:"enabled" json:"enabled"`
+	// Receivers are the endpoints every revocation is pushed to.
+	Receivers []TokenRevocationReceiver `yaml:"receivers" json:"receivers"`
+	// RequestTimeout bounds one delivery attempt, in seconds; at most 30.
+	RequestTimeout int64 `yaml:"request_timeout" json:"request_timeout"`
+	// MaxAttempts is the number of delivery attempts per receiver; 1 means no retry. At most 10.
+	MaxAttempts int `yaml:"max_attempts" json:"max_attempts"`
+	// RetryDelay is the wait before the second attempt, in seconds; it doubles on every further
+	// attempt. At most 60.
+	RetryDelay int64 `yaml:"retry_delay" json:"retry_delay"`
+	// QueueSize caps pending events; beyond it events are dropped and logged.
+	QueueSize int `yaml:"queue_size" json:"queue_size"`
+	// RejectPrivateAddresses rejects receivers whose host resolves to a loopback, link-local,
+	// private or unspecified address, and requires https. It uses a pointer so an explicit false in
+	// deployment.yaml overrides the default of true.
+	RejectPrivateAddresses *bool `yaml:"reject_private_addresses" json:"reject_private_addresses"`
+}
+
+// TokenRevocationReceiver is one endpoint revocations are pushed to.
+type TokenRevocationReceiver struct {
+	// URL is the receiver's push endpoint.
+	URL string `yaml:"url" json:"url"`
+	// Audience identifies the receiver in the aud claim of every event sent to it. It must equal the
+	// audience the receiver expects, which for a control plane is its trusted issuer audience.
+	Audience string `yaml:"audience" json:"audience"`
+}
+
+// IsEnabled reports whether revocations are pushed, defaulting to false when unset.
+func (c TokenRevocationPushConfig) IsEnabled() bool {
+	return c.Enabled != nil && *c.Enabled
+}
+
+// RejectsPrivateAddresses reports whether private receivers are rejected. It defaults to true when
+// unset, so a configuration that never loaded default.json still fails safe.
+func (c TokenRevocationPushConfig) RejectsPrivateAddresses() bool {
+	return c.RejectPrivateAddresses == nil || *c.RejectPrivateAddresses
 }
 
 // IsEnabled reports whether the OAuth token revocation endpoint is active,

@@ -178,7 +178,14 @@
     "allowed_response_types" : ["code"],
     "allowed_grant_types" : ["client_credentials", "authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:token-exchange", "urn:openid:params:grant-type:ciba", "urn:ietf:params:oauth:grant-type:jwt-bearer"],
     "token_revocation" : {
-      "enabled" : true
+      "enabled" : true,
+      "push" : {
+        "request_timeout" : 5,
+        "max_attempts" : 5,
+        "retry_delay" : 2,
+        "queue_size" : 1024,
+        "reject_private_addresses" : true
+      }
     },
     "logout" : {
       "enabled" : true,

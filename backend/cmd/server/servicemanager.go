@@ -76,6 +76,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/logout/backchannel"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
+	revocationpush "github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation/push"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/openid4vci"
 	"github.com/thunder-id/thunderid/internal/ou"
@@ -131,7 +132,7 @@ var observabilitySvc observability.ObservabilityServiceInterface
 // complexity is low.
 func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterface) (
 	jwt.JWTServiceInterface, kmprovider.RuntimeCryptoProvider, importer.ImportServiceInterface, *mcpsdk.Server,
-	backchannel.DispatcherInterface, identitygovernance.LockNotifierInterface) {
+	backchannel.DispatcherInterface, revocationpush.DispatcherInterface, identitygovernance.LockNotifierInterface) {
 	logger := log.GetLogger()
 
 	// Service registration runs during application startup, outside any request.
@@ -427,8 +428,14 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		runtime.Config.AttributeCache.Encryption.Enabled)
 
 	flowConfig := flowconfig.FromServerRuntime()
-	revocationEnforcer, revocationSvc, err := revocation.Initialize(oauthCfg, jwtService, observabilitySvc)
+	revocationEnforcer, revocationSvc, revocationEventHook, err := revocation.Initialize(oauthCfg, jwtService,
+		observabilitySvc)
 	fatalOnError(ctx, logger, err, "Failed to initialize revocation service")
+	revocationPushDispatcher := revocationpush.Initialize(jwtService, oauthCfg)
+	if revocationPushDispatcher != nil {
+		err = revocationEventHook.Add(revocationPushDispatcher)
+		fatalOnError(ctx, logger, err, "Failed to register the revocation push dispatcher")
+	}
 	sessionRevoker := sessionCriteriaRevoker{revoker: revocationSvc}
 	// The termination hook is kept for the back-channel logout dispatcher, which OAuth builds and which
 	// is added to the hook once OAuth is initialized.
@@ -649,7 +656,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	healthSvc := healthcheckservice.Initialize(dbprovider.GetDBProvider(), dbprovider.GetRedisProvider())
 	services.NewHealthCheckService(mux, healthSvc)
 
-	return jwtService, runtimeCryptoSvc, importService, mcpServer, dispatcher, lockNotifier
+	return jwtService, runtimeCryptoSvc, importService, mcpServer, dispatcher, revocationPushDispatcher, lockNotifier
 }
 
 // initAttestationProvider initializes the platform attestation provider, terminating server startup

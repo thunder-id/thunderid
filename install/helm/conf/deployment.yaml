@@ -289,6 +289,11 @@ oauth:
   dcr:
     enabled: {{ .Values.configuration.oauth.dcr.enabled }}
     insecure: {{ .Values.configuration.oauth.dcr.insecure }}
+  token_revocation:
+    push:
+      enabled: {{ .Values.configuration.oauth.tokenRevocation.push.enabled }}
+      reject_private_addresses: {{ .Values.configuration.oauth.tokenRevocation.push.rejectPrivateAddresses }}
+      receivers: {{ toJson .Values.configuration.oauth.tokenRevocation.push.receivers }}
   logout:
     backchannel:
       enabled: {{ .Values.configuration.oauth.logout.backchannel.enabled }}

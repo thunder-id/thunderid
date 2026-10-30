@@ -51,7 +51,7 @@ func (suite *InitTestSuite) TearDownTest() {
 }
 
 func (suite *InitTestSuite) TestInitialize() {
-	enforcementService, revocationService, err := Initialize(revocationConfig(10), suite.mockJWTService, nil)
+	enforcementService, revocationService, _, err := Initialize(revocationConfig(10), suite.mockJWTService, nil)
 
 	assert.NoError(suite.T(), err)
 
@@ -69,7 +69,7 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 			RevocationEndpoint: "https://localhost:8090/oauth2/revoke",
 		})
 	mux := http.NewServeMux()
-	_, revocationService, err := Initialize(revocationConfig(10), suite.mockJWTService, nil)
+	_, revocationService, _, err := Initialize(revocationConfig(10), suite.mockJWTService, nil)
 	assert.NoError(suite.T(), err)
 
 	RegisterRoutes(mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService, revocationService, nil, nil,
@@ -84,7 +84,7 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 }
 
 func (suite *InitTestSuite) TestInitialize_RejectsNegativeMaxEntriesPerChange() {
-	enforcementService, revocationService, err := Initialize(revocationConfig(-1), suite.mockJWTService, nil)
+	enforcementService, revocationService, _, err := Initialize(revocationConfig(-1), suite.mockJWTService, nil)
 
 	assert.ErrorContains(suite.T(), err, "oauth.revocation.criteria.max_entries_per_change")
 	assert.Nil(suite.T(), enforcementService)
@@ -98,7 +98,7 @@ func (suite *InitTestSuite) TestInitialize_ReadsTheOAuthConfig() {
 	cfg.OAuth.Revocation.TokenFamily.OnExplicitRevoke = &explicit
 	cfg.JWT.Leeway = 30
 
-	_, writeService, err := Initialize(cfg, suite.mockJWTService, nil)
+	_, writeService, _, err := Initialize(cfg, suite.mockJWTService, nil)
 
 	suite.Require().NoError(err)
 	svc, ok := writeService.(*revocationService)
@@ -110,7 +110,7 @@ func (suite *InitTestSuite) TestInitialize_ReadsTheOAuthConfig() {
 }
 
 func (suite *InitTestSuite) TestInitialize_ZeroMaxEntriesPerChangeIsKept() {
-	_, writeService, err := Initialize(revocationConfig(0), suite.mockJWTService, nil)
+	_, writeService, _, err := Initialize(revocationConfig(0), suite.mockJWTService, nil)
 
 	suite.Require().NoError(err)
 	svc, ok := writeService.(*revocationService)

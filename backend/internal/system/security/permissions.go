@@ -43,6 +43,8 @@ var publicPaths = []string{
 	"/i18n/languages/*/translations/resolve",
 	"/i18n/languages/*/translations/ns/*/keys/*/resolve",
 	"/mcp/**", // MCP authorization is handled at MCP server handler.
+	// Pushed revocation events authenticate by their signed event token, verified by the handler.
+	"/revocation/events",
 	"/auth/**",
 	"/register/passkey/**",
 	"/access/**",

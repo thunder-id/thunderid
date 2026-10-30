@@ -121,9 +121,10 @@ func (h *jwtAuthenticator) authenticateToken(ctx context.Context, token, expecte
 	securityCtx := newSecurityContext(subject, ouID, token, scopes, attributes)
 	securityCtx.revocationID = extractAttribute(attributes, claimJTI)
 	securityCtx.tokenFamilyID = extractAttribute(attributes, claimTokenFamilyID)
-	// Subject-dimension revocation is only meaningful for subjects this deployment issued, so a
-	// federated token contributes no revocation subject and is enforced on jti and tfid alone.
-	if issuer, _ := attributes[claimIssuer].(string); issuer == config.GetServerRuntime().Config.JWT.Issuer {
+	// Subject-dimension revocation is only meaningful for subjects whose revocations this deployment
+	// holds, so any other federated token contributes no revocation subject and is enforced on jti and
+	// tfid alone.
+	if issuer, _ := attributes[claimIssuer].(string); holdsRevocationsOf(issuer) {
 		securityCtx.revocationSubject = subject
 		accessTokenSubject, _ := attributes[claimAccessTokenSubject].(string)
 		if accessTokenSubject != "" {
@@ -226,6 +227,20 @@ func (h *jwtAuthenticator) verifyFederatedToken(ctx context.Context, token strin
 	}
 
 	return true
+}
+
+// holdsRevocationsOf reports whether the revocations this deployment enforces cover every dimension of
+// the issuer's tokens: its own, and those of the trusted issuer when the trusted issuer feeds its deny
+// list through pushed events. A deny list read from this deployment's database holds nothing about a
+// trusted issuer's subjects, which could collide with local ones.
+func holdsRevocationsOf(issuer string) bool {
+	cfg := config.GetServerRuntime().Config
+	if issuer == cfg.JWT.Issuer {
+		return true
+	}
+	trusted := cfg.Server.SecurityConfig.TrustedIssuer
+	return trusted.IsConfigured() && issuer == trusted.Issuer &&
+		cfg.Server.SecurityConfig.TokenRevocation.UsesEvents()
 }
 
 // requireAccessTokenType enforces the RFC 9068 typ header on a self-issued token, so that only an

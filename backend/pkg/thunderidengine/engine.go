@@ -237,7 +237,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 
 	engineCtx.dpopVerifier = dpop.Initialize(oauthConfig, jti.Initialize(engineCtx.runtimeStoreProvider),
 		engineCtx.runtimeCryptoSvc)
-	revocationEnforcer, revocationService, err := revocation.Initialize(oauthConfig, engineCtx.jwtService,
+	revocationEnforcer, revocationService, _, err := revocation.Initialize(oauthConfig, engineCtx.jwtService,
 		engineCtx.observabilitySvc)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize revocation service", log.Error(err))

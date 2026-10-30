@@ -78,6 +78,9 @@ const ContentTypeJSON = "application/json"
 // ContentTypeJWT is the content type for JWT data.
 const ContentTypeJWT = "application/jwt"
 
+// ContentTypeSecurityEventToken is the content type of a Security Event Token (RFC 8417 §2.3).
+const ContentTypeSecurityEventToken = "application/secevent+jwt"
+
 // ContentTypeFormURLEncoded is the content type for form-urlencoded data.
 const ContentTypeFormURLEncoded = "application/x-www-form-urlencoded"
 

@@ -456,6 +456,17 @@ configuration:
     dcr:
       enabled: true
       insecure: false
+    # Push every recorded revocation to remote Resource Servers, such as a control plane that trusts
+    # this server as its issuer, as signed Security Event Tokens. Each receiver is an object with the
+    # push endpoint `url` and the `audience` the receiver expects, which for a control plane is its
+    # trusted issuer audience.
+    tokenRevocation:
+      push:
+        enabled: false
+        # Reject receivers naming localhost or a private IP address, and require https. Set to false
+        # when the receiver runs on an internal network.
+        rejectPrivateAddresses: true
+        receivers: []
     # OIDC Back-Channel Logout: notify relying parties that registered a back-channel logout URI when
     # a session they took part in ends.
     logout:

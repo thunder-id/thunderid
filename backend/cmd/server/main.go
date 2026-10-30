@@ -24,6 +24,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/logout/backchannel"
+	revocationpush "github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation/push"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/constants"
@@ -86,8 +87,8 @@ func main() {
 	}
 
 	// Register the services.
-	jwtService, runtimeCryptoSvc, importService, mcpServer, backchannelDispatcher, lockNotifier :=
-		registerServices(mux, cacheManager)
+	jwtService, runtimeCryptoSvc, importService, mcpServer, backchannelDispatcher, revocationPushDispatcher,
+		lockNotifier := registerServices(mux, cacheManager)
 
 	// When invoked as the bootstrap one-shot (`thunderid bootstrap`), create the
 	// default resources in-process and exit without starting the HTTP server.
@@ -103,11 +104,14 @@ func main() {
 	// Initialize the Resource Server token-revocation cache. The initial deny-list snapshot is loaded
 	// synchronously so enforcement is live before the first request; if that load fails the server
 	// still starts and the syncer repopulates the cache on its next tick.
-	revocationEnforcer, revocationSyncer := initRevocationCache(ctx, logger, cfg)
+	revocationEnforcer, revocationSyncer := initRevocationCache(ctx, logger, cfg, mux, jwtService)
 	revocationSyncer.Start(ctx)
 
 	if backchannelDispatcher != nil {
 		backchannelDispatcher.Start(ctx)
+	}
+	if revocationPushDispatcher != nil {
+		revocationPushDispatcher.Start(ctx)
 	}
 
 	// Mount the MCP server's routes now that the revocation enforcer exists — DefaultGuard uses it
@@ -155,20 +159,25 @@ func main() {
 	// Wait for shutdown signal
 	<-sigChan
 	logger.Info(ctx, "Shutting down server...")
-	gracefulShutdown(ctx, logger, server, cacheManager, revocationSyncer, backchannelDispatcher, lockNotifier)
+	gracefulShutdown(ctx, logger, server, cacheManager, revocationSyncer, backchannelDispatcher,
+		revocationPushDispatcher, lockNotifier)
 }
 
 // initRevocationCache builds the Resource Server token-revocation enforcer and its background syncer
 // from the server security configuration. An unsupported source configuration fails startup; a
 // failed initial deny-list load does not — the server starts and the syncer populates the cache later.
-func initRevocationCache(ctx context.Context, logger *log.Logger,
-	cfg *config.Config) (revocationcache.EnforcerInterface, revocationcache.Syncer) {
+func initRevocationCache(ctx context.Context, logger *log.Logger, cfg *config.Config, mux *http.ServeMux,
+	jwtService jwt.JWTServiceInterface) (revocationcache.EnforcerInterface, revocationcache.Syncer) {
 	rc := cfg.Server.SecurityConfig.TokenRevocation
+	issuer := cfg.Server.SecurityConfig.TrustedIssuer
 	enforcer, syncer, err := revocationcache.Initialize(revocationcache.Config{
 		Enabled:      rc.IsEnabled(),
 		Source:       rc.Source,
 		SyncInterval: time.Duration(rc.SyncIntervalSeconds) * time.Second,
-	})
+		TrustedIssuer: revocationcache.TrustedIssuer{
+			Issuer: issuer.Issuer, JWKSURL: issuer.JWKSURL, Audience: issuer.Audience,
+		},
+	}, mux, jwtService)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize token revocation cache", log.Error(err))
 	}
@@ -325,6 +334,7 @@ func gracefulShutdown(
 	cacheManager cache.CacheManagerInterface,
 	revocationSyncer revocationcache.Syncer,
 	backchannelDispatcher backchannel.DispatcherInterface,
+	revocationPushDispatcher revocationpush.DispatcherInterface,
 	lockNotifier identitygovernance.LockNotifierInterface,
 ) {
 	ctx, cancel := context.WithTimeout(ctx, shutdownTimeout)
@@ -344,6 +354,9 @@ func gracefulShutdown(
 	// the final delivery outcomes still reach a subscriber.
 	if backchannelDispatcher != nil {
 		backchannelDispatcher.Stop()
+	}
+	if revocationPushDispatcher != nil {
+		revocationPushDispatcher.Stop()
 	}
 	if lockNotifier != nil {
 		lockNotifier.Stop()

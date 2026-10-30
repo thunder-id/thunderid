@@ -993,7 +993,7 @@ func LoadConfig(configPath string, defaultPath string, serverHome string) (*Conf
 	if err := cfg.OAuth.TokenExchange.Validate(); err != nil {
 		return nil, err
 	}
-	if err := cfg.OAuth.Logout.Backchannel.Validate(); err != nil {
+	if err := validateOutboundNotifications(&cfg); err != nil {
 		return nil, err
 	}
 	if err := cfg.OAuth.AuthorizationDetails.Validate(); err != nil {
@@ -1056,6 +1056,15 @@ func loadUserConfig(path string, serverHome string) (Config, error) {
 // GetServerURL constructs the server URL from the server configuration.
 func GetServerURL(server *engineconfig.ServerConfig) string {
 	return engineconfig.GetServerURL(server)
+}
+
+// validateOutboundNotifications validates the settings of the notifications this server sends to
+// other parties when something ends: back-channel logout and revocation push.
+func validateOutboundNotifications(cfg *Config) error {
+	if err := cfg.OAuth.Logout.Backchannel.Validate(); err != nil {
+		return err
+	}
+	return cfg.OAuth.TokenRevocation.Push.Validate()
 }
 
 // mergeConfigs merges user configuration into the base configuration.
