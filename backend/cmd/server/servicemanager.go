@@ -282,7 +282,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Identity governance reads the accountAccess section and the lock email's default sender through
 	// the server-config service.
 	governanceService, lockNotifier, err := identitygovernance.Initialize(
-		entityService, serverConfigService, governanceCfg, &identitygovernance.NotificationDependencies{
+		dbprovider.GetDBProvider(), entityService, serverConfigService, governanceCfg,
+		&identitygovernance.NotificationDependencies{
 			Templates:   notifTemplateRenderer,
 			Senders:     notifSenderSvc,
 			EntityTypes: entityTypeService,

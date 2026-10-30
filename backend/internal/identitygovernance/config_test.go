@@ -210,7 +210,7 @@ func (s *ConfigTestSuite) TestTheShippedDefaultsResolveToTheDocumentedPolicy() {
 	s.Require().NoError(handler.Validate(accountAccessValue{}, nil, nil))
 	s.serves(handler.Merge(nil, accountAccessValue{}))
 	source := s.readingSource(cfg.AccountAccess)
-	svc := newIdentityGovernanceService(nil, source, nil, nil, nil)
+	svc := newIdentityGovernanceService(nil, source, nil, nil, nil, nil)
 	ctx := context.Background()
 
 	user := svc.resolvePolicy(ctx, GovernedEntity{Category: providers.EntityCategoryUser},

@@ -239,6 +239,33 @@ func failAuthentication(t *testing.T, identifierKey, identifierValue string, cou
 	return refusals
 }
 
+// failAuthenticationConcurrently starts a burst together and checks its responses on the test goroutine.
+func failAuthenticationConcurrently(t *testing.T, identifierKey, identifierValue string, count int) {
+	t.Helper()
+	type result struct {
+		status int
+		body   []byte
+		err    error
+	}
+	start := make(chan struct{})
+	results := make(chan result, count)
+	for i := range count {
+		go func() {
+			<-start
+			status, body, err := testutils.AuthenticateWithCredentialRaw(identifierKey, identifierValue, "password",
+				"DefinitelyNotTheSecret!"+strconv.Itoa(i))
+			results <- result{status: status, body: body, err: err}
+		}()
+	}
+	close(start)
+	for range count {
+		answer := <-results
+		require.NoError(t, answer.err, "concurrent authentication request failed")
+		require.Equal(t, http.StatusUnauthorized, answer.status,
+			"a wrong secret must produce an authentication refusal: %s", answer.body)
+	}
+}
+
 // failHeldAuthentication presents a wrong secret count times to a held account and requires every
 // attempt to state the hold by code, as the correct secret's refusal does.
 func failHeldAuthentication(t *testing.T, identifierKey, identifierValue string, count int, code string) {
@@ -299,31 +326,53 @@ func runtimeRevision(t *testing.T, entityID string) string {
 }
 
 // servedRung returns the duration of the lock the runtime row holds for a method ("account" for the
-// account-wide entry): its unlock time less the failure that formed it, both written from one clock
-// reading, so the answer does not depend on how long the test took to read it.
+// account-wide entry): its unlock time less the row's last write. Read it right after formation, before
+// any other runtime write.
 func servedRung(t *testing.T, entityID, method string) time.Duration {
 	t.Helper()
-	unlockAt, failedAt := storedLock(t, entityID, method)
-	return unlockAt.Sub(failedAt)
+	unlockAt := storedLock(t, entityID, method).UnlockAt
+	updatedAt := runtimeColumn(t, entityID, "UPDATED_AT")
+	for _, layout := range []string{
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02 15:04:05.999999999Z07",
+		time.RFC3339Nano,
+	} {
+		formedAt, err := time.Parse(layout, updatedAt)
+		if err == nil {
+			return unlockAt.Sub(formedAt.UTC().Truncate(time.Second))
+		}
+	}
+	require.FailNow(t, "unreadable runtime write timestamp", "%q", updatedAt)
+	return 0
 }
 
 // storedExpiry returns the unlock time the runtime row holds for a method. Unlike the status read, it
 // is still there once the lock has lapsed, so a slow read cannot miss it.
 func storedExpiry(t *testing.T, entityID, method string) time.Time {
 	t.Helper()
-	unlockAt, _ := storedLock(t, entityID, method)
-	return unlockAt
+	return storedLock(t, entityID, method).UnlockAt
 }
 
-// storedLock returns the unlock time of the lock the runtime row holds for a method ("account" for the
-// account-wide entry), and the time of the failure that formed it.
-func storedLock(t *testing.T, entityID, method string) (time.Time, time.Time) {
+// storedLockEntry is a method's lock entry as the runtime row holds it.
+type storedLockEntry struct {
+	UnlockAt            time.Time
+	FailureCount        int
+	ConsecutiveFailures int
+	LockCount           int
+}
+
+// storedLock returns the lock entry the runtime row holds for a method ("account" for the account-wide
+// entry). It requires a finite unlock time.
+func storedLock(t *testing.T, entityID, method string) storedLockEntry {
 	t.Helper()
 	raw := runtimeColumn(t, entityID, "RUNTIME_ATTRIBUTES")
 
 	type lockEntry struct {
-		UnlockAt     string `json:"unlockAt"`
-		LastFailedAt string `json:"lastFailedAt"`
+		UnlockAt            string `json:"unlockAt"`
+		FailureCount        int    `json:"failureCount"`
+		ConsecutiveFailures int    `json:"consecutiveFailures"`
+		LockCount           int    `json:"lockCount"`
 	}
 	var row struct {
 		AccessState struct {
@@ -342,9 +391,12 @@ func storedLock(t *testing.T, entityID, method string) (time.Time, time.Time) {
 	require.True(t, recorded, "the runtime row must hold a %s lock: %s", method, raw)
 	unlockAt, err := time.Parse(time.RFC3339, entry.UnlockAt)
 	require.NoError(t, err, "the %s lock must have a finite unlock time: %s", method, raw)
-	failedAt, err := time.Parse(time.RFC3339, entry.LastFailedAt)
-	require.NoError(t, err, "the %s lock must record the failure that formed it: %s", method, raw)
-	return unlockAt, failedAt
+	return storedLockEntry{
+		UnlockAt:            unlockAt,
+		FailureCount:        entry.FailureCount,
+		ConsecutiveFailures: entry.ConsecutiveFailures,
+		LockCount:           entry.LockCount,
+	}
 }
 
 // getManagement reads one management resource as the administrator, requires it to be answered and
