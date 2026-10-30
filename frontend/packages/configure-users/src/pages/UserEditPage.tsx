@@ -13,6 +13,7 @@ import {
   getInitials,
 } from '@thunderid/components';
 import {useOrganizationAccess} from '@thunderid/configure-resource-sharing';
+import {SessionsPanel} from '@thunderid/configure-sessions';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {useThunderID} from '@thunderid/react';
@@ -456,6 +457,12 @@ export default function UserEditPage() {
       render: () => <CredentialsTabPanel userId={userId!} credentialFields={credentialFields} />,
     });
   }
+
+  tabs.push({
+    key: 'sessions',
+    label: t('users:manageUser.tabs.sessions', 'Sessions'),
+    render: () => <SessionsPanel filter={{userId: userId!}} />,
+  });
 
   tabs.push({
     key: 'affiliations',

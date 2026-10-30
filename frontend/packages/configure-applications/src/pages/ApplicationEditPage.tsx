@@ -11,6 +11,7 @@ import {
   UnsavedChangesBar,
 } from '@thunderid/components';
 import {useOrganizationAccess} from '@thunderid/configure-resource-sharing';
+import {SessionsPanel} from '@thunderid/configure-sessions';
 import {useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {isEqualIgnoringEmpty} from '@thunderid/utils';
@@ -456,6 +457,12 @@ export default function ApplicationEditPage() {
             ),
           },
           {
+            key: 'sessions',
+            label: t('applications:edit.page.tabs.sessions'),
+            panel: <SessionsPanel filter={{appId: application.id}} />,
+            hidden: !userAccessUnlocked,
+          },
+          {
             key: 'organizationAccess',
             label: t('applications:edit.page.tabs.organizationAccess', 'Organization Access'),
             panel: <EditOrganizationAccessSettings application={application} access={organizationAccess} />,
@@ -614,6 +621,11 @@ export default function ApplicationEditPage() {
               onValidationChange={setHasValidationErrors}
             />
           ),
+        },
+        {
+          key: 'sessions',
+          label: t('applications:edit.page.tabs.sessions'),
+          panel: <SessionsPanel filter={{appId: application.id}} />,
         },
         {
           key: 'organizationAccess',

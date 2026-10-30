@@ -3504,6 +3504,7 @@ const translations = {
     'organizationAccess.title': 'Where {{resource}} is available',
     'organizationAccess.description': '{{resource}} can request tokens to act within the units selected here.',
     'organizationAccess.ownerOnly': "{{resource}} isn't available in any other unit.",
+    'edit.page.tabs.sessions': 'Sessions',
     'edit.page.tabs.advanced': 'Advanced',
     'edit.page.unsavedChanges': 'Unsaved changes',
     'edit.page.validation.missingRedirectUri': 'A redirect URI is required.',
@@ -6412,6 +6413,50 @@ const translations = {
     'errors.VAR-1004': 'The gateway holds nothing by that name. It may have been deleted.',
     'errors.VAR-1008': 'A description can be at most 1000 characters.',
     'errors.VAR-1009': 'The gateway already holds something by that name.',
+  },
+
+  // ============================================================================
+  // Sessions namespace - SSO session management feature translations
+  // ============================================================================
+  sessions: {
+    'panel.title': 'Active sessions',
+    'panel.userDescription': 'Where this user is signed in. Revoking a session signs it out on that device.',
+    'panel.appDescription':
+      'Sessions that signed in to this application. Revoking a session signs the user out of every application in it.',
+    'panel.loadError': 'Failed to load sessions',
+    'panel.empty': 'No active sessions',
+    'item.lastActive': 'Last active {{time}}',
+    'item.userLastActive': '{{user}}, last active {{time}}',
+    'device.browserOnOs': '{{browser}} on {{os}}',
+    'device.unknown': 'Unknown device',
+    'details.user': 'User',
+    'details.os': 'Operating system',
+    'details.browser': 'Browser',
+    'details.device': 'Device',
+    'details.applications': 'Active applications',
+    'details.noApplications': 'None',
+    'details.signedIn': 'Signed in',
+    'details.lastAuthenticated': 'Last entered credentials',
+    'details.lastActive': 'Last active',
+    'details.creationIp': 'Signed in from IP',
+    'details.lastActiveIp': 'IP address',
+    'details.idleExpiresAt': 'Ends if unused at',
+    'details.absoluteExpiresAt': 'Ends at the latest at',
+    'details.notRecorded': 'Not recorded',
+    'revoke.action': 'Revoke',
+    'revoke.title': 'Revoke session',
+    'revoke.message':
+      'The user is signed out on this device, and the tokens this session issued stop working. The next sign-in on it asks for credentials again.',
+    'revoke.confirm': 'Revoke',
+    'revoke.revoking': 'Revoking...',
+    'revoke.success': 'Session revoked',
+    'revoke.error': 'Failed to revoke the session. Please try again.',
+    'revokeAll.action': 'Revoke All',
+    'revokeAll.title': 'Revoke all sessions',
+    'revokeAll.message':
+      'The user is signed out on every device, and the tokens these sessions issued stop working. The next sign-in asks for credentials again.',
+    'revokeAll.success': 'All sessions revoked',
+    'revokeAll.error': 'Failed to revoke the sessions. Please try again.',
   },
 
   // ============================================================================
