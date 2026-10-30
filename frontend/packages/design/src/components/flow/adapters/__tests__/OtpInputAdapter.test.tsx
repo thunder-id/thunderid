@@ -25,6 +25,16 @@ describe('OtpInputAdapter', () => {
     expect(digitBoxes(container)).toHaveLength(6);
   });
 
+  it('renders eight boxes for the Device Grant user-code component', () => {
+    const deviceCodeProps = {
+      ...baseProps,
+      component: {...baseProps.component, id: 'device-code-input', ref: 'device-code-input'},
+    };
+    const {container} = renderWithProviders(<OtpInputAdapter {...deviceCodeProps} />);
+
+    expect(digitBoxes(container)).toHaveLength(8);
+  });
+
   it('renders the number of boxes reported by the step', () => {
     const {container} = renderWithProviders(<OtpInputAdapter {...baseProps} additionalData={{otpLength: '8'}} />);
     expect(digitBoxes(container)).toHaveLength(8);

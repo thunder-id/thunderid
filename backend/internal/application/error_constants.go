@@ -864,4 +864,30 @@ var (
 			DefaultValue: "The organization unit must be the project's root organization unit or one below it",
 		},
 	}
+	// ErrorDeviceGrantFlowRequired is returned when Device Code is enabled without an assigned flow.
+	ErrorDeviceGrantFlowRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1065",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.device_grant_flow_required",
+			DefaultValue: "Device Grant flow is required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.device_grant_flow_required_description",
+			DefaultValue: "Assign a Device Grant flow before enabling the Device Code grant type",
+		},
+	}
+	// ErrorInvalidDeviceGrantFlowID is returned when an invalid Device Grant flow is assigned.
+	ErrorInvalidDeviceGrantFlowID = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1066",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_device_grant_flow_id",
+			DefaultValue: "Invalid Device Grant flow ID",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_device_grant_flow_id_description",
+			DefaultValue: "The Device Grant flow must call this application's configured Authentication flow",
+		},
+	}
 )

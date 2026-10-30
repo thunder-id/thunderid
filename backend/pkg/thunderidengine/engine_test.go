@@ -112,6 +112,7 @@ func validEngineContext(t *testing.T) *engineContext {
 	return &engineContext{
 		serverHome:            "/tmp/server",
 		serverConfig:          engineconfig.ServerConfig{Identifier: "test-server"},
+		encryptionConfig:      engineconfig.EncryptionConfig{Key: "test-encryption-key"},
 		observabilitySvc:      newTestObservabilityProvider(t),
 		authzProvider:         newTestAuthzProvider(t),
 		actorProvider:         actorprovidermock.NewActorProviderMock(t),

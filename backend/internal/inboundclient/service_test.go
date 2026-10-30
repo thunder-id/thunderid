@@ -2375,11 +2375,40 @@ func (suite *InboundClientServiceTestSuite) TestValidateAllowedAgentTypes_Servic
 func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_NilOrNoMgtIsNoOp() {
 	svc := &inboundClientService{}
 	c := validInboundClient()
-	assert.NoError(suite.T(), svc.resolveFlowDefaults(context.Background(), &c))
+	assert.NoError(suite.T(), svc.resolveFlowDefaults(context.Background(), &c, nil))
 
 	svc2 := &inboundClientService{flowMgt: nil}
 	c2 := validInboundClient()
-	assert.NoError(suite.T(), svc2.resolveFlowDefaults(context.Background(), &c2))
+	assert.NoError(suite.T(), svc2.resolveFlowDefaults(context.Background(), &c2, nil))
+}
+
+func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_RequiresDeviceGrantFlowWhenGrantEnabled() {
+	svc := &inboundClientService{}
+	client := &inboundmodel.InboundClient{ID: "app-1"}
+	oauthProfile := &providers.OAuthProfile{
+		GrantTypes: []string{string(providers.GrantTypeDeviceCode)},
+	}
+
+	err := svc.resolveFlowDefaults(context.Background(), client, oauthProfile)
+	assert.ErrorIs(suite.T(), err, ErrFKDeviceGrantFlowRequired)
+}
+
+func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_UsesExplicitDeviceGrantFlow() {
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().ResolveEffectiveFlowID(
+		mock.Anything, "", "", providers.FlowTypeAuthentication).Return("", nil).Once()
+	flowMgt.EXPECT().ResolveEffectiveFlowID(
+		mock.Anything, "", "", providers.FlowTypeSignOut).Return("", nil).Once()
+	svc := &inboundClientService{flowMgt: flowMgt}
+	client := &inboundmodel.InboundClient{ID: "app-1", DeviceGrantFlowID: "device-flow-1"}
+	oauthProfile := &providers.OAuthProfile{
+		GrantTypes: []string{string(providers.GrantTypeDeviceCode)},
+	}
+
+	err := svc.resolveFlowDefaults(context.Background(), client, oauthProfile)
+
+	suite.NoError(err)
+	suite.Equal("device-flow-1", client.DeviceGrantFlowID)
 }
 
 func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_RecoveryFlowDisabledWhenEmpty() {
@@ -2389,7 +2418,7 @@ func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_RecoveryFlow
 		RecoveryFlowID: "",
 	}
 	svc := &inboundClientService{}
-	err := svc.resolveFlowDefaults(context.Background(), c)
+	err := svc.resolveFlowDefaults(context.Background(), c, nil)
 	assert.NoError(suite.T(), err)
 	assert.False(suite.T(), c.IsRecoveryFlowEnabled)
 }
@@ -2402,7 +2431,7 @@ func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_RecoveryFlow
 		IsRecoveryFlowEnabled: true,
 	}
 	svc := &inboundClientService{}
-	err := svc.resolveFlowDefaults(context.Background(), c)
+	err := svc.resolveFlowDefaults(context.Background(), c, nil)
 	assert.NoError(suite.T(), err)
 	assert.True(suite.T(), c.IsRecoveryFlowEnabled)
 	assert.Equal(suite.T(), "recovery-1", c.RecoveryFlowID)
@@ -2429,7 +2458,7 @@ func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_ResolvesAllF
 		IsRecoveryFlowEnabled:     true,
 		SignOutFlowID:             "so-1",
 	}
-	err := svc.resolveFlowDefaults(context.Background(), c)
+	err := svc.resolveFlowDefaults(context.Background(), c, nil)
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "auth-1", c.AuthFlowID)
 	assert.Equal(suite.T(), "reg-1", c.RegistrationFlowID)
@@ -2450,7 +2479,7 @@ func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_NonAuthFlows
 		mock.Anything, "", "", providers.FlowTypeSignOut).Return("", nil).Once()
 	svc := &inboundClientService{flowMgt: flowMgt}
 	c := &inboundmodel.InboundClient{ID: "p1", AuthFlowID: "auth-1"}
-	err := svc.resolveFlowDefaults(context.Background(), c)
+	err := svc.resolveFlowDefaults(context.Background(), c, nil)
 	assert.NoError(suite.T(), err)
 	assert.Empty(suite.T(), c.RegistrationFlowID)
 	assert.False(suite.T(), c.IsRegistrationFlowEnabled)
@@ -2476,7 +2505,7 @@ func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_DisabledFlag
 		RecoveryFlowID:            "rec-1",
 		IsRecoveryFlowEnabled:     false,
 	}
-	err := svc.resolveFlowDefaults(context.Background(), c)
+	err := svc.resolveFlowDefaults(context.Background(), c, nil)
 	assert.NoError(suite.T(), err)
 	assert.Empty(suite.T(), c.RegistrationFlowID)
 	assert.False(suite.T(), c.IsRegistrationFlowEnabled)
@@ -2532,7 +2561,7 @@ func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_ResolveError
 				IsRegistrationFlowEnabled: true,
 				IsRecoveryFlowEnabled:     true,
 			}
-			err := svc.resolveFlowDefaults(context.Background(), c)
+			err := svc.resolveFlowDefaults(context.Background(), c, nil)
 			assert.ErrorIs(suite.T(), err, tt.expectedErr)
 		})
 	}
@@ -2948,6 +2977,14 @@ func (suite *InboundClientServiceTestSuite) TestValidateFKs_RecoveryFlowErrorPro
 	svc := &inboundClientService{flowMgt: flowMgt}
 	c := &inboundmodel.InboundClient{RecoveryFlowID: "bad"}
 	assert.ErrorIs(suite.T(), svc.validateFKs(context.Background(), c), ErrFKInvalidRecoveryFlow)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateFKs_DeviceGrantFlowErrorPropagated() {
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().IsValidFlow(mock.Anything, "bad", providers.FlowTypeDeviceGrant).Return(false, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{DeviceGrantFlowID: "bad"}
+	assert.ErrorIs(suite.T(), svc.validateFKs(context.Background(), c), ErrFKInvalidDeviceGrantFlow)
 }
 
 func (suite *InboundClientServiceTestSuite) TestValidateFKs_AllPassWithEmptyOptionals() {

@@ -154,6 +154,21 @@ packages:
           pkgname: cibamock
           filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/oauth/oauth2/deviceauth:
+    interfaces:
+      DeviceAuthRequestStoreInterface:
+        config:
+          dir: tests/mocks/oauth/oauth2/deviceauthmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: deviceauthmock
+          filename: "{{.InterfaceName}}_mock.go"
+      DeviceAuthServiceInterface:
+        config:
+          dir: tests/mocks/oauth/oauth2/deviceauthmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: deviceauthmock
+          filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop:
     config:
       all: true

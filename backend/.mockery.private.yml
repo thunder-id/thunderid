@@ -107,6 +107,14 @@ packages:
       pkgname: ciba
       filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/oauth/oauth2/deviceauth:
+    config:
+      all: true
+      dir: internal/oauth/oauth2/deviceauth
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: deviceauth
+      filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/authn:
     config:
       all: true
@@ -485,6 +493,12 @@ packages:
           structname: '{{.InterfaceName}}Mock'
           pkgname: flowexec
           filename: "{{.InterfaceName}}_mock_test.go"
+      DeviceCodeVerifier:
+        config:
+          dir: internal/flow/executor
+          structname: DeviceCodeVerifierMock
+          pkgname: executor
+          filename: DeviceCodeVerifier_mock_test.go
       Executor:
         config:
           dir: internal/flow/core

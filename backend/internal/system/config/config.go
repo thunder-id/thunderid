@@ -729,6 +729,7 @@ type OAuthConfig struct {
 	DPoP                     engineconfig.DPoPConfig                 `yaml:"dpop" json:"dpop"`
 	AuthClass                engineconfig.AuthClassConfig            `yaml:"auth_class" json:"auth_class"`
 	CIBA                     engineconfig.CIBAConfig                 `yaml:"ciba" json:"ciba"`
+	DeviceGrant              engineconfig.DeviceGrantConfig          `yaml:"device_grant" json:"device_grant"`
 	ClientAssertion          engineconfig.ClientAssertionConfig      `yaml:"client_assertion" json:"client_assertion"`
 	Revocation               engineconfig.RevocationConfig           `yaml:"revocation" json:"revocation"`
 	TokenExchange            engineconfig.TokenExchangeConfig        `yaml:"token_exchange" json:"token_exchange"`
@@ -756,6 +757,7 @@ func (c OAuthConfig) ToEngineConfig() engineconfig.OAuthConfig {
 		DPoP:                     c.DPoP,
 		AuthClass:                c.AuthClass,
 		CIBA:                     c.CIBA,
+		DeviceGrant:              c.DeviceGrant,
 		ClientAssertion:          c.ClientAssertion,
 		Revocation:               c.Revocation,
 		TokenExchange:            c.TokenExchange,

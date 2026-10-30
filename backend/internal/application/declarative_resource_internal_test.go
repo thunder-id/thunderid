@@ -38,6 +38,8 @@ id: test-app-001
 name: Test Application
 description: A test application
 authFlowId: flow-123
+deviceGrantFlowId: device-grant-flow-123
+deviceGrantFlowHandle: custom-device-grant
 registrationFlowId: flow-reg-456
 isRegistrationFlowEnabled: true
 themeId: theme-blue
@@ -77,6 +79,8 @@ passkeyAllowedOrigins:
 	assert.Equal(s.T(), "Test Application", appDTO.Name)
 	assert.Equal(s.T(), "A test application", appDTO.Description)
 	assert.Equal(s.T(), "flow-123", appDTO.AuthFlowID)
+	assert.Equal(s.T(), "device-grant-flow-123", appDTO.DeviceGrantFlowID)
+	assert.Equal(s.T(), "custom-device-grant", appDTO.DeviceGrantFlowHandle)
 	assert.Equal(s.T(), "flow-reg-456", appDTO.RegistrationFlowID)
 	assert.True(s.T(), appDTO.IsRegistrationFlowEnabled)
 	assert.Equal(s.T(), "theme-blue", appDTO.ThemeID)

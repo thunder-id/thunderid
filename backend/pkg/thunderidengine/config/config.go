@@ -405,6 +405,14 @@ type ClientAssertionConfig struct {
 	MaxIatAge int64 `yaml:"max_iat_age" json:"max_iat_age"`
 }
 
+// DeviceGrantConfig holds the lifetime and polling interval for device authorization requests.
+type DeviceGrantConfig struct {
+	// ExpiresIn is the device authorization request lifetime in seconds.
+	ExpiresIn int64 `yaml:"expires_in" json:"expires_in"`
+	// Interval is the minimum token polling interval in seconds.
+	Interval int64 `yaml:"interval" json:"interval"`
+}
+
 // OAuthConfig holds the OAuth configuration details.
 type OAuthConfig struct {
 	RefreshToken         RefreshTokenConfig         `yaml:"refresh_token"               json:"refresh_token"`
@@ -417,6 +425,7 @@ type OAuthConfig struct {
 	DPoP                 DPoPConfig                 `yaml:"dpop"                        json:"dpop"`
 	AuthClass            AuthClassConfig            `yaml:"auth_class"                  json:"auth_class"`
 	CIBA                 CIBAConfig                 `yaml:"ciba"                        json:"ciba"`
+	DeviceGrant          DeviceGrantConfig          `yaml:"device_grant"                json:"device_grant"`
 	ClientAssertion      ClientAssertionConfig      `yaml:"client_assertion"            json:"client_assertion"`
 	Revocation           RevocationConfig           `yaml:"revocation"                  json:"revocation"`
 	TokenExchange        TokenExchangeConfig        `yaml:"token_exchange"              json:"token_exchange"`

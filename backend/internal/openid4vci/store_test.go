@@ -55,6 +55,12 @@ func (errRuntimeStore) CompareFieldAndSwap(
 	return false, errors.New("store failure")
 }
 
+func (errRuntimeStore) CompareFieldAndSwapBeforeExpiry(
+	context.Context, providers.RuntimeStoreNamespace, string, string, string, time.Time, []byte,
+) (bool, error) {
+	return false, errors.New("store failure")
+}
+
 // OpenID4VCIStoreTestSuite exercises the openID4VCIStore adapter against a real in-memory
 // runtime store, verifying the marshal/namespace/key round-trip and not-found semantics.
 type OpenID4VCIStoreTestSuite struct {

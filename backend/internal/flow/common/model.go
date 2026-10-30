@@ -226,3 +226,12 @@ type SystemFlowResult struct {
 	// change.
 	RuntimeData map[string]string
 }
+
+// RuntimeDataOrShared returns a frame-local runtime value when it is present, otherwise the
+// corresponding cross-frame shared value.
+func RuntimeDataOrShared(runtimeData, sharedRuntimeData map[string]string, key string) string {
+	if value, ok := runtimeData[key]; ok {
+		return value
+	}
+	return sharedRuntimeData[key]
+}

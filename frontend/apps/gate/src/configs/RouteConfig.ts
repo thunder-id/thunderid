@@ -10,6 +10,7 @@ export interface RouteConfig {
   root: () => string;
   error: () => string;
   signIn: () => string;
+  device: () => string;
   signUp: () => string;
   invite: () => string;
   callback: () => string;
@@ -34,6 +35,7 @@ const RouteConfig: RouteConfig = {
   root: () => '/',
   error: () => '/error',
   signIn: () => '/signin',
+  device: () => '/device',
   signUp: () => '/signup',
   invite: () => '/invite',
   callback: () => '/callback',

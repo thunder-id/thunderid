@@ -217,6 +217,8 @@ func parseToApplicationDTO(data []byte) (*model.ApplicationDTO, error) {
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                appRequest.AuthFlowID,
 			AuthFlowHandle:            appRequest.AuthFlowHandle,
+			DeviceGrantFlowID:         appRequest.DeviceGrantFlowID,
+			DeviceGrantFlowHandle:     appRequest.DeviceGrantFlowHandle,
 			RegistrationFlowID:        appRequest.RegistrationFlowID,
 			RegistrationFlowHandle:    appRequest.RegistrationFlowHandle,
 			IsRegistrationFlowEnabled: appRequest.IsRegistrationFlowEnabled,

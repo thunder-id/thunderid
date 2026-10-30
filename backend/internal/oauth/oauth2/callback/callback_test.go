@@ -23,6 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/cibamock"
+	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/deviceauthmock"
 	"github.com/thunder-id/thunderid/tests/testhelpers"
 )
 
@@ -40,7 +41,7 @@ func TestCallbackDispatcherSuite(t *testing.T) {
 func (suite *CallbackDispatcherTestSuite) SetupTest() {
 	suite.mockAuthZ = authzmock.NewAuthorizeServiceInterfaceMock(suite.T())
 	suite.mockCIBA = cibamock.NewCIBAServiceInterfaceMock(suite.T())
-	suite.dispatcher = newCallbackDispatcher(testhelpers.OAuthConfig(), suite.mockAuthZ, suite.mockCIBA)
+	suite.dispatcher = newCallbackDispatcher(testhelpers.OAuthConfig(), suite.mockAuthZ, suite.mockCIBA, nil)
 
 	_ = config.InitializeServerRuntime("test", &config.Config{
 		JWT: engineconfig.JWTConfig{
@@ -263,7 +264,7 @@ func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_CIBA_Error() {
 func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_CIBA_NilCIBAService_ReturnsBadRequest() {
 	// When the CIBA grant type is not in allowed_grant_types, cibaService is nil. A CIBA
 	// callback must be rejected gracefully instead of panicking on the nil service.
-	suite.dispatcher = newCallbackDispatcher(testhelpers.OAuthConfig(), suite.mockAuthZ, nil)
+	suite.dispatcher = newCallbackDispatcher(testhelpers.OAuthConfig(), suite.mockAuthZ, nil, nil)
 
 	w := suite.postCallback(
 		`{"authId":"auth-req-1","assertion":"ciba-assertion","type":"urn:openid:params:grant-type:ciba"}`)
@@ -273,6 +274,22 @@ func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_CIBA_NilCIBASer
 	suite.NoError(json.NewDecoder(w.Body).Decode(&body))
 	suite.Equal(oauth2const.ErrorInvalidRequest, body["error"])
 	suite.Contains(body["error_description"], "Unsupported callback type")
+}
+
+func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_DeviceGrant_Success() {
+	deviceService := deviceauthmock.NewDeviceAuthServiceInterfaceMock(suite.T())
+	deviceService.EXPECT().HandleCallback(mock.Anything, "device-request-1", "device-assertion").Return(nil)
+	suite.dispatcher = newCallbackDispatcher(
+		testhelpers.OAuthConfig(), suite.mockAuthZ, suite.mockCIBA, deviceService)
+
+	w := suite.postCallback(
+		`{"authId":"device-request-1","assertion":"device-assertion",` +
+			`"type":"urn:ietf:params:oauth:grant-type:device_code"}`)
+
+	suite.Equal(http.StatusOK, w.Code)
+	var body map[string]string
+	suite.NoError(json.NewDecoder(w.Body).Decode(&body))
+	suite.Equal("OK", body["status"])
 }
 
 // --- handleFlowCallback: unsupported type ---

@@ -1767,6 +1767,19 @@ var (
 			DefaultValue: "The sign-in flow does not run the checks the requested authorization details need",
 		},
 	}
+	// ErrInvalidDeviceUserCode is returned when a submitted Device Grant user code cannot be used.
+	ErrInvalidDeviceUserCode = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1131",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.invalid_device_user_code",
+			DefaultValue: "This code is invalid or no longer available. Try again.",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.invalid_device_user_code_desc",
+			DefaultValue: "The submitted user code is invalid or can no longer be used for this application.",
+		},
+	}
 )
 
 // errForEntityCategory returns a copy of err whose messages name the entity category they are

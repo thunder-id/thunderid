@@ -20,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
 	"github.com/thunder-id/thunderid/internal/flow/session"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
@@ -191,7 +192,8 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 		}
 		if assertion := s.buildErrorAssertion(ctx, engineCtx, errorType,
 			flowErr.ErrorDescription.String(), logger); assertion != "" {
-			return &FlowStep{ErrorAssertion: assertion}, flowErr
+			return &FlowStep{ErrorAssertion: assertion,
+				Data: FlowData{AdditionalData: flowErrorCallbackData(engineCtx)}}, flowErr
 		}
 		return nil, flowErr
 	}
@@ -203,11 +205,14 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 	// Gate/SDK routes the completion or failure to the correct callback handler (e.g. CIBA).
 	// TODO: Remove once the OAuth callback handler can determine the grant type without runtime data.
 	if flowStep.Status == providers.FlowStatusComplete || flowStep.Status == providers.FlowStatusError {
-		if callbackType := engineCtx.RuntimeData[common.RuntimeKeyCallbackType]; callbackType != "" {
+		if callbackType := common.RuntimeDataOrShared(engineCtx.RuntimeData,
+			engineCtx.sharedRuntimeData, common.RuntimeKeyCallbackType); callbackType != "" {
 			if flowStep.Data.AdditionalData == nil {
 				flowStep.Data.AdditionalData = make(map[string]string)
 			}
 			flowStep.Data.AdditionalData[common.DataCallbackType] = callbackType
+			flowStep.Data.AdditionalData[oauth2const.AuthID] = common.RuntimeDataOrShared(
+				engineCtx.RuntimeData, engineCtx.sharedRuntimeData, common.RuntimeKeyAuthorizationRequestID)
 		}
 	}
 
@@ -249,11 +254,32 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 	return &flowStep, nil
 }
 
+// flowErrorCallbackData returns the callback metadata needed to report a signed flow failure.
+func flowErrorCallbackData(engineCtx *EngineContext) map[string]string {
+	if engineCtx == nil {
+		return nil
+	}
+
+	callbackType := common.RuntimeDataOrShared(engineCtx.RuntimeData, engineCtx.sharedRuntimeData,
+		common.RuntimeKeyCallbackType)
+	authID := common.RuntimeDataOrShared(engineCtx.RuntimeData, engineCtx.sharedRuntimeData,
+		common.RuntimeKeyAuthorizationRequestID)
+	if callbackType == "" || authID == "" {
+		return nil
+	}
+
+	return map[string]string{
+		common.DataCallbackType: callbackType,
+		oauth2const.AuthID:      authID,
+	}
+}
+
 // buildErrorAssertion signs an assertion binding the flow error type and description to the OAuth
 // authorization request
 func (s *flowExecService) buildErrorAssertion(ctx context.Context, engineCtx *EngineContext,
 	errorType, description string, logger *log.Logger) string {
-	authReqID := engineCtx.RuntimeData[common.RuntimeKeyAuthorizationRequestID]
+	authReqID := common.RuntimeDataOrShared(engineCtx.RuntimeData, engineCtx.sharedRuntimeData,
+		common.RuntimeKeyAuthorizationRequestID)
 	if authReqID == "" {
 		return ""
 	}
@@ -888,6 +914,13 @@ func (s *flowExecService) getFlowGraph(ctx context.Context, appID string, flowTy
 		return client.SignOutFlowID, nil
 	}
 
+	if flowType == providers.FlowTypeDeviceGrant {
+		if client.DeviceGrantFlowID == "" {
+			return "", &ErrorDeviceGrantFlowDisabled
+		}
+		return client.DeviceGrantFlowID, nil
+	}
+
 	// Default to authentication flow ID
 	if client.AuthFlowID == "" {
 		logger.Error(ctx, "Authentication flow is not configured for the entity",
@@ -902,7 +935,8 @@ func (s *flowExecService) getFlowGraph(ctx context.Context, appID string, flowTy
 func validateFlowType(flowTypeStr string) (providers.FlowType, *tidcommon.ServiceError) {
 	switch providers.FlowType(flowTypeStr) {
 	case providers.FlowTypeAuthentication, providers.FlowTypeRegistration, providers.FlowTypeUserOnboarding,
-		providers.FlowTypeRecovery, providers.FlowTypeSignOut, providers.FlowTypeAdministration:
+		providers.FlowTypeRecovery, providers.FlowTypeSignOut, providers.FlowTypeAdministration,
+		providers.FlowTypeDeviceGrant:
 		return providers.FlowType(flowTypeStr), nil
 	default:
 		return "", &ErrorInvalidFlowType

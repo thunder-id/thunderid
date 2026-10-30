@@ -32,6 +32,7 @@ type frame struct {
 	forwardedData       map[string]interface{}
 	additionalData      map[string]string
 	resumeCallNodeID    string
+	ssoFlowVersion      int
 }
 
 // EngineContext holds the overall context used by the flow engine during execution.
@@ -126,6 +127,7 @@ func (e *EngineContext) pushFrame(resumeCallNodeID string) {
 		forwardedData:       e.ForwardedData,
 		additionalData:      e.AdditionalData,
 		resumeCallNodeID:    resumeCallNodeID,
+		ssoFlowVersion:      e.SSOFlowVersion,
 	}
 	e.frameStack = append(e.frameStack, f)
 }
@@ -148,6 +150,7 @@ func (e *EngineContext) popFrame() *frame {
 	e.RuntimeData = top.runtimeData
 	e.ForwardedData = top.forwardedData
 	e.AdditionalData = top.additionalData
+	e.SSOFlowVersion = top.ssoFlowVersion
 	e.clearPausedPromptInputs()
 	return top
 }
