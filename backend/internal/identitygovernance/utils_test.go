@@ -971,3 +971,52 @@ func (s *UtilsTestSuite) TestAccessReadReportsByTheGivenTime() {
 	s.Equal(providers.AccessStatusActive,
 		accessReadFor(&entity, lockEnforcement{}, s.now.Add(10*time.Minute)).Status.Value, "the lock has ended")
 }
+
+// readWithLifespan derives the management read of an agent with the given state, runtime attributes,
+// and stored validUntil.
+func (s *UtilsTestSuite) readWithLifespan(state providers.EntityState, runtimeAttrs, validUntil string) AccessRead {
+	entity := providers.Entity{ID: "agent-1", Category: providers.EntityCategoryAgent, State: state,
+		SystemAttributes: json.RawMessage(`{"validUntil":"` + validUntil + `"}`)}
+	if runtimeAttrs != "" {
+		entity.RuntimeAttributes = json.RawMessage(runtimeAttrs)
+	}
+	return accessReadFor(&entity, lockEnforcement{}, s.now)
+}
+
+func (s *UtilsTestSuite) TestAccessReadReportsAnEndedLifespanAsExpired() {
+	validUntil := s.now.Add(-time.Hour).Format(time.RFC3339)
+
+	read := s.readWithLifespan(providers.EntityStateActive, "", validUntil)
+
+	s.Equal(providers.AccessStatusExpired, read.Status.Value)
+	s.Require().NotNil(read.Status.Details)
+	s.Equal(providers.AccessHoldReasonLifespanEnded, read.Status.Details.Reason)
+	s.Equal(validUntil, read.Status.Details.Since)
+}
+
+func (s *UtilsTestSuite) TestAccessReadReportsALifespanAheadAsActive() {
+	read := s.readWithLifespan(providers.EntityStateActive, "", s.now.Add(time.Hour).Format(time.RFC3339))
+	s.Equal(providers.AccessStatusActive, read.Status.Value)
+}
+
+func (s *UtilsTestSuite) TestAccessReadReportsASuspensionOverAnEndedLifespan() {
+	read := s.readWithLifespan(providers.EntityStateSuspended, "", s.now.Add(-time.Hour).Format(time.RFC3339))
+	s.Equal(providers.AccessStatusSuspended, read.Status.Value)
+}
+
+func (s *UtilsTestSuite) TestAccessReadReportsAnEndedLifespanOverALock() {
+	read := s.readWithLifespan(providers.EntityStateActive,
+		`{"accessState":{"lock":{"entity":{"unlockAt":"9999-12-31T23:59:59Z","reason":"POST_SUSPENDED"}}}}`,
+		s.now.Add(-time.Hour).Format(time.RFC3339))
+	s.Equal(providers.AccessStatusExpired, read.Status.Value)
+}
+
+// A lifespan end that does not parse is reported as expired, as the access checks refuse it, rather
+// than leaving the agent looking unbounded.
+func (s *UtilsTestSuite) TestAccessReadReportsAnUnreadableLifespanAsExpired() {
+	read := s.readWithLifespan(providers.EntityStateActive, "", "not-a-timestamp")
+
+	s.Equal(providers.AccessStatusExpired, read.Status.Value)
+	s.Require().NotNil(read.Status.Details)
+	s.Empty(read.Status.Details.Since)
+}

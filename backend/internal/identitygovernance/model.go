@@ -26,6 +26,12 @@ type GovernedEntity struct {
 	Revision int64
 	// AccessState is the parsed access-state document.
 	AccessState AccessState
+	// ValidUntil is the UTC RFC 3339 instant the entity's lifespan ends, from its system attributes.
+	// Empty when it does not end.
+	ValidUntil string
+	// ValidUntilErr is set when the stored lifespan end does not read. An access check fails on it, so a
+	// corrupt value never admits; a lifecycle operation such as a suspension ignores it.
+	ValidUntilErr error
 }
 
 // RuntimeAttributes is the runtime attribute document governance reads and writes.

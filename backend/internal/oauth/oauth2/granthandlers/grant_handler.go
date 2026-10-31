@@ -6,8 +6,12 @@ package granthandlers
 
 import (
 	"context"
+	"errors"
 
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -37,4 +41,24 @@ type RefreshTokenGrantHandlerInterface interface {
 		tokenFamilyID string,
 		expiresAt int64,
 	) *model.ErrorResponse
+}
+
+// tokenBuildErrorResponse returns the response for a token the builder could not build. A token
+// refused because an entity it is issued to or for may not be issued tokens now answers invalid_grant,
+// without saying why, and is a client outcome logged only at debug. Any other failure is a server error
+// with the given description, logged at error.
+func tokenBuildErrorResponse(ctx context.Context, logger *log.Logger, err error,
+	description string) *model.ErrorResponse {
+	if errors.Is(err, tokenservice.ErrIssuanceRefused) {
+		logger.Debug(ctx, "Token issuance refused", log.Error(err))
+		return &model.ErrorResponse{
+			Error:            constants.ErrorInvalidGrant,
+			ErrorDescription: "The authorization grant can no longer be used to issue tokens",
+		}
+	}
+	logger.Error(ctx, description, log.Error(err))
+	return &model.ErrorResponse{
+		Error:            constants.ErrorServerError,
+		ErrorDescription: description,
+	}
 }

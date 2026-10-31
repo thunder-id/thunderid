@@ -174,16 +174,16 @@ func (_c *CIBARequestStoreInterfaceMock_GetByID_Call) RunAndReturn(run func(ctx 
 }
 
 // MarkAuthenticated provides a mock function for the type CIBARequestStoreInterfaceMock
-func (_mock *CIBARequestStoreInterfaceMock) MarkAuthenticated(ctx context.Context, authReqID string, userID string, authorizedScopes string, attributeCacheID string, completedACR string, sessionID string, authTime time.Time) error {
-	ret := _mock.Called(ctx, authReqID, userID, authorizedScopes, attributeCacheID, completedACR, sessionID, authTime)
+func (_mock *CIBARequestStoreInterfaceMock) MarkAuthenticated(ctx context.Context, authReqID string, userID string, subjectID string, subjectCategory string, authorizedScopes string, attributeCacheID string, completedACR string, sessionID string, authTime time.Time) error {
+	ret := _mock.Called(ctx, authReqID, userID, subjectID, subjectCategory, authorizedScopes, attributeCacheID, completedACR, sessionID, authTime)
 
 	if len(ret) == 0 {
 		panic("no return value specified for MarkAuthenticated")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, string, string, time.Time) error); ok {
-		r0 = returnFunc(ctx, authReqID, userID, authorizedScopes, attributeCacheID, completedACR, sessionID, authTime)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, string, string, string, string, time.Time) error); ok {
+		r0 = returnFunc(ctx, authReqID, userID, subjectID, subjectCategory, authorizedScopes, attributeCacheID, completedACR, sessionID, authTime)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -199,16 +199,18 @@ type CIBARequestStoreInterfaceMock_MarkAuthenticated_Call struct {
 //   - ctx context.Context
 //   - authReqID string
 //   - userID string
+//   - subjectID string
+//   - subjectCategory string
 //   - authorizedScopes string
 //   - attributeCacheID string
 //   - completedACR string
 //   - sessionID string
 //   - authTime time.Time
-func (_e *CIBARequestStoreInterfaceMock_Expecter) MarkAuthenticated(ctx any, authReqID any, userID any, authorizedScopes any, attributeCacheID any, completedACR any, sessionID any, authTime any) *CIBARequestStoreInterfaceMock_MarkAuthenticated_Call {
-	return &CIBARequestStoreInterfaceMock_MarkAuthenticated_Call{Call: _e.mock.On("MarkAuthenticated", ctx, authReqID, userID, authorizedScopes, attributeCacheID, completedACR, sessionID, authTime)}
+func (_e *CIBARequestStoreInterfaceMock_Expecter) MarkAuthenticated(ctx any, authReqID any, userID any, subjectID any, subjectCategory any, authorizedScopes any, attributeCacheID any, completedACR any, sessionID any, authTime any) *CIBARequestStoreInterfaceMock_MarkAuthenticated_Call {
+	return &CIBARequestStoreInterfaceMock_MarkAuthenticated_Call{Call: _e.mock.On("MarkAuthenticated", ctx, authReqID, userID, subjectID, subjectCategory, authorizedScopes, attributeCacheID, completedACR, sessionID, authTime)}
 }
 
-func (_c *CIBARequestStoreInterfaceMock_MarkAuthenticated_Call) Run(run func(ctx context.Context, authReqID string, userID string, authorizedScopes string, attributeCacheID string, completedACR string, sessionID string, authTime time.Time)) *CIBARequestStoreInterfaceMock_MarkAuthenticated_Call {
+func (_c *CIBARequestStoreInterfaceMock_MarkAuthenticated_Call) Run(run func(ctx context.Context, authReqID string, userID string, subjectID string, subjectCategory string, authorizedScopes string, attributeCacheID string, completedACR string, sessionID string, authTime time.Time)) *CIBARequestStoreInterfaceMock_MarkAuthenticated_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -238,9 +240,17 @@ func (_c *CIBARequestStoreInterfaceMock_MarkAuthenticated_Call) Run(run func(ctx
 		if args[6] != nil {
 			arg6 = args[6].(string)
 		}
-		var arg7 time.Time
+		var arg7 string
 		if args[7] != nil {
-			arg7 = args[7].(time.Time)
+			arg7 = args[7].(string)
+		}
+		var arg8 string
+		if args[8] != nil {
+			arg8 = args[8].(string)
+		}
+		var arg9 time.Time
+		if args[9] != nil {
+			arg9 = args[9].(time.Time)
 		}
 		run(
 			arg0,
@@ -251,6 +261,8 @@ func (_c *CIBARequestStoreInterfaceMock_MarkAuthenticated_Call) Run(run func(ctx
 			arg5,
 			arg6,
 			arg7,
+			arg8,
+			arg9,
 		)
 	})
 	return _c
@@ -261,7 +273,7 @@ func (_c *CIBARequestStoreInterfaceMock_MarkAuthenticated_Call) Return(err error
 	return _c
 }
 
-func (_c *CIBARequestStoreInterfaceMock_MarkAuthenticated_Call) RunAndReturn(run func(ctx context.Context, authReqID string, userID string, authorizedScopes string, attributeCacheID string, completedACR string, sessionID string, authTime time.Time) error) *CIBARequestStoreInterfaceMock_MarkAuthenticated_Call {
+func (_c *CIBARequestStoreInterfaceMock_MarkAuthenticated_Call) RunAndReturn(run func(ctx context.Context, authReqID string, userID string, subjectID string, subjectCategory string, authorizedScopes string, attributeCacheID string, completedACR string, sessionID string, authTime time.Time) error) *CIBARequestStoreInterfaceMock_MarkAuthenticated_Call {
 	_c.Call.Return(run)
 	return _c
 }

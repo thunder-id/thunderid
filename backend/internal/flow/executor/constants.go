@@ -165,6 +165,9 @@ const (
 	ownerIDKey     = "ownerId"
 	descriptionKey = "description"
 	logoURLKey     = "logoUrl"
+	// validUntilKey carries the RFC 3339 instant the agent's lifespan ends. Absent registers an agent
+	// that does not expire.
+	validUntilKey = "validUntil"
 	// delegatedKey marks an agent that acts on behalf of a signed-in user. Absent means false.
 	delegatedKey = "delegated"
 	// redirectURIsKey carries the callback URIs of a delegated agent, comma separated. It is the

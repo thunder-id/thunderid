@@ -175,6 +175,31 @@ func (s *ActorProviderTestSuite) TestGetActor_Delegates() {
 	s.Equal(expected, entity)
 }
 
+// A provider that cannot look up entities is reported apart from a lookup that failed, so a caller can
+// tell an actor that cannot be resolved from a store failure.
+func (s *ActorProviderTestSuite) TestGetActor_ErrorMapping() {
+	for name, tc := range map[string]struct {
+		code entityprovider.ErrorCode
+		want string
+	}{
+		"not found":     {entityprovider.ErrorCodeEntityNotFound, ErrorEntityNotFound.Code},
+		"not supported": {entityprovider.ErrorCodeNotImplemented, ErrorActorLookupNotSupported.Code},
+		"store failure": {entityprovider.ErrorCodeSystemError, tidcommon.InternalServerError.Code},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.mockEntity.On("GetEntityProfile", "app-1").
+				Return((*providers.Entity)(nil), entityprovider.NewEntityProviderError(tc.code, "", ""))
+
+			entity, err := s.provider.GetActor("app-1")
+
+			s.Nil(entity)
+			s.Require().NotNil(err)
+			s.Equal(tc.want, err.Code)
+		})
+	}
+}
+
 func (s *ActorProviderTestSuite) TestGetActor_AgentDisplayComesFromTheDisplayAttribute() {
 	for name, tc := range map[string]struct {
 		displayPath string

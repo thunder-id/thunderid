@@ -46,6 +46,9 @@ type EntityServiceInterface interface {
 		plaintextUpdates json.RawMessage) error
 	UpdateSystemCredentials(ctx context.Context, entityID string,
 		plaintextUpdates json.RawMessage) error
+	// SetValidUntil sets the reserved validUntil system attribute alone. Only the service that owns
+	// the entity type calls it, today the agent service, after authorizing and validating the change.
+	SetValidUntil(ctx context.Context, entityID string, validUntil string) error
 
 	// Identification
 	IdentifyEntity(ctx context.Context, filters map[string]interface{}) (*string, error)
@@ -505,6 +508,15 @@ func (s *entityService) UpdateSystemAttributes(ctx context.Context, entityID str
 			return err
 		}
 		return s.store.UpdateSystemAttributes(txCtx, entityID, preserved)
+	})
+}
+
+// SetValidUntil sets the entity's lifespan end, which every other system-attribute write carries
+// forward as a reserved key.
+func (s *entityService) SetValidUntil(ctx context.Context, entityID string, validUntil string) error {
+	s.logger.Debug(ctx, "Setting entity lifespan", log.MaskedString("id", entityID))
+	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		return s.setReservedAttribute(txCtx, entityID, authnprovidercm.SystemAttrValidUntil, validUntil)
 	})
 }
 
@@ -1045,15 +1057,8 @@ func (s *entityService) UpdateCredentials(ctx context.Context, entityID string,
 		// Record the change so the refresh grant can reject tokens established before it. Every
 		// password change lands here, and the marker shares this transaction with the write. The blob
 		// is read under the entity's lock, since a cached copy could drop a concurrent link write.
-		locked, err := s.store.LockEntity(txCtx, entityID)
-		if err != nil {
-			return err
-		}
-		markedAttrs, err := setCredentialUpdatedAt(locked.SystemAttributes, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		return s.store.UpdateSystemAttributes(txCtx, entityID, markedAttrs)
+		return s.setReservedAttribute(txCtx, entityID, authnprovidercm.SystemAttrCredentialUpdatedAt,
+			time.Now().UTC().Format(time.RFC3339))
 	})
 }
 
@@ -1208,15 +1213,8 @@ func (s *entityService) UpdateSystemCredentials(ctx context.Context, entityID st
 		if _, rotatesClientSecret := updates[authnprovidercm.CredentialTypeClientSecret]; !rotatesClientSecret {
 			return nil
 		}
-		locked, err := s.store.LockEntity(txCtx, entityID)
-		if err != nil {
-			return err
-		}
-		markedAttrs, err := setCredentialUpdatedAt(locked.SystemAttributes, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		return s.store.UpdateSystemAttributes(txCtx, entityID, markedAttrs)
+		return s.setReservedAttribute(txCtx, entityID, authnprovidercm.SystemAttrCredentialUpdatedAt,
+			time.Now().UTC().Format(time.RFC3339))
 	})
 }
 
@@ -1490,24 +1488,40 @@ func reservedAttributesOf(systemAttributes json.RawMessage) (map[string]interfac
 	return preserved, nil
 }
 
-// setCredentialUpdatedAt returns systemAttributes with the credential-change marker set to at. The
-// marker is merged in rather than replacing the blob, whose other keys belong to the service that
-// owns the entity. Unlike mergeCredentialJSON, an unparsable blob is an error rather than a silent
-// overwrite, since dropping those keys would go unnoticed.
-func setCredentialUpdatedAt(systemAttributes json.RawMessage, at time.Time) (json.RawMessage, error) {
+// setReservedAttribute sets one reserved system-attribute key, which the generic system-attribute
+// writes carry forward rather than take from their caller. It runs inside the caller's transaction and
+// reads the blob under the entity's lock, so only the key changes and a concurrent write to another
+// key is kept.
+func (s *entityService) setReservedAttribute(txCtx context.Context, entityID, key, value string) error {
+	locked, err := s.store.LockEntity(txCtx, entityID)
+	if err != nil {
+		return err
+	}
+	updated, err := withSystemAttribute(locked.SystemAttributes, key, value)
+	if err != nil {
+		return err
+	}
+	return s.store.UpdateSystemAttributes(txCtx, entityID, updated)
+}
+
+// withSystemAttribute returns systemAttributes with key set to value. The key is merged in rather than
+// replacing the blob, whose other keys belong to the service that owns the entity. Unlike
+// mergeCredentialJSON, an unparsable blob is an error rather than a silent overwrite, since dropping
+// those keys would go unnoticed.
+func withSystemAttribute(systemAttributes json.RawMessage, key, value string) (json.RawMessage, error) {
 	attrs := map[string]interface{}{}
 	if len(systemAttributes) > 0 {
 		if err := json.Unmarshal(systemAttributes, &attrs); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal system attributes: %w", err)
 		}
 	}
-	attrs[authnprovidercm.SystemAttrCredentialUpdatedAt] = at.UTC().Format(time.RFC3339)
+	attrs[key] = value
 
-	marked, err := json.Marshal(attrs)
+	updated, err := json.Marshal(attrs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal system attributes: %w", err)
 	}
-	return marked, nil
+	return updated, nil
 }
 
 // mergeCredentialJSON merges new credential JSON into existing credential JSON.
@@ -1800,14 +1814,24 @@ func governedEntityOf(entity providers.Entity) (*identitygovernance.GovernedEnti
 			return nil, fmt.Errorf("failed to unmarshal runtime attributes: %w", err)
 		}
 	}
+	// A lifespan end that does not parse is handed over as an error rather than failing the read, so
+	// lifecycle operations such as a suspension still work. Governance gets the end in normalized UTC
+	// form, empty when the lifespan does not end.
+	validUntil, bounded, validUntilErr := authnprovidercm.ValidUntilOf(entity.SystemAttributes)
+	storedValidUntil := ""
+	if bounded {
+		storedValidUntil = validUntil.Format(time.RFC3339)
+	}
 
 	return &identitygovernance.GovernedEntity{
-		ID:          entity.ID,
-		Category:    entity.Category,
-		Type:        entity.Type,
-		OUID:        entity.OUID,
-		State:       entity.State,
-		AccessState: stored.AccessState,
+		ID:            entity.ID,
+		Category:      entity.Category,
+		Type:          entity.Type,
+		OUID:          entity.OUID,
+		State:         entity.State,
+		AccessState:   stored.AccessState,
+		ValidUntil:    storedValidUntil,
+		ValidUntilErr: validUntilErr,
 	}, nil
 }
 

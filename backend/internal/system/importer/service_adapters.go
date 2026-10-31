@@ -11,6 +11,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"github.com/thunder-id/thunderid/internal/agent"
 	agentmodel "github.com/thunder-id/thunderid/internal/agent/model"
 	authzdetailmgt "github.com/thunder-id/thunderid/internal/authzdetail/mgt"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
@@ -1121,6 +1122,18 @@ func (s *importService) importAgent(
 		InboundAuthProfileReq: req.InboundAuthProfileReq,
 		InboundAuthConfig:     req.InboundAuthConfig,
 	}
+	// An import restores the lifespan as exported, an expired one included; an absent one leaves an
+	// existing agent's unchanged. A malformed value is reported by the dry run as well.
+	if req.ValidUntil != "" {
+		if svcErr := agent.ValidateLifespanFormat(req.ValidUntil); svcErr != nil {
+			return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationCreate, svcErr)
+		}
+		validUntil := req.ValidUntil
+		rawValidUntil, _ := json.Marshal(validUntil)
+		createReq.ValidUntil = &validUntil
+		updateReq.ValidUntil = rawValidUntil
+	}
+	ctx = agent.WithLifespanRestore(ctx)
 
 	if dryRun {
 		if options.IsUpsertEnabled() && req.ID != "" {

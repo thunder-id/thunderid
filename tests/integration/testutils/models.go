@@ -519,6 +519,7 @@ type Agent struct {
 	Owner       string      `json:"owner,omitempty"`
 	Attributes  interface{} `json:"attributes,omitempty"`
 	IsReadOnly  bool        `json:"isReadOnly"`
+	ValidUntil  string      `json:"validUntil,omitempty"`
 
 	AuthFlowID                string                   `json:"authFlowId,omitempty"`
 	RegistrationFlowID        string                   `json:"registrationFlowId,omitempty"`

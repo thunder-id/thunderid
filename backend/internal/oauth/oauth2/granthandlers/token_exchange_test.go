@@ -12,15 +12,12 @@ import (
 	"testing"
 	"time"
 
-	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
-
-	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/actorprovider"
+	"github.com/thunder-id/thunderid/internal/attributecache"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -30,6 +27,12 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	oauthauthzmock "github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/authzmock"
@@ -236,7 +239,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) setupSuccessfulJWTMockWithScope
 // TestNewTokenExchangeGrantHandler tests the constructor
 func (suite *TokenExchangeGrantHandlerTestSuite) TestNewTokenExchangeGrantHandler() {
 	handler := newTokenExchangeGrantHandler(suite.mockTokenBuilder, suite.mockTokenValidator,
-		suite.mockResourceService, nil, nil, nil, nil, oauthconfig.Config{})
+		suite.mockResourceService, nil, nil, nil, nil, nil, oauthconfig.Config{})
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
 }
@@ -4144,6 +4147,149 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_DeviceSecretReq
 	}
 }
 
+const (
+	testMappedSub     = "agent@example.com"
+	testAgentEntityID = "agent-entity"
+	testAttrCacheID   = "aci-1"
+	testActorToken    = "test-actor-token" //nolint:gosec // Test token, not a real credential
+)
+
+// withLifespanMocks gives the suite's handler an actor provider and an attribute cache, which only the
+// lifespan resolution of a self-issued token's subject or actor reads.
+func (suite *TokenExchangeGrantHandlerTestSuite) withLifespanMocks() (
+	*actorprovidermock.ActorProviderMock, *attributecachemock.AttributeCacheServiceInterfaceMock) {
+	actors := actorprovidermock.NewActorProviderMock(suite.T())
+	attrCache := attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
+	suite.handler.actorProvider = actors
+	suite.handler.attrCache = attrCache
+	return actors, attrCache
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) exchangeRequest(withActor bool) *model.TokenRequest {
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testMappedSub,
+		"iss": testCustomIssuer,
+		"aud": "app123",
+		"exp": float64(now + 3600),
+		"nbf": float64(now - 60),
+	})
+	req := &model.TokenRequest{
+		GrantType:        string(providers.GrantTypeTokenExchange),
+		ClientID:         testClientID,
+		SubjectToken:     subjectToken,
+		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
+	}
+	if withActor {
+		req.ActorToken = testActorToken
+		req.ActorTokenType = string(constants.TokenTypeIdentifierJWT)
+	}
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:              testMappedSub,
+			Iss:              testCustomIssuer,
+			Scopes:           []string{testScopeRead},
+			AttributeCacheID: testAttrCacheID,
+		}, nil)
+	return req
+}
+
+func exchangedToken() *model.TokenDTO {
+	return &model.TokenDTO{Token: testTokenExchangeJWT, TokenType: constants.TokenTypeBearer, ExpiresIn: 60}
+}
+
+// A self-issued subject token whose sub is a mapped attribute is resolved to its entity through the
+// attribute cache entry, so governance checks that entity and caps the exchanged token at its lifespan.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedSubjectResolvedThroughAci() {
+	actors, attrCache := suite.withLifespanMocks()
+	req := suite.exchangeRequest(false)
+	actors.On("GetActor", testMappedSub).
+		Return((*providers.Entity)(nil), &tidcommon.ServiceError{Type: tidcommon.ClientErrorType})
+	attrCache.On("GetAttributeCache", mock.Anything, testAttrCacheID).
+		Return(&attributecache.AttributeCache{
+			ID: testAttrCacheID, SubjectID: testAgentEntityID, SubjectCategory: string(providers.EntityCategoryAgent),
+		}, (*tidcommon.ServiceError)(nil))
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.Subject == testMappedSub && ctx.SubjectEntityID == testAgentEntityID &&
+				ctx.SubjectCategory == string(providers.EntityCategoryAgent)
+		})).Return(exchangedToken(), nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+}
+
+// A provider that answers neither an entity nor an error leaves sub as the resource ID, with no
+// category, and reads no attribute cache entry.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_SubjectWithoutAProfileKeepsSub() {
+	actors, attrCache := suite.withLifespanMocks()
+	req := suite.exchangeRequest(false)
+	actors.On("GetActor", testMappedSub).Return((*providers.Entity)(nil), (*tidcommon.ServiceError)(nil))
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.SubjectEntityID == testMappedSub && ctx.SubjectCategory == ""
+		})).Return(exchangedToken(), nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	attrCache.AssertNotCalled(suite.T(), "GetAttributeCache", mock.Anything, mock.Anything)
+}
+
+// A sub that names an entity needs no attribute cache read.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_SubjectNamingAnEntitySkipsAci() {
+	actors, attrCache := suite.withLifespanMocks()
+	req := suite.exchangeRequest(false)
+	actors.On("GetActor", testMappedSub).
+		Return(&providers.Entity{ID: testMappedSub, Category: providers.EntityCategoryUser},
+			(*tidcommon.ServiceError)(nil))
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.SubjectEntityID == testMappedSub && ctx.SubjectCategory == string(providers.EntityCategoryUser)
+		})).Return(exchangedToken(), nil)
+
+	_, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	attrCache.AssertNotCalled(suite.T(), "GetAttributeCache", mock.Anything, mock.Anything)
+}
+
+// An aci entry that has expired, or predates entries recording the entity, leaves the subject
+// unresolved, so the exchange still succeeds and the builder checks the mapped sub as it stands.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_UnresolvableAciLeavesSubjectUnresolved() {
+	tests := []struct {
+		name     string
+		entry    *attributecache.AttributeCache
+		cacheErr *tidcommon.ServiceError
+	}{
+		{"entry missing", nil, nil},
+		{"entry names no subject", &attributecache.AttributeCache{ID: testAttrCacheID}, nil},
+		{"entry not found", nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType}},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			actors, attrCache := suite.withLifespanMocks()
+			req := suite.exchangeRequest(false)
+			actors.On("GetActor", testMappedSub).
+				Return((*providers.Entity)(nil), &tidcommon.ServiceError{Type: tidcommon.ClientErrorType})
+			attrCache.On("GetAttributeCache", mock.Anything, testAttrCacheID).Return(tc.entry, tc.cacheErr)
+			suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+				mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+					return ctx.Subject == testMappedSub && ctx.SubjectEntityID == "" && ctx.SubjectCategory == ""
+				})).Return(exchangedToken(), nil)
+
+			result, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+			assert.Nil(suite.T(), errResp)
+			assert.NotNil(suite.T(), result)
+		})
+	}
+}
+
 func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_DeviceSecretInvalidToken() {
 	_, req := suite.deviceSecretGrant()
 	suite.mockTokenValidator.EXPECT().ValidateDeviceSecret(mock.Anything, req.SubjectToken).
@@ -4186,6 +4332,258 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestIsDeviceSecretSubjectToken(
 		suite.Run(tc.name, func() {
 			got := isDeviceSecretSubjectToken(&model.TokenRequest{
 				SubjectTokenType: string(tc.tokenType), SubjectToken: tc.token})
+
+			suite.Equal(tc.want, got)
+		})
+	}
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AciUnavailableIsServerError() {
+	actors, attrCache := suite.withLifespanMocks()
+	req := suite.exchangeRequest(false)
+	actors.On("GetActor", testMappedSub).
+		Return((*providers.Entity)(nil), &tidcommon.ServiceError{Type: tidcommon.ClientErrorType})
+	attrCache.On("GetAttributeCache", mock.Anything, testAttrCacheID).
+		Return((*attributecache.AttributeCache)(nil), &tidcommon.InternalServerError)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), constants.ErrorServerError, errResp.Error)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
+}
+
+// An entity provider that cannot look up entities resolves nothing, so the sub falls back to the aci
+// entry rather than failing the exchange.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_SubjectLookupNotSupportedFallsBackToAci() {
+	actors, attrCache := suite.withLifespanMocks()
+	req := suite.exchangeRequest(false)
+	actors.On("GetActor", testMappedSub).
+		Return((*providers.Entity)(nil), &actorprovider.ErrorActorLookupNotSupported)
+	attrCache.On("GetAttributeCache", mock.Anything, testAttrCacheID).
+		Return(&attributecache.AttributeCache{ID: testAttrCacheID, SubjectID: testAgentEntityID},
+			(*tidcommon.ServiceError)(nil))
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.SubjectEntityID == testAgentEntityID
+		})).Return(exchangedToken(), nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+}
+
+// A lookup that fails, rather than finding nothing, fails the exchange: left unresolved, the subject
+// would be neither checked nor capped.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_SubjectLookupFailureIsServerError() {
+	actors, attrCache := suite.withLifespanMocks()
+	req := suite.exchangeRequest(false)
+	actors.On("GetActor", testMappedSub).Return((*providers.Entity)(nil), &tidcommon.InternalServerError)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), constants.ErrorServerError, errResp.Error)
+	attrCache.AssertNotCalled(suite.T(), "GetAttributeCache", mock.Anything, mock.Anything)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ActorLookupFailureIsServerError() {
+	actors, attrCache := suite.withLifespanMocks()
+	req := suite.exchangeRequest(true)
+	suite.mockTokenValidator.On("ValidateActorToken", mock.Anything, testActorToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub: "actor@example.com", Iss: testCustomIssuer, AttributeCacheID: "aci-actor",
+		}, nil)
+	actors.On("GetActor", testMappedSub).
+		Return(&providers.Entity{ID: testMappedSub}, (*tidcommon.ServiceError)(nil))
+	actors.On("GetActor", "actor@example.com").Return((*providers.Entity)(nil), &tidcommon.InternalServerError)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), constants.ErrorServerError, errResp.Error)
+	attrCache.AssertNotCalled(suite.T(), "GetAttributeCache", mock.Anything, mock.Anything)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
+}
+
+// An actor_token's mapped sub is resolved the same way, and passed to the builder as the actor's
+// resource ID.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedActorResolvedThroughAci() {
+	actors, attrCache := suite.withLifespanMocks()
+	req := suite.exchangeRequest(true)
+	suite.mockTokenValidator.On("ValidateActorToken", mock.Anything, testActorToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub: "actor@example.com", Iss: testCustomIssuer, AttributeCacheID: "aci-actor",
+		}, nil)
+	actors.On("GetActor", testMappedSub).
+		Return(&providers.Entity{ID: testMappedSub}, (*tidcommon.ServiceError)(nil))
+	actors.On("GetActor", "actor@example.com").
+		Return((*providers.Entity)(nil), &tidcommon.ServiceError{Type: tidcommon.ClientErrorType})
+	attrCache.On("GetAttributeCache", mock.Anything, "aci-actor").
+		Return(&attributecache.AttributeCache{ID: "aci-actor", SubjectID: testAgentEntityID},
+			(*tidcommon.ServiceError)(nil))
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.ActorClaims != nil && ctx.ActorClaims.Sub == "actor@example.com" &&
+				ctx.ActorClaims.EntityID == testAgentEntityID
+		})).Return(exchangedToken(), nil)
+
+	_, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ActorAciUnavailableIsServerError() {
+	actors, attrCache := suite.withLifespanMocks()
+	req := suite.exchangeRequest(true)
+	suite.mockTokenValidator.On("ValidateActorToken", mock.Anything, testActorToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub: "actor@example.com", Iss: testCustomIssuer, AttributeCacheID: "aci-actor",
+		}, nil)
+	actors.On("GetActor", testMappedSub).
+		Return(&providers.Entity{ID: testMappedSub}, (*tidcommon.ServiceError)(nil))
+	actors.On("GetActor", "actor@example.com").
+		Return((*providers.Entity)(nil), &tidcommon.ServiceError{Type: tidcommon.ClientErrorType})
+	attrCache.On("GetAttributeCache", mock.Anything, "aci-actor").
+		Return((*attributecache.AttributeCache)(nil), &tidcommon.InternalServerError)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), constants.ErrorServerError, errResp.Error)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
+}
+
+// A sub the actor provider does not resolve, on a token without an aci, leaves the subject unresolved
+// without reading the attribute cache.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_SubjectWithoutAciLeftUnresolved() {
+	actors, attrCache := suite.withLifespanMocks()
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testMappedSub, "iss": testCustomIssuer, "aud": "app123",
+		"exp": float64(now + 3600), "nbf": float64(now - 60),
+	})
+	req := &model.TokenRequest{
+		GrantType:        string(providers.GrantTypeTokenExchange),
+		ClientID:         testClientID,
+		SubjectToken:     subjectToken,
+		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
+	}
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub: testMappedSub, Iss: testCustomIssuer, Scopes: []string{testScopeRead},
+		}, nil)
+	actors.On("GetActor", testMappedSub).
+		Return((*providers.Entity)(nil), &tidcommon.ServiceError{Type: tidcommon.ClientErrorType})
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.Subject == testMappedSub && ctx.SubjectEntityID == ""
+		})).Return(exchangedToken(), nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	attrCache.AssertNotCalled(suite.T(), "GetAttributeCache", mock.Anything, mock.Anything)
+}
+
+// An externally issued token's sub names no local account, even when it equals a local entity's ID, so
+// the handler resolves nothing and the builder checks no subject.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ExternalSubjectNotResolved() {
+	actors, attrCache := suite.withLifespanMocks()
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID, "iss": "https://external-idp.example.com", "aud": "app123",
+		"exp": float64(now + 3600), "nbf": float64(now - 60),
+	})
+	req := &model.TokenRequest{
+		GrantType:        string(providers.GrantTypeTokenExchange),
+		ClientID:         testClientID,
+		SubjectToken:     subjectToken,
+		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
+	}
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{Sub: testUserID, Iss: "https://external-idp.example.com"}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.SubjectEntityID == ""
+		})).Return(exchangedToken(), nil)
+
+	_, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	actors.AssertNotCalled(suite.T(), "GetActor", mock.Anything)
+	attrCache.AssertNotCalled(suite.T(), "GetAttributeCache", mock.Anything, mock.Anything)
+}
+
+// The builder refusing an expired agent's token answers invalid_grant, not server_error.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_LifespanEndedIsInvalidGrant() {
+	actors, _ := suite.withLifespanMocks()
+	req := suite.exchangeRequest(false)
+	actors.On("GetActor", testMappedSub).
+		Return(&providers.Entity{ID: testMappedSub}, (*tidcommon.ServiceError)(nil))
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).
+		Return((*model.TokenDTO)(nil), tokenservice.ErrIssuanceRefused)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), constants.ErrorInvalidGrant, errResp.Error)
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_LifespanEndedIsInvalidGrant() {
+	suite.oauthApp.Token.IDJAG = &providers.IDJAGConfig{
+		Enabled:          true,
+		AllowedAudiences: []string{testIDJAGAudience},
+	}
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID,
+		"iss": testIDJAGServerIssuer,
+		"aud": testClientID,
+		"exp": float64(time.Now().Unix() + 3600),
+	})
+	req := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       subjectToken,
+		SubjectTokenType:   string(constants.TokenTypeIdentifierIDToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+		Audiences:          []string{testIDJAGAudience},
+	}
+	suite.mockTokenValidator.On("ValidateIDJAGSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub: testUserID,
+			Iss: testIDJAGServerIssuer,
+			Aud: []string{testClientID},
+		}, nil)
+	suite.mockTokenBuilder.On("BuildIDJAG", mock.Anything, mock.Anything).
+		Return(nil, tokenservice.ErrIssuanceRefused)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), constants.ErrorInvalidGrant, errResp.Error)
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestExchangedTokenFamilyID() {
+	subjectClaims := &tokenservice.SubjectTokenClaims{TokenFamilyID: "tfid-subject"}
+	cases := []struct {
+		name string
+		mode string
+		want string
+	}{
+		{"inherit joins the subject token's family", constants.TokenExchangeTokenFamilyInherit, "tfid-subject"},
+		{"none issues an independent token", constants.TokenExchangeTokenFamilyNone, ""},
+		{"an empty mode is none", "", ""},
+		{"an unrecognized mode is treated as none", "unknown", ""},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.handler.cfg.OAuth.TokenExchange.TokenFamily = tc.mode
+
+			got := suite.handler.exchangedTokenFamilyID(context.Background(), subjectClaims, log.GetLogger())
 
 			suite.Equal(tc.want, got)
 		})

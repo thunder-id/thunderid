@@ -169,6 +169,53 @@ func TestHandleAgentPostRequest_PassesDelegatedToTheService(t *testing.T) {
 	}
 }
 
+func TestHandleAgentPostRequest_PassesValidUntil(t *testing.T) {
+	var received *string
+	stubService := &InlineStubAgentService{
+		OnCreateAgent: func(
+			ctx context.Context, agent *providers.Agent,
+		) (*model.AgentCompleteResponse, *tidcommon.ServiceError) {
+			received = agent.ValidUntil
+			return &model.AgentCompleteResponse{ID: "agent-123"}, nil
+		},
+	}
+	handler := newAgentHandler(stubService)
+	body := `{"ouId": "ou-123", "type": "worker", "validUntil": "2027-03-31T00:00:00Z"}`
+	req := httptest.NewRequest(http.MethodPost, "/agents", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentPostRequest(w, req)
+	assert.Equal(t, http.StatusCreated, w.Code)
+	if assert.NotNil(t, received) {
+		assert.Equal(t, "2027-03-31T00:00:00Z", *received)
+	}
+}
+
+func TestHandleAgentPutRequest_DistinguishesAbsentAndNullValidUntil(t *testing.T) {
+	for body, want := range map[string]string{
+		`{"type": "worker"}`:                     "",
+		`{"type": "worker", "validUntil": null}`: "null",
+	} {
+		var received json.RawMessage
+		stubService := &InlineStubAgentService{
+			OnUpdateAgent: func(
+				ctx context.Context, id string, req *model.UpdateAgentRequest,
+			) (*model.AgentCompleteResponse, *tidcommon.ServiceError) {
+				received = req.ValidUntil
+				return &model.AgentCompleteResponse{ID: id}, nil
+			},
+		}
+		handler := newAgentHandler(stubService)
+		req := httptest.NewRequest(http.MethodPut, "/agents/agent-123", bytes.NewBufferString(body))
+		req.SetPathValue("id", "agent-123")
+		w := httptest.NewRecorder()
+
+		handler.HandleAgentPutRequest(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, want, string(received))
+	}
+}
+
 func TestHandleAgentPostRequest_ValidationError(t *testing.T) {
 	stubService := &InlineStubAgentService{}
 	handler := newAgentHandler(stubService)

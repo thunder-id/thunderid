@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
@@ -922,6 +923,53 @@ func (ts *AuthZENAPITestSuite) TestSearchActionDeniedUserReturnsEmptyResults() {
 // A suspended subject is denied whatever its roles allow, in a single evaluation, a batch and an
 // action search. The lock an unsuspend leaves is not a denial, and a decision on a subject with no
 // stored account state creates none.
+// An agent whose lifespan has ended is denied whatever its roles allow, as a suspended subject is, and
+// the denial names the ended lifespan.
+func (ts *AuthZENAPITestSuite) TestAnExpiredAgentIsDenied() {
+	validUntil := time.Now().UTC().Add(4 * time.Second).Truncate(time.Second)
+	agentID, err := testutils.CreateAgent(testutils.Agent{
+		OUID:       ts.ouID,
+		Type:       "default",
+		Attributes: map[string]interface{}{"name": "authzen-expiring-agent"},
+		ValidUntil: validUntil.Format(time.RFC3339),
+	})
+	ts.Require().NoError(err, "create the expiring agent")
+	ts.T().Cleanup(func() { _ = testutils.DeleteAgent(agentID) })
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name:        "AuthZEN Expiring Agent Reader",
+		Description: "Role granting the expiring agent the read permission",
+		OUID:        ts.ouID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: ts.resourceServerID, Permissions: []string{ts.readPermission}},
+		},
+		Assignments: []testutils.Assignment{{ID: agentID, Type: "agent"}},
+	})
+	ts.Require().NoError(err, "create the expiring agent's role")
+	ts.T().Cleanup(func() { _ = testutils.DeleteRole(roleID) })
+
+	read := evaluationRequest{
+		Subject:  subject{Type: "agent", ID: agentID},
+		Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
+		Action:   action{Name: ts.readPermission},
+	}
+	ts.True(ts.evaluate(read).Decision, "an agent within its lifespan must be decided by its roles")
+
+	time.Sleep(time.Until(validUntil) + time.Second)
+
+	denied := ts.evaluate(read)
+	ts.False(denied.Decision, "an expired agent must be denied whatever its roles allow")
+	ts.Equal("Subject's lifespan has ended", denied.Context["reason"])
+
+	resp, body := ts.doRequest(http.MethodPost, "/access/v1/search/action", mustJSON(searchActionRequest{
+		Subject:  subject{Type: "agent", ID: agentID},
+		Resource: resource{Type: authzenResourceIdentifier, ID: ts.resourceID},
+	}))
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, string(body))
+	var search searchActionResponse
+	ts.Require().NoError(json.Unmarshal(body, &search))
+	ts.Empty(search.Results, "an expired agent must have no allowed actions")
+}
+
 func (ts *AuthZENAPITestSuite) TestASuspendedSubjectIsDeniedAndALockIsNot() {
 	heldUserID, err := testutils.CreateUser(testutils.User{
 		Type:       authzenUserTypeName,

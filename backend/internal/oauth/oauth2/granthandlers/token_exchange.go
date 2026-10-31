@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/thunder-id/thunderid/internal/actorprovider"
+	"github.com/thunder-id/thunderid/internal/attributecache"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -21,6 +23,7 @@ import (
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -36,6 +39,7 @@ type tokenExchangeGrantHandler struct {
 	// codeGrant issues the tokens of the authorization code that silent authorization yields, exactly as
 	// the code grant does. It is nil when the authorization code grant is not enabled.
 	codeGrant *authorizationCodeGrantHandler
+	attrCache attributecache.AttributeCacheServiceInterface
 	cfg       oauthconfig.Config
 }
 
@@ -48,6 +52,7 @@ func newTokenExchangeGrantHandler(
 	actorProvider providers.ActorProvider,
 	authorizeService authz.AuthorizeServiceInterface,
 	codeGrant *authorizationCodeGrantHandler,
+	attrCache attributecache.AttributeCacheServiceInterface,
 	cfg oauthconfig.Config,
 ) GrantHandlerInterface {
 	return &tokenExchangeGrantHandler{
@@ -58,6 +63,7 @@ func newTokenExchangeGrantHandler(
 		actorProvider:    actorProvider,
 		authorizeService: authorizeService,
 		codeGrant:        codeGrant,
+		attrCache:        attrCache,
 		cfg:              cfg,
 	}
 }
@@ -301,6 +307,11 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 	}
 	extendDelegationChain(actorClaims, subjectClaims, h.cfg.JWT.Issuer)
 
+	subjectEntityID, subjectCategory, errResp := h.resolveExchangeParties(ctx, subjectClaims, actorClaims, logger)
+	if errResp != nil {
+		return nil, errResp
+	}
+
 	// Determine final scopes
 	finalScopes, errResp := h.getScopes(
 		tokenRequest, subjectClaims.Scopes, subjectClaims.Authorization.Configured)
@@ -348,19 +359,6 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		finalAudiences = []string{targetRS.Identifier}
 	}
 
-	// Resolve how the exchanged token relates to the subject token's revocation family: inherit joins
-	// the subject's family (both revoked together); none (the default, and the empty value) issues an
-	// independent token with no tfid. An unrecognized value is treated as none and surfaced.
-	var exchangedTokenFamilyID string
-	switch h.cfg.OAuth.TokenExchange.TokenFamily {
-	case constants.TokenExchangeTokenFamilyInherit:
-		exchangedTokenFamilyID = subjectClaims.TokenFamilyID
-	case constants.TokenExchangeTokenFamilyNone, "":
-	default:
-		logger.Warn(ctx, "Unrecognized oauth.token_exchange.token_family mode; issuing an independent token",
-			log.String("mode", h.cfg.OAuth.TokenExchange.TokenFamily))
-	}
-
 	// Build access token using token builder
 	userSubConfig := oauthApp.UserAccessTokenConfig()
 	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, &tokenservice.AccessTokenBuildContext{
@@ -374,14 +372,12 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		ActorClaims:       actorClaims,
 		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
 		DPoPJkt:           dpop.GetJkt(ctx),
-		TokenFamilyID:     exchangedTokenFamilyID,
+		TokenFamilyID:     h.exchangedTokenFamilyID(ctx, subjectClaims, logger),
+		SubjectEntityID:   subjectEntityID,
+		SubjectCategory:   subjectCategory,
 	})
 	if err != nil {
-		logger.Error(ctx, "Failed to generate token", log.Error(err))
-		return nil, &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to generate token",
-		}
+		return nil, tokenBuildErrorResponse(ctx, logger, err, "Failed to generate token")
 	}
 
 	return &model.TokenResponseDTO{
@@ -570,11 +566,7 @@ func (h *tokenExchangeGrantHandler) handleIDJAGGrant(ctx context.Context, tokenR
 		OAuthApp:  oauthApp,
 	})
 	if err != nil {
-		logger.Error(ctx, "Failed to generate ID-JAG", log.Error(err))
-		return nil, &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to generate token",
-		}
+		return nil, tokenBuildErrorResponse(ctx, logger, err, "Failed to generate token")
 	}
 
 	return &model.TokenResponseDTO{
@@ -688,4 +680,94 @@ func isCurrentActor(
 	sub, _ := act["sub"].(string)
 	iss, _ := act["iss"].(string)
 	return sub == actorClaims.Sub && cmp.Or(iss, serverIssuer) == cmp.Or(actorClaims.Iss, serverIssuer)
+}
+
+// exchangedTokenFamilyID resolves how the exchanged token relates to the subject token's revocation
+// family: inherit joins the subject's family (both revoked together); none (the default, and the empty
+// value) issues an independent token with no tfid. An unrecognized value is treated as none and surfaced.
+func (h *tokenExchangeGrantHandler) exchangedTokenFamilyID(ctx context.Context,
+	subjectClaims *tokenservice.SubjectTokenClaims, logger *log.Logger) string {
+	switch h.cfg.OAuth.TokenExchange.TokenFamily {
+	case constants.TokenExchangeTokenFamilyInherit:
+		return subjectClaims.TokenFamilyID
+	case constants.TokenExchangeTokenFamilyNone, "":
+	default:
+		logger.Warn(ctx, "Unrecognized oauth.token_exchange.token_family mode; issuing an independent token",
+			log.String("mode", h.cfg.OAuth.TokenExchange.TokenFamily))
+	}
+	return ""
+}
+
+// resolveExchangeParties names the subject and the actor by resource ID and category, even where the
+// issuing application mapped sub to an attribute, so the token builder checks and caps the exchanged
+// token by those entities. It returns the subject's and records the actor's on actorClaims.
+func (h *tokenExchangeGrantHandler) resolveExchangeParties(ctx context.Context,
+	subjectClaims, actorClaims *tokenservice.SubjectTokenClaims, logger *log.Logger) (
+	string, string, *model.ErrorResponse) {
+	subjectEntityID, subjectCategory, errResp := h.resolveExchangedEntity(ctx, subjectClaims, "subject_token", logger)
+	if errResp != nil {
+		return "", "", errResp
+	}
+	if actorClaims != nil {
+		actorClaims.EntityID, _, errResp = h.resolveExchangedEntity(ctx, actorClaims, "actor_token", logger)
+		if errResp != nil {
+			return "", "", errResp
+		}
+	}
+	return subjectEntityID, subjectCategory, nil
+}
+
+// resolveExchangedEntity returns the resource ID and category of the entity a self-issued subject or
+// actor token names, and empty strings when it cannot tell. An external issuer's sub names no local
+// account, even when it equals a local entity's ID, so it is never resolved. The category is empty
+// when the attribute cache entry does not record it.
+// sub is the resource ID unless the issuing application mapped it to an attribute, in which case the
+// token's aci entry records the entity, as the refresh grant relies on. A sub the actor provider does
+// not find, or cannot look up because the entity provider does not support it, falls back to that
+// entry; any other lookup failure fails the exchange, since an unresolved party is neither checked nor
+// capped. An entry that has expired, or was created before entries recorded the entity, leaves the
+// entity unresolved rather than failing the exchange.
+func (h *tokenExchangeGrantHandler) resolveExchangedEntity(ctx context.Context,
+	claims *tokenservice.SubjectTokenClaims, slot string, logger *log.Logger) (
+	string, string, *model.ErrorResponse) {
+	if h.actorProvider == nil || claims.Sub == "" || claims.Iss != h.cfg.JWT.Issuer {
+		return "", "", nil
+	}
+
+	entity, svcErr := h.actorProvider.GetActor(claims.Sub)
+	if svcErr == nil {
+		if entity == nil {
+			return claims.Sub, "", nil
+		}
+		return claims.Sub, string(entity.Category), nil
+	}
+	if svcErr.Type != tidcommon.ClientErrorType && svcErr.Code != actorprovider.ErrorActorLookupNotSupported.Code {
+		logger.Error(ctx, "Failed to resolve the "+slot+" subject",
+			log.String("error", svcErr.Error.DefaultValue))
+		return "", "", &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to resolve the " + slot + " subject",
+		}
+	}
+	logger.Debug(ctx, "The "+slot+" subject does not resolve to an entity",
+		log.String("error", svcErr.Error.DefaultValue))
+
+	if claims.AttributeCacheID == "" {
+		return "", "", nil
+	}
+	entry, cacheErr := h.attrCache.GetAttributeCache(ctx, claims.AttributeCacheID)
+	if cacheErr != nil && cacheErr.Type != tidcommon.ClientErrorType {
+		logger.Error(ctx, "Failed to read the "+slot+" attribute cache entry",
+			log.String("error", cacheErr.ErrorDescription.DefaultValue))
+		return "", "", &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to resolve the " + slot + " subject",
+		}
+	}
+	if cacheErr != nil || entry == nil || entry.SubjectID == "" {
+		logger.Debug(ctx, "Attribute cache entry of the "+slot+" not found or names no subject",
+			log.String("cache_id", claims.AttributeCacheID))
+		return "", "", nil
+	}
+	return entry.SubjectID, entry.SubjectCategory, nil
 }

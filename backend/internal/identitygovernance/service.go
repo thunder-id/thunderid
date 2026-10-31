@@ -38,10 +38,11 @@ type IdentityGovernanceServiceInterface interface {
 	EvaluateAccess(ctx context.Context, entityID string, plane providers.AccessPlane,
 		method providers.AuthenticationMethod) (providers.AccessDecision, *tidcommon.ServiceError)
 
-	// IsSuspended reports whether the identity is suspended, and writes nothing. A missing runtime row
-	// reads as the starting state. An empty entityID, or one with no local identity, is not suspended;
-	// an unreadable entity is an error.
-	IsSuspended(ctx context.Context, entityID string) (bool, *tidcommon.ServiceError)
+	// AccessHold reports the hold that withholds the identity outside the access planes, such as from an
+	// authorization decision: suspended, then expired, or empty when neither applies. A lock is not a
+	// hold. It writes nothing, and a missing runtime row reads as the starting state. An empty entityID,
+	// or one with no local identity, has no hold; an unreadable entity is an error.
+	AccessHold(ctx context.Context, entityID string) (providers.AccessRefusalReason, *tidcommon.ServiceError)
 
 	// AdmitSignIn admits a completed sign-in at the session plane and, when admitted, clears an expired
 	// account-wide entry.
@@ -207,21 +208,29 @@ func (s *identityGovernanceService) EvaluateAccess(ctx context.Context, entityID
 	return s.decide(ctx, entity, plane, method), nil
 }
 
-// IsSuspended reports whether the identity is suspended, from a read that writes nothing.
-func (s *identityGovernanceService) IsSuspended(ctx context.Context,
-	entityID string) (bool, *tidcommon.ServiceError) {
+// AccessHold reports the identity's hold, from a read that writes nothing. A suspension is reported
+// before an ended lifespan, as the access checks order them, and a lifespan end that does not read is
+// reported as ended, so a corrupt value never lifts the hold.
+func (s *identityGovernanceService) AccessHold(ctx context.Context,
+	entityID string) (providers.AccessRefusalReason, *tidcommon.ServiceError) {
 	if entityID == "" {
-		return false, nil
+		return "", nil
 	}
 	entity, err := s.entityState.GetGovernedEntity(ctx, entityID, false)
 	if err != nil {
-		return false, s.serverError(ctx, "Failed to read the identity for a suspension check", entityID, err)
+		return "", s.serverError(ctx, "Failed to read the identity for a hold check", entityID, err)
 	}
 	if entity == nil {
-		return false, nil
+		return "", nil
 	}
 
-	return isSuspended(entity.State, entity.AccessState), nil
+	if isSuspended(entity.State, entity.AccessState) {
+		return providers.AccessRefusalReasonSuspended, nil
+	}
+	if entity.ValidUntilErr != nil || (entity.ValidUntil != "" && !isLockLive(entity.ValidUntil, s.now())) {
+		return providers.AccessRefusalReasonExpired, nil
+	}
+	return "", nil
 }
 
 // AdmitSignIn checks a completed sign-in and, when admitted, clears an expired account-wide entry. A
@@ -445,19 +454,36 @@ func (s *identityGovernanceService) readForCheck(ctx context.Context,
 		s.logger.Debug(ctx, "No local identity to govern; admitted", log.MaskedString(log.LoggerKeyEntityID, entityID))
 		return GovernedEntity{}, admit(), false, nil
 	}
+	if entity.ValidUntilErr != nil {
+		return GovernedEntity{}, providers.AccessDecision{}, false,
+			s.serverError(ctx, "Failed to read the identity's lifespan for an access check", entityID,
+				entity.ValidUntilErr)
+	}
 
 	return *entity, providers.AccessDecision{}, true, nil
 }
 
 // decide returns the decision for an entity at a plane and method. An identity with nothing that could
-// hold it, and an application that is not suspended, is admitted without reading the policy.
+// hold it, and an application that is not suspended, is admitted without reading the policy. An
+// admitted decision carries the entity's lifespan end as NotAfter.
 func (s *identityGovernanceService) decide(ctx context.Context, entity GovernedEntity, plane providers.AccessPlane,
 	method providers.AuthenticationMethod) providers.AccessDecision {
-	if !isSuspended(entity.State, entity.AccessState) &&
-		(entity.Category == providers.EntityCategoryApp || !hasLockEntries(entity)) {
-		return admit()
+	decision := admit()
+	if isSuspended(entity.State, entity.AccessState) ||
+		(entity.ValidUntil != "" && !isLockLive(entity.ValidUntil, s.now())) ||
+		(entity.Category != providers.EntityCategoryApp && hasLockEntries(entity)) {
+		decision = s.decideUnder(ctx, entity, plane, method, s.resolvePolicy(ctx, entity, method))
 	}
-	return s.decideUnder(ctx, entity, plane, method, s.resolvePolicy(ctx, entity, method))
+	if decision.Admitted && entity.ValidUntil != "" {
+		notAfter, err := time.Parse(time.RFC3339, entity.ValidUntil)
+		if err != nil {
+			// The entity service hands over a normalized value, so this guards only a corrupt one, which
+			// must not leave a token uncapped.
+			return providers.AccessDecision{}
+		}
+		decision.NotAfter = notAfter
+	}
+	return decision
 }
 
 // decideUnder returns the decision for an entity at a plane and method under a resolved policy.
@@ -466,6 +492,12 @@ func (s *identityGovernanceService) decideUnder(ctx context.Context, entity Gove
 	// A suspension refuses at every plane.
 	if isSuspended(entity.State, entity.AccessState) {
 		return refuse(policy.discloseAccountHold, providers.AccessRefusalReasonSuspended)
+	}
+
+	// An ended lifespan refuses at every plane, and is reported after a suspension. Its end is no longer
+	// live once the current time reaches it.
+	if entity.ValidUntil != "" && !isLockLive(entity.ValidUntil, s.now()) {
+		return refuse(policy.discloseAccountHold, providers.AccessRefusalReasonExpired)
 	}
 
 	// Only a suspension refuses an application.

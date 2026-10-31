@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -335,6 +336,67 @@ func (s *AgentClientAttributesTestSuite) TestAgentClientAttrs_SubTypeAgent() {
 	s.Assert().Equal("agent", claims.Additional["sub_type"],
 		"a configured sub_type attribute must not override the server-asserted identity class")
 	s.Assert().Equal("anthropic", claims.Additional["modelProvider"])
+}
+
+// TestAgentClientAttrs_SubLifespan verifies that an agent's lifespan end, its validUntil, when
+// sub_lifespan is allow-listed, is surfaced on its client_credentials token in Unix seconds, like exp,
+// and that an agent without an end carries no sub_lifespan claim.
+func (s *AgentClientAttributesTestSuite) TestAgentClientAttrs_SubLifespan() {
+	end := time.Now().Add(30 * 24 * time.Hour).UTC().Truncate(time.Second)
+	endValue := end.Format(time.RFC3339)
+
+	for _, tc := range []struct {
+		name       string
+		validUntil *string
+	}{
+		{name: "bounded", validUntil: &endValue},
+		{name: "unbounded"},
+	} {
+		s.Run(tc.name, func() {
+			clientID := agentClientAttrsClientID + "_sublifespan_" + tc.name
+			agentID, err := createAgent(Agent{
+				OUID:       s.ouID,
+				Type:       "default",
+				Owner:      s.ownerUserID,
+				ValidUntil: tc.validUntil,
+				Attributes: withName("Client Attrs Agent "+clientID, nil),
+				InboundAuthConfig: []InboundAuthConfig{
+					{
+						Type: "oauth2",
+						Config: &OAuthAgentConfig{
+							ClientID:                clientID,
+							ClientSecret:            agentClientAttrsClientSecret,
+							GrantTypes:              []string{"client_credentials"},
+							TokenEndpointAuthMethod: "client_secret_basic",
+							Token: &OAuthTokenConfig{
+								AccessToken: &AccessTokenConfig{
+									ClientConfig: &AccessTokenSubConfig{Attributes: []string{"sub_lifespan"}},
+								},
+							},
+						},
+					},
+				},
+			})
+			s.Require().NoError(err)
+			defer func() { _ = deleteAgent(agentID) }()
+
+			status, body := s.requestToken(clientID)
+			s.Require().Equal(http.StatusOK, status, "CC token request must succeed: %v", body)
+			token, ok := body["access_token"].(string)
+			s.Require().True(ok)
+
+			claims, err := testutils.DecodeJWT(token)
+			s.Require().NoError(err)
+
+			if tc.validUntil == nil {
+				s.Assert().NotContains(claims.Additional, "sub_lifespan",
+					"an agent that does not expire has no sub_lifespan")
+				return
+			}
+			s.Assert().EqualValues(end.Unix(), claims.Additional["sub_lifespan"],
+				"sub_lifespan is surfaced in Unix seconds")
+		})
+	}
 }
 
 // TestAgentClientAttrs_SubTypeSeededOnCreate verifies that an agent created with no client token
