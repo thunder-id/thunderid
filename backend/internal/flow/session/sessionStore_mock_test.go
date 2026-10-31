@@ -943,6 +943,81 @@ func (_c *sessionStoreMock_Record_Call) RunAndReturn(run func(ctx context.Contex
 	return _c
 }
 
+// SlideIdleDeadline provides a mock function for the type sessionStoreMock
+func (_mock *sessionStoreMock) SlideIdleDeadline(ctx context.Context, sessionID string, now time.Time, idleExpiresAt time.Time, refreshedBefore time.Time) error {
+	ret := _mock.Called(ctx, sessionID, now, idleExpiresAt, refreshedBefore)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SlideIdleDeadline")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time, time.Time, time.Time) error); ok {
+		r0 = returnFunc(ctx, sessionID, now, idleExpiresAt, refreshedBefore)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// sessionStoreMock_SlideIdleDeadline_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SlideIdleDeadline'
+type sessionStoreMock_SlideIdleDeadline_Call struct {
+	*mock.Call
+}
+
+// SlideIdleDeadline is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sessionID string
+//   - now time.Time
+//   - idleExpiresAt time.Time
+//   - refreshedBefore time.Time
+func (_e *sessionStoreMock_Expecter) SlideIdleDeadline(ctx any, sessionID any, now any, idleExpiresAt any, refreshedBefore any) *sessionStoreMock_SlideIdleDeadline_Call {
+	return &sessionStoreMock_SlideIdleDeadline_Call{Call: _e.mock.On("SlideIdleDeadline", ctx, sessionID, now, idleExpiresAt, refreshedBefore)}
+}
+
+func (_c *sessionStoreMock_SlideIdleDeadline_Call) Run(run func(ctx context.Context, sessionID string, now time.Time, idleExpiresAt time.Time, refreshedBefore time.Time)) *sessionStoreMock_SlideIdleDeadline_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		var arg3 time.Time
+		if args[3] != nil {
+			arg3 = args[3].(time.Time)
+		}
+		var arg4 time.Time
+		if args[4] != nil {
+			arg4 = args[4].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *sessionStoreMock_SlideIdleDeadline_Call) Return(err error) *sessionStoreMock_SlideIdleDeadline_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *sessionStoreMock_SlideIdleDeadline_Call) RunAndReturn(run func(ctx context.Context, sessionID string, now time.Time, idleExpiresAt time.Time, refreshedBefore time.Time) error) *sessionStoreMock_SlideIdleDeadline_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // TouchAuthenticatedAt provides a mock function for the type sessionStoreMock
 func (_mock *sessionStoreMock) TouchAuthenticatedAt(ctx context.Context, sessionID string, authenticatedAt time.Time, idleExpiresAt time.Time) error {
 	ret := _mock.Called(ctx, sessionID, authenticatedAt, idleExpiresAt)

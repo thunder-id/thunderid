@@ -15,7 +15,7 @@ const maxTimeoutSeconds = math.MaxInt64 / int64(time.Second)
 
 // DefaultIdleTimeout is the maximum inactivity period before a session expires. The idle deadline
 // slides forward on each activity refresh.
-const DefaultIdleTimeout = 30 * time.Minute
+const DefaultIdleTimeout = 2 * time.Hour
 
 // DefaultAbsoluteTimeout is the maximum lifetime of a session regardless of activity. It is fixed
 // at creation and never extended. It also bounds the transport cookie's max-age.
