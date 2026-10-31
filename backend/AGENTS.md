@@ -9,13 +9,13 @@ For the canonical, deeper reference (flat package/file layout, export rules, log
 - Writing or changing any backend Go code → read [.agent/skills/backend/SKILL.md](../.agent/skills/backend/SKILL.md) first.
 - Writing or fixing tests → read [.agent/skills/backend-tests/SKILL.md](../.agent/skills/backend-tests/SKILL.md).
 - Touching `store.go`, schema, or queries → read [.agent/skills/db/SKILL.md](../.agent/skills/db/SKILL.md).
-- Changing any interface → regenerate mocks with `make mockery`. CI's `verify_mocks` job fails if mocks are out of sync. Never hand-edit mock files.
+- Changing any interface → regenerate mocks with `make mockery`. CI's `verify-mocks` job fails if mocks are out of sync. Never hand-edit mock files.
 
 ## Conventions
 
 - Ensure all identity-related code aligns with relevant RFC specifications.
 - Declarative resource attributes use camelCase, matching the REST API. The `yaml` struct tag must use the same camelCase name as the field's `json` tag (for example `yaml:"ouId"`, not `yaml:"ou_id"`). This does not apply to non-declarative YAML such as `deployment.yaml` server config, or to `json` tags for protocol payloads (OAuth, DCR) that follow their own RFC conventions.
-- Logging: use the `log` package from `internal/system` and pass the request `context.Context` first so entries carry the trace ID; avoid PII. See the overview for the full conventions (non-request contexts, `MaskString`).
+- Logging: use the `log` package from `internal/system` and pass the request `context.Context` first so entries carry the trace ID; avoid PII. See the overview for the full conventions (non-request contexts, `log.MaskedString`).
 - Cryptographic operations (encrypt/decrypt/sign/verify) must go through the injected `providers.RuntimeCryptoProvider`, not `internal/system/cryptolib` directly. `cryptolib` is a low-level primitives package meant to be wrapped by the default key manager provider (`internal/system/kmprovider/defaultkm`); other packages should depend on the `RuntimeCryptoProvider` interface so alternate key manager providers stay swappable.
 - JWE "alg"/"enc" validation (e.g. checking a configured algorithm is supported) must use `jwe.JWEServiceInterface`'s `SupportedKeyEncryptionAlgorithms()` / `SupportedContentEncryptionAlgorithms()` methods, not ad-hoc calls to the crypto provider or hardcoded algorithm lists.
 
