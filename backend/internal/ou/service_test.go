@@ -657,9 +657,10 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_CreateOrganizationU
 
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit() {
 	testCases := []struct {
-		name    string
-		setup   func(*organizationUnitStoreInterfaceMock)
-		wantErr *tidcommon.ServiceError
+		name         string
+		setup        func(*organizationUnitStoreInterfaceMock)
+		wantErr      *tidcommon.ServiceError
+		wantReadOnly bool
 	}{
 		{
 			name: "success",
@@ -667,7 +668,22 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 				store.On("GetOrganizationUnit", mock.Anything, "ou-1").
 					Return(OrganizationUnit{ID: "ou-1", Name: "Root"}, nil).
 					Once()
+				store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").
+					Return(false).
+					Once()
 			},
+		},
+		{
+			name: "success declarative organization unit is read-only",
+			setup: func(store *organizationUnitStoreInterfaceMock) {
+				store.On("GetOrganizationUnit", mock.Anything, "ou-1").
+					Return(OrganizationUnit{ID: "ou-1", Name: "Root"}, nil).
+					Once()
+				store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").
+					Return(true).
+					Once()
+			},
+			wantReadOnly: true,
 		},
 		{
 			name: "not found",
@@ -704,6 +720,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 			} else {
 				suite.Require().Nil(err)
 				suite.Require().Equal("ou-1", result.ID)
+				suite.Require().Equal(tc.wantReadOnly, result.IsReadOnly)
 			}
 		})
 	}
@@ -711,10 +728,11 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitByPath() {
 	testCases := []struct {
-		name    string
-		path    string
-		setup   func(*organizationUnitStoreInterfaceMock)
-		wantErr *tidcommon.ServiceError
+		name         string
+		path         string
+		setup        func(*organizationUnitStoreInterfaceMock)
+		wantErr      *tidcommon.ServiceError
+		wantReadOnly bool
 	}{
 		{
 			name:    "invalid path",
@@ -749,7 +767,23 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 				store.On("GetOrganizationUnitByPath", mock.Anything, []string{"root"}).
 					Return(OrganizationUnit{ID: "ou-1", Handle: "root"}, nil).
 					Once()
+				store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").
+					Return(false).
+					Once()
 			},
+		},
+		{
+			name: "success declarative organization unit is read-only",
+			path: "root",
+			setup: func(store *organizationUnitStoreInterfaceMock) {
+				store.On("GetOrganizationUnitByPath", mock.Anything, []string{"root"}).
+					Return(OrganizationUnit{ID: "ou-1", Handle: "root"}, nil).
+					Once()
+				store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").
+					Return(true).
+					Once()
+			},
+			wantReadOnly: true,
 		},
 	}
 
@@ -770,6 +804,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 			} else {
 				suite.Require().Nil(err)
 				suite.Require().Equal("ou-1", result.ID)
+				suite.Require().Equal(tc.wantReadOnly, result.IsReadOnly)
 			}
 
 			if tc.wantErr == &ErrorInvalidHandlePath {

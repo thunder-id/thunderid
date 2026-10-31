@@ -345,5 +345,27 @@ describe('AppearanceSection', () => {
         expect(mockOnFieldChange).toHaveBeenCalledWith('layoutId', 'split-layout');
       });
     });
+
+    it('should disable autocomplete inputs when organization unit is read-only', () => {
+      mockUseGetThemes.mockReturnValue({
+        data: {themes: mockThemes},
+        isLoading: false,
+      });
+      mockUseGetLayouts.mockReturnValue({
+        data: {layouts: mockLayouts},
+        isLoading: false,
+      });
+
+      renderWithProviders(
+        <AppearanceSection
+          organizationUnit={{...mockOrganizationUnit, isReadOnly: true}}
+          editedOU={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.getByPlaceholderText(t('organizationUnits:edit.customization.theme.placeholder'))).toBeDisabled();
+      expect(screen.getByPlaceholderText('Select a layout')).toBeDisabled();
+    });
   });
 });
