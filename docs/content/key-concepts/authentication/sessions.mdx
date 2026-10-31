@@ -29,7 +29,7 @@ Two independent timeouts bound every session:
 
 | Timeout | Behavior | Default |
 |---|---|---|
-| Idle | Moves forward on each use of the session, so an active session stays alive. The session expires after this much inactivity. | 30 minutes |
+| Idle | Moves forward on each use of the session, so an active session stays alive. A sign-in that reuses the session and a token refresh for a grant issued under it both count as use. The session expires after this much inactivity. | 30 minutes |
 | Absolute | Fixed when the session is created and never extended. The session expires this long after creation regardless of activity. | 8 hours |
 
 A session expires when it passes either deadline. After expiry, the next sign-in through the flow authenticates the user again. An administrator configures both timeouts in the server configuration. See [Configure Session Lifetime](../../../guides/flows/single-sign-on#configure-session-lifetime).

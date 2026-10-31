@@ -71,6 +71,7 @@ func (suite *GrantHandlerProviderTestSuite) SetupTest() {
 		nil,
 		nil,
 		0,
+		nil,
 		testhelpers.OAuthConfig(),
 	)
 }
@@ -93,6 +94,7 @@ func (suite *GrantHandlerProviderTestSuite) TestNewGrantHandlerProvider() {
 		nil,
 		nil,
 		0,
+		nil,
 		testhelpers.OAuthConfig(),
 	)
 	assert.NotNil(suite.T(), provider)

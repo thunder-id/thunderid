@@ -55,6 +55,12 @@ type Service interface {
 	// failure aborts the load. It errors when a row it has to read no longer exists.
 	LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (*Session, *SessionContext, error)
 
+	// RecordActivity counts a use of the session outside the flow engine, such as a refresh_token
+	// grant, as activity: it refreshes the last-active timestamp and slides the idle deadline under the
+	// same activity-refresh throttle as a checkpoint load. The absolute deadline is unchanged, and an
+	// expired, terminated or unknown session is left as it is without an error.
+	RecordActivity(ctx context.Context, sessionID string) error
+
 	// Terminate ends the session referenced by handle: it revokes the token families of every
 	// participating application (when a revoker is wired) and hard-deletes the session along with its
 	// checkpoint contexts and participants, all in one transaction, so nothing is left that could back
@@ -320,6 +326,19 @@ func (s *service) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (
 	}
 
 	return sess, snapshot, nil
+}
+
+// RecordActivity implements Service.
+func (s *service) RecordActivity(ctx context.Context, sessionID string) error {
+	if sessionID == "" {
+		return nil
+	}
+	now := time.Now().UTC()
+	if err := s.store.SlideIdleDeadline(ctx, sessionID, now, now.Add(s.timeouts.Idle),
+		now.Add(-s.timeouts.ActivityRefresh)); err != nil {
+		return fmt.Errorf("failed to record SSO session activity: %w", err)
+	}
+	return nil
 }
 
 // Terminate implements Service.

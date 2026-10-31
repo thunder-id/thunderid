@@ -72,7 +72,7 @@ The first time a user signs in, the flow takes the **Authenticate** path and **S
 
 Two timeouts bound every flow SSO session:
 
-- **Idle timeout**: the maximum inactivity period. The idle deadline moves forward on each use of the session, so an active session stays alive. The default is 30 minutes.
+- **Idle timeout**: the maximum inactivity period. The idle deadline moves forward on each use of the session, so an active session stays alive. A sign-in that reuses the session counts as use, and so does a `refresh_token` grant for tokens issued under the session, so an application that keeps a user signed in by refreshing tokens keeps the session alive for other applications too. The default is 30 minutes.
 - **Absolute timeout**: the maximum total lifetime, fixed when the session is created and never extended. The default is 8 hours.
 
 A session expires when it passes either deadline. After expiry, **Check SSO Session** takes the **Authenticate** path and the user signs in again.

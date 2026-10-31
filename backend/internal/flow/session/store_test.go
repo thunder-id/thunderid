@@ -318,6 +318,59 @@ func (s *StoreTestSuite) TestTouchAuthenticatedAt_ExecuteError() {
 	s.mockDBClient.AssertExpectations(s.T())
 }
 
+// TestSlideIdleDeadline_Success pins the parameter order of the slide statement, since a reordering
+// would write the wrong column or compare against the wrong cutoff rather than fail.
+func (s *StoreTestSuite) TestSlideIdleDeadline_Success() {
+	now := time.Now().UTC()
+	idleAt := now.Add(30 * time.Minute)
+	cutoff := now.Add(-time.Minute)
+
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("ExecuteContext", context.Background(), querySlideIdleDeadline,
+		now, idleAt, "sess-1", testDeploymentID, string(StateActive), cutoff).
+		Return(int64(1), nil)
+
+	err := s.store.SlideIdleDeadline(context.Background(), "sess-1", now, idleAt, cutoff)
+
+	s.NoError(err)
+	s.mockDBClient.AssertExpectations(s.T())
+}
+
+// TestSlideIdleDeadline_NoRowsIsNotAnError covers a throttled, expired or vanished session, which
+// the statement leaves untouched without that being a failure.
+func (s *StoreTestSuite) TestSlideIdleDeadline_NoRowsIsNotAnError() {
+	now := time.Now().UTC()
+
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("ExecuteContext", context.Background(), querySlideIdleDeadline,
+		now, now, "sess-1", testDeploymentID, string(StateActive), now).
+		Return(int64(0), nil)
+
+	s.NoError(s.store.SlideIdleDeadline(context.Background(), "sess-1", now, now, now))
+}
+
+func (s *StoreTestSuite) TestSlideIdleDeadline_ExecuteError() {
+	now := time.Now().UTC()
+
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("ExecuteContext", context.Background(), querySlideIdleDeadline,
+		now, now, "sess-1", testDeploymentID, string(StateActive), now).
+		Return(int64(0), errors.New("db down"))
+
+	s.Error(s.store.SlideIdleDeadline(context.Background(), "sess-1", now, now, now))
+}
+
+// TestSlideIdleDeadline_QueryDoesNotReviveExpiredSessions pins the guards that keep a refresh from
+// extending a session that has already expired or been terminated.
+func (s *StoreTestSuite) TestSlideIdleDeadline_QueryDoesNotReviveExpiredSessions() {
+	s.Contains(querySlideIdleDeadline.Query, "STATE = $5")
+	s.Contains(querySlideIdleDeadline.Query, "IDLE_EXPIRES_AT > $1")
+	s.Contains(querySlideIdleDeadline.Query, "ABSOLUTE_EXPIRES_AT > $1")
+	s.Contains(querySlideIdleDeadline.Query, "LAST_ACTIVE_AT <= $6")
+	s.NotContains(querySlideIdleDeadline.Query, "ABSOLUTE_EXPIRES_AT =",
+		"the absolute deadline must never move")
+}
+
 func (s *StoreTestSuite) TestUpdate_VersionConflict() {
 	sess := s.sampleSession()
 

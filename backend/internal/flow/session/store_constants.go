@@ -67,6 +67,19 @@ var (
 			`WHERE SESSION_ID = $4 AND DEPLOYMENT_ID = $5 AND AUTHENTICATED_AT <= $1`,
 	}
 
+	// querySlideIdleDeadline refreshes a session's last-active timestamp and idle deadline on use outside
+	// the flow engine (a refresh_token grant). It matches only an active, unexpired session whose last
+	// refresh is older than the throttle cutoff, so it neither revives an expired session nor writes on
+	// every call.
+	querySlideIdleDeadline = model.DBQuery{
+		ID: "SSO-SESS-18",
+		Query: `UPDATE "SSO_SESSION" SET LAST_ACTIVE_AT = $1, IDLE_EXPIRES_AT = $2, ` +
+			`VERSION = VERSION + 1, UPDATED_AT = CURRENT_TIMESTAMP ` +
+			`WHERE SESSION_ID = $3 AND DEPLOYMENT_ID = $4 AND STATE = $5 AND LAST_ACTIVE_AT <= $6 ` +
+			`AND (IDLE_EXPIRES_AT IS NULL OR IDLE_EXPIRES_AT > $1) ` +
+			`AND (ABSOLUTE_EXPIRES_AT IS NULL OR ABSOLUTE_EXPIRES_AT > $1)`,
+	}
+
 	// queryCreateSessionContext upserts a checkpoint's session context. Re-saving the same checkpoint
 	// (re-execution or a concurrent request) overwrites it rather than erroring on the primary key.
 	// The ON CONFLICT ... DO UPDATE form is valid in both PostgreSQL and SQLite.

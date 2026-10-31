@@ -143,6 +143,19 @@ func (st *store) TouchAuthenticatedAt(ctx context.Context, sessionID string, aut
 	})
 }
 
+// SlideIdleDeadline implements sessionStore.
+func (st *store) SlideIdleDeadline(ctx context.Context, sessionID string, now, idleExpiresAt,
+	refreshedBefore time.Time) error {
+	return withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
+		_, err := dbClient.ExecuteContext(ctx, querySlideIdleDeadline,
+			now, nullableTime(idleExpiresAt), sessionID, st.deploymentID, string(StateActive), refreshedBefore)
+		if err != nil {
+			return fmt.Errorf("failed to slide session idle deadline: %w", err)
+		}
+		return nil
+	})
+}
+
 // CreateContext persists the session context. It rejects payloads exceeding MaxSessionContextBytes.
 func (st *store) CreateContext(ctx context.Context, c SessionContext) error {
 	payload, err := c.serializePayload()
