@@ -1,0 +1,9 @@
+# Spec
+
+### MCP exposure
+
+We will think about it.
+
+### UI
+
+Decision: required

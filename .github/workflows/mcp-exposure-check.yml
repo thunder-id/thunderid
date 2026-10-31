@@ -1,0 +1,98 @@
+# Gates every pull request on an MCP exposure decision, so no API operation and no feature
+# specification lands without saying whether agents get a tool for it.
+#
+# Checks, both run by tools/mcpcheck (see tools/mcpcheck/README.md):
+#
+#   spec  every docs-internals/<feature>/spec.md the pull request adds or modifies has a
+#         "### MCP exposure" section: Decision: required (with an operation, tool and tier table),
+#         not required (with a Reason), or deferred (with an Issue)
+#   api   every operation in api/*.yaml carries x-thunderid-mcp: expose: true with its tools,
+#         expose: false with a reason, or expose: deferred with a reason, and every registered MCP
+#         tool is claimed by an operation or listed in tools/mcpcheck/standalone-tools.yaml
+#
+# To clear a failure, add the decision the failing line names. The api check compares against the
+# base branch and fails only on problems the base does not already have, so existing gaps never
+# block a change that does not add to them.
+#
+# Both checks are deterministic, need no secrets, and run on `pull_request`, never
+# `pull_request_target`, so code from a fork only ever runs with a read only token.
+#
+# Uses:
+#   OS: ubuntu-latest
+#   Go: version from tools/mcpcheck/go.mod
+
+name: 🤖 MCP Exposure Check
+
+on:
+  pull_request:
+    paths:
+      - "api/**"
+      - "docs-internals/**/spec.md"
+      - "backend/**/tools.go"
+      - "backend/**/tool.go"
+      - "tools/mcpcheck/**"
+
+permissions:
+  contents: read
+
+jobs:
+  spec:
+    name: MCP exposure decided in the spec
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: ⚙️ Set up Go Environment
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/mcpcheck/go.mod
+          cache-dependency-path: tools/mcpcheck/go.sum
+
+      - name: 🔍 Check Changed Specifications
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          mapfile -t specs < <(git diff --name-only --diff-filter=AM "$BASE_SHA...HEAD" -- 'docs-internals/*/spec.md' \
+            | grep -v '^docs-internals/templates/' || true)
+          if [ "${#specs[@]}" -eq 0 ]; then
+            echo "No specification added or modified."
+            exit 0
+          fi
+          go -C tools/mcpcheck run . spec "${specs[@]/#/$GITHUB_WORKSPACE/}"
+
+  api:
+    name: MCP exposure decided for every API operation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: ⚙️ Set up Go Environment
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/mcpcheck/go.mod
+          cache-dependency-path: tools/mcpcheck/go.sum
+
+      - name: 🧪 Test the Checker
+        run: go -C tools/mcpcheck test ./...
+
+      - name: 🔍 Check API Exposure Decisions
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/base" "$BASE_SHA"
+          go -C tools/mcpcheck run . api \
+            -api "$GITHUB_WORKSPACE/api" \
+            -tools "$GITHUB_WORKSPACE/backend/internal" \
+            -standalone "$GITHUB_WORKSPACE/tools/mcpcheck/standalone-tools.yaml" \
+            -base-api "$RUNNER_TEMP/base/api" \
+            -base-tools "$RUNNER_TEMP/base/backend/internal"

@@ -1,0 +1,12 @@
+openapi: 3.0.3
+info:
+  title: File-level deferred with an issue key
+  version: "1.0"
+x-thunderid-mcp:
+  expose: deferred
+  reason: Planned for a later phase.
+  issue: https://github.com/thunder-id/thunderid/issues/12
+paths:
+  /covered:
+    get:
+      operationId: covered

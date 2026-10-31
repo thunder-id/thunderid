@@ -1,0 +1,18 @@
+openapi: 3.0.3
+info:
+  title: Apps
+  version: "1.0"
+paths:
+  /apps:
+    get:
+      x-thunderid-mcp:
+        expose: true
+        tools:
+          - {name: list_apps, tier: read}
+  /legacy:
+    get:
+      operationId: legacy
+  /legacy/{id}:
+    delete:
+      x-thunderid-mcp:
+        expose: false

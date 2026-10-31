@@ -1,0 +1,6 @@
+# Spec
+
+### MCP exposure
+
+Decision: not required
+Reason: The feature adds no API operation.

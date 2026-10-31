@@ -1,0 +1,12 @@
+openapi: 3.0.3
+info:
+  title: File-level expose true
+  version: "1.0"
+x-thunderid-mcp:
+  expose: true
+  tools:
+    - {name: list_apps, tier: read}
+paths:
+  /covered:
+    get:
+      operationId: covered

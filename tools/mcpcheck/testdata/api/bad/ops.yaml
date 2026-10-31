@@ -1,0 +1,78 @@
+openapi: 3.0.3
+info:
+  title: Bad operations
+  version: "1.0"
+paths:
+  /undecided:
+    get:
+      operationId: undecided
+  /bad-expose:
+    get:
+      x-thunderid-mcp:
+        expose: maybe
+        reason: Not a valid value.
+  /quoted-true:
+    get:
+      x-thunderid-mcp:
+        expose: "true"
+        tools:
+          - {name: list_apps, tier: read}
+  /missing-expose:
+    get:
+      x-thunderid-mcp:
+        reason: Forgot expose.
+  /no-tools:
+    post:
+      x-thunderid-mcp:
+        expose: true
+  /unregistered:
+    post:
+      x-thunderid-mcp:
+        expose: true
+        tools:
+          - {name: missing_tool, tier: write}
+          - {name: thunderid_list_apps, tier: read}
+          - {tier: read}
+  /bad-tier:
+    put:
+      x-thunderid-mcp:
+        expose: true
+        tools:
+          - {name: create_app, tier: admin}
+  /true-reason:
+    get:
+      x-thunderid-mcp:
+        expose: true
+        reason: Not needed here.
+        tools:
+          - {name: list_apps, tier: read}
+  /no-reason:
+    delete:
+      x-thunderid-mcp:
+        expose: false
+  /issue-key:
+    get:
+      x-thunderid-mcp:
+        expose: deferred
+        reason: Later.
+        issue: https://github.com/thunder-id/thunderid/issues/2
+  /unknown-tool-key:
+    get:
+      x-thunderid-mcp:
+        expose: true
+        tools:
+          - {name: search_apps, tier: read, title: Search}
+  /false-tools:
+    get:
+      x-thunderid-mcp:
+        expose: false
+        reason: Protocol endpoint.
+        tools:
+          - {name: create_app, tier: write}
+  /deferred-no-reason:
+    get:
+      x-thunderid-mcp:
+        expose: deferred
+  /malformed:
+    get:
+      x-thunderid-mcp: true
