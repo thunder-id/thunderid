@@ -6,6 +6,8 @@ The agent uses **its own access token (client_credentials grant)** for browsing 
 
 The sample is a travel booking app called Wayfinder. A chat widget in the UI talks to a LangChain agent that calls REST tools through an MCP server. The REST API and the MCP server share one Node process and one set of service modules. `/api/*` is the REST surface and `/mcp` is the MCP surface. REST endpoints enforce scopes from ThunderID-issued tokens. MCP tools use the same scope checks by default and can optionally request runtime decisions from the ThunderID AuthZEN PDP.
 
+The [Python Concierge alternative](ai-agent-python/README.md) reuses the existing frontend, booking backend, and SMTP server. It installs the reviewed, unpublished Python SDK and sample as two local editable packages. Its `MemoryStorage` configuration is explicitly ephemeral. Launch it separately in place of the TypeScript agent; the default Node workspace commands continue to select the TypeScript implementation.
+
 ## Architecture
 
 ```mermaid
@@ -92,7 +94,7 @@ Each subdirectory has its own README with the environment variables it reads.
 ## Prerequisites
 
 - Node.js 20+
-- A running ThunderID backend on `https://localhost:8090` (self-signed cert is fine).
+- A running ThunderID backend on `https://localhost:8090`. A self-signed certificate works when the booking backend trusts it through `NODE_EXTRA_CA_CERTS`, as described in [Run](#run).
 - **One** of the following LLM API keys:
   - Anthropic API key from [console.anthropic.com](https://console.anthropic.com), **or**
   - Google Gemini API key from [aistudio.google.com](https://aistudio.google.com).
@@ -282,6 +284,8 @@ cd smtp-server && npm install && npm run dev                 # SMTP :2525 | Inbo
 cd ai-agent    && npm install && npm run dev                 # http://localhost:8790/chat
 cd frontend    && npm install && npm run dev                 # http://localhost:5173
 ```
+
+The booking backend keeps TLS verification on. If ThunderID uses a self-signed certificate, start the backend with `NODE_EXTRA_CA_CERTS` set to that certificate, for example `<THUNDERID_HOME>/config/certs/server.cert`. See [backend/README.md](backend/README.md).
 
 The Wayfinder server hosts both the REST API on `/api/*` and the MCP server on `/mcp`. Sample flights, hotels, and trips are held in memory and reloaded on every start, so there is no database to set up. Bookings and upgrade requests are in memory too, and reset when the server restarts.
 
