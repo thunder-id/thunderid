@@ -187,6 +187,25 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_ValidNonce() {
 	assert.Empty(suite.T(), errMsg)
 }
 
+func (suite *AuthzValidationTestSuite) TestValidateParams_DeviceSSOWithoutOpenID_Rejected() {
+	params := suite.validParams()
+	params.Set(constants.RequestParamScope, "profile "+constants.ScopeDeviceSSO)
+
+	errCode, errMsg := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
+
+	assert.Equal(suite.T(), constants.ErrorInvalidScope, errCode)
+	assert.Contains(suite.T(), errMsg, "requires the openid scope")
+}
+
+func (suite *AuthzValidationTestSuite) TestValidateParams_DeviceSSOWithOpenID_Success() {
+	params := suite.validParams()
+	params.Set(constants.RequestParamScope, "openid profile "+constants.ScopeDeviceSSO)
+
+	errCode, _ := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
+
+	assert.Empty(suite.T(), errCode)
+}
+
 func (suite *AuthzValidationTestSuite) TestValidateParams_PromptLogin_Success() {
 	params := suite.validParams()
 	params.Set(constants.RequestParamPrompt, "login")

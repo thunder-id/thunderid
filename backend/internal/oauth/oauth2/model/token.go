@@ -25,6 +25,9 @@ type TokenRequest struct {
 	Audiences          []string `json:"audiences,omitempty"`
 	AuthReqID          string   `json:"auth_req_id,omitempty"`
 	Assertion          string   `json:"assertion,omitempty"`
+	// DeviceSecret is the device_secret a native application presents on a refresh_token grant
+	// (OpenID Connect Native SSO for Mobile Apps 1.0 §3.3) so the server can keep or rotate it.
+	DeviceSecret string `json:"device_secret,omitempty"`
 }
 
 // TokenResponse represents the OAuth2 token response.
@@ -36,6 +39,7 @@ type TokenResponse struct {
 	Scope           string `json:"scope,omitempty"`
 	IDToken         string `json:"id_token,omitempty"`
 	IssuedTokenType string `json:"issued_token_type,omitempty"`
+	DeviceSecret    string `json:"device_secret,omitempty"`
 }
 
 // TokenDTO represents the data transfer object for tokens.
@@ -63,4 +67,5 @@ type TokenResponseDTO struct {
 	AccessToken  TokenDTO
 	RefreshToken TokenDTO
 	IDToken      TokenDTO
+	DeviceSecret string
 }

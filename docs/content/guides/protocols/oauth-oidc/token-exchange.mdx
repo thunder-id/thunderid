@@ -30,7 +30,7 @@ Typical uses:
 | Endpoint | `POST /oauth2/token` |
 | Grant type | `urn:ietf:params:oauth:grant-type:token-exchange` |
 | `subject_token_type` (input) | `urn:ietf:params:oauth:token-type:access_token` · `:refresh_token` · `:id_token` · `:jwt` |
-| `actor_token_type` (input) | Same set as `subject_token_type`; used for delegation chains |
+| `actor_token_type` (input) | Same set as `subject_token_type`; used for delegation chains. Additionally `urn:openid:params:token-type:device-secret` for Native SSO (see below) |
 | `requested_token_type` (output) | `urn:ietf:params:oauth:token-type:access_token` · `:jwt` · `:id-jag`. **`id_token` and `refresh_token` outputs are not supported.** When `:id-jag` is requested, the flow switches to the [Identity Assertion Grant](../identity-assertion-grant) path. |
 | `audience` parameter | Accepted for RFC 8693 compatibility but does not determine the issued access token's `aud` claim |
 | `resource` parameter | RFC 8707 resource indicator. The issued access token is bound to exactly this resource server. Permission-bearing requests use `defaultResourceServer` when it is omitted. OIDC-only or scopeless requests use the application's `token.accessToken.defaultAudience`, falling back to `client_id` |
@@ -47,12 +47,31 @@ Typical uses:
 | `subject_token_type` | Yes | The type URI of `subject_token` |
 | `requested_token_type` | No | Defaults to `:access_token` |
 | `actor_token` | No | Token of the acting party in delegation |
-| `actor_token_type` | No | Required when `actor_token` is supplied |
+| `actor_token_type` | No | Required when `actor_token` is supplied; `urn:openid:params:token-type:device-secret` selects the Native SSO exchange |
 | `audience` | No | Logical audience value from RFC 8693. It is ignored for the access-token `aud`; use `resource` to select the token audience. |
 | `resource` | No | Absolute URI of the target resource server (see [Resource Indicators](../resource-indicators)). If omitted, permission-bearing requests use the configured default resource server, while OIDC-only or scopeless requests use the application's `token.accessToken.defaultAudience`, falling back to `client_id`. |
 | `scope` | No | Requested scopes must be a subset of the subject token's grant |
 
 </details>
+
+## Native SSO: device-secret actor tokens
+
+OpenID Connect Native SSO for Mobile Apps 1.0 lets a sibling application of the same vendor sign in
+silently with the first application's ID token as `subject_token` and its `device_secret` as `actor_token`
+(`actor_token_type=urn:openid:params:token-type:device-secret`). The device secret is issued by the
+[authorization-code grant](../authorization-code#native-sso-for-mobile-apps) when `device_sso` was
+requested.
+
+| Check | Behavior |
+|---|---|
+| Client | Must be registered for the token-exchange grant and for `device_sso` in its allowed authorization scopes (`unauthorized_client` otherwise). |
+| `audience` | Required and must equal the issuer (`invalid_request` when missing, `invalid_target` otherwise). |
+| `subject_token_type` | Must be `urn:ietf:params:oauth:token-type:id_token`. An expired ID token is still accepted as the subject token (device secrets outlive ID tokens); signature, `nbf`, `typ` and revocation are enforced. |
+| Device secret | Validated by the configured `DeviceSecretProvider`: an invalid, expired or revoked secret (or one whose session has ended) is `invalid_grant`; a provider failure is `server_error`. Its `sub` must equal the ID token's `sub`, its `sid` the ID token's `sid`, and the ID token's `ds_hash` must equal `BASE64URL(SHA-256(actor_token))`. |
+| DPoP | The request must carry a DPoP proof whose key thumbprint equals the device secret's `cnf.jkt` (the first application's key); the issued access token is bound to that key. |
+| `scope` | A subset of the scopes recorded in the device secret that the requesting application is registered for, containing `openid` and never `device_sso` (`invalid_scope` otherwise). Omitted, the device secret's scopes minus `device_sso`, restricted to the application's registered scopes, are inherited. |
+| Consent | When the provider implements `DeviceSSOConsentProvider`, claims the user never consented to for the first application are refused with `interaction_required` instead of silently widened. |
+| `act` claim | `act.sub` is the first application's resource ID, resolved from the `client_id` recorded in the device secret. |
 
 ## Try It in <ProductName />
 

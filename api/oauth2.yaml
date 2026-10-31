@@ -665,10 +665,30 @@ components:
             - urn:ietf:params:oauth:grant-type:token-exchange
             - urn:ietf:params:oauth:grant-type:jwt-bearer
             - urn:openid:params:grant-type:ciba
-          description: The OAuth 2.0 grant type.
+          description: |
+            The OAuth 2.0 grant type.
+
+            Native SSO for Mobile Apps (OpenID Connect Native SSO 1.0): an `authorization_code`
+            request whose grant included the `device_sso` scope must carry a DPoP proof and returns an
+            additional `device_secret`; its ID token carries `ds_hash` and `sid`. A token-exchange
+            request may present that `device_secret` as `actor_token` with
+            `actor_token_type=urn:openid:params:token-type:device-secret` and the ID token as
+            `subject_token` (`subject_token_type=urn:ietf:params:oauth:token-type:id_token`);
+            `audience` must then equal the issuer, the DPoP key must match the device secret's
+            `cnf.jkt`, and `scope` must stay within the device secret's grant without `device_sso`.
+            Errors: `invalid_request`, `invalid_target`, `invalid_scope`, `invalid_grant`,
+            `unauthorized_client`, `interaction_required`.
         client_id:
           type: string
           description: The client identifier (required when not using HTTP Basic auth).
+        device_secret:
+          type: string
+          description: |
+            Native SSO for Mobile Apps, refresh_token grant only: the device secret the application
+            already holds. When the refreshed scopes still include `device_sso`, a valid secret bound
+            to this client, subject and DPoP key is kept and the refreshed ID token carries its
+            `ds_hash` and `sid`; a missing or invalid secret is replaced by a newly issued
+            `device_secret` in the response.
         client_secret:
           type: string
           description: The client secret (required for confidential clients not using HTTP Basic auth).
@@ -770,6 +790,14 @@ components:
         issued_token_type:
           type: string
           description: The type of the issued token (token exchange only).
+        device_secret:
+          type: string
+          description: |
+            Native SSO for Mobile Apps: the opaque device secret issued by the authorization-code
+            grant when the `device_sso` scope was granted, and returned again by the refresh_token
+            grant while `device_sso` stays in scope (the presented secret when it is still valid,
+            otherwise a replacement). Sibling applications present it as the `actor_token` of a
+            token-exchange request.
 
     PARRequest:
       type: object

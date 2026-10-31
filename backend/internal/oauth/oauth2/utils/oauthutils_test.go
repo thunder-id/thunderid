@@ -693,6 +693,15 @@ func (suite *OAuth2UtilsTestSuite) TestSeparateOIDCAndNonOIDCScopes() {
 	}
 }
 
+func (suite *OAuth2UtilsTestSuite) TestSeparateOIDCAndNonOIDCScopes_DeviceSSOIsProtocolScope() {
+	oidcScopes, nonOidcScopes := SeparateOIDCAndNonOIDCScopes(
+		"openid "+constants.ScopeDeviceSSO+" read", map[string][]string{"openid": {"sub"}})
+
+	assert.Equal(suite.T(), []string{"openid", constants.ScopeDeviceSSO}, oidcScopes,
+		"device_sso is retained as a protocol scope rather than downscoped as a permission")
+	assert.Equal(suite.T(), []string{"read"}, nonOidcScopes)
+}
+
 func (suite *OAuth2UtilsTestSuite) TestSeparateOIDCAndNonOIDCScopes_StandardOIDCScopes() {
 	// A standard OIDC scope is only OIDC when the app's scope-to-claims mapping defines it.
 	standardOIDCScopes := []string{"openid", "profile", "email", "address", "phone"}

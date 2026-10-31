@@ -48,6 +48,14 @@ The ID Token is a signed JWT delivered to the client at the token endpoint. It i
 
 Additional user claims (e.g. `name`, `email`) are added based on the requested scopes, see [Claims & Scopes](../claims-and-scopes).
 
+### Native SSO claims
+
+When the authorization request carried the `device_sso` scope, the ID token additionally contains
+`ds_hash` (`BASE64URL(SHA-256(device_secret))`, binding the ID token to the device secret issued in
+the same response) and `sid`, shared with that device secret: the SSO session identifier, or the
+authorization identifier when the sign-in created no SSO session. See
+[Authorization Code → Native SSO for Mobile Apps](../authorization-code#native-sso-for-mobile-apps).
+
 ## Authentication Context Parameters
 
 These parameters on the authorization request control *how* the user authenticates and *what* the ID Token reflects about that authentication.
