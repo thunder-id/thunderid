@@ -179,3 +179,25 @@ func (s *DetailTestSuite) TestParseRequestedDetails_AcceptsOrdinaryText() {
 	s.Require().NoError(err)
 	s.Len(objects, 2)
 }
+
+func (s *DetailTestSuite) TestGrantedFromClaim() {
+	claim := json.RawMessage(`[{"id":"d-1","type":"pay","typeId":"t-1","typeVersion":2,` +
+		`"requested":{"amount":9007199254740995},"value":{"amount":45.00},"admitted":true}]`)
+	granted, err := GrantedFromClaim(claim)
+	s.Require().NoError(err)
+	s.Require().Len(granted, 1)
+	s.Equal("d-1", granted[0].ID)
+	s.Equal(2, granted[0].TypeVersion)
+	s.Equal(`{"amount":9007199254740995}`, string(granted[0].Requested), "numbers are kept exactly")
+	s.Equal(`{"amount":45.00}`, string(granted[0].Value), "numbers are kept as written")
+
+	_, err = GrantedFromClaim(json.RawMessage(`"not a list"`))
+	s.Error(err)
+
+	for _, empty := range []string{`[]`, `null`} {
+		granted, err = GrantedFromClaim(json.RawMessage(empty))
+		s.Require().NoError(err)
+		s.NotNil(granted, "a claim is a decision even when it grants none")
+		s.Empty(granted)
+	}
+}

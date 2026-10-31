@@ -45,9 +45,11 @@ const (
 	testFlightType   = "https://scheme.example.com/flight/v1"
 	testPaymentType  = "https://scheme.example.com/payment/v1"
 	testProcessorURL = "https://bank.example.com/rar/v1/process"
-	testClientID     = "client-1"
-	testUserID       = "user-1"
-	testAppID        = "app-1"
+	// testRecreatedTypeID is the id of a flight type deleted and created again under the same value.
+	testRecreatedTypeID = "type-1-recreated"
+	testClientID        = "client-1"
+	testUserID          = "user-1"
+	testAppID           = "app-1"
 )
 
 // paymentSchema is a registered schema whose debtor account is filled by the processor.
@@ -268,6 +270,238 @@ func (s *ServiceTestSuite) TestProcess_ClientAsSubjectRequiresAProcessor() {
 		svcErr.ErrorDescription.String())
 }
 
+func (s *ServiceTestSuite) TestRefreshableAuthorizationDetails() {
+	oneOff := paymentType()
+	oneOff.Reuse = false
+	granted := s.grantedOn(`[{"type":"`+testFlightType+`","route":"CMB-LHR"},`+
+		`{"type":"`+testPaymentType+`","amount":10.00}]`, flightType(), paymentType())
+
+	s.expectTypes(flightType(), oneOff)
+	refreshable, svcErr := s.service.RefreshableAuthorizationDetails(s.ctx, granted)
+	s.Require().Nil(svcErr)
+	s.Equal(`[{"route":"CMB-LHR","type":"`+testFlightType+`"}]`, s.values(refreshable))
+	s.Require().Len(refreshable, 1)
+	s.Equal(flightType().ID, refreshable[0].TypeID, "a renewed detail keeps the type it was granted on")
+	s.Equal(flightType().Version, refreshable[0].TypeVersion)
+
+	onlyOneOff := s.grantedOn(`[{"type":"`+testPaymentType+`","amount":10.00}]`, paymentType())
+	refreshable, svcErr = s.service.RefreshableAuthorizationDetails(s.ctx, onlyOneOff)
+	s.Nil(svcErr)
+	s.Nil(refreshable)
+
+	refreshable, svcErr = s.service.RefreshableAuthorizationDetails(s.ctx, nil)
+	s.Nil(svcErr)
+	s.Nil(refreshable)
+
+	_, svcErr = s.service.RefreshableAuthorizationDetails(s.ctx,
+		[]providers.AuthorizationDetail{{Type: testFlightType, Value: json.RawMessage(`bad`)}})
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+
+	_, svcErr = s.service.RefreshableAuthorizationDetails(s.ctx,
+		[]providers.AuthorizationDetail{{Type: testFlightType, Value: json.RawMessage(`{"route":"CMB-LHR"}`)}})
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code, "a granted value without a type")
+}
+
+func flightDetail(amount, extraFare string) string {
+	return `{"type":"` + testFlightType + `","route":"CMB-SIN","maxFare":{"amount":` + amount +
+		`,"currency":"USD"` + extraFare + `}}`
+}
+
+func details(entries ...string) string {
+	return "[" + strings.Join(entries, ",") + "]"
+}
+
+func (s *ServiceTestSuite) TestModifyAuthorizationDetails() {
+	s.types.EXPECT().GetAuthorizationDetailTypeByValue(mock.Anything, testFlightType).Return(typeRef(flightType()),
+		nil).Maybe()
+	grantedRaw := details(flightDetail("450.00", ""), flightDetail("300.00", ""))
+	granted := s.grantedOn(grantedRaw, flightType())
+
+	modified, svcErr := s.service.ModifyAuthorizationDetails(context.Background(), granted,
+		details(flightDetail("200.00", "")))
+	s.Require().Nil(svcErr)
+	s.JSONEq(details(flightDetail("200.00", "")), string(modified), "details no entry modifies are left out")
+
+	for name, raw := range map[string]string{
+		"each entry finds its own grant":    details(flightDetail("400.00", ""), flightDetail("250.00", "")),
+		"pairing moves an earlier entry":    details(flightDetail("250.00", ""), flightDetail("400.00", "")),
+		"the same values as both grants":    details(flightDetail("300.00", ""), flightDetail("450.00", "")),
+		"a request equal to the full grant": grantedRaw,
+	} {
+		_, svcErr := s.service.ModifyAuthorizationDetails(context.Background(), granted, raw)
+		s.Nil(svcErr, name)
+	}
+
+	for name, raw := range map[string]string{
+		"widens":               details(flightDetail("500.00", "")),
+		"claims a grant twice": details(flightDetail("400.00", ""), flightDetail("350.00", "")),
+		"more entries":         details(flightDetail("1.00", ""), flightDetail("1.00", ""), flightDetail("1.00", "")),
+		"other type":           `[{"type":"` + testPaymentType + `"}]`,
+		"breaks schema":        details(flightDetail("1.00", `,"tip":"1"`)),
+	} {
+		_, svcErr := s.service.ModifyAuthorizationDetails(context.Background(), granted, raw)
+		s.Require().NotNil(svcErr, name)
+		s.Equal(tidcommon.ClientErrorType, svcErr.Type, name)
+	}
+
+	deep := strings.Repeat(`{"a":`, 9000) + `1` + strings.Repeat(`}`, 9000)
+	_, svcErr = s.service.ModifyAuthorizationDetails(context.Background(), granted,
+		details(flightDetail("200.00", `,"extra":`+deep)))
+	s.Require().NotNil(svcErr, "a deeply nested entry")
+	s.Equal(ErrorAuthorizationDetailNotConformant.Code, svcErr.Code, "held to the schema before it is compared")
+
+	_, svcErr = s.service.ModifyAuthorizationDetails(context.Background(), nil, `[]`)
+	s.Require().NotNil(svcErr, "nothing was granted")
+	s.Equal(ErrorNoAuthorizationDetailsGranted.Code, svcErr.Code)
+
+	for name, raw := range map[string]string{
+		"not JSON":     "not json",
+		"not an array": "{}",
+	} {
+		_, svcErr := s.service.ModifyAuthorizationDetails(context.Background(), granted, raw)
+		s.Require().NotNil(svcErr, name)
+		s.Equal(ErrorMalformedAuthorizationDetails.Code, svcErr.Code, name)
+	}
+
+	s.types.EXPECT().GetAuthorizationDetailTypeByValue(mock.Anything, testPaymentType).Return(typeRef(paymentType()),
+		nil).Maybe()
+	payment := `{"type":"` + testPaymentType + `","amount":45,"debtorAccount":{"iban":"DE89"}}`
+	mixed := s.grantedOn(details(payment, flightDetail("450.00", ""), flightDetail("300.00", "")),
+		flightType(), paymentType())
+
+	modified, svcErr = s.service.ModifyAuthorizationDetails(context.Background(), mixed,
+		details(flightDetail("400.00", "")))
+	s.Require().Nil(svcErr, "a mixed grant narrowed to one type")
+	s.JSONEq(details(flightDetail("400.00", "")), string(modified))
+
+	modified, svcErr = s.service.ModifyAuthorizationDetails(context.Background(), mixed,
+		details(flightDetail("250.00", ""), `{"type":"`+testPaymentType+`","amount":45}`, flightDetail("400.00", "")))
+	s.Require().Nil(svcErr, "each type is paired with a grant of its own type")
+	s.JSONEq(details(flightDetail("250.00", ""), payment, flightDetail("400.00", "")), string(modified))
+}
+
+func (s *ServiceTestSuite) TestModifyAuthorizationDetails_HoldsTheCandidateToTheFullSchema() {
+	payment := paymentType()
+	payment.Schema = json.RawMessage(`{"type":"object","required":["amount","debtorAccount"],"properties":{` +
+		`"amount":{"type":"number","policy":{"modification":"decrease","modifiableBy":["client"]}},` +
+		`"debtorAccount":{"type":"object","policy":{"suppliedBy":"processor"},` +
+		`"properties":{"iban":{"type":"string"}}}}}`)
+	s.types.EXPECT().GetAuthorizationDetailTypeByValue(mock.Anything, testPaymentType).Return(typeRef(payment),
+		nil).Maybe()
+	granted := s.grantedOn(`[{"type":"`+testPaymentType+`","amount":45}]`, payment)
+
+	_, svcErr := s.service.ModifyAuthorizationDetails(context.Background(), granted,
+		`[{"type":"`+testPaymentType+`","amount":30}]`)
+	s.Require().NotNil(svcErr, "the grant holds no value for the field the processor supplies")
+	s.Equal(ErrorAuthorizationDetailNotConformant.Code, svcErr.Code)
+	s.notConformantWithReason(svcErr, "debtorAccount")
+}
+
+func (s *ServiceTestSuite) TestModifyAuthorizationDetails_NotConformantToTheRequestSchemaGivesTheReason() {
+	s.types.EXPECT().GetAuthorizationDetailTypeByValue(mock.Anything, testFlightType).Return(typeRef(flightType()),
+		nil).Maybe()
+	granted := s.grantedOn(details(flightDetail("450.00", "")), flightType())
+
+	_, svcErr := s.service.ModifyAuthorizationDetails(context.Background(), granted,
+		details(flightDetail("200.00", `,"tip":"1"`)))
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorAuthorizationDetailNotConformant.Code, svcErr.Code)
+	s.notConformantWithReason(svcErr, "tip")
+}
+
+func (s *ServiceTestSuite) notConformantWithReason(svcErr *tidcommon.ServiceError, reason string) {
+	description := svcErr.ErrorDescription.String()
+	s.NotContains(description, "{{param(")
+	s.Contains(description, "authorization_details entry 0 does not conform to its type: ")
+	s.Contains(description, reason)
+}
+
+func (s *ServiceTestSuite) TestModifyAuthorizationDetails_RefusedOutsideAFieldLimit() {
+	flight := flightType()
+	flight.Schema = json.RawMessage(`{"type":"object","required":["route"],"properties":{` +
+		`"route":{"type":"string"},` +
+		`"departBy":{"type":"string","format":"date","policy":{"modification":"decrease",` +
+		`"modifiableBy":["client"],"minimum":"2026-01-01"}}}}`)
+	s.types.EXPECT().GetAuthorizationDetailTypeByValue(mock.Anything, testFlightType).Return(typeRef(flight),
+		nil).Maybe()
+	granted := s.grantedOn(`[{"type":"`+testFlightType+`","route":"CMB-SIN","departBy":"2026-06-01"}]`, flight)
+
+	modified, svcErr := s.service.ModifyAuthorizationDetails(context.Background(), granted,
+		`[{"type":"`+testFlightType+`","route":"CMB-SIN","departBy":"2026-03-01"}]`)
+	s.Require().Nil(svcErr, "a value within the limit")
+	s.JSONEq(`[{"type":"`+testFlightType+`","route":"CMB-SIN","departBy":"2026-03-01"}]`, string(modified))
+
+	_, svcErr = s.service.ModifyAuthorizationDetails(context.Background(), granted,
+		`[{"type":"`+testFlightType+`","route":"CMB-SIN","departBy":"2025-12-01"}]`)
+	s.Require().NotNil(svcErr, "a value below the minimum")
+	s.Equal(ErrorAuthorizationDetailNotAllowed.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestModifyAuthorizationDetails_TakesProcessorSuppliedFieldsFromTheGrant() {
+	payment := paymentType()
+	payment.Schema = json.RawMessage(`{"type":"object","required":["amount"],"properties":{` +
+		`"amount":{"type":"number","policy":{"modification":"decrease","modifiableBy":["client"]}},` +
+		`"debtorAccount":{"type":"object","required":["iban"],"properties":{` +
+		`"iban":{"type":"string","policy":{"suppliedBy":"processor"}}}}}}`)
+	s.types.EXPECT().GetAuthorizationDetailTypeByValue(mock.Anything, testPaymentType).Return(typeRef(payment),
+		nil).Maybe()
+	granted := s.grantedOn(`[{"type":"`+testPaymentType+`","amount":45,"debtorAccount":{"iban":"DE89"}}]`, payment)
+
+	modified, svcErr := s.service.ModifyAuthorizationDetails(context.Background(), granted,
+		`[{"type":"`+testPaymentType+`","amount":30}]`)
+	s.Require().Nil(svcErr, "the client leaves out the field the processor supplied")
+	s.JSONEq(`[{"type":"`+testPaymentType+`","amount":30,"debtorAccount":{"iban":"DE89"}}]`, string(modified))
+
+	_, svcErr = s.service.ModifyAuthorizationDetails(context.Background(), granted,
+		`[{"type":"`+testPaymentType+`","amount":30,"debtorAccount":{"iban":"GB33"}}]`)
+	s.Require().NotNil(svcErr, "a processor-supplied value the client changed")
+	s.Equal(ErrorAuthorizationDetailExceedsGrant.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestModifyAuthorizationDetails_RefusedWhenTheTypeHasChanged() {
+	granted := s.grantedOn(details(flightDetail("450.00", "")), flightType())
+	raw := details(flightDetail("200.00", ""))
+
+	updated := flightType()
+	updated.Version++
+	s.types.EXPECT().GetAuthorizationDetailTypeByValue(mock.Anything, testFlightType).Return(typeRef(updated),
+		nil).Once()
+	_, svcErr := s.service.ModifyAuthorizationDetails(context.Background(), granted, raw)
+	s.Require().NotNil(svcErr, "a newer version")
+	s.Equal(ErrorAuthorizationDetailTypeChangedSinceGrant.Code, svcErr.Code)
+
+	recreated := flightType()
+	recreated.ID = testRecreatedTypeID
+	s.types.EXPECT().GetAuthorizationDetailTypeByValue(mock.Anything, testFlightType).Return(typeRef(recreated),
+		nil).Once()
+	_, svcErr = s.service.ModifyAuthorizationDetails(context.Background(), granted, raw)
+	s.Require().NotNil(svcErr, "a type deleted and created again on the same version number")
+	s.Equal(ErrorAuthorizationDetailTypeChangedSinceGrant.Code, svcErr.Code)
+
+	s.types.EXPECT().GetAuthorizationDetailTypeByValue(mock.Anything, testFlightType).
+		Return(nil, nil).Once()
+	_, svcErr = s.service.ModifyAuthorizationDetails(context.Background(), granted, raw)
+	s.Require().NotNil(svcErr, "a deleted type")
+	s.Equal(ErrorAuthorizationDetailTypeChangedSinceGrant.Code, svcErr.Code)
+
+	_, svcErr = s.service.ModifyAuthorizationDetails(context.Background(), granted,
+		`[{"type":"`+testPaymentType+`","amount":1.00}]`)
+	s.Require().NotNil(svcErr, "a type the grant holds no detail of")
+	s.Equal(ErrorAuthorizationDetailNotGranted.Code, svcErr.Code)
+
+	s.types.EXPECT().GetAuthorizationDetailTypeByValue(mock.Anything, testFlightType).
+		Return(nil, &tidcommon.InternalServerError).Once()
+	_, svcErr = s.service.ModifyAuthorizationDetails(context.Background(), granted, raw)
+	s.Require().NotNil(svcErr, "a failed lookup")
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestMatchDetails() {
+	s.Equal([]int{1, 0}, matchDetails([][]bool{{true, true}, {true, false}}))
+	s.Equal([]int{0, -1}, matchDetails([][]bool{{true}, {true}}))
+	s.Equal([]int{}, matchDetails([][]bool{}))
+}
+
 func (s *ServiceTestSuite) TestValidate_RejectsFieldsTheResourceServerSupplies() {
 	s.expectTypes(paymentType())
 	_, svcErr := s.service.ValidateAuthorizationDetails(s.ctx,
@@ -283,6 +517,36 @@ func decision(approved bool) *bool {
 func refusal(detailID, reason string) processorResult {
 	return processorResult{DetailID: detailID, Decision: decision(false),
 		Context: processorResultContext{ReasonUser: reason}}
+}
+
+// grantedOn returns the details of a raw array as granted on the given types; a detail whose type is not
+// given is granted on no type.
+func (s *ServiceTestSuite) grantedOn(raw string,
+	types ...providers.AuthorizationDetailType) []providers.AuthorizationDetail {
+	var values []json.RawMessage
+	s.Require().NoError(json.Unmarshal([]byte(raw), &values))
+	granted := make([]providers.AuthorizationDetail, 0, len(values))
+	for _, value := range values {
+		var typed struct {
+			Type string `json:"type"`
+		}
+		s.Require().NoError(json.Unmarshal(value, &typed))
+		detail := providers.AuthorizationDetail{Type: typed.Type, Value: value, Admitted: true}
+		for _, t := range types {
+			if t.Type == typed.Type {
+				detail.TypeID, detail.TypeVersion = t.ID, t.Version
+			}
+		}
+		granted = append(granted, detail)
+	}
+	return granted
+}
+
+// values returns the granted values of details as tokens carry them.
+func (s *ServiceTestSuite) values(details []providers.AuthorizationDetail) string {
+	encoded, err := common.EncodeDetailValues(details)
+	s.Require().NoError(err)
+	return string(encoded)
 }
 
 const testSecondProcessorURL = "https://airline.example.com/rar/v1/process"
@@ -317,7 +581,7 @@ func (s *ServiceTestSuite) TestProcessDetails_ApprovalWithoutPatchMustFillRequir
 
 	_, svcErr := s.service.processDetails(s.ctx, objects, types, processorEntity{}, processorEntity{}, "")
 	s.Require().NotNil(svcErr)
-	s.Equal(ErrorProcessorUnavailable.Code, svcErr.Code)
+	s.Equal(common.ErrorProcessorUnavailable.Code, svcErr.Code)
 }
 
 // A result for a detail sent to another endpoint makes the answer unusable.
@@ -331,7 +595,7 @@ func (s *ServiceTestSuite) TestProcessDetails_ResultForADetailNotSent() {
 
 	_, svcErr := s.service.processDetails(s.ctx, objects, types, processorEntity{}, processorEntity{}, "")
 	s.Require().NotNil(svcErr)
-	s.Equal(ErrorProcessorUnavailable.Code, svcErr.Code)
+	s.Equal(common.ErrorProcessorUnavailable.Code, svcErr.Code)
 }
 
 func (s *ServiceTestSuite) TestProcessDetails_FailedCallStopsTheRequest() {
@@ -342,7 +606,7 @@ func (s *ServiceTestSuite) TestProcessDetails_FailedCallStopsTheRequest() {
 
 	_, svcErr := s.service.processDetails(s.ctx, objects, types, processorEntity{}, processorEntity{}, "")
 	s.Require().NotNil(svcErr)
-	s.Equal(ErrorProcessorUnavailable.Code, svcErr.Code)
+	s.Equal(common.ErrorProcessorUnavailable.Code, svcErr.Code)
 }
 
 func (s *ServiceTestSuite) TestProcessDetails_RefusalOnOneEndpointKeepsTheOther() {
@@ -359,6 +623,50 @@ func (s *ServiceTestSuite) TestProcessDetails_RefusalOnOneEndpointKeepsTheOther(
 	s.Require().Nil(svcErr)
 	s.Require().Len(kept, 1)
 	s.Equal("d-flight", kept[0].ID)
+}
+
+func (s *ServiceTestSuite) TestRefreshableAuthorizationDetails_DeletedTypeIsNotRenewed() {
+	granted := s.grantedOn(`[{"type":"`+testFlightType+`","route":"CMB-LHR"},`+
+		`{"type":"`+testPaymentType+`","amount":10.00}]`, flightType(), paymentType())
+	s.expectTypes(flightType())
+	s.types.EXPECT().GetAuthorizationDetailTypeByValue(mock.Anything, testPaymentType).
+		Return(nil, nil)
+
+	refreshable, svcErr := s.service.RefreshableAuthorizationDetails(s.ctx, granted)
+	s.Require().Nil(svcErr)
+	s.Contains(s.values(refreshable), "CMB-LHR")
+	s.NotContains(s.values(refreshable), testPaymentType)
+}
+
+// A recreated type, or one the grant has no version for, is not renewed even when it allows reuse.
+func (s *ServiceTestSuite) TestRefreshableAuthorizationDetails_RecreatedTypeIsNotRenewed() {
+	raw := `[{"type":"` + testFlightType + `","route":"CMB-LHR"}]`
+	recreated := flightType()
+	recreated.ID = "type-1-recreated"
+	s.expectTypes(recreated)
+
+	refreshable, svcErr := s.service.RefreshableAuthorizationDetails(s.ctx, s.grantedOn(raw, flightType()))
+	s.Require().Nil(svcErr)
+	s.Nil(refreshable)
+
+	refreshable, svcErr = s.service.RefreshableAuthorizationDetails(s.ctx, s.grantedOn(raw))
+	s.Require().Nil(svcErr)
+	s.Nil(refreshable, "a detail the grant names no type for is not renewed")
+}
+
+// A type whose version moved since the grant is not renewed, so a tightened limit or a changed consent text
+// takes effect at the next refresh.
+func (s *ServiceTestSuite) TestRefreshableAuthorizationDetails_ChangedTypeIsNotRenewed() {
+	granted := s.grantedOn(`[{"type":"`+testFlightType+`","route":"CMB-LHR"},`+
+		`{"type":"`+testPaymentType+`","amount":10.00}]`, flightType(), paymentType())
+	changed := paymentType()
+	changed.Version++
+	s.expectTypes(flightType(), changed)
+
+	refreshable, svcErr := s.service.RefreshableAuthorizationDetails(s.ctx, granted)
+	s.Require().Nil(svcErr)
+	s.Contains(s.values(refreshable), "CMB-LHR")
+	s.NotContains(s.values(refreshable), testPaymentType)
 }
 
 func typeRef(t providers.AuthorizationDetailType) *providers.AuthorizationDetailType {
@@ -493,30 +801,30 @@ func (s *ServiceTestSuite) TestProcess_Failures() {
 		}, ErrorAuthorizationDetailRefused.Code},
 		{"unreachable", func(processorRequest) (*processorResponse, error) {
 			return nil, errProcessorUnavailable
-		}, ErrorProcessorUnavailable.Code},
+		}, common.ErrorProcessorUnavailable.Code},
 		{"missing result", func(processorRequest) (*processorResponse, error) {
 			return &processorResponse{}, nil
-		}, ErrorProcessorUnavailable.Code},
+		}, common.ErrorProcessorUnavailable.Code},
 		{"patch outside server fields", func(req processorRequest) (*processorResponse, error) {
 			patch := map[string]json.RawMessage{"/amount": json.RawMessage(`1`)}
 			return patchResult(req.Details[0].DetailID, patch), nil
-		}, ErrorProcessorUnavailable.Code},
+		}, common.ErrorProcessorUnavailable.Code},
 		{"answered twice", func(req processorRequest) (*processorResponse, error) {
 			result := processorResult{DetailID: req.Details[0].DetailID, Decision: decision(true)}
 			return &processorResponse{Results: []processorResult{result, result}}, nil
-		}, ErrorProcessorUnavailable.Code},
+		}, common.ErrorProcessorUnavailable.Code},
 		{"no decision", func(req processorRequest) (*processorResponse, error) {
 			undecided := processorResult{DetailID: req.Details[0].DetailID}
 			return &processorResponse{Results: []processorResult{undecided}}, nil
-		}, ErrorProcessorUnavailable.Code},
+		}, common.ErrorProcessorUnavailable.Code},
 		{"patch key that is no pointer", func(req processorRequest) (*processorResponse, error) {
 			return patchResult(req.Details[0].DetailID,
 				map[string]json.RawMessage{"debtorAccount.iban": json.RawMessage(`"DE12"`)}), nil
-		}, ErrorProcessorUnavailable.Code},
+		}, common.ErrorProcessorUnavailable.Code},
 		{"patch breaks the schema", func(req processorRequest) (*processorResponse, error) {
 			return patchResult(req.Details[0].DetailID,
 				map[string]json.RawMessage{"/debtorAccount/iban": json.RawMessage(`42`)}), nil
-		}, ErrorProcessorUnavailable.Code},
+		}, common.ErrorProcessorUnavailable.Code},
 	}
 	for _, tc := range cases {
 		details := s.prepared(paymentRequest, paymentType())
@@ -752,6 +1060,6 @@ func (s *ServiceTestSuite) TestProcess_UnreadableProcessorCredential() {
 	_, svcErr := s.service.ProcessAuthorizationDetails(s.ctx, details, testClient, testClientID, testSubject,
 		testResourceServer)
 	s.Require().NotNil(svcErr)
-	s.Equal(ErrorProcessorUnavailable.Code, svcErr.Code)
+	s.Equal(common.ErrorProcessorUnavailable.Code, svcErr.Code)
 	s.processor.AssertNotCalled(s.T(), "Process", mock.Anything, mock.Anything, mock.Anything)
 }

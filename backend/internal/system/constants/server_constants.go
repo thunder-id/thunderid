@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 // Package constants defines global constants used across the system module.
@@ -58,6 +58,9 @@ const ClientAssertionParamName = "client_assertion"
 
 // ClientAssertionTypeParamName is the OAuth client_assertion_type request parameter.
 const ClientAssertionTypeParamName = "client_assertion_type"
+
+// AuthorizationDetailsParamName is the RFC 9396 authorization_details request parameter.
+const AuthorizationDetailsParamName = "authorization_details"
 
 // CRLF is the carriage return and line feed sequence that ends a line in text-based wire protocols
 // such as SMTP and HTTP.

@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -160,23 +159,4 @@ func (s *TypesTestSuite) TestApplyChanges() {
 		PartyUser)
 	s.Require().Error(err)
 	s.NotErrorIs(err, ErrChangeRefused, "a schema that cannot be compiled is not a refusal")
-}
-
-const consentFlightType = "https://scheme.example.com/flight/v1"
-
-func consentFlightTypeDefinition() providers.AuthorizationDetailType {
-	return providers.AuthorizationDetailType{
-		ID: "type-1", Type: consentFlightType, Name: "Flight booking", Version: 1,
-		Schema:          json.RawMessage(flightSchema),
-		ConsentTemplate: "Book a {{route}} flight up to {{maxFare.amount}} {{maxFare.currency}}",
-		Reuse:           true,
-	}
-}
-
-func consentFlightDetail(t *testing.T, amount string) Detail {
-	t.Helper()
-	fields := map[string]json.RawMessage{}
-	require.NoError(t, json.Unmarshal([]byte(`{"type":"`+consentFlightType+`","actions":["create"],`+
-		`"route":"CMB-SIN","maxFare":{"amount":`+amount+`,"currency":"USD"}}`), &fields))
-	return Detail{ID: "d-1", Type: consentFlightType, Fields: fields}
 }

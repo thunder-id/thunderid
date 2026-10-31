@@ -382,11 +382,25 @@ func (s *ServiceTestSuite) TestUpdateType_RefusesATypeChangedMeanwhile() {
 func (s *ServiceTestSuite) TestUpdateType_KeepsVersionWhenGrantIsUnchanged() {
 	renamed := flightType()
 	renamed.Name = renamedTypeName
-	renamed.Reuse = false
 	s.typeStore.EXPECT().GetTypeByID(mock.Anything, "type-1").Return(flightType(), nil).Twice()
 	s.typeStore.EXPECT().UpdateType(mock.Anything, mock.Anything, false).Return(nil).Once()
 	_, svcErr := s.service.UpdateAuthorizationDetailType(s.ctx, "type-1", renamed)
 	s.Nil(svcErr)
+}
+
+// Reuse decides whether an approval carries into a refresh token, so changing it either way is a grant change.
+func (s *ServiceTestSuite) TestUpdateType_MovesVersionWhenReuseChanges() {
+	notReused := flightType()
+	notReused.Reuse = false
+	s.typeStore.EXPECT().GetTypeByID(mock.Anything, "type-1").Return(flightType(), nil).Twice()
+	s.typeStore.EXPECT().UpdateType(mock.Anything, mock.Anything, true).Return(nil).Once()
+	_, svcErr := s.service.UpdateAuthorizationDetailType(s.ctx, "type-1", notReused)
+	s.Nil(svcErr, "reuse turned off")
+
+	s.typeStore.EXPECT().GetTypeByID(mock.Anything, "type-1").Return(notReused, nil).Twice()
+	s.typeStore.EXPECT().UpdateType(mock.Anything, mock.Anything, true).Return(nil).Once()
+	_, svcErr = s.service.UpdateAuthorizationDetailType(s.ctx, "type-1", flightType())
+	s.Nil(svcErr, "reuse turned on")
 }
 
 func (s *ServiceTestSuite) TestUpdateType_MovesVersionWhenProcessorIsAddedOrRemoved() {

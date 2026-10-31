@@ -355,6 +355,9 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_SanitizesSnapshot() {
 	ctx.RuntimeData["applicationId"] = "app-a"
 	ctx.RuntimeData[common.RuntimeKeyClientID] = "sso_app_a"
 	ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID] = "authz-req-1"
+	ctx.RuntimeData[common.RuntimeKeyRequestedAuthorizationDetails] = `[{"type":"payment"}]`
+	ctx.RuntimeData[common.RuntimeKeyConsentedAuthorizationDetails] = `[{"type":"payment"}]`
+	ctx.RuntimeData[common.RuntimeKeyConsentSessionToken] = "consent.session.token"
 
 	_, err := exec.Execute(ctx)
 	suite.Require().NoError(err)
@@ -376,6 +379,9 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_SanitizesSnapshot() {
 	suite.NotContains(rd, "applicationId")
 	suite.NotContains(rd, common.RuntimeKeyClientID)
 	suite.NotContains(rd, common.RuntimeKeyAuthorizationRequestID)
+	suite.NotContains(rd, common.RuntimeKeyRequestedAuthorizationDetails)
+	suite.NotContains(rd, common.RuntimeKeyConsentedAuthorizationDetails)
+	suite.NotContains(rd, common.RuntimeKeyConsentSessionToken)
 }
 
 func ssoLoadCtx() *providers.NodeContext {

@@ -321,3 +321,15 @@ func checkJSONText(raw []byte) error {
 		top.expectKey = true
 	}
 }
+
+// GrantedFromClaim reads the granted authorization details from a flow assertion claim.
+func GrantedFromClaim(claim json.RawMessage) ([]providers.AuthorizationDetail, error) {
+	granted := []providers.AuthorizationDetail{}
+	if err := json.Unmarshal(claim, &granted); err != nil {
+		return nil, fmt.Errorf("granted authorization details are malformed: %w", err)
+	}
+	if granted == nil {
+		granted = []providers.AuthorizationDetail{}
+	}
+	return granted, nil
+}

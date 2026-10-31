@@ -49,6 +49,82 @@ func (_m *AuthorizationDetailProviderMock) EXPECT() *AuthorizationDetailProvider
 	return &AuthorizationDetailProviderMock_Expecter{mock: &_m.Mock}
 }
 
+// ModifyAuthorizationDetails provides a mock function for the type AuthorizationDetailProviderMock
+func (_mock *AuthorizationDetailProviderMock) ModifyAuthorizationDetails(ctx context.Context, granted []providers.AuthorizationDetail, raw string) (json.RawMessage, *common.ServiceError) {
+	ret := _mock.Called(ctx, granted, raw)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ModifyAuthorizationDetails")
+	}
+
+	var r0 json.RawMessage
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []providers.AuthorizationDetail, string) (json.RawMessage, *common.ServiceError)); ok {
+		return returnFunc(ctx, granted, raw)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []providers.AuthorizationDetail, string) json.RawMessage); ok {
+		r0 = returnFunc(ctx, granted, raw)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(json.RawMessage)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []providers.AuthorizationDetail, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, granted, raw)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AuthorizationDetailProviderMock_ModifyAuthorizationDetails_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ModifyAuthorizationDetails'
+type AuthorizationDetailProviderMock_ModifyAuthorizationDetails_Call struct {
+	*mock.Call
+}
+
+// ModifyAuthorizationDetails is a helper method to define mock.On call
+//   - ctx context.Context
+//   - granted []providers.AuthorizationDetail
+//   - raw string
+func (_e *AuthorizationDetailProviderMock_Expecter) ModifyAuthorizationDetails(ctx any, granted any, raw any) *AuthorizationDetailProviderMock_ModifyAuthorizationDetails_Call {
+	return &AuthorizationDetailProviderMock_ModifyAuthorizationDetails_Call{Call: _e.mock.On("ModifyAuthorizationDetails", ctx, granted, raw)}
+}
+
+func (_c *AuthorizationDetailProviderMock_ModifyAuthorizationDetails_Call) Run(run func(ctx context.Context, granted []providers.AuthorizationDetail, raw string)) *AuthorizationDetailProviderMock_ModifyAuthorizationDetails_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []providers.AuthorizationDetail
+		if args[1] != nil {
+			arg1 = args[1].([]providers.AuthorizationDetail)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *AuthorizationDetailProviderMock_ModifyAuthorizationDetails_Call) Return(rawMessage json.RawMessage, serviceError *common.ServiceError) *AuthorizationDetailProviderMock_ModifyAuthorizationDetails_Call {
+	_c.Call.Return(rawMessage, serviceError)
+	return _c
+}
+
+func (_c *AuthorizationDetailProviderMock_ModifyAuthorizationDetails_Call) RunAndReturn(run func(ctx context.Context, granted []providers.AuthorizationDetail, raw string) (json.RawMessage, *common.ServiceError)) *AuthorizationDetailProviderMock_ModifyAuthorizationDetails_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // PrepareAuthorizationDetails provides a mock function for the type AuthorizationDetailProviderMock
 func (_mock *AuthorizationDetailProviderMock) PrepareAuthorizationDetails(ctx context.Context, validated json.RawMessage) ([]providers.AuthorizationDetail, *common.ServiceError) {
 	ret := _mock.Called(ctx, validated)
@@ -209,6 +285,76 @@ func (_c *AuthorizationDetailProviderMock_ProcessAuthorizationDetails_Call) Retu
 }
 
 func (_c *AuthorizationDetailProviderMock_ProcessAuthorizationDetails_Call) RunAndReturn(run func(ctx context.Context, details []providers.AuthorizationDetail, client providers.EntityReference, clientID string, subject providers.EntityReference, resourceServer string) ([]providers.AuthorizationDetail, *common.ServiceError)) *AuthorizationDetailProviderMock_ProcessAuthorizationDetails_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RefreshableAuthorizationDetails provides a mock function for the type AuthorizationDetailProviderMock
+func (_mock *AuthorizationDetailProviderMock) RefreshableAuthorizationDetails(ctx context.Context, granted []providers.AuthorizationDetail) ([]providers.AuthorizationDetail, *common.ServiceError) {
+	ret := _mock.Called(ctx, granted)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RefreshableAuthorizationDetails")
+	}
+
+	var r0 []providers.AuthorizationDetail
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []providers.AuthorizationDetail) ([]providers.AuthorizationDetail, *common.ServiceError)); ok {
+		return returnFunc(ctx, granted)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []providers.AuthorizationDetail) []providers.AuthorizationDetail); ok {
+		r0 = returnFunc(ctx, granted)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]providers.AuthorizationDetail)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []providers.AuthorizationDetail) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, granted)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AuthorizationDetailProviderMock_RefreshableAuthorizationDetails_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RefreshableAuthorizationDetails'
+type AuthorizationDetailProviderMock_RefreshableAuthorizationDetails_Call struct {
+	*mock.Call
+}
+
+// RefreshableAuthorizationDetails is a helper method to define mock.On call
+//   - ctx context.Context
+//   - granted []providers.AuthorizationDetail
+func (_e *AuthorizationDetailProviderMock_Expecter) RefreshableAuthorizationDetails(ctx any, granted any) *AuthorizationDetailProviderMock_RefreshableAuthorizationDetails_Call {
+	return &AuthorizationDetailProviderMock_RefreshableAuthorizationDetails_Call{Call: _e.mock.On("RefreshableAuthorizationDetails", ctx, granted)}
+}
+
+func (_c *AuthorizationDetailProviderMock_RefreshableAuthorizationDetails_Call) Run(run func(ctx context.Context, granted []providers.AuthorizationDetail)) *AuthorizationDetailProviderMock_RefreshableAuthorizationDetails_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []providers.AuthorizationDetail
+		if args[1] != nil {
+			arg1 = args[1].([]providers.AuthorizationDetail)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *AuthorizationDetailProviderMock_RefreshableAuthorizationDetails_Call) Return(authorizationDetails []providers.AuthorizationDetail, serviceError *common.ServiceError) *AuthorizationDetailProviderMock_RefreshableAuthorizationDetails_Call {
+	_c.Call.Return(authorizationDetails, serviceError)
+	return _c
+}
+
+func (_c *AuthorizationDetailProviderMock_RefreshableAuthorizationDetails_Call) RunAndReturn(run func(ctx context.Context, granted []providers.AuthorizationDetail) ([]providers.AuthorizationDetail, *common.ServiceError)) *AuthorizationDetailProviderMock_RefreshableAuthorizationDetails_Call {
 	_c.Call.Return(run)
 	return _c
 }

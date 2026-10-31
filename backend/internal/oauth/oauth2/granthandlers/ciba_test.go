@@ -5,6 +5,7 @@ package granthandlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	sharedrevocation "github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
+	"github.com/thunder-id/thunderid/tests/mocks/authzdetailprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/cibamock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/revocationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
@@ -53,7 +55,7 @@ func (suite *CIBAGrantHandlerTestSuite) SetupTest() {
 	suite.mockResource = resourcemock.NewResourceServiceInterfaceMock(suite.T())
 	suite.mockEnforcement = revocationmock.NewEnforcementServiceInterfaceMock(suite.T())
 	suite.handler = newCIBAGrantHandler(suite.mockCIBAService, suite.mockTokenBuilder,
-		suite.mockAttrCacheService, suite.mockResource, nil)
+		suite.mockAttrCacheService, suite.mockResource, nil, noAuthzDetails())
 	suite.oauthApp = &providers.OAuthClient{
 		ClientID: "client-1",
 		ScopeClaims: map[string][]string{
@@ -256,6 +258,48 @@ func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Authenticated_IssuesToke
 	suite.NotNil(resp)
 	suite.Equal("access-token", resp.AccessToken.Token)
 	suite.Equal("id-token", resp.IDToken.Token)
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_DeniedCarriesTheReason() {
+	record := suite.pendingRecord()
+	record.State = ciba.CIBAStateDenied
+	record.FailureDescription = "The requested authorization details were refused: over limit"
+	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+
+	_, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenReq, suite.oauthApp)
+	suite.Require().NotNil(errResp)
+	suite.Equal(constants.ErrorAccessDenied, errResp.Error)
+	suite.Equal(record.FailureDescription, errResp.ErrorDescription)
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Authenticated_IssuesAuthorizationDetails() {
+	granted := []providers.AuthorizationDetail{{Type: "payment_initiation", TypeID: "type-2", TypeVersion: 2,
+		Value: json.RawMessage(`{"type":"payment_initiation","amount":35}`), Admitted: true}}
+	modified := json.RawMessage(`[{"type":"payment_initiation","amount":20}]`)
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	handler := newCIBAGrantHandler(suite.mockCIBAService, suite.mockTokenBuilder, suite.mockAttrCacheService,
+		suite.mockResource, nil, authzDetails)
+	record := suite.pendingRecord()
+	record.State = ciba.CIBAStateAuthenticated
+	record.AuthorizationDetails = granted
+	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+	tokenReq := *suite.tokenReq
+	tokenReq.AuthorizationDetails = `[{"type":"payment_initiation","amount":20}]`
+	authzDetails.EXPECT().ModifyAuthorizationDetails(mock.Anything, granted,
+		tokenReq.AuthorizationDetails).Return(modified, nil).Once()
+	authzDetails.EXPECT().RefreshableAuthorizationDetails(mock.Anything, granted).Return(nil, nil).Once()
+	suite.mockTokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return string(ctx.AuthorizationDetails) == string(modified)
+		})).Return(&model.TokenDTO{Token: "access-token", AuthorizationDetails: modified}, nil)
+	suite.mockTokenBuilder.EXPECT().BuildIDToken(mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: "id-token"}, nil).Maybe()
+	suite.mockCIBAService.EXPECT().MarkConsumed(mock.Anything, "auth-req-1").Return(true, nil)
+
+	resp, errResp := handler.HandleGrant(context.Background(), &tokenReq, suite.oauthApp)
+	suite.Require().Nil(errResp)
+	suite.Equal(modified, resp.AccessToken.AuthorizationDetails)
+	suite.Nil(resp.RefreshableAuthorizationDetails, "a one-off detail is not renewed by the refresh token")
 }
 
 // A CIBA access token is sender-constrained to the key the client proved possession of when polling
@@ -658,7 +702,7 @@ func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Authenticated_CarriesSes
 func (suite *CIBAGrantHandlerTestSuite) pollAgainstDenyList(record *ciba.CIBAAuthRequest,
 	lookup func(context.Context, revocation.RevocationIdentity) error) (*model.TokenResponseDTO, *model.ErrorResponse) {
 	suite.handler = newCIBAGrantHandler(suite.mockCIBAService, suite.mockTokenBuilder,
-		suite.mockAttrCacheService, suite.mockResource, suite.mockEnforcement)
+		suite.mockAttrCacheService, suite.mockResource, suite.mockEnforcement, noAuthzDetails())
 	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
 	suite.expectResourceServer()
 	suite.mockEnforcement.EXPECT().EnsureNotRevoked(mock.Anything, mock.Anything).RunAndReturn(lookup)

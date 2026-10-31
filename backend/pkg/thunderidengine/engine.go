@@ -199,6 +199,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		ArtifactLifetime: func(client *providers.OAuthClient) time.Duration {
 			return tokenservice.ArtifactLifetime(oauthConfig, client)
 		},
+		AuthzDetailProvider: engineCtx.authzDetailProvider,
 	}
 	interceptorDeps := interceptor.InterceptorDependencies{
 		FlowFactory:    engineCtx.flowFactory,

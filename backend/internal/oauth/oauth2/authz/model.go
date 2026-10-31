@@ -7,6 +7,7 @@ import (
 	"time"
 
 	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // OAuthMessage represents the OAuth message.
@@ -65,6 +66,8 @@ type AuthorizationCode struct {
 	// SessionData is the SSO sessions the caller posted with the callback, kept when the client requested
 	// the device_sso scope. The code exchange returns them in the device secret.
 	SessionData []oauth2model.SessionData
+	// AuthorizationDetails holds the RFC 9396 authorization details the user approved.
+	AuthorizationDetails []providers.AuthorizationDetail `json:",omitempty"`
 }
 
 // AuthZPostResponse represents the response body for the authorization POST request.
@@ -112,4 +115,6 @@ type assertionClaims struct {
 	flowErrorType          string
 	jti                    string
 	expiresAt              time.Time
+	// grantedAuthorizationDetails is nil when the assertion carries no decision on them.
+	grantedAuthorizationDetails []providers.AuthorizationDetail
 }

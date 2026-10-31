@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"sort"
@@ -135,6 +136,24 @@ func leafFields(fields map[string]json.RawMessage) map[string]json.RawMessage {
 func isEmptyObject(raw json.RawMessage) bool {
 	var members map[string]json.RawMessage
 	return len(raw) > 0 && raw[0] == '{' && json.Unmarshal(raw, &members) == nil && len(members) == 0
+}
+
+// WithSuppliedFields returns entry with each processor-supplied field it leaves out taken from base, the
+// granted detail it is compared with, since a client cannot know the values a processor supplied.
+func WithSuppliedFields(entry, base Detail, policies FieldPolicies) (Detail, error) {
+	filled := Detail{ID: entry.ID, Type: entry.Type, Fields: maps.Clone(entry.Fields)}
+	for path, value := range leafFields(base.Fields) {
+		if !policies.suppliedByProcessor(path) {
+			continue
+		}
+		if _, ok := lookupPath(filled.Fields, path); ok {
+			continue
+		}
+		if err := setPath(filled.Fields, path, value); err != nil {
+			return Detail{}, err
+		}
+	}
+	return filled, nil
 }
 
 // decodeJSON decodes a value keeping numbers as their literal text, so that no precision is lost.

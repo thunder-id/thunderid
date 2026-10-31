@@ -33,10 +33,12 @@ func Initialize(
 	runtimeStore providers.RuntimeStoreProvider,
 	jtiStore jti.JTIStoreInterface,
 	governance providers.IdentityGovernanceProvider,
+	authzDetails providers.AuthorizationDetailProvider,
 	cfg oauthconfig.Config,
 ) CIBAServiceInterface {
 	store := newCIBAStore(runtimeStore)
-	cibaSvc := newCIBAService(store, flowExecService, jwtService, actorProvider, resourceService, governance, cfg)
+	cibaSvc := newCIBAService(store, flowExecService, jwtService, actorProvider, resourceService, governance,
+		authzDetails, cfg)
 	cibaHandler := newCIBAHandler(cibaSvc)
 	registerRoutes(mux, cibaHandler, actorProvider, authnProvider, jwtService, discoveryService,
 		jtiStore, governance, cfg.OAuth.ClientAssertion, cfg.JWT.Leeway)

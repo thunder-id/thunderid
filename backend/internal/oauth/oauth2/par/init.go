@@ -32,9 +32,10 @@ func Initialize(
 	storeProvider providers.RuntimeStoreProvider,
 	jtiStore jti.JTIStoreInterface,
 	governance providers.IdentityGovernanceProvider,
+	authzDetails providers.AuthorizationDetailProvider,
 ) PARServiceInterface {
 	store := newPARRequestStore(storeProvider)
-	parSvc := newPARService(store, resourceService, cfg)
+	parSvc := newPARService(store, resourceService, authzDetails, cfg)
 	parEndpoint := discoveryService.GetOAuth2AuthorizationServerMetadata(
 		context.Background()).PushedAuthorizationRequestEndpoint
 	handler := newPARHandler(parSvc, dpopVerifier, parEndpoint)

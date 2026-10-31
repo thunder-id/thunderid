@@ -62,7 +62,7 @@ const (
 	RequestParamAuthReqID           string = "auth_req_id"
 
 	// RequestParamAuthorizationDetails is the RFC 9396 authorization request parameter.
-	RequestParamAuthorizationDetails string = "authorization_details"
+	RequestParamAuthorizationDetails string = systemconst.AuthorizationDetailsParamName
 )
 
 // OAuth2 HTTP headers.
@@ -298,6 +298,12 @@ const (
 
 	// ClaimAuthorizationDetails carries the granted RFC 9396 authorization details on an access token.
 	ClaimAuthorizationDetails string = "authorization_details"
+	// ClaimGrantedAuthorizationDetails carries the authorization details consent granted on a flow assertion.
+	ClaimGrantedAuthorizationDetails string = "granted_authorization_details"
+	// ClaimRefreshAuthorizationDetails carries the granted authorization details on a refresh token.
+	ClaimRefreshAuthorizationDetails string = "access_token_authorization_details"
+	// ClaimRefreshAuthorizationDetailVersions carries the granted type versions on a refresh token.
+	ClaimRefreshAuthorizationDetailVersions string = "access_token_authorization_detail_versions"
 
 	// ClaimIDP identifies the source identity provider (by issuer) that authenticated the subject of a
 	// jwt-bearer-grant (ID-JAG) access token, so downstream consumers can distinguish a federated

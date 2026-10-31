@@ -138,6 +138,8 @@ var unusableAnswers = map[string]struct {
 	"an error status":         {http.StatusInternalServerError, `{"results":[]}`},
 	"a body that is not JSON": {http.StatusOK, `not json`},
 	"no result for a detail":  {http.StatusOK, `{"results":[]}`},
+	"a result for a detail it was not sent": {http.StatusOK,
+		`{"results":[{"detailId":"not-sent","decision":true}]}`},
 }
 
 type ClientCredentialsTestSuite struct {
@@ -554,33 +556,4 @@ func assertIntrospectedDetails(t *testing.T, token, clientID, clientSecret, expe
 	for _, name := range grantClaims {
 		assert.NotContains(t, introspected, name, "introspection does not carry %s", name)
 	}
-}
-
-const authorizationDetailsField = "authorization_details"
-
-// tokenResult is a token endpoint answer with the authorization details it carries.
-type tokenResult struct {
-	status       int
-	body         []byte
-	accessToken  string
-	refreshToken string
-	details      []json.RawMessage
-}
-
-// readTokenResult reads a token endpoint answer.
-func readTokenResult(t *testing.T, status int, body []byte) tokenResult {
-	t.Helper()
-	result := tokenResult{status: status, body: body}
-	if status == http.StatusOK {
-		var token struct {
-			AccessToken          string            `json:"access_token"`
-			RefreshToken         string            `json:"refresh_token"`
-			AuthorizationDetails []json.RawMessage `json:"authorization_details"`
-		}
-		require.NoError(t, json.Unmarshal(body, &token))
-		result.accessToken = token.AccessToken
-		result.refreshToken = token.RefreshToken
-		result.details = token.AuthorizationDetails
-	}
-	return result
 }

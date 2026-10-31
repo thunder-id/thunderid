@@ -35,6 +35,9 @@ var catalog = map[string]providers.ExecutorMeta{
 		},
 	},
 	ExecutorNameAuthorization: {},
+	ExecutorNameAuthorizationDetail: {
+		SupportedFlowTypes: []providers.FlowType{"AUTHENTICATION"},
+	},
 	ExecutorNameClientSecret: {
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
 	},

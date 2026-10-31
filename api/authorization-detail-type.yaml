@@ -181,7 +181,7 @@ paths:
                   type: "bearer"
                   properties:
                     token: "<processor_token>"
-              reuse: true
+              reuse: false
       responses:
         "201":
           description: Authorization details type created
@@ -224,7 +224,7 @@ paths:
                     type: "bearer"
                     properties:
                       token: "******"
-                reuse: true
+                reuse: false
                 isReadOnly: false
         "400":
           description: Bad request
@@ -411,7 +411,7 @@ paths:
         - Authorization Detail Types
       summary: Update an authorization details type
       description: |
-        Replaces the definition of an authorization details type. The `type` value is immutable and must match the registered value. `version` increments when the update changes the schema or the consent template, or adds or removes the processor, since earlier approvals only count for the version they were given on; other changes keep it, and an update that changes nothing is not saved. The same validation rules as registration apply.
+        Replaces the definition of an authorization details type. The `type` value is immutable and must match the registered value. `version` increments when the update changes the schema, the consent template or `reuse`, or adds or removes the processor, since earlier approvals only count for the version they were given on; other changes keep it, and an update that changes nothing is not saved. The same validation rules as registration apply.
       parameters:
         - in: path
           name: id
@@ -732,14 +732,14 @@ components:
           type: string
           maxLength: 1000
           description: |
-            Summary shown on the consent prompt, at most 1000 bytes. Each `{{path}}` placeholder is replaced with the value at that dot-separated path in the detail, and must name a property the schema declares or `type`.
+            Summary shown on the consent prompt, at most 1000 bytes. Each `{{path}}` placeholder is replaced with the value at that dot-separated path in the detail, and must name a property the schema declares or `type`. When a placeholder has no value in a detail, such as an optional field the client left out, the summary is not shown for that detail rather than shown with a gap; the detail's fields are still listed.
         processor:
           $ref: '#/components/schemas/AuthorizationDetailProcessor'
         reuse:
           type: boolean
           default: false
           description: |
-            Whether an earlier approval may stand in for the consent prompt. `false`, the default, suits one-off authorizations such as a single payment, which the user approves every time. With `true`, an approval the user gave on the same type version covers a later request that asks for no more.
+            Whether an earlier approval may stand in for the consent prompt. `false`, the default, prompts on every request and leaves the detail out of the refresh token, so it is granted for the authorization code's access token only, which suits one-off authorizations such as a single payment. With `true`, a detail the user already approved for the client is not prompted again while that approval is within the client's login consent validity period, on the same type version, and the new request is no wider than the approval, and the refresh token keeps the detail while the type stays on the version it was granted on. A refresh after the version moves leaves the detail out, so the user approves it again on the new version. An approval is a standing permission rather than a count: it covers every requested detail no wider than it, including several in one request; use `false` for authorizations that must be approved each time.
 
     AuthorizationDetailTypeResponse:
       type: object
@@ -761,7 +761,7 @@ components:
         version:
           type: integer
           description: |
-            Version of the type definition. Starts at 1 and increments when an update changes the schema or the consent template, or adds or removes the processor.
+            Version of the type definition. Starts at 1 and increments when an update changes the schema, the consent template or `reuse`, or adds or removes the processor.
         schema:
           type: object
           additionalProperties: true

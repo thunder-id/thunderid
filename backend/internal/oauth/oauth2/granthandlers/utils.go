@@ -5,13 +5,18 @@ package granthandlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"time"
 
+	authzdetailcommon "github.com/thunder-id/thunderid/internal/authzdetail/common"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
+	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // excludeRevokedScopes returns the OIDC scopes and the permission scopes not revoked since a grant was
@@ -73,4 +78,39 @@ func grantRevocationError(err error) *model.ErrorResponse {
 		Error:            constants.ErrorServerError,
 		ErrorDescription: "Token revocation status could not be verified",
 	}
+}
+
+// refreshableAuthorizationDetails returns the granted details a refresh token may carry.
+func refreshableAuthorizationDetails(ctx context.Context,
+	authzDetails providers.AuthorizationDetailProvider,
+	granted []providers.AuthorizationDetail) ([]providers.AuthorizationDetail, *model.ErrorResponse) {
+	refreshable, svcErr := authzDetails.RefreshableAuthorizationDetails(ctx, granted)
+	if svcErr != nil {
+		return nil, oauth2utils.AuthorizationDetailsErrorResponse(svcErr)
+	}
+	return refreshable, nil
+}
+
+// modifyGrantedAuthorizationDetails returns the values of the requested subset of the granted details,
+// or of the whole grant, as the access token carries them.
+func modifyGrantedAuthorizationDetails(ctx context.Context,
+	authzDetails providers.AuthorizationDetailProvider, granted []providers.AuthorizationDetail,
+	requested string) (json.RawMessage, *model.ErrorResponse) {
+	if requested == "" {
+		values, err := authzdetailcommon.EncodeDetailValues(granted)
+		if err != nil {
+			log.GetLogger().With(log.String(log.LoggerKeyComponentName, "GrantHandler")).Error(ctx,
+				"Failed to encode the granted authorization details", log.Error(err))
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorServerError,
+				ErrorDescription: "Failed to generate token",
+			}
+		}
+		return values, nil
+	}
+	modified, svcErr := authzDetails.ModifyAuthorizationDetails(ctx, granted, requested)
+	if svcErr != nil {
+		return nil, oauth2utils.AuthorizationDetailsErrorResponse(svcErr)
+	}
+	return modified, nil
 }

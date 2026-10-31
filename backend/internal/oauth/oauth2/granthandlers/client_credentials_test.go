@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authzdetailcommon "github.com/thunder-id/thunderid/internal/authzdetail/common"
 	authzdetailexec "github.com/thunder-id/thunderid/internal/authzdetail/exec"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
@@ -34,11 +35,6 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 )
-
-// noAuthzDetails refuses every detail; the server runtime must be initialized first.
-func noAuthzDetails() providers.AuthorizationDetailProvider {
-	return authzdetailexec.Initialize(nil, time.Second)
-}
 
 // nolint:gosec // Test token, not a real credential
 const testJWTToken = "test-jwt-token-123"
@@ -1303,7 +1299,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_Authorizati
 		ClientID:             testClientID,
 		AuthorizationDetails: testAuthorizationDetails,
 	}
-	suite.withDetailProvider(authzDetails).Return(nil, &authzdetailexec.ErrorProcessorUnavailable)
+	suite.withDetailProvider(authzDetails).Return(nil, &authzdetailcommon.ErrorProcessorUnavailable)
 
 	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
 

@@ -5,6 +5,7 @@ package par
 
 import (
 	"context"
+	"encoding/json"
 	"net/url"
 	"strings"
 
@@ -44,6 +45,7 @@ type PARServiceInterface interface {
 type parService struct {
 	store           parStoreInterface
 	resourceService providers.ResourceServerProvider
+	authzDetails    providers.AuthorizationDetailProvider
 	cfg             oauthconfig.Config
 	logger          *log.Logger
 }
@@ -51,11 +53,12 @@ type parService struct {
 // newPARService creates a new PAR service instance.
 func newPARService(
 	store parStoreInterface, resourceService providers.ResourceServerProvider,
-	cfg oauthconfig.Config,
+	authzDetails providers.AuthorizationDetailProvider, cfg oauthconfig.Config,
 ) PARServiceInterface {
 	return &parService{
 		store:           store,
 		resourceService: resourceService,
+		authzDetails:    authzDetails,
 		cfg:             cfg,
 		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "PARService")),
 	}
@@ -108,6 +111,15 @@ func (s *parService) HandlePushedAuthorizationRequest(
 		}
 	}
 
+	var authorizationDetails json.RawMessage
+	if raw := params[oauth2const.RequestParamAuthorizationDetails]; raw != "" {
+		details, errResp := oauth2utils.ValidateAuthorizationDetails(ctx, s.authzDetails, raw)
+		if errResp != nil {
+			return nil, errResp.Error, errResp.ErrorDescription
+		}
+		authorizationDetails = details
+	}
+
 	scope := params[oauth2const.RequestParamScope]
 	oidcScopes, nonOidcScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(scope, oauthApp.ScopeClaims)
 
@@ -118,7 +130,7 @@ func (s *parService) HandlePushedAuthorizationRequest(
 	// when the pushed request is redeemed at the authorization endpoint, so both standard and
 	// PAR-based requests bind identically.
 	if _, errResp := resourceindicators.ResolveAudienceBinding(
-		ctx, s.resourceService, resources, nonOidcScopes, false); errResp != nil {
+		ctx, s.resourceService, resources, nonOidcScopes, len(authorizationDetails) > 0); errResp != nil {
 		return nil, errResp.Error, errResp.ErrorDescription
 	}
 
@@ -128,25 +140,26 @@ func (s *parService) HandlePushedAuthorizationRequest(
 	}
 
 	oauthParams := oauth2model.OAuthParameters{
-		State:               params[oauth2const.RequestParamState],
-		ClientID:            oauthApp.ClientID,
-		RedirectURI:         redirectURI,
-		RedirectURIProvided: redirectURIProvided,
-		ResponseType:        params[oauth2const.RequestParamResponseType],
-		StandardScopes:      oidcScopes,
-		PermissionScopes:    nonOidcScopes,
-		CodeChallenge:       params[oauth2const.RequestParamCodeChallenge],
-		CodeChallengeMethod: params[oauth2const.RequestParamCodeChallengeMethod],
-		Resources:           resources,
-		ClaimsRequest:       claimsRequest,
-		ClaimsLocales:       params[oauth2const.RequestParamClaimsLocales],
-		UILocales:           params[oauth2const.RequestParamUILocales],
-		Nonce:               params[oauth2const.RequestParamNonce],
-		AcrValues:           params[oauth2const.RequestParamAcrValues],
-		MaxAge:              params[oauth2const.RequestParamMaxAge],
-		DPoPJkt:             resolveDPoPJkt(params[oauth2const.RequestParamDPoPJkt], dpopHeaderJkt),
-		Prompt:              params[oauth2const.RequestParamPrompt],
-		IDTokenHint:         params[oauth2const.RequestParamIDTokenHint],
+		State:                params[oauth2const.RequestParamState],
+		ClientID:             oauthApp.ClientID,
+		RedirectURI:          redirectURI,
+		RedirectURIProvided:  redirectURIProvided,
+		ResponseType:         params[oauth2const.RequestParamResponseType],
+		StandardScopes:       oidcScopes,
+		PermissionScopes:     nonOidcScopes,
+		CodeChallenge:        params[oauth2const.RequestParamCodeChallenge],
+		CodeChallengeMethod:  params[oauth2const.RequestParamCodeChallengeMethod],
+		Resources:            resources,
+		ClaimsRequest:        claimsRequest,
+		ClaimsLocales:        params[oauth2const.RequestParamClaimsLocales],
+		UILocales:            params[oauth2const.RequestParamUILocales],
+		Nonce:                params[oauth2const.RequestParamNonce],
+		AcrValues:            params[oauth2const.RequestParamAcrValues],
+		MaxAge:               params[oauth2const.RequestParamMaxAge],
+		DPoPJkt:              resolveDPoPJkt(params[oauth2const.RequestParamDPoPJkt], dpopHeaderJkt),
+		Prompt:               params[oauth2const.RequestParamPrompt],
+		IDTokenHint:          params[oauth2const.RequestParamIDTokenHint],
+		AuthorizationDetails: authorizationDetails,
 	}
 
 	// Drop client-credential params before persisting: the PAR store is a plaintext cache. Uses the

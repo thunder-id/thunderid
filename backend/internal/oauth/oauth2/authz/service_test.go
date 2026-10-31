@@ -5,6 +5,8 @@ package authz
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -23,17 +25,20 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/actorprovider"
+	authzdetailexec "github.com/thunder-id/thunderid/internal/authzdetail/exec"
 	flowcm "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/par"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
+	"github.com/thunder-id/thunderid/tests/mocks/authzdetailprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/flowexecmock"
 	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
@@ -167,6 +172,7 @@ func (suite *AuthorizeServiceTestSuite) newService() *authorizeService {
 	inboundClient := actorprovider.Initialize(
 		suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil)
 	return &authorizeService{
+		authzDetails:    authzdetailexec.Initialize(nil, time.Second),
 		cfg:             authorizeServiceCfgFromRuntime(),
 		inboundClient:   inboundClient,
 		resourceService: suite.mockResourceService,
@@ -2877,4 +2883,427 @@ func (suite *AuthorizeServiceTestSuite) TestBindDeviceSession() {
 			suite.Equal(tc.want, code.SessionData)
 		})
 	}
+}
+
+const (
+	svcRawAuthorizationDetails   = `[{"type":"payment_initiation","amount":"10"}]`
+	svcAuthorizationDetails      = `[{"type":"payment_initiation","amount":"10","id":"d1"}]`
+	svcAuthorizationDetailObject = `{"type":"payment_initiation","amount":"5"}`
+)
+
+func svcAssertionWithClaims(extra map[string]any) string {
+	payload := map[string]any{
+		"sub":                                   "test-user",
+		oauth2const.ClaimAuthorizationRequestID: testAuthID,
+		"jti":                                   "svc-details-jti",
+	}
+	for k, v := range extra {
+		payload[k] = v
+	}
+	body, _ := json.Marshal(payload)
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none","typ":"JWT"}`))
+	return header + "." + base64.RawURLEncoding.EncodeToString(body) + "."
+}
+
+// stubPARService resolves every request_uri to the configured parameters.
+type stubPARService struct {
+	par.PARServiceInterface
+	params *oauth2model.OAuthParameters
+}
+
+func (s *stubPARService) ResolvePushedAuthorizationRequest(
+	_ context.Context, _ string, _ string,
+) (*oauth2model.OAuthParameters, *providers.InitiatorRequest, error) {
+	return s.params, &providers.InitiatorRequest{}, nil
+}
+
+func (suite *AuthorizeServiceTestSuite) msgWithAuthorizationDetails() *OAuthMessage {
+	msg := suite.testMsg()
+	msg.RequestQueryParams[oauth2const.RequestParamAuthorizationDetails] = []string{svcRawAuthorizationDetails}
+	return msg
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_AuthorizationDetailsOfNoRegisteredType() {
+	app := suite.testApp()
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+	suite.mockValidator.On("validateInitialAuthorizationRequest", mock.Anything, mock.Anything, app).
+		Return(false, "", "")
+
+	svc := suite.newService()
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), suite.msgWithAuthorizationDetails())
+
+	assert.Nil(suite.T(), result)
+	suite.Require().NotNil(authErr)
+	assert.Equal(suite.T(), oauth2const.ErrorInvalidAuthorizationDetails, authErr.Code)
+	assert.Equal(suite.T(), "authorization_details entry 0 names the unknown type payment_initiation", authErr.Message)
+	assert.True(suite.T(), authErr.SendErrorToClient)
+	assert.Equal(suite.T(), "https://client.example.com/callback", authErr.ClientRedirectURI)
+	assert.Equal(suite.T(), "test-state", authErr.State)
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_AuthorizationDetailsInvalid() {
+	app := suite.testApp()
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+	suite.mockValidator.On("validateInitialAuthorizationRequest", mock.Anything, mock.Anything, app).
+		Return(false, "", "")
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	authzDetails.EXPECT().ValidateAuthorizationDetails(mock.Anything, svcRawAuthorizationDetails).
+		Return(nil, &authzdetailexec.ErrorUnknownAuthorizationDetailType)
+
+	svc := suite.newService()
+	svc.authzDetails = authzDetails
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), suite.msgWithAuthorizationDetails())
+
+	assert.Nil(suite.T(), result)
+	suite.Require().NotNil(authErr)
+	assert.Equal(suite.T(), oauth2const.ErrorInvalidAuthorizationDetails, authErr.Code)
+	assert.Equal(suite.T(), authzdetailexec.ErrorUnknownAuthorizationDetailType.ErrorDescription.DefaultValue,
+		authErr.Message)
+	assert.True(suite.T(), authErr.SendErrorToClient)
+	assert.Equal(suite.T(), "https://client.example.com/callback", authErr.ClientRedirectURI)
+	assert.Equal(suite.T(), "test-state", authErr.State)
+	suite.mockAuthReqStore.AssertNotCalled(suite.T(), "AddRequest", mock.Anything, mock.Anything)
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_AuthorizationDetailsInvalid_NoRedirect() {
+	app := suite.testApp()
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+	suite.mockValidator.On("validateInitialAuthorizationRequest", mock.Anything, mock.Anything, app).
+		Return(false, "", "")
+
+	msg := suite.msgWithAuthorizationDetails()
+	delete(msg.RequestQueryParams, oauth2const.RequestParamRedirectURI)
+	svc := suite.newService()
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), msg)
+
+	assert.Nil(suite.T(), result)
+	suite.Require().NotNil(authErr)
+	assert.Equal(suite.T(), oauth2const.ErrorInvalidAuthorizationDetails, authErr.Code)
+	assert.False(suite.T(), authErr.SendErrorToClient)
+	assert.Empty(suite.T(), authErr.ClientRedirectURI)
+}
+
+// Details without a resource bind to the default resource server.
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_AuthorizationDetailsSeedFlow() {
+	storedCtx, captured := suite.runAuthorizationDetailsRequest(suite.msgWithAuthorizationDetails())
+
+	assert.Equal(suite.T(), "https://rs-default.example.com",
+		captured.RuntimeData[flowcm.RuntimeKeyResourceServerIdentifier])
+	assert.JSONEq(suite.T(), svcAuthorizationDetails, string(storedCtx.OAuthParameters.AuthorizationDetails))
+	assert.Equal(suite.T(), []string{"https://rs-default.example.com"}, storedCtx.OAuthParameters.Resources)
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_AuthorizationDetailsExplicitResource() {
+	suite.mockResourceService.EXPECT().GetResourceServerByIdentifier(mock.Anything, "https://api.example.com").
+		Return(&providers.ResourceServer{ID: "rs-api", Identifier: "https://api.example.com"}, nil)
+	suite.mockResourceService.EXPECT().ValidatePermissions(mock.Anything, "rs-api", mock.Anything).
+		Return([]string{}, nil)
+	msg := suite.msgWithAuthorizationDetails()
+	msg.Resources = []string{"https://api.example.com"}
+
+	storedCtx, captured := suite.runAuthorizationDetailsRequest(msg)
+
+	assert.Equal(suite.T(), "https://api.example.com", captured.RuntimeData[flowcm.RuntimeKeyResourceServerIdentifier])
+	assert.Equal(suite.T(), []string{"https://api.example.com"}, storedCtx.OAuthParameters.Resources)
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_AuthorizationDetailsNoDefault() {
+	app := suite.testApp()
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+	suite.mockValidator.On("validateInitialAuthorizationRequest", mock.Anything, mock.Anything, app).
+		Return(false, "", "")
+	suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	suite.mockResourceService.EXPECT().GetResourceServerByIdentifier(mock.Anything, "").
+		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RSE-4041"})
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	authzDetails.EXPECT().ValidateAuthorizationDetails(mock.Anything, svcRawAuthorizationDetails).
+		Return(json.RawMessage(svcAuthorizationDetails), nil)
+	msg := suite.msgWithAuthorizationDetails()
+	msg.RequestQueryParams["scope"] = []string{"openid"}
+
+	svc := suite.newService()
+	svc.authzDetails = authzDetails
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), msg)
+
+	assert.Nil(suite.T(), result)
+	suite.Require().NotNil(authErr)
+	assert.Equal(suite.T(), oauth2const.ErrorInvalidTarget, authErr.Code)
+	suite.mockFlowExecService.AssertNotCalled(suite.T(), "InitiateFlow", mock.Anything, mock.Anything)
+}
+
+func (suite *AuthorizeServiceTestSuite) runAuthorizationDetailsRequest(
+	msg *OAuthMessage) (authRequestContext, *flowexec.FlowInitContext) {
+	app := suite.testApp()
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+	suite.mockValidator.On("validateInitialAuthorizationRequest", mock.Anything, mock.Anything, app).
+		Return(false, "", "")
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	authzDetails.EXPECT().ValidateAuthorizationDetails(mock.Anything, svcRawAuthorizationDetails).
+		Return(json.RawMessage(svcAuthorizationDetails), nil)
+	authzDetails.EXPECT().PrepareAuthorizationDetails(mock.Anything, json.RawMessage(svcAuthorizationDetails)).
+		Return(testPreparedDetails, nil)
+
+	var storedCtx authRequestContext
+	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, value authRequestContext) { storedCtx = value }).
+		Return(testAuthID, nil)
+	var captured *flowexec.FlowInitContext
+	suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, ic *flowexec.FlowInitContext) { captured = ic }).
+		Return("test-flow-id", nil)
+
+	svc := suite.newService()
+	svc.authzDetails = authzDetails
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), msg)
+
+	suite.Require().Nil(authErr)
+	suite.Require().NotNil(result)
+	suite.Require().NotNil(captured)
+	suite.assertPreparedDetailsSeeded(captured)
+	return storedCtx, captured
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_NoAuthorizationDetailsNotSeeded() {
+	app := suite.testApp()
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+	suite.mockValidator.On("validateInitialAuthorizationRequest", mock.Anything, mock.Anything, app).
+		Return(false, "", "")
+	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
+	var captured *flowexec.FlowInitContext
+	suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, ic *flowexec.FlowInitContext) { captured = ic }).
+		Return("test-flow-id", nil)
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+
+	svc := suite.newService()
+	svc.authzDetails = authzDetails
+	_, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), suite.testMsg())
+
+	suite.Require().Nil(authErr)
+	suite.Require().NotNil(captured)
+	assert.NotContains(suite.T(), captured.RuntimeData, flowcm.RuntimeKeyRequestedAuthorizationDetails)
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_PrepareAuthorizationDetailsError() {
+	app := suite.testApp()
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+	suite.mockValidator.On("validateInitialAuthorizationRequest", mock.Anything, mock.Anything, app).
+		Return(false, "", "")
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	authzDetails.EXPECT().ValidateAuthorizationDetails(mock.Anything, svcRawAuthorizationDetails).
+		Return(json.RawMessage(svcAuthorizationDetails), nil)
+	authzDetails.EXPECT().PrepareAuthorizationDetails(mock.Anything, mock.Anything).
+		Return(nil, &tidcommon.InternalServerError)
+
+	svc := suite.newService()
+	svc.authzDetails = authzDetails
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), suite.msgWithAuthorizationDetails())
+
+	assert.Nil(suite.T(), result)
+	suite.Require().NotNil(authErr)
+	assert.Equal(suite.T(), oauth2const.ErrorServerError, authErr.Code)
+	assert.True(suite.T(), authErr.SendErrorToClient)
+	assert.Equal(suite.T(), "https://client.example.com/callback", authErr.ClientRedirectURI)
+	assert.Equal(suite.T(), "test-state", authErr.State)
+	suite.mockFlowExecService.AssertNotCalled(suite.T(), "InitiateFlow", mock.Anything, mock.Anything)
+	suite.mockAuthReqStore.AssertNotCalled(suite.T(), "AddRequest", mock.Anything, mock.Anything)
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_UnencodablePreparedDetails() {
+	app := suite.testApp()
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+	suite.mockValidator.On("validateInitialAuthorizationRequest", mock.Anything, mock.Anything, app).
+		Return(false, "", "")
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	authzDetails.EXPECT().ValidateAuthorizationDetails(mock.Anything, svcRawAuthorizationDetails).
+		Return(json.RawMessage(svcAuthorizationDetails), nil)
+	authzDetails.EXPECT().PrepareAuthorizationDetails(mock.Anything, mock.Anything).
+		Return([]providers.AuthorizationDetail{{ID: "d1", Value: json.RawMessage(`not-json`)}}, nil)
+
+	svc := suite.newService()
+	svc.authzDetails = authzDetails
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), suite.msgWithAuthorizationDetails())
+
+	assert.Nil(suite.T(), result)
+	suite.Require().NotNil(authErr)
+	assert.Equal(suite.T(), oauth2const.ErrorServerError, authErr.Code)
+	suite.mockAuthReqStore.AssertNotCalled(suite.T(), "AddRequest", mock.Anything, mock.Anything)
+}
+
+// A pushed request whose type changed after the push is refused with invalid_authorization_details.
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_PrepareRefusesChangedType() {
+	app := suite.testApp()
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+	suite.mockValidator.On("validateInitialAuthorizationRequest", mock.Anything, mock.Anything, app).
+		Return(false, "", "")
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	authzDetails.EXPECT().ValidateAuthorizationDetails(mock.Anything, svcRawAuthorizationDetails).
+		Return(json.RawMessage(svcAuthorizationDetails), nil)
+	authzDetails.EXPECT().PrepareAuthorizationDetails(mock.Anything, mock.Anything).
+		Return(nil, &authzdetailexec.ErrorUnknownAuthorizationDetailType)
+
+	svc := suite.newService()
+	svc.authzDetails = authzDetails
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), suite.msgWithAuthorizationDetails())
+
+	assert.Nil(suite.T(), result)
+	suite.Require().NotNil(authErr)
+	assert.Equal(suite.T(), oauth2const.ErrorInvalidAuthorizationDetails, authErr.Code)
+	assert.True(suite.T(), authErr.SendErrorToClient)
+	suite.mockAuthReqStore.AssertNotCalled(suite.T(), "AddRequest", mock.Anything, mock.Anything)
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_PARAuthorizationDetailsSeedFlow() {
+	app := suite.testApp()
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
+	var captured *flowexec.FlowInitContext
+	suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, ic *flowexec.FlowInitContext) { captured = ic }).
+		Return("test-flow-id", nil)
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	authzDetails.EXPECT().PrepareAuthorizationDetails(mock.Anything, json.RawMessage(svcAuthorizationDetails)).
+		Return(testPreparedDetails, nil)
+
+	svc := suite.newService()
+	svc.authzDetails = authzDetails
+	svc.parService = &stubPARService{params: &oauth2model.OAuthParameters{
+		ClientID:             "test-client-id",
+		RedirectURI:          "https://client.example.com/callback",
+		ResponseType:         "code",
+		StandardScopes:       []string{"openid"},
+		AuthorizationDetails: json.RawMessage(svcAuthorizationDetails),
+	}}
+	msg := &OAuthMessage{
+		RequestType: oauth2const.TypeInitialAuthorizationRequest,
+		RequestQueryParams: url.Values{
+			"client_id":   {"test-client-id"},
+			"request_uri": {"urn:ietf:params:oauth:request_uri:abc"},
+		},
+	}
+
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), msg)
+
+	suite.Require().Nil(authErr)
+	suite.Require().NotNil(result)
+	suite.Require().NotNil(captured)
+	suite.assertPreparedDetailsSeeded(captured)
+	authzDetails.AssertNotCalled(suite.T(), "ValidateAuthorizationDetails", mock.Anything, mock.Anything)
+}
+
+func detailsCallbackAuthCtx() authRequestContext {
+	return authRequestContext{
+		OAuthParameters: oauth2model.OAuthParameters{
+			ClientID:             "test-client",
+			RedirectURI:          "https://client.example.com/callback",
+			State:                "test-state",
+			AuthorizationDetails: json.RawMessage(svcAuthorizationDetails),
+		},
+	}
+}
+
+var testPreparedDetails = []providers.AuthorizationDetail{{ID: "d1", Type: "payment_initiation", TypeID: "type-2",
+	TypeVersion: 2, Requested: json.RawMessage(svcAuthorizationDetailObject),
+	Value: json.RawMessage(svcAuthorizationDetailObject)}}
+
+func encodedPreparedDetails() string {
+	encoded, _ := json.Marshal(testPreparedDetails)
+	return string(encoded)
+}
+
+func (suite *AuthorizeServiceTestSuite) assertPreparedDetailsSeeded(captured *flowexec.FlowInitContext) {
+	assert.Equal(suite.T(), encodedPreparedDetails(),
+		captured.RuntimeData[flowcm.RuntimeKeyRequestedAuthorizationDetails])
+}
+
+func grantedClaim(granted ...providers.AuthorizationDetail) map[string]any {
+	if granted == nil {
+		granted = []providers.AuthorizationDetail{}
+	}
+	return map[string]any{oauth2const.ClaimGrantedAuthorizationDetails: granted}
+}
+
+func (suite *AuthorizeServiceTestSuite) runDetailsCallback(assertion string) (string, *AuthorizationError) {
+	suite.mockAuthReqStore.EXPECT().GetRequest(mock.Anything, testAuthID).Return(true, detailsCallbackAuthCtx(), nil)
+	suite.mockAuthReqStore.EXPECT().ClearRequest(mock.Anything, testAuthID).Return(nil)
+	suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, assertion, "", "").Return(nil)
+
+	return suite.newService().HandleAuthorizationCallback(context.Background(), testAuthID, assertion, nil)
+}
+
+func (suite *AuthorizeServiceTestSuite) assertDetailsNotApproved(redirectURI string, authErr *AuthorizationError) {
+	assert.Empty(suite.T(), redirectURI)
+	suite.Require().NotNil(authErr)
+	assert.Equal(suite.T(), oauth2const.ErrorAccessDenied, authErr.Code)
+	assert.Equal(suite.T(), "Authorization details were not approved", authErr.Message)
+	assert.True(suite.T(), authErr.SendErrorToClient)
+	assert.Equal(suite.T(), "https://client.example.com/callback", authErr.ClientRedirectURI)
+	assert.Equal(suite.T(), "test-state", authErr.State)
+	suite.mockAuthzCodeStore.AssertNotCalled(suite.T(), "InsertAuthorizationCode", mock.Anything, mock.Anything)
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_AuthorizationDetailsNotDecided() {
+	redirectURI, authErr := suite.runDetailsCallback(svcAssertionWithClaims(nil))
+
+	suite.assertDetailsNotApproved(redirectURI, authErr)
+}
+
+// An assertion whose granted details cannot be read is rejected before the request is loaded.
+func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_AuthorizationDetailsMalformedGrant() {
+	assertion := svcAssertionWithClaims(map[string]any{
+		oauth2const.ClaimGrantedAuthorizationDetails: map[string]any{"type": "not-an-array"},
+	})
+	suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, assertion, "", "").Return(nil)
+
+	redirectURI, authErr := suite.newService().HandleAuthorizationCallback(context.Background(), testAuthID,
+		assertion, nil)
+
+	assert.Empty(suite.T(), redirectURI)
+	suite.Require().NotNil(authErr)
+	assert.Equal(suite.T(), oauth2const.ErrorInvalidRequest, authErr.Code)
+	suite.mockAuthReqStore.AssertNotCalled(suite.T(), "GetRequest", mock.Anything, mock.Anything)
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_AuthorizationDetailsGrantedOnCode() {
+	assertion := svcAssertionWithClaims(grantedClaim(testPreparedDetails...))
+	var inserted AuthorizationCode
+	suite.mockAuthzCodeStore.EXPECT().InsertAuthorizationCode(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, code AuthorizationCode) { inserted = code }).Return(nil)
+
+	redirectURI, authErr := suite.runDetailsCallback(assertion)
+
+	suite.Require().Nil(authErr)
+	assert.Contains(suite.T(), redirectURI, "code=")
+	assert.Equal(suite.T(), testPreparedDetails, inserted.AuthorizationDetails,
+		"the code carries the granted details with the type versions they were approved on")
+}
+
+// A user who declined every requested detail still gets a code, but it carries no details.
+func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_AuthorizationDetailsNoneGranted() {
+	var inserted AuthorizationCode
+	suite.mockAuthzCodeStore.EXPECT().InsertAuthorizationCode(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, code AuthorizationCode) { inserted = code }).Return(nil)
+
+	redirectURI, authErr := suite.runDetailsCallback(svcAssertionWithClaims(grantedClaim()))
+
+	suite.Require().Nil(authErr)
+	assert.Contains(suite.T(), redirectURI, "code=")
+	assert.Empty(suite.T(), inserted.AuthorizationDetails)
+}
+
+func (suite *AuthorizeServiceTestSuite) TestDecodeAttributesFromAssertion_GrantedAuthorizationDetails() {
+	claims, _, err := decodeAttributesFromAssertion(svcAssertionWithClaims(grantedClaim(testPreparedDetails...)))
+
+	suite.Require().NoError(err)
+	suite.Require().Len(claims.grantedAuthorizationDetails, 1)
+	assert.Equal(suite.T(), "d1", claims.grantedAuthorizationDetails[0].ID)
+
+	claims, _, err = decodeAttributesFromAssertion(svcAssertionWithClaims(nil))
+	suite.Require().NoError(err)
+	assert.Nil(suite.T(), claims.grantedAuthorizationDetails, "no claim is no decision")
+
+	claims, _, err = decodeAttributesFromAssertion(svcAssertionWithClaims(grantedClaim()))
+	suite.Require().NoError(err)
+	assert.NotNil(suite.T(), claims.grantedAuthorizationDetails, "an empty claim is a decision granting none")
+	assert.Empty(suite.T(), claims.grantedAuthorizationDetails)
 }

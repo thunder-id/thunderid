@@ -3974,6 +3974,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) deviceSecretGrant() (
 	suite.handler.codeGrant = &authorizationCodeGrantHandler{
 		tokenBuilder:    suite.mockTokenBuilder,
 		resourceService: suite.mockResourceService,
+		authzDetails:    noAuthzDetails(),
 	}
 	req := suite.createBasicTokenRequest(suite.createTestJWTWithTyp(jwt.TokenTypeDeviceSecret,
 		map[string]interface{}{"sub": testUserID, "session_data": []map[string]string{

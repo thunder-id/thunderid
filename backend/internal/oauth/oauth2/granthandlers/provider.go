@@ -62,13 +62,14 @@ func newGrantHandlerProvider(
 	var codeGrant *authorizationCodeGrantHandler
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeAuthorizationCode) {
 		codeGrant = newAuthorizationCodeGrantHandler(
-			authzService, tokenBuilder, attrCacheService, resourceService, enforcementService, deviceSecretValidity)
+			authzService, tokenBuilder, attrCacheService, resourceService, enforcementService, deviceSecretValidity,
+			authzDetails)
 		grantProvider.authorizationCodeGrantHandler = codeGrant
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeRefreshToken) {
 		grantProvider.refreshTokenGrantHandler = newRefreshTokenGrantHandler(
 			jwtService, tokenBuilder, tokenValidator, attrCacheService, resourceService,
-			rbacAuthzService, actorProvider, refreshTokenRevoker, criteriaRevoker, governance, cfg)
+			rbacAuthzService, actorProvider, refreshTokenRevoker, criteriaRevoker, governance, authzDetails, cfg)
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeTokenExchange) {
 		grantProvider.tokenExchangeGrantHandler = newTokenExchangeGrantHandler(
@@ -77,7 +78,7 @@ func newGrantHandlerProvider(
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeCIBA) {
 		grantProvider.cibaGrantHandler = newCIBAGrantHandler(cibaService, tokenBuilder, attrCacheService,
-			resourceService, enforcementService)
+			resourceService, enforcementService, authzDetails)
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeJWTBearer) {
 		grantProvider.jwtBearerGrantHandler = newJWTBearerGrantHandler(

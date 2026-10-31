@@ -128,3 +128,21 @@ var (
 		},
 	}
 )
+
+// Authorization details errors, treated by the consent executor as a denial rather than a flow failure.
+var (
+	// ErrorAuthorizationDetailModificationRefused is returned when the user changes an authorization
+	// detail in a way its type does not allow.
+	ErrorAuthorizationDetailModificationRefused = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RAR-1019",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.consentenforcerservice.authorization_detail_modification_refused",
+			DefaultValue: "Authorization details change refused",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.consentenforcerservice.authorization_detail_modification_refused_description",
+			DefaultValue: "The change made to the authorization details is not allowed",
+		},
+	}
+)

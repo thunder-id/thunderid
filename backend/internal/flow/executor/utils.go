@@ -513,3 +513,16 @@ func dispatchPlaneFor(flowType providers.FlowType) providers.AccessPlane {
 		return providers.AccessPlaneDispatch
 	}
 }
+
+// requestedAuthorizationDetails returns the requested authorization details, or nil when there are none.
+func requestedAuthorizationDetails(ctx *providers.NodeContext) ([]providers.AuthorizationDetail, error) {
+	encoded := ctx.RuntimeData[common.RuntimeKeyRequestedAuthorizationDetails]
+	if encoded == "" {
+		return nil, nil
+	}
+	var details []providers.AuthorizationDetail
+	if err := json.Unmarshal([]byte(encoded), &details); err != nil {
+		return nil, fmt.Errorf("authorization details are malformed: %w", err)
+	}
+	return details, nil
+}

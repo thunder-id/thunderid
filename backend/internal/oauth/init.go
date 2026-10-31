@@ -88,10 +88,10 @@ func Initialize(
 	tokenBuilder, tokenValidator := tokenservice.Initialize(
 		cfg, jwtService, jweService, resolver, idpService, enforcementService, jtiStore, actorProvider)
 	parService := par.Initialize(mux, actorProvider, authnProvider, jwtService, discoveryService,
-		resourceService, dpopVerifier, cfg, runtimeStore, jtiStore, governance)
+		resourceService, dpopVerifier, cfg, runtimeStore, jtiStore, governance, authzDetails)
 	oauth2AuthzService, err := oauth2authz.Initialize(mux, actorProvider, resourceService,
 		jwtService, flowExecService, parService, revocationSvc, ssoSession, ssoTransport, flowProvider,
-		governance, cfg, runtimeStore, transactioner, jtiStore)
+		governance, cfg, runtimeStore, transactioner, jtiStore, authzDetails)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -100,7 +100,7 @@ func Initialize(
 	if len(cfg.OAuth.AllowedGrantTypes) == 0 ||
 		slices.Contains(cfg.OAuth.AllowedGrantTypes, string(providers.GrantTypeCIBA)) {
 		cibaService = ciba.Initialize(mux, jwtService, actorProvider, authnProvider, flowExecService,
-			discoveryService, resourceService, runtimeStore, jtiStore, governance, cfg)
+			discoveryService, resourceService, runtimeStore, jtiStore, governance, authzDetails, cfg)
 	}
 
 	// A device secret lasts as long as an SSO session can. The embedded engine has no session service,

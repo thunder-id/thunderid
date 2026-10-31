@@ -10,6 +10,20 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
+// ErrorProcessorUnavailable is returned when a processor cannot be reached or gives no usable answer.
+var ErrorProcessorUnavailable = tidcommon.ServiceError{
+	Type: tidcommon.ServerErrorType,
+	Code: "RAR-5001",
+	Error: tidcommon.I18nMessage{
+		Key:          "error.authorizationdetailservice.processor_unavailable",
+		DefaultValue: "Authorization details processor unavailable",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.authorizationdetailservice.processor_unavailable_description",
+		DefaultValue: "The authorization details processor could not be reached or returned an invalid response",
+	},
+}
+
 // ErrorAuthorizationDetailTypeChanged is the error returned when a type changes during a request.
 var ErrorAuthorizationDetailTypeChanged = tidcommon.ServiceError{
 	Type: tidcommon.ServerErrorType,

@@ -113,6 +113,36 @@ func (s *SchemaTestSuite) TestCompileSchema_TypeIsRequired() {
 	s.Error(ValidateDetail(resolved, Detail{Fields: map[string]json.RawMessage{"a": json.RawMessage(`"x"`)}}))
 }
 
+func (s *SchemaTestSuite) TestSchemaTitles() {
+	root, err := parseSchema(json.RawMessage(`{"type":"object","properties":{
+		"creditorName":{"type":"string","title":"Payee"},
+		"actions":{"type":"array","items":{"type":"string"},"title":"Actions"},
+		"maxFare":{"type":"object","properties":{"amount":{"type":"string","title":"Amount"},
+			"currency":{"type":"string"}}}}}`))
+	s.Require().NoError(err)
+	s.Equal(map[string]string{"creditorName": "Payee", "actions": "Actions", "maxFare.amount": "Amount"},
+		titlesOf(root))
+	_, err = parseSchema(json.RawMessage(`{`))
+	s.Error(err)
+}
+
+func (s *SchemaTestSuite) TestPropertyOrderOf() {
+	s.Equal(map[string][]string{
+		"":        {"locations", "actions", "route", "maxFare"},
+		"maxFare": {"amount", "currency"},
+	}, propertyOrderOf(json.RawMessage(flightSchema)))
+
+	s.Equal(map[string][]string{"": {"zeta", "alpha", "mid"}, "mid": {"y", "b"}},
+		propertyOrderOf(json.RawMessage(`{"properties":{"zeta":{"type":"string"},"alpha":{"type":"string"},`+
+			`"mid":{"type":"object","properties":{"y":{},"b":{}}}},"type":"object"}`)),
+		"the declared order is kept whatever its keywords are written around")
+
+	s.Empty(propertyOrderOf(json.RawMessage(`{"type":"object"}`)))
+	s.Empty(propertyOrderOf(json.RawMessage(`{"properties":[]}`)))
+	s.Empty(propertyOrderOf(json.RawMessage(`{`)))
+	s.Empty(propertyOrderOf(nil))
+}
+
 func (s *SchemaTestSuite) TestCompileSchema_RefusesUnknownTypeNames() {
 	for name, schema := range map[string]string{
 		"property":   `{"type":"object","properties":{"amount":{"type":"nope"}}}`,

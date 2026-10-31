@@ -412,7 +412,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Initialize authentication services.
 	authAssertGen := authnAssert.Initialize()
-	consentEnforcer := authnConsent.Initialize(jwtService)
+	consentEnforcer := authnConsent.Initialize(jwtService, authzDetailMgtService)
 
 	_, directAuthGuard := authn.Initialize(mux, mcpServer, idpService, jwtService, authnProvider, authAssertGen,
 		otpCoreService, notifSenderSvc, notifTemplateRenderer, magicLinkService, oauthAuthnService,
@@ -473,6 +473,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			ObservabilitySvc:    observabilitySvc,
 			IdentityGovernance:  governanceProvider,
 			ArtifactLifetime:    artifactLifetime,
+			AuthzDetailProvider: authzDetailService,
 		},
 		interceptor.InterceptorDependencies{},
 		flowConfig,

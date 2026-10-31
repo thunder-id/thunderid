@@ -205,10 +205,11 @@ func (s *authorizationDetailMgtService) UpdateAuthorizationDetailType(ctx contex
 	// The update applies only while the type is at the version read here, so it never overwrites a change that
 	// moved the version, which approvals given on that version rely on.
 	t.Version = existing.Version
-	// Version bumps invalidate earlier approvals; adding or removing a processor counts as a grant change.
+	// Version bumps invalidate earlier approvals; adding or removing a processor, or changing reuse, counts as a
+	// grant change.
 	changesGrant := !common.SchemaEquivalent(t.Schema, existing.Schema) ||
 		strings.TrimSpace(t.ConsentTemplate) != strings.TrimSpace(existing.ConsentTemplate) ||
-		(t.Processor == nil) != (existing.Processor == nil)
+		(t.Processor == nil) != (existing.Processor == nil) || t.Reuse != existing.Reuse
 	// An equivalent but reordered schema is still stored (it drives consent field order), without a version bump.
 	if !changesGrant && sameJSONText(t.Schema, existing.Schema) && t.ConsentTemplate == existing.ConsentTemplate &&
 		t.Name == existing.Name &&

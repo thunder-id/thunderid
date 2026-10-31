@@ -4,6 +4,8 @@
 package executor
 
 import (
+	"encoding/json"
+
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -1203,6 +1205,35 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithoutConsentedAttributes
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestExecute_CarriesGrantedAuthorizationDetails() {
+	granted := `[{"id":"d-1","type":"payment_initiation","value":{"amount":10}}]`
+	ctx := &providers.NodeContext{
+		ExecutionID:      "flow-123",
+		EntityID:         "app-123",
+		FlowType:         providers.FlowTypeAuthentication,
+		AuthUser:         newTestAuthenticatedAuthUser(),
+		RuntimeData:      map[string]string{common.RuntimeKeyConsentedAuthorizationDetails: granted},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+		Application:      providers.Application{},
+	}
+
+	suite.setupGetEntityReference("", "")
+	suite.setupGetUserAttributesEmpty()
+
+	suite.mockJWTService.On("GenerateJWT", mock.Anything, "user-123", mock.Anything, mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			claim, ok := claims[oauth2const.ClaimGrantedAuthorizationDetails].(json.RawMessage)
+			return ok && string(claim) == granted
+		}), mock.Anything, mock.Anything).Return("jwt-token", int64(3600), nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	assert.True(suite.T(), reservedAssertionClaims[oauth2const.ClaimGrantedAuthorizationDetails],
+		"an attribute must not replace the granted details")
 }
 
 // ----- Execute with Attribute Cache TTL in RuntimeData -----
