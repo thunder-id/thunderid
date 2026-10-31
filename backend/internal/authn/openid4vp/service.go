@@ -13,6 +13,7 @@ import (
 	"time"
 
 	authncommon "github.com/thunder-id/thunderid/internal/authn/common"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
@@ -192,11 +193,11 @@ func (s *openid4vpService) Authenticate(_ context.Context, cred *authncommon.Ope
 		claims["sub"] = cred.Subject
 	}
 
-	// Identification keys on subject only so IdentifyEntity matches a returning
-	// holder by sub rather than over all disclosed claims.
+	// The holder resolves through the link recorded for the issuer's subject, like a federated sign-in.
 	identification := map[string]interface{}{}
 	if cred.Subject != "" {
-		identification["sub"] = cred.Subject
+		identification[authnprovidercm.UserAttributeFederatedIdpID] = LinkedConnectionID(cred.Issuer)
+		identification[authnprovidercm.UserAttributeSub] = cred.Subject
 	}
 
 	return &authncommon.AuthnResult{

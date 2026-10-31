@@ -40,9 +40,6 @@ var oidcEntityType = testutils.UserType{
 			"type":       "string",
 			"credential": true,
 		},
-		"sub": map[string]interface{}{
-			"type": "string",
-		},
 		"email": map[string]interface{}{
 			"type": "string",
 		},
@@ -103,7 +100,6 @@ func (suite *OIDCAuthTestSuite) SetupSuite() {
 	userAttributes := map[string]interface{}{
 		"username":   "oidcuser",
 		"password":   "Test@1234",
-		"sub":        "user456",
 		"email":      "testuser@oidc.com",
 		"givenName":  "OIDC",
 		"familyName": "User",

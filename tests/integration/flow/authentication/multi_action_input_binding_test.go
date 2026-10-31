@@ -129,9 +129,6 @@ var (
 			"email": map[string]interface{}{
 				"type": "string",
 			},
-			"sub": map[string]interface{}{
-				"type": "string",
-			},
 			"givenName": map[string]interface{}{
 				"type": "string",
 			},
@@ -147,7 +144,6 @@ var (
 			"username": "multiactionuser",
 			"password": "testpassword",
 			"email": "multiactionuser@example.com",
-			"sub": "google-multi-action-user-123",
 			"givenName": "Multi",
 			"familyName": "Action"
 		}`),
