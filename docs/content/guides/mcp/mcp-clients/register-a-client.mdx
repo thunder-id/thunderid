@@ -3,7 +3,7 @@ title: Configure an MCP Client Manually
 docType: guide
 persona: iam
 sidebar_position: 2
-description: Configure an MCP client manually in the Console, setting its redirect URIs and choosing between the user-delegated and machine-to-machine client types.
+description: Configure an MCP client manually in the Console, setting its redirect URIs, choosing between the user-delegated and machine-to-machine client types, and turning on identity assertions (ID-JAG).
 ---
 
 # Configure an MCP Client Manually
@@ -35,7 +35,9 @@ The **Client type** step is the most important choice on this page: it decides h
 
 Select **On behalf of a user** for an MCP client running inside a host app, such as an IDE, desktop app, or chat client, that a person signs in to interactively. MCP Inspector is this type.
 
-This option configures the Authorization Code flow with PKCE and registers the client as a public client with no client secret. PKCE is locked on: the form shows it as read-only because a user-delegated MCP client always requires it. Selecting this type also embeds the redirect URI editor directly in this step, so add at least one redirect URI here before continuing.
+This option configures the Authorization Code flow with PKCE. PKCE stays required while the client has the authorization code grant, so the **Advanced** tab shows **PKCE required** as read-only. Selecting this type also embeds the redirect URI editor directly in this step, so add at least one redirect URI here before continuing.
+
+By default, <ProductName /> registers the client as a public client with no client secret. Turn on **Confidential client** for a client with a backend that can keep a secret. <ProductName /> then registers it with the `client_secret_basic` authentication method and issues a client secret. PKCE stays required. A client must be confidential to use [identity assertions (ID-JAG)](#use-identity-assertions-id-jag).
 
 ### Machine-to-Machine
 
@@ -45,7 +47,9 @@ This option configures the Client Credentials flow and registers the client as a
 
 ## Step 3: Finish
 
-Click **Finish**. <ProductName /> creates the application and opens its detail page directly, with no separate completion screen. Open the **General** tab: its **Connection** card shows the **Client ID**. For a machine-to-machine client, generate the **Client secret** here, since <ProductName /> does not display it automatically after creation (see [Where Credentials Live](#where-credentials-live)).
+Click **Finish**. <ProductName /> creates the application and opens its detail page. For a client with a client secret, either machine-to-machine or user-delegated with **Confidential client** on, a dialog shows the secret first. Copy it before you click **Continue**, because <ProductName /> does not display it again.
+
+Open the **General** tab: its **Connection** card shows the **Client ID**. See [Where Credentials Live](#where-credentials-live) for the rest of the client's credentials.
 
 </Stepper>
 
@@ -66,15 +70,20 @@ The application's **General** tab holds a **Connection** card with:
 
 - **Application ID**: the <ProductName /> application identifier.
 - **Client ID**: the OAuth 2.1 client ID, for both client types.
-- **Client secret**: shown only for the machine-to-machine type, since that is the only confidential MCP client type. The field displays a masked placeholder, never the actual value. Click **Generate** to issue a new secret, which <ProductName /> shows once in a dialog. Copy it immediately: closing the dialog without copying means generating another one, which invalidates the previous secret for any client already using it.
+
+For a confidential client, the **Connection** card links to the **Credentials** tab. That tab shows the **Client ID** again, along with the following settings:
+
+- **Client secret**: shown only for a client that authenticates with a client secret (`client_secret_basic` or `client_secret_post`). The field displays a masked placeholder, never the actual value. Click **Regenerate client secret**, then **Regenerate** to confirm. <ProductName /> shows the new secret once in a dialog. Copy it immediately: closing the dialog without copying means regenerating another one, which invalidates the previous secret for any client already using it.
+- **Certificate**: the client's public keys, as an inline JWKS or a JWKS URI. A client that authenticates with `private_key_jwt` needs one, and the Console does not save that authentication method without it.
 
 ## Access Control
 
 For a user-delegated client, the **General** tab also shows an **Access** card:
 
 - **Allowed user types**: which user types can sign up through this client. Leave it empty if users should not be able to sign up through it.
+- **Enable agent sign-in**: whether agents can sign in to this client through its sign-in flow. See [Agent Sign-In](../../../agents/authentication/agent-sign-in).
 - **Client URI**: an optional public homepage for the client.
-- **Authorized redirect URIs**: the same redirect URIs configured during creation, editable here. At least one is required, and each one follows the [redirect URI rules](#redirect-uri-rules) above.
+- **Authorized redirect URIs**: the same redirect URIs configured during creation, editable here. Each one follows the [redirect URI rules](#redirect-uri-rules) above. At least one is required while the client has the authorization code grant.
 
 A machine-to-machine client has no signed-in user, so the Console does not show this card for it.
 
@@ -93,17 +102,31 @@ value:
 
 If the file already exists, append to the existing `allowedOrigins` list instead of replacing it. You can also update this at runtime with `PUT /server-config/cors`. Restart <ProductName /> after editing the file.
 
+## Use Identity Assertions (ID-JAG)
+
+A confidential MCP client can use identity assertions (ID-JAG) with <ProductName /> in either direction:
+
+- **To request identity assertions** for an external authorization server, use a user-delegated client. Open its **Advanced** tab and turn on **Identity assertions (ID-JAG)**. Add at least one entry under **Allowed audiences**, because **Save** stays disabled until you do. Turning on the toggle also adds the **Token exchange** grant type, which you cannot remove from **Grant types** until you turn identity assertions off. The client signs the user in with the authorization code grant, then exchanges the user's ID token for an assertion. See [Issue Identity Assertions (ID-JAG)](../../../protocols/oauth-oidc/identity-assertion-grant/issue-identity-assertions).
+- **To redeem identity assertions** from a trusted identity provider, open the **Advanced** tab and add the **JWT bearer** grant type. See [Accept Identity Assertions from an External IdP](../../../protocols/oauth-oidc/identity-assertion-grant/accept-identity-assertions).
+
+The **Identity assertions (ID-JAG)** toggle is disabled for a public client. To make a public client confidential, turn off **Public client** on the **Advanced** tab, or select **JWT bearer**, which also turns it off. Either way, **Client authentication method** changes to `client_secret_basic`, and **Public client** stays disabled while **JWT bearer** is selected or identity assertions are on. Saving the change does not display a client secret, so click **Regenerate client secret** on the **Credentials** tab to get one. Saving and regenerating both invalidate the refresh tokens issued before them, so users must sign in again.
+
+Some clients only redeem identity assertions and never sign users in themselves, such as an MCP client that reaches MCP servers through [enterprise-managed authorization](../../../../use-cases/ai-agents/mcp-authorization/enterprise-managed-authorization). For such a client, keep **JWT bearer** selected and turn off **Identity assertions (ID-JAG)** if it is on. Then remove **Token exchange** and clear **authorization_code** in **Grant types**.
+
+Clearing **authorization_code** also removes **refresh_token** and turns off **PKCE required**. **Authorized redirect URIs** then become optional, so you can delete the redirect URI the wizard asked for. The **Flows** and **Customization** tabs are hidden, and the **Connection** card shows the client as **On behalf of a user (JWT bearer with ID-JAG)**.
+
 ## Manage the Client
 
-To update a client's configuration, open it from the **Applications** list, change the relevant setting on the **General** tab, and click **Save**. Changes take effect immediately for new authentication requests; active sessions and issued tokens are unaffected until they expire.
+To update a client's configuration, open it from the **Applications** list, change the setting on its tab, and click **Save** in the bar that appears. Changes take effect immediately for new authentication requests. Active sessions and issued access tokens stay valid until they expire. Refresh tokens stop working once you remove **refresh_token** from **Grant types**, and the token endpoint rejects them with `unauthorized_client`. Clearing **authorization_code** also removes **refresh_token**.
 
-To rotate credentials for a machine-to-machine client, click **Generate** next to **Client secret** on the **General** tab. This immediately invalidates the previous secret.
+To rotate the client secret, click **Regenerate client secret** on the **Credentials** tab, then **Regenerate** to confirm. This immediately invalidates the previous secret. It also revokes the access and refresh tokens issued before the rotation, so users must sign in again.
 
-To delete a client, open it from the **Applications** list and click **Delete application** in the danger zone. This is permanent: any caller using the client's Client ID immediately loses the ability to authenticate, though issued tokens remain valid until they expire.
+To delete a client, open it from the **Applications** list and click **Delete application** under **Danger zone** on the **Advanced** tab. This is permanent: any caller using the client's Client ID immediately loses the ability to authenticate. <ProductName /> also revokes every token issued through the Client ID and removes the client from active sessions. Deleting through the `DELETE /applications/{id}` API removes the record only, so its tokens stay valid until they expire.
 
 ## Next Steps
 
 - [Dynamic Client Registration](../dynamic-client-registration): Let clients register themselves instead of pre-registering them here.
 - [Secure Your MCP Server](../../mcp-server/secure-your-mcp-server): Protect the MCP server this client connects to.
+- [Enterprise-Managed Authorization for MCP](../../../../use-cases/ai-agents/mcp-authorization/enterprise-managed-authorization): Let an enterprise identity provider govern which MCP clients reach which MCP servers through identity assertions.
 - [Manage Applications](../../../applications/manage-applications): General application management, covering all application types.
 - [Connect a Python MCP Server](../../../../getting-started/connect-your-mcp/python): A runnable quickstart that registers an MCP Inspector client this way, end to end.

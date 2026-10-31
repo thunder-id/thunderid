@@ -111,7 +111,9 @@ Turning on identity assertions also enables the token exchange grant type on the
 
 ## Get an ID Token
 
-Run the authorization code flow with the `openid` scope to obtain an ID token for the signed-in user. An agent runs the same flow with its own client ID and client secret, through its authentication flow. An agent that uses authorization code always requires PKCE, so its authorization request must also send `code_challenge` with `code_challenge_method=S256`, and its token request must send the matching `code_verifier`. The authorize endpoint rejects the request with `invalid_request` otherwise. See [Agent Access on Behalf of Users](../../../../agents/authentication/on-behalf-of-user) for the agent sign-in call. An agent that holds the CIBA grant can instead request the ID token through [Backchannel Authentication (CIBA)](../../backchannel-authentication) with the `openid` scope.
+Run the authorization code flow with the `openid` scope to obtain an ID token for the signed-in user. An agent runs the same flow with its own client ID and client secret, through its authentication flow. See [Agent Access on Behalf of Users](../../../../agents/authentication/on-behalf-of-user) for the agent sign-in call. An agent that holds the CIBA grant can instead request the ID token through [Backchannel Authentication (CIBA)](../../backchannel-authentication) with the `openid` scope.
+
+The authorization code flow uses [PKCE](../../pkce). <ProductName /> requires it from a client that has **PKCE required** on (**Require PKCE** for an agent), and rejects the authorization request with `invalid_request` without it. The Console turns it on for agents, MCP clients that act on behalf of a user, and most application templates. Clients registered from a Client ID Metadata Document always have it on. <ProductName /> also verifies PKCE from a client that does not require it, so any client can send it.
 
 Export the `client_id`, `client_secret`, and registered redirect URI from your application's or agent's Console entry, since the following steps need them:
 
@@ -122,24 +124,32 @@ export REDIRECT_URI=<your registered redirect uri>
 ```
 
 :::note
-These examples authenticate the client with a client secret. A client that uses `private_key_jwt`, such as one registered from a Client ID Metadata Document, sends `client_id`, `client_assertion_type` and `client_assertion` in each token request instead of `-u`. See [Client Authentication Methods](../../client-authentication-methods). A client registered from a Client ID Metadata Document also uses PKCE: it sends `code_challenge` and `code_challenge_method=S256` to the authorize endpoint, and `code_verifier` with the code. See [PKCE](../../pkce).
+These examples authenticate the client with a client secret. A client that uses `private_key_jwt`, such as one registered from a Client ID Metadata Document, sends `client_id`, `client_assertion_type`, and `client_assertion` in each token request instead of `-u`. See [Client Authentication Methods](../../client-authentication-methods).
 :::
 
-1. Send the user's browser to the authorize endpoint:
+1. Create a PKCE code verifier and its S256 code challenge:
 
-```text
-https://thunderid.example.com/oauth2/authorize?response_type=code&client_id=$CLIENT_ID&redirect_uri=$REDIRECT_URI&scope=openid&state=xyz
+```bash
+export CODE_VERIFIER=$(openssl rand -hex 32)
+export CODE_CHALLENGE=$(printf '%s' "$CODE_VERIFIER" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
+echo "$CODE_CHALLENGE"
 ```
 
-Replace `$CLIENT_ID` and `$REDIRECT_URI` with their real values before pasting this URL into a browser; shell variables do not expand there. For an agent, append `&code_challenge=<code challenge>&code_challenge_method=S256` to the URL.
+2. Send the user's browser to the authorize endpoint:
 
-2. After the user signs in (and consents, if consent is enabled for the application), <ProductName /> redirects the browser to `$REDIRECT_URI` with a `code` query parameter. Capture it from the callback URL and export it:
+```text
+https://thunderid.example.com/oauth2/authorize?response_type=code&client_id=$CLIENT_ID&redirect_uri=$REDIRECT_URI&scope=openid&state=xyz&code_challenge=$CODE_CHALLENGE&code_challenge_method=S256
+```
+
+Replace `$CLIENT_ID`, `$REDIRECT_URI`, and `$CODE_CHALLENGE` with their real values before pasting this URL into a browser; shell variables do not expand there.
+
+3. After the user signs in (and consents, if consent is enabled for the application), <ProductName /> redirects the browser to `$REDIRECT_URI` with a `code` query parameter. Capture it from the callback URL and export it:
 
 ```bash
 export CODE=<code from the callback URL>
 ```
 
-3. Exchange the code for an ID token:
+4. Exchange the code for an ID token, sending the verifier that produced the code challenge:
 
 ```bash
 curl -X POST https://thunderid.example.com/oauth2/token \
@@ -147,12 +157,11 @@ curl -X POST https://thunderid.example.com/oauth2/token \
   -H 'Content-Type: application/x-www-form-urlencoded' \
   -d 'grant_type=authorization_code' \
   -d "code=$CODE" \
-  -d "redirect_uri=$REDIRECT_URI"
+  -d "redirect_uri=$REDIRECT_URI" \
+  -d "code_verifier=$CODE_VERIFIER"
 ```
 
-For an agent, add `-d "code_verifier=$CODE_VERIFIER"` to this request, using the verifier that produced the code challenge.
-
-4. Export the ID token from the response:
+5. Export the ID token from the response:
 
 ```bash
 export ID_TOKEN=<id_token from the response>
