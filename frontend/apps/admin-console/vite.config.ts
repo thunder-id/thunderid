@@ -32,6 +32,12 @@ const DEV_SERVER_URL = process.env.THUNDERID_DEV_SERVER_URL?.trim();
 // because sign-in redirects through Gate, same as Console.
 const DEV_GATE_URL = process.env.THUNDERID_DEV_GATE_URL?.trim();
 
+// Dev OAuth2 client ID, from THUNDERID_DEV_CLIENT_ID (unset by default, which keeps the client_id in
+// config.js). Injected into __DEV_CLIENT_ID__ only for the dev server; production builds receive an
+// empty string. The quickstart's Data Plane registers this console as ADMIN_CONSOLE and rewrites the
+// packaged config.js to match, which the dev server does not use.
+const DEV_CLIENT_ID = process.env.THUNDERID_DEV_CLIENT_ID?.trim();
+
 // https://vite.dev/config/
 export default defineConfig(({command}) => ({
   base: BASE_URL,
@@ -46,6 +52,7 @@ export default defineConfig(({command}) => ({
     __DEV_GATE_URL__: JSON.stringify(
       command === 'serve' ? (DEV_GATE_URL && DEV_GATE_URL.length > 0 ? DEV_GATE_URL : 'https://localhost:5190') : '',
     ),
+    __DEV_CLIENT_ID__: JSON.stringify(command === 'serve' ? (DEV_CLIENT_ID ?? '') : ''),
   },
   build: {
     rollupOptions: {

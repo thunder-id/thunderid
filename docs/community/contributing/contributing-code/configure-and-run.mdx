@@ -12,7 +12,7 @@ hide_table_of_contents: false
 
 **CORS allowed origins:**
 
-`make run` (and `.\build.ps1 run` on Windows) automatically configures the Gate and Console development origins (`https://localhost:5190` and `https://localhost:5191`) on startup, so no manual CORS setup is required for the standard flow.
+`make run` automatically allows the development origins of the Gate (`https://localhost:5190`), the Admin Console (`https://localhost:5192`) and the Control Plane console (`https://localhost:5193`) on the plane each one calls, so no manual CORS setup is required for the standard flow.
 
 :::tip
 To allow additional origins, add them to `backend/cmd/server/config/resources/server_configs/cors.yaml` or set them at runtime with `PUT /server-config/cors`.
@@ -20,7 +20,7 @@ To allow additional origins, add them to `backend/cmd/server/config/resources/se
 
 **Configure the Gate client:**
 
-Open `backend/cmd/server/deployment.yaml` and make the following change:
+`make run` points the managed Data Plane at the Gate dev server for you. This step is only needed when you run the backend on its own with `make run_backend`. Open `backend/cmd/server/deployment.yaml` and make the following change:
 
 ```yaml
 gate_client:
@@ -33,9 +33,9 @@ This configuration points the backend server to the local <ProductName /> Gate a
 
 ## Run the Server
 
-### All-in-one (Backend + Frontend together)
+### The quickstart from source (all planes and frontends together)
 
-Start the <ProductName /> server and apps in development mode.
+Run the same three deployments as the packaged quickstart, built from source, with the frontends on their dev servers.
 
 <CodeGroup>
   <CodeBlock lang="bash" label="Linux/macOS">
@@ -46,31 +46,42 @@ Start the <ProductName /> server and apps in development mode.
   </CodeBlock>
 </CodeGroup>
 
+To run only one side, use `make run_dp` for the Data Plane and its Admin Console, or `make run_cp` for the Control Plane, its console and auth-dp.
+
 :::note
-This command will automatically set up your complete development environment:
+On Windows, `.\build.ps1 run` still runs a single all-in-one backend with the Gate and Admin Console dev servers. The quickstart run is available on Linux and macOS.
+:::
+
+:::note
+This command sets up the complete development environment:
 
 **What happens:**
 
 - Installs frontend dependencies and builds packages
-- Starts the frontend development servers
+- Builds the Data Plane and Control Plane binaries and stages the quickstart pack in `target/dev-quickstart/`
 - Generates local development key material if missing: TLS, JWT signing, and encryption keys (release builds never bake key material; each deployment generates its own at setup)
 - Initializes SQLite databases
-- Starts the backend server
-- Runs the bootstrap script which creates:
-  - The `Console` application with the correct redirect URIs
-  - The default admin user (credentials default to `admin` / `admin`; configurable via `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables)
+- Runs the quickstart setup, which creates the default resources on all three deployments, registers the Data Plane as a gateway on the Control Plane, and creates two accounts, both defaulting to `admin` / `admin`: the operator who signs into the Control Plane console (`ADMIN_USERNAME` / `ADMIN_PASSWORD`) and the Service Desk Admin who signs into the Admin Console (`SERVICE_DESK_USERNAME` / `SERVICE_DESK_PASSWORD`)
+- Starts the three deployments and the frontend development servers
 
 **Services that start:**
 
-- **Backend server**: [https://localhost:8090](https://localhost:8090)
-- **<ProductName /> Gate** (Login/Register): [https://localhost:5190/gate](https://localhost:5190/gate)
-- **<ProductName /> Console** (Admin Console): [https://localhost:5191/console](https://localhost:5191/console)
+- **Data Plane** (managed): [https://localhost:8090](https://localhost:8090)
+  - **<ProductName /> Gate** (Login/Register, dev server): [https://localhost:5190/gate](https://localhost:5190/gate)
+  - **<ProductName /> Admin Console** (Users, Agents, Groups, Roles): [https://localhost:5192/console](https://localhost:5192/console)
+- **auth-dp** (signs operators into the Control Plane console): [https://localhost:8091](https://localhost:8091)
+- **Control Plane**: [https://localhost:8095](https://localhost:8095)
+  - **<ProductName /> Control Plane Console** (dev server): [https://localhost:5193/console](https://localhost:5193/console)
+
+An application, connection, role or flow created on the Control Plane is applied to the Data Plane automatically. The Admin Console and the Control Plane console sign in from their dev servers, so open them on ports 5192 and 5193 rather than on the planes' own `/console` paths.
+
+Databases, key material and secrets are kept in `target/dev-quickstart/` between runs. Delete that folder to start from scratch.
 :::
 
 <details>
-<summary>Separate terminals (for debugging independently)</summary>
+<summary>A single backend in separate terminals (for debugging independently)</summary>
 
-Use this approach when you need to debug the backend and frontend independently.
+Use this approach when you need to debug the backend and frontend independently. It runs one all-in-one backend, with no Control Plane.
 
 **Terminal 1 - Backend:**
 
@@ -116,7 +127,7 @@ go run -C backend/cmd/server . bootstrap \`
 This runs the in-process `bootstrap` subcommand, which creates the default resources (including the `Console` application and the default admin user, credentials default to `admin` / `admin`) directly through the service layer. No temporary server or security bypass is involved. You only need to do this once: the data persists in the SQLite databases, and the subcommand is idempotent if re-run.
 
 :::warning
-Don't use `./setup.sh` here. That script is designed for the packaged distribution zip and expects a compiled `./thunderid` binary at the project root. From source code, run the `bootstrap` subcommand as shown above, or use `make run` (Option A) which handles everything for you.
+Don't use `./setup.sh` here. That script is designed for the packaged distribution zip and expects a compiled `./thunderid` binary at the project root. From source code, run the `bootstrap` subcommand as shown above, or use `make run`, which handles everything for you.
 :::
 
 </details>

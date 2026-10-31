@@ -136,4 +136,4 @@ The three deployments keep their state in their own SQLite databases and key mat
 
 ## Local development without packaging
 
-`./build.sh run` starts one backend with the gate, console and admin-console dev servers (ports 5190, 5191 and 5192). It does not start the Control Plane or the sync, so use the packaged pack to test anything that crosses planes.
+`make run` starts this same quickstart from source (auth-dp, the Data Plane and the Control Plane) with the gate, admin-console and console-cp dev servers (ports 5190, 5192 and 5193), staged in `target/dev-quickstart/`. `make run_dp` and `make run_cp` start one side.

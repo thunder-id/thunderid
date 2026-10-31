@@ -86,6 +86,10 @@ TARGET_DIR=target
 OUTPUT_DIR=$TARGET_DIR/out
 DIST_DIR=$TARGET_DIR/dist
 BUILD_DIR=$OUTPUT_DIR/.build
+# Where `run` stages the quickstart pack it runs from, kept between runs so the databases, key
+# material and secrets in it survive a restart. Delete it to start from scratch.
+DEV_QUICKSTART_DIR=$TARGET_DIR/dev-quickstart
+DEV_QUICKSTART_STAGE_DIR=$OUTPUT_DIR/.dev-quickstart-stage
 LOCAL_CERT_DIR=$OUTPUT_DIR/.cert
 BACKEND_BASE_DIR=backend
 BACKEND_DIR=$BACKEND_BASE_DIR/cmd/server
@@ -134,6 +138,7 @@ QUICKSTART_BUNDLE_STAGE_DIR="$FRONTEND_CONSOLE_APP_SOURCE_DIR/src/data/sample-bu
 GATE_APP_DEFAULT_PORT=5190
 CONSOLE_APP_DEFAULT_PORT=5191
 ADMIN_CONSOLE_APP_DEFAULT_PORT=5192
+CONSOLE_CP_APP_DEFAULT_PORT=5193
 DOCS_DEFAULT_PORT=3000
 
 # Integration test filters (optional)
@@ -269,9 +274,7 @@ function get_build_flags() {
     echo "$build_flags"
 }
 
-function build_backend() {
-    echo "================================================================"
-    echo "Building Go backend..."
+function compile_backend() {
     mkdir -p "$BUILD_DIR"
 
     # Set binary name with .exe extension for Windows
@@ -287,15 +290,19 @@ function build_backend() {
     $build_flags -ldflags "-X \"main.version=$VERSION\" \
     -X \"main.buildDate=$$(date -u '+%Y-%m-%d %H:%M:%S UTC')\"" \
     -o "../$BUILD_DIR/$output_binary" ./cmd/server
+}
+
+function build_backend() {
+    echo "================================================================"
+    echo "Building Go backend..."
+    compile_backend
 
     echo "Initializing databases..."
     initialize_databases true
     echo "================================================================"
 }
 
-function build_cp_backend() {
-    echo "================================================================"
-    echo "Building Go Control Plane backend..."
+function compile_cp_backend() {
     mkdir -p "$BUILD_DIR"
 
     # The Control Plane ships alongside the all-in-one server rather than replacing it, so it takes
@@ -316,6 +323,12 @@ function build_cp_backend() {
     -o "../$BUILD_DIR/$output_binary" ./cmd/cpserver
 
     echo "Control Plane binary: $BUILD_DIR/$output_binary"
+}
+
+function build_cp_backend() {
+    echo "================================================================"
+    echo "Building Go Control Plane backend..."
+    compile_cp_backend
 
     echo "Initializing Control Plane databases..."
     initialize_cp_databases true
@@ -780,6 +793,7 @@ function package_cp() {
 # registers and the push dispatcher targets.
 QUICKSTART_AUTH_DP_PORT=8091
 QUICKSTART_CP_PORT=8095
+QUICKSTART_DP_PORT=8090
 
 # assert_patched fails the build when a quickstart patch below did not land. Each patch is a
 # sed or awk that silently does nothing when its anchor is missing, which would otherwise ship a
@@ -833,16 +847,15 @@ function rename_quickstart_service_desk_admin() {
     rm -f "$plane_dir/bootstrap/01-default-resources.yaml.bak"
 }
 
-# package_quickstart nests a full auth-only DP pack, a full managed DP pack, and a full CP pack
+# stage_quickstart_pack nests a full auth-only DP pack, a full managed DP pack, and a full CP pack
 # under one folder, pre-wired together: the CP copy's bootstrap gains one extra resource that
 # registers the managed DP as a gateway with a key quickstart/setup.sh generates (which also makes
 # the managed DP trust that key's digest), and the CP copy authenticates against auth-dp instead. Assumes
 # build_backend and build_cp_backend already ran (their binaries are read from $BUILD_DIR, which
-# neither of their own dispatch cases delete before this can run in the same invocation).
-function package_quickstart() {
-    echo "================================================================"
-    echo "Packaging quickstart (Control Plane + Data Plane) distribution..."
-
+# neither of their own dispatch cases delete before this can run in the same invocation). It
+# leaves the staged folder at $DIST_DIR/$QUICKSTART_PRODUCT_FOLDER for package_quickstart to zip, or
+# for `run` to run from.
+function stage_quickstart_pack() {
     # A staging directory left behind by an interrupted previous run (the final rm -rf below
     # never ran) must not bleed into this one: nesting three plane types here makes a stale
     # auth-dp-only file surviving into the dp copy, or vice versa, an easy mistake to miss.
@@ -1029,6 +1042,14 @@ function package_quickstart() {
         chmod +x "$DIST_DIR/$QUICKSTART_PRODUCT_FOLDER/setup.sh" "$DIST_DIR/$QUICKSTART_PRODUCT_FOLDER/start.sh"
     fi
     cp "$VERSION_FILE" "$DIST_DIR/$QUICKSTART_PRODUCT_FOLDER/"
+}
+
+# package_quickstart zips the staged quickstart pack. See stage_quickstart_pack.
+function package_quickstart() {
+    echo "================================================================"
+    echo "Packaging quickstart (Control Plane + Data Plane) distribution..."
+
+    stage_quickstart_pack
 
     echo "Creating zip file..."
     rm -f "$DIST_DIR/$QUICKSTART_PRODUCT_FOLDER.zip"
@@ -1484,94 +1505,242 @@ function ensure_direct_auth_secret_file() {
     echo "================================================================"
 }
 
-function run() {
+# kill_dev_port frees a TCP port still held by an earlier run.
+function kill_dev_port() {
+    local pids
+    pids="$(lsof -ti "tcp:$1" 2>/dev/null || true)"
+    if [ -n "$pids" ]; then
+        # shellcheck disable=SC2086
+        kill -TERM $pids 2>/dev/null || true
+        sleep 0.5
+        pids="$(lsof -ti "tcp:$1" 2>/dev/null || true)"
+    fi
+    if [ -n "$pids" ]; then
+        # shellcheck disable=SC2086
+        kill -KILL $pids 2>/dev/null || true
+    fi
+}
+
+# wait_for_dev_port waits up to a minute for something to listen on a TCP port.
+function wait_for_dev_port() {
+    local i
+    for i in $(seq 1 120); do
+        if lsof -ti "tcp:$1" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.5
+    done
+    return 1
+}
+
+# write_cors_bootstrap writes a bootstrap resource that allows the origins given after the file
+# name to call a plane from a browser.
+function write_cors_bootstrap() {
+    local file="$1"
+    shift
+    {
+        echo "resource_type: server_config"
+        echo "name: cors"
+        echo "value:"
+        echo "  allowedOrigins:"
+        for origin in "$@"; do
+            echo "    - \"$origin\""
+        done
+    } > "$file"
+}
+
+# apply_dev_quickstart_overrides adapts a staged quickstart pack (the folder stage_quickstart_pack
+# produced, named by $1) to run against the frontend dev servers, which are served from origins of
+# their own: the Data Plane sends sign-in to the dev Gate, and each plane allows the dev origins
+# that call it. The pack itself is untouched; this only edits the staged copy.
+function apply_dev_quickstart_overrides() {
+    local root="$1"
+
+    # The managed Data Plane's sign-in page is the Gate dev server (HMR), not the built Gate it
+    # serves itself.
+    {
+        echo ""
+        echo "gate_client:"
+        echo "  port: $GATE_APP_DEFAULT_PORT"
+    } >> "$root/dp/deployment.yaml"
+    assert_patched "$root/dp/deployment.yaml" "port: $GATE_APP_DEFAULT_PORT"
+
+    write_cors_bootstrap "$root/dp/bootstrap/03-dev-cors.yaml" \
+        "https://localhost:$GATE_APP_DEFAULT_PORT" "https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT"
+    write_cors_bootstrap "$root/cp/bootstrap/03-dev-cors.yaml" \
+        "https://localhost:$CONSOLE_CP_APP_DEFAULT_PORT"
+    # auth-dp keeps the pack's allowance for the Control Plane's own origin and gains the dev one:
+    # the console calls its /oauth2/token and discovery endpoints from the browser.
+    write_cors_bootstrap "$root/auth-dp/bootstrap/03-quickstart-cors.yaml" \
+        "https://localhost:$QUICKSTART_CP_PORT" "https://localhost:$CONSOLE_CP_APP_DEFAULT_PORT"
+}
+
+# stage_dev_quickstart builds the binaries and stages the quickstart pack into
+# $DEV_QUICKSTART_DIR. It is staged in a scratch folder first and copied over the previous one, so
+# the databases, key material and secrets of an earlier run stay where they are.
+function stage_dev_quickstart() {
+    compile_backend
+    compile_cp_backend
+
+    rm -rf "${DEV_QUICKSTART_STAGE_DIR:?}"
+    (
+        set -e
+        DIST_DIR="$DEV_QUICKSTART_STAGE_DIR"
+        QUICKSTART_PRODUCT_FOLDER=quickstart
+        # The source tree's own databases belong to run_backend; a plane here gets its own.
+        REPOSITORY_DB_DIR=/nonexistent
+        CP_REPOSITORY_DB_DIR=/nonexistent
+        stage_quickstart_pack
+        apply_dev_quickstart_overrides "$DIST_DIR/$QUICKSTART_PRODUCT_FOLDER"
+    )
+
+    mkdir -p "$DEV_QUICKSTART_DIR"
+    rsync -a \
+        --exclude '/*/database/*' --exclude '/*/config/certs/*' --exclude '/*/config/secrets/*' \
+        "$DEV_QUICKSTART_STAGE_DIR/quickstart/" "$DEV_QUICKSTART_DIR/"
+    rm -rf "${DEV_QUICKSTART_STAGE_DIR:?}"
+
+    # A plane's databases are created once and then kept. The pack ships them ready-made, but a
+    # staged pack must not take them from the source tree.
+    local plane
+    for plane in auth-dp dp; do
+        (REPOSITORY_DB_DIR="$DEV_QUICKSTART_DIR/$plane/database" initialize_databases)
+    done
+    (CP_REPOSITORY_DB_DIR="$DEV_QUICKSTART_DIR/cp/database" initialize_cp_databases)
+}
+
+# run_quickstart runs the quickstart from source: auth-dp, the managed Data Plane and the Control
+# Plane, wired together as in the packaged quickstart, with the frontends on their dev servers.
+# $1 limits it to one side: "dp" runs the Data Plane and its Admin Console, "cp" runs the Control
+# Plane, its console and auth-dp (which its console signs in through). Setup always covers all
+# three, since the planes share key material and the Control Plane registers the Data Plane.
+function run_quickstart() {
+    local scope="${1:-all}"
+    local dp_url="https://localhost:$QUICKSTART_DP_PORT"
+    local cp_url="https://localhost:$QUICKSTART_CP_PORT"
+    local auth_dp_url="https://localhost:$QUICKSTART_AUTH_DP_PORT"
+    local run_dp=false run_cp=false
+    case "$scope" in
+        all) run_dp=true; run_cp=true ;;
+        dp) run_dp=true ;;
+        cp) run_cp=true ;;
+    esac
+
     cleanup_servers() {
+        trap - EXIT INT TERM
         echo -e "\n🛑 Shutting down servers..."
-        if [ ! -z "$FRONTEND_PID" ]; then 
-            kill $FRONTEND_PID 2>/dev/null
-        fi
-        pkill -f "pnpm.*dev" 2>/dev/null
-        pkill -f "vite" 2>/dev/null
-        if [ ! -z "$BACKEND_PID" ]; then
-            kill $BACKEND_PID 2>/dev/null
-        fi
-        sleep 1
+        local pid
+        for pid in ${DEV_PIDS[@]+"${DEV_PIDS[@]}"}; do
+            kill "$pid" 2>/dev/null || true
+        done
+        pkill -f "pnpm.*dev" 2>/dev/null || true
+        pkill -f "vite" 2>/dev/null || true
+        kill_dev_port "$QUICKSTART_DP_PORT"
+        kill_dev_port "$QUICKSTART_AUTH_DP_PORT"
+        kill_dev_port "$QUICKSTART_CP_PORT"
         echo "✅ All servers stopped successfully."
     }
+    DEV_PIDS=()
     trap cleanup_servers EXIT INT TERM
 
-    echo "Running frontend apps..."
-    run_frontend
+    ensure_pnpm
+    echo "Installing frontend dependencies..."
+    pnpm install --frozen-lockfile
+    echo "Building frontend applications & packages..."
+    pnpm build:frontend
 
-    # Ensure runtime prerequisites (certificates, crypto material, databases) so the
-    # in-process bootstrap can create the default resources before the server starts.
-    echo "=== Ensuring server certificates exist ==="
-    ensure_certificates "$BACKEND_DIR/$SECURITY_DIR" "server"
-    ensure_certificates "$BACKEND_DIR/$SECURITY_DIR" "signing"
-    ensure_certificates "$BACKEND_DIR/$SECURITY_DIR" "ecdsa-signing"
+    stage_dev_quickstart
 
-    echo "=== Ensuring sample app certificates exist ==="
-    ensure_certificates "$REACT_API_SAMPLE_APP_DIR" "server"
+    # Local dev only: default both accounts to admin/admin. This never produces a shared or
+    # distributed artifact, so a fixed default here is acceptable.
+    export ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
+    export ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}"
+    export SERVICE_DESK_USERNAME="${SERVICE_DESK_USERNAME:-admin}"
+    export SERVICE_DESK_PASSWORD="${SERVICE_DESK_PASSWORD:-admin}"
+    # The consoles sign in from their dev servers, so those are the origins their OAuth2 clients
+    # register (the pack registers the origins the planes serve them from).
+    export ADMIN_CONSOLE_URL="https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT/console"
+    export CP_CONSOLE_URL="https://localhost:$CONSOLE_CP_APP_DEFAULT_PORT/console"
 
-    ensure_crypto_file "$BACKEND_DIR/$SECURITY_DIR"
-    ensure_direct_auth_secret_file "$BACKEND_DIR/config/secrets"
-
-    echo "Initializing databases..."
-    initialize_databases
-
-    # Create default resources via the in-process bootstrap one-shot (security stays
-    # enabled; the bootstrap runs through the service layer under a runtime context).
-    echo "⚙️  Creating default resources..."
-    echo ""
-
-    # Dev-only: seed CORS allowed origins for the Gate, Console and Admin Console apps so
-    # they can call the backend without manual configuration. Regenerated on every run and
-    # picked up by the bootstrap one-shot; it is git-ignored and never packaged (see build()).
-    cat > "$BACKEND_DIR/bootstrap/03-dev-server-configurations.yaml" <<EOF
-resource_type: server_config
-name: cors
-value:
-  allowedOrigins:
-    - "https://localhost:$GATE_APP_DEFAULT_PORT"
-    - "https://localhost:$CONSOLE_APP_DEFAULT_PORT"
-    - "https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT"
-EOF
-
-    # Local dev only: default to admin/admin if not supplied. This path never produces a
-    # shared or distributed artifact, so a fixed default here is acceptable.
-    #
-    # Both the Console and Admin Console dev servers use the same CONSOLE OAuth2 client, each
-    # on its own origin, so both need a registered redirect URI here.
-    if ! ( cd "$BACKEND_DIR" && \
-        ADMIN_USERNAME="${ADMIN_USERNAME:-admin}" \
-        ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}" \
-        PUBLIC_URL="$PUBLIC_URL" \
-        go run . bootstrap --console-redirect-uris \
-            "https://localhost:$CONSOLE_APP_DEFAULT_PORT/console,https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT/console" ); then
+    echo "⚙️  Setting up the quickstart..."
+    if ! (cd "$DEV_QUICKSTART_DIR" && ./setup.sh); then
         echo "❌ Initial data setup failed"
         echo "💡 Check the logs above for more details"
         exit 1
     fi
 
-    # Start backend with initial output but without final output/wait
-    start_backend false
+    # auth-dp starts first, as in quickstart/start.sh: its start.sh checks the default port 8090
+    # before binding its own, so it has to be up before the Data Plane takes that port.
+    if [ "$run_cp" = "true" ]; then
+        kill_dev_port "$QUICKSTART_AUTH_DP_PORT"
+        kill_dev_port "$QUICKSTART_CP_PORT"
+        echo "⚡ Starting auth-dp..."
+        (cd "$DEV_QUICKSTART_DIR/auth-dp" && ./start.sh) &
+        DEV_PIDS+=($!)
+        if ! wait_for_dev_port "$QUICKSTART_AUTH_DP_PORT"; then
+            echo "❌ auth-dp did not start on port $QUICKSTART_AUTH_DP_PORT"
+            exit 1
+        fi
+    fi
+    if [ "$run_dp" = "true" ]; then
+        kill_dev_port "$QUICKSTART_DP_PORT"
+        echo "⚡ Starting the Data Plane..."
+        (cd "$DEV_QUICKSTART_DIR/dp" && ./start.sh) &
+        DEV_PIDS+=($!)
+    fi
+    if [ "$run_cp" = "true" ]; then
+        echo "⚡ Starting the Control Plane..."
+        (cd "$DEV_QUICKSTART_DIR/cp" && ./start-cp.sh) &
+        DEV_PIDS+=($!)
+    fi
+
+    echo "Starting frontend applications in the background..."
+    if [ "$run_dp" = "true" ]; then
+        THUNDERID_DEV_SERVER_URL="$dp_url" \
+            pnpm --filter "@thunderid/gate" dev &
+        DEV_PIDS+=($!)
+        THUNDERID_DEV_SERVER_URL="$dp_url" THUNDERID_DEV_GATE_URL="https://localhost:$GATE_APP_DEFAULT_PORT" \
+            THUNDERID_DEV_CLIENT_ID=ADMIN_CONSOLE \
+            pnpm --filter "@thunderid/admin-console" dev &
+        DEV_PIDS+=($!)
+    fi
+    if [ "$run_cp" = "true" ]; then
+        THUNDERID_DEV_SERVER_URL="$cp_url" THUNDERID_DEV_TRUSTED_ISSUER_URL="$auth_dp_url" \
+            pnpm --filter "@thunderid/console-cp" dev &
+        DEV_PIDS+=($!)
+    fi
 
     echo ""
-    echo "🚀 Servers running:"
-    echo "  👉 Backend : $BASE_URL"
-    echo "  📱 Frontend :"
-    echo "      🚪 Gate (Login/Register): https://localhost:$GATE_APP_DEFAULT_PORT/gate"
-    echo "      🛠️  Console (System Management): https://localhost:$CONSOLE_APP_DEFAULT_PORT/console"
-    echo "      🛠️  Admin Console (Users, Agents, Groups, Roles): https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT/console"
+    echo "🚀 Quickstart running:"
+    if [ "$run_dp" = "true" ]; then
+        echo "  📱 Data Plane (managed): $dp_url"
+        echo "      🚪 Gate (Login/Register): https://localhost:$GATE_APP_DEFAULT_PORT/gate"
+        echo "      🛠️  Admin Console (Users, Agents, Groups, Roles): https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT/console"
+        echo "      Sign in as $SERVICE_DESK_USERNAME (Service Desk Admin)"
+    fi
+    if [ "$run_cp" = "true" ]; then
+        echo "  🔐 auth-dp (Control Plane sign-in): $auth_dp_url"
+        echo "  🛠️  Control Plane: $cp_url"
+        echo "      Console: https://localhost:$CONSOLE_CP_APP_DEFAULT_PORT/console"
+        echo "      Sign in as $ADMIN_USERNAME"
+    fi
     echo ""
-
+    echo "  Data and key material are kept in $DEV_QUICKSTART_DIR between runs; delete it to start over."
     echo "Press Ctrl+C to stop."
 
-    wait $BACKEND_PID 2>/dev/null
+    wait
 }
 
-function debug_backend() {
-    run_backend true true
+function run() {
+    run_quickstart all
+}
+
+function run_dp() {
+    run_quickstart dp
+}
+
+function run_cp() {
+    run_quickstart cp
 }
 
 function run_backend() {
@@ -1761,6 +1930,12 @@ case "$1" in
     run)
         run
         ;;
+    run_dp)
+        run_dp
+        ;;
+    run_cp)
+        run_cp
+        ;;
     run_backend)
         run_backend
         ;;
@@ -1799,7 +1974,9 @@ case "$1" in
         echo "  test_integration         - Run integration tests. Use -run and -package for filtering"
         echo "  merge_coverage           - Merge unit and integration test coverage reports"
         echo "  test                     - Run all tests (unit and integration)"
-        echo "  run                      - Run the ${PRODUCT_NAME} server for development (with automatic initial data setup)"
+        echo "  run                      - Run the ${PRODUCT_NAME} quickstart (auth-dp, Data Plane and Control Plane) from source for development"
+        echo "  run_dp                   - Run the Data Plane and its Admin Console from the quickstart for development"
+        echo "  run_cp                   - Run the Control Plane, its console and auth-dp from the quickstart for development"
         echo "  run_backend              - Run the ${PRODUCT_NAME} backend for development"
         echo "  debug_backend            - Run the ${PRODUCT_NAME} backend for development in debug mode"
         echo "  run_frontend             - Run the ${PRODUCT_NAME} frontend for development"

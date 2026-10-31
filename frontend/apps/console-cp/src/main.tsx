@@ -26,6 +26,18 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
   if (runtimeConfig && !runtimeConfig.gate_client) {
     runtimeConfig.gate_client = {public_url: __DEV_GATE_URL__};
   }
+  // The packaged console is given a trusted issuer in its config.js; the dev server has no such
+  // file, so a dev issuer URL supplies it.
+  if (runtimeConfig && !runtimeConfig.trusted_issuer && __DEV_TRUSTED_ISSUER_URL__) {
+    const issuer = new URL(__DEV_TRUSTED_ISSUER_URL__);
+    runtimeConfig.trusted_issuer = {
+      hostname: issuer.hostname,
+      port: Number(issuer.port),
+      http_only: issuer.protocol === 'http:',
+      public_url: issuer.origin,
+      client_id: 'CP_CONSOLE',
+    };
+  }
 }
 
 const queryClient: QueryClient = new QueryClient({

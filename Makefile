@@ -117,6 +117,12 @@ build_with_coverage_only:
 run:
 	./build.sh run $(OS) $(ARCH)
 
+run_dp:
+	./build.sh run_dp $(OS) $(ARCH)
+
+run_cp:
+	./build.sh run_cp $(OS) $(ARCH)
+
 run_backend:
 	./build.sh run_backend $(OS) $(ARCH)
 
@@ -255,7 +261,9 @@ help:
 	@echo "  build_with_coverage  		   - Build with coverage flags, run unit and integration tests, and generate combined coverage report."
 	@echo "  build_with_coverage_only      - Build with coverage instrumentation (unit tests only, no integration tests)."
 	@echo "  test                          - Run all tests (unit and integration)."
-	@echo "  run                           - Build and run the $(PRODUCT_NAME) server locally."
+	@echo "  run                           - Build and run the quickstart (auth-dp, Data Plane and Control Plane) locally."
+	@echo "  run_dp                        - Build and run the Data Plane and its Admin Console locally."
+	@echo "  run_cp                        - Build and run the Control Plane, its console and auth-dp locally."
 	@echo "  run_backend                   - Build and run the $(PRODUCT_NAME) backend locally."
 	@echo "  debug_backend                 - Build and run the $(PRODUCT_NAME) backend locally in debug mode."
 	@echo "  run_frontend                  - Build and run the frontend applications locally."
@@ -301,7 +309,7 @@ help:
 .PHONY: tools_build_i18n_extractor tools_test_i18n_extractor tools_lint_i18n_extractor
 .PHONY: tools_test_cli_e2e tools_checks_cli tools_checks
 .PHONY: verify_mocks format_check test_frontend security_audit test_e2e pr_checks
-.PHONY: run_backend debug_backend run_frontend run_docs
+.PHONY: run_dp run_cp run_backend debug_backend run_frontend run_docs
 
 define go_install_tool
 	cd /tmp && \

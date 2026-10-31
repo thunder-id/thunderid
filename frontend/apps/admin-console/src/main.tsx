@@ -26,6 +26,9 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
   if (runtimeConfig && !runtimeConfig.gate_client) {
     runtimeConfig.gate_client = {public_url: __DEV_GATE_URL__};
   }
+  if (runtimeConfig && __DEV_CLIENT_ID__) {
+    runtimeConfig.client = {...runtimeConfig.client, client_id: __DEV_CLIENT_ID__};
+  }
 }
 
 const queryClient: QueryClient = new QueryClient({
