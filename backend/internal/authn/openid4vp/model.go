@@ -42,9 +42,16 @@ type verifiedCredential struct {
 
 // VerifiedPresentation is the result of a successful presentation verification.
 type VerifiedPresentation struct {
+	Issuer               string
 	Subject              string
 	Claims               map[string]interface{}
 	KeyBindingThumbprint string
+}
+
+// LinkedConnectionID returns the connection id that links a holder's subject to a local user.
+// A subject is unique only within the issuer that asserted it, so links are scoped per issuer.
+func LinkedConnectionID(issuer string) string {
+	return "openid4vp:" + issuer
 }
 
 // subjectDeriver produces the authenticated subject for a verified presentation.

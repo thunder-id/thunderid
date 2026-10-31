@@ -305,6 +305,7 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseHappyPath() {
 	pid, _, svcErr := svc.SubmitResponse(context.Background(), init.State, []byte(jweToken))
 	suite.Require().Nil(svcErr)
 	suite.Equal("Erika", pid.Claims["given_name"])
+	suite.Equal(testIssuer, pid.Issuer)
 
 	stored := store[init.State]
 	suite.Equal(StatusCompleted, stored.Status)
@@ -636,15 +637,18 @@ func (suite *OpenID4VPServiceTestSuite) TestAuthenticate_NilCredential() {
 func (suite *OpenID4VPServiceTestSuite) TestAuthenticate_ValidCredential() {
 	svc, _ := newTestService(suite.T(), newPIDBuilder(suite.T()))
 	cred := &authncommon.OpenID4VPCredential{
+		Issuer:  testIssuer,
 		Subject: "sub-42",
 		Claims:  map[string]interface{}{"given_name": "Ada", "family_name": "Lovelace"},
 	}
 	result, err := svc.Authenticate(context.Background(), cred)
 	suite.Require().Nil(err)
 	suite.Require().NotNil(result)
-	// Identification token keys on subject only so IdentifyEntity matches by sub.
-	suite.Equal("sub-42", result.Token["sub"])
-	suite.Len(result.Token, 1)
+	// The identification token names the issuer-scoped link, so the holder resolves through it.
+	suite.Equal(map[string]interface{}{
+		"federatedIdpId": "openid4vp:" + testIssuer,
+		"sub":            "sub-42",
+	}, result.Token)
 	// AuthenticatedClaims carries subject + all disclosed claims.
 	suite.Equal("sub-42", result.AuthenticatedClaims["sub"])
 	suite.Equal("Ada", result.AuthenticatedClaims["given_name"])

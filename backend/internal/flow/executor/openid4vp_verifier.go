@@ -175,6 +175,7 @@ func (e *openid4vpVerifier) authenticate(
 	}
 	credentials := map[string]interface{}{
 		authnprovidercm.CredentialTypeOpenID4VP: &authncommon.OpenID4VPCredential{
+			Issuer:  rs.Result.Issuer,
 			Subject: rs.Result.Subject,
 			Claims:  rs.Result.Claims,
 		},
@@ -194,7 +195,8 @@ func (e *openid4vpVerifier) authenticate(
 		return nil
 	}
 
-	if err := setExternalIdentity(execResp, "", "", authenticatedClaims); err != nil {
+	if err := setExternalIdentity(execResp, openid4vp.LinkedConnectionID(rs.Result.Issuer),
+		rs.Result.Subject, authenticatedClaims); err != nil {
 		return err
 	}
 

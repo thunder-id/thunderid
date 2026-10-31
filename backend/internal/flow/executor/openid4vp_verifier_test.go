@@ -13,8 +13,10 @@ import (
 
 	authncommon "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/authn/openid4vp"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -165,6 +167,7 @@ func TestOpenID4VPExecutorPollCompleted(t *testing.T) {
 			return &openid4vp.RequestState{
 				Status: openid4vp.StatusCompleted,
 				Result: &openid4vp.VerifiedPresentation{
+					Issuer:  "https://issuer.example",
 					Subject: "sub-1",
 					Claims: map[string]interface{}{
 						"given_name":  "Erika",
@@ -177,7 +180,10 @@ func TestOpenID4VPExecutorPollCompleted(t *testing.T) {
 
 	mockAuthnProvider := managermock.NewAuthnProviderManagerMock(t)
 	mockAuthnProvider.On("AuthenticateUser",
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		mock.Anything, mock.Anything, mock.MatchedBy(func(creds map[string]interface{}) bool {
+			cred, ok := creds[authnprovidercm.CredentialTypeOpenID4VP].(*authncommon.OpenID4VPCredential)
+			return ok && cred.Issuer == "https://issuer.example" && cred.Subject == "sub-1"
+		}), mock.Anything, mock.Anything, mock.Anything).
 		Return(providers.AuthUser{}, providers.AuthenticatedClaims{
 			"given_name":     "Erika",
 			"family_name":    "Mustermann",
@@ -192,8 +198,13 @@ func TestOpenID4VPExecutorPollCompleted(t *testing.T) {
 	}))
 	require.NoError(t, err)
 	assert.Equal(t, providers.ExecComplete, resp.Status)
-	// Claims from the authn provider are stored in the external identity entry
-	assert.Equal(t, "sub-1", externalClaim(resp.RuntimeData, userAttributeSub))
+	// The external identity names the issuer-scoped link, so provisioning records it, and the subject
+	// is kept out of the claims so it never lands in the profile.
+	identity := core.GetExternalIdentity(resp.RuntimeData)
+	require.NotNil(t, identity)
+	assert.Equal(t, "openid4vp:https://issuer.example", identity.IdpID)
+	assert.Equal(t, "sub-1", identity.Sub)
+	assert.NotContains(t, identity.Claims, userAttributeSub)
 	assert.Equal(t, "Erika", externalClaim(resp.RuntimeData, "given_name"))
 	// AuthUser is not authenticated (no entity reference resolved), so eligible for provisioning
 	assert.Equal(t, dataValueTrue, resp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning])

@@ -573,6 +573,7 @@ func finalizePresentation(cred *verifiedCredential, policy policy) (*VerifiedPre
 
 	subject, _ := cred.Claims["sub"].(string)
 	return &VerifiedPresentation{
+		Issuer:               cred.Issuer,
 		Subject:              subject,
 		Claims:               flattenClaims(cred.Claims),
 		KeyBindingThumbprint: cred.KeyBindingThumbprint,
