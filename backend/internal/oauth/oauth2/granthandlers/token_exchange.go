@@ -493,8 +493,10 @@ func (h *tokenExchangeGrantHandler) handleIDJAGGrant(ctx context.Context, tokenR
 		return nil, errResp
 	}
 
-	// The application must have ID-JAG enabled and configured with at least one allowed audience.
-	if oauthApp == nil || oauthApp.Token == nil || oauthApp.Token.IDJAG == nil ||
+	// The deployment must allow ID-JAG issuance, and the application must have ID-JAG enabled and
+	// configured with at least one allowed audience.
+	if !h.cfg.OAuth.IDJAG.Issuance.IsEnabled() ||
+		oauthApp == nil || oauthApp.Token == nil || oauthApp.Token.IDJAG == nil ||
 		!oauthApp.Token.IDJAG.Enabled || len(oauthApp.Token.IDJAG.AllowedAudiences) == 0 {
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorInvalidTarget,

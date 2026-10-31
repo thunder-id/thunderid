@@ -724,6 +724,7 @@ type OAuthConfig struct {
 	AuthorizationRequest     engineconfig.AuthorizationRequestConfig `yaml:"authorization_request" json:"authorization_request"` //nolint:lll
 	DCR                      engineconfig.DCRConfig                  `yaml:"dcr" json:"dcr"`
 	CIMD                     engineconfig.CIMDConfig                 `yaml:"cimd" json:"cimd"`
+	IDJAG                    engineconfig.IDJAGConfig                `yaml:"id_jag" json:"id_jag"`
 	PAR                      engineconfig.PARConfig                  `yaml:"par" json:"par"`
 	DPoP                     engineconfig.DPoPConfig                 `yaml:"dpop" json:"dpop"`
 	AuthClass                engineconfig.AuthClassConfig            `yaml:"auth_class" json:"auth_class"`
@@ -750,6 +751,7 @@ func (c OAuthConfig) ToEngineConfig() engineconfig.OAuthConfig {
 		AuthorizationRequest:     c.AuthorizationRequest,
 		DCR:                      c.DCR,
 		CIMD:                     c.CIMD,
+		IDJAG:                    c.IDJAG,
 		PAR:                      c.PAR,
 		DPoP:                     c.DPoP,
 		AuthClass:                c.AuthClass,

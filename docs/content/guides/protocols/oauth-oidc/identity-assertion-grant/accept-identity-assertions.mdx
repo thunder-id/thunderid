@@ -20,6 +20,7 @@ Use this when an enterprise identity provider, such as Okta, Azure AD, or anothe
 
 - A running <ProductName /> deployment. See [Get Started](../../../../../getting-started/get-thunderid).
 - Console access.
+- ID-JAG acceptance allowed on the deployment. It is on by default. If `oauth.id_jag.acceptance.enabled` is `false`, <ProductName /> does not serve the `jwt-bearer` grant. The grant, `urn:ietf:params:oauth:grant-type:jwt-bearer`, must also be in `oauth.allowed_grant_types`. See the [server configuration](../../../../../deployment/configuration).
 - The external identity provider's issuer URI and JWKS endpoint.
 - An application or an agent configured as described in [Configure the Application or Agent](#configure-the-application-or-agent).
 
@@ -54,7 +55,7 @@ sequenceDiagram
     - **Issuer URI**: the external identity provider's issuer identifier. <ProductName /> matches this against the `iss` claim of incoming assertions.
     - **JWKS endpoint**: the URL <ProductName /> fetches the identity provider's public signing keys from, used to verify assertion signatures.
 6. Leave **Enable token exchange** at its default (on), or turn it off if you do not also want this issuer's tokens accepted for RFC 8693 token exchange. When token exchange is on, a **Trusted token audience** field appears; leave it empty for ID-JAG-only use cases.
-7. Turn on **Enable Identity Assertion JWT Authorization Grant (ID-JAG)**. This toggle is off by default.
+7. Turn on **Enable Identity Assertion JWT Authorization Grant (ID-JAG)**. This toggle is off by default. If the deployment's discovery document does not list the ID-JAG grant profile, the Console shows a hint and does not let you turn it on.
 8. Click **Create connection**.
 
 :::note
@@ -166,7 +167,7 @@ No `issued_token_type` or `refresh_token` is returned.
 7. Confirms the `sub` claim is present.
 8. Records the assertion's `jti` so it cannot be redeemed twice. A replayed assertion returns `invalid_grant` - `Invalid assertion`.
 
-Requests missing the `assertion` parameter fail with `invalid_request` - `Missing required parameter: assertion`. A public client attempting the grant fails with `invalid_client` - `The jwt-bearer grant requires a confidential client`. An application or agent without the `jwt-bearer` grant type fails with `unauthorized_client` - `The client is not authorized to use this grant type`. A `resource` parameter that is not a subset of the assertion's `resource` claim fails with `invalid_target` - `The resource parameter must be a subset of the assertion's resource claim`; omitting `resource` when no default resource server is configured fails with `invalid_target` - `No resource parameter supplied and no default resource server is configured`.
+Requests missing the `assertion` parameter fail with `invalid_request` - `Missing required parameter: assertion`. A public client attempting the grant fails with `invalid_client` - `The jwt-bearer grant requires a confidential client`. An application or agent without the `jwt-bearer` grant type fails with `unauthorized_client` - `The client is not authorized to use this grant type`. When the deployment does not serve the grant, because `oauth.id_jag.acceptance.enabled` is `false` or `jwt-bearer` is not in `oauth.allowed_grant_types`, every request fails with `unsupported_grant_type` - `Unsupported grant type`. A `resource` parameter that is not a subset of the assertion's `resource` claim fails with `invalid_target` - `The resource parameter must be a subset of the assertion's resource claim`; omitting `resource` when no default resource server is configured fails with `invalid_target` - `No resource parameter supplied and no default resource server is configured`.
 
 ## The Tokens <ProductName /> Issues
 

@@ -357,6 +357,26 @@ func (c CIMDConfig) IsEnabled() bool {
 	return c.Enabled != nil && *c.Enabled
 }
 
+// IDJAGConfig holds the deployment-wide Identity Assertion JWT Authorization Grant (ID-JAG) switches.
+// Each applies on top of the per-client and per-connection ID-JAG settings: when off, the role is off
+// whatever those settings say.
+type IDJAGConfig struct {
+	// Issuance controls whether ID-JAGs are issued through token exchange.
+	Issuance IDJAGRoleConfig `yaml:"issuance"   json:"issuance"`
+	// Acceptance controls whether ID-JAGs from trusted issuers are accepted on the jwt-bearer grant.
+	Acceptance IDJAGRoleConfig `yaml:"acceptance" json:"acceptance"`
+}
+
+// IDJAGRoleConfig switches one ID-JAG role on or off.
+type IDJAGRoleConfig struct {
+	Enabled *bool `yaml:"enabled" json:"enabled"`
+}
+
+// IsEnabled returns whether the ID-JAG role is enabled, defaulting to true if unset, as default.json does.
+func (c IDJAGRoleConfig) IsEnabled() bool {
+	return c.Enabled == nil || *c.Enabled
+}
+
 // PARConfig holds the Pushed Authorization Request (RFC 9126) configuration.
 type PARConfig struct {
 	RequirePAR bool  `yaml:"require_par" json:"require_par"`
@@ -392,6 +412,7 @@ type OAuthConfig struct {
 	AuthorizationRequest AuthorizationRequestConfig `yaml:"authorization_request"       json:"authorization_request"`
 	DCR                  DCRConfig                  `yaml:"dcr"                         json:"dcr"`
 	CIMD                 CIMDConfig                 `yaml:"cimd"                        json:"cimd"`
+	IDJAG                IDJAGConfig                `yaml:"id_jag"                      json:"id_jag"`
 	PAR                  PARConfig                  `yaml:"par"                         json:"par"`
 	DPoP                 DPoPConfig                 `yaml:"dpop"                        json:"dpop"`
 	AuthClass            AuthClassConfig            `yaml:"auth_class"                  json:"auth_class"`

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
+import {useAuthorizationServerMetadata} from '@thunderid/configure-connections';
 import {
   Autocomplete,
   Chip,
@@ -18,7 +19,7 @@ import {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {IDJAGConfig, OAuth2Config, OAuth2Token} from '../../../models/oauth';
 import {OAuth2GrantTypes, TokenEndpointAuthMethods} from '../../../models/oauth';
-import {applyGrantTypesChange} from '../../../utils/oauth2Rules';
+import {applyGrantTypesChange, isIdJagIssuanceUnavailable} from '../../../utils/oauth2Rules';
 
 const DEFAULT_VALIDITY_PERIOD = 300;
 
@@ -53,7 +54,10 @@ interface IdentityAssertionsSectionProps {
  * Lets admins enable signed identity assertions for an application, and configure the audiences
  * an issued assertion may target and its validity period. Enabling ID-JAG also adds the token
  * exchange grant type. ID-JAG issuance requires a confidential client, so the toggle is disabled
- * with an explanatory tooltip while the application is a public client.
+ * with an explanatory tooltip while the application is a public client. It also needs the runtime
+ * to serve the token exchange grant: when its authorization server metadata shows it does not,
+ * ID-JAG cannot be turned on, a client that already has it on can still turn it off (which also
+ * drops the grant the runtime would reject on save), and the card says why.
  *
  * @param props - Component props
  * @returns Identity assertions configuration UI within a SettingsCard, or null
@@ -65,6 +69,7 @@ export default function IdentityAssertionsSection({
   onValidationChange = undefined,
 }: IdentityAssertionsSectionProps) {
   const {t} = useTranslation();
+  const {data: serverMetadata} = useAuthorizationServerMetadata();
   const rawIdJag = oauth2Config?.token?.idJag;
   const currentIdJag: IDJAGConfig = rawIdJag ?? {enabled: false};
   const [invalidValidityPeriodInput, setInvalidValidityPeriodInput] = useState<string | null>(null);
@@ -97,7 +102,26 @@ export default function IdentityAssertionsSection({
   const validityPeriodValue = invalidValidityPeriodInput ?? validityPeriod;
   const isPublicClient =
     oauth2Config.publicClient === true || oauth2Config.tokenEndpointAuthMethod === TokenEndpointAuthMethods.NONE;
-  const isToggleDisabled = disabled || isPublicClient;
+  const isIssuanceUnavailable = isIdJagIssuanceUnavailable(serverMetadata?.grant_types_supported);
+  const isToggleDisabled = disabled || isPublicClient || (isIssuanceUnavailable && !isEnabled);
+  const issuanceUnavailableHint = t(
+    'applications:edit.advanced.idJag.tokenExchangeUnavailable',
+    'This server does not allow the token exchange grant, so identity assertions cannot be issued.',
+  );
+  let toggleGuard: string | undefined;
+  if (isPublicClient) {
+    toggleGuard = oauth2Config.clientIdMetadataDocument
+      ? t(
+          'applications:edit.advanced.idJag.metadataDocumentPublicClientGuard',
+          "Identity assertions require a confidential client. This client's metadata document declares it as a public client.",
+        )
+      : t(
+          'applications:edit.advanced.idJag.publicClientGuard',
+          'Identity assertions require a confidential client. Turn off public client to enable.',
+        );
+  } else if (isIssuanceUnavailable) {
+    toggleGuard = issuanceUnavailableHint;
+  }
 
   const handleToggle = (checked: boolean) => {
     setInvalidValidityPeriodInput(null);
@@ -126,8 +150,14 @@ export default function IdentityAssertionsSection({
       );
       return;
     }
-    // A metadata document client holds the token exchange grant only for identity assertions.
-    if (!checked && oauth2Config.clientIdMetadataDocument && grantTypes.includes(OAuth2GrantTypes.TOKEN_EXCHANGE)) {
+    // A metadata document client holds the token exchange grant only for identity assertions. Any
+    // client drops it while the runtime does not serve it, since the runtime rejects a client that
+    // still holds it and the grants picker cannot remove a grant the runtime does not list.
+    if (
+      !checked &&
+      (oauth2Config.clientIdMetadataDocument || isIssuanceUnavailable) &&
+      grantTypes.includes(OAuth2GrantTypes.TOKEN_EXCHANGE)
+    ) {
       onTokenConfigChange(
         tokenUpdates,
         applyGrantTypesChange(
@@ -174,20 +204,8 @@ export default function IdentityAssertionsSection({
         "Issue signed assertions of the signed-in user's identity that external services accept for token issuance.",
       )}
       headerAction={
-        isPublicClient ? (
-          <Tooltip
-            title={
-              oauth2Config.clientIdMetadataDocument
-                ? t(
-                    'applications:edit.advanced.idJag.metadataDocumentPublicClientGuard',
-                    "Identity assertions require a confidential client. This client's metadata document declares it as a public client.",
-                  )
-                : t(
-                    'applications:edit.advanced.idJag.publicClientGuard',
-                    'Identity assertions require a confidential client. Turn off public client to enable.',
-                  )
-            }
-          >
+        toggleGuard ? (
+          <Tooltip title={toggleGuard}>
             <span>{toggleSwitch}</span>
           </Tooltip>
         ) : (
@@ -195,87 +213,96 @@ export default function IdentityAssertionsSection({
         )
       }
     >
-      {isEnabled && (
+      {(isEnabled || isIssuanceUnavailable) && (
         <Stack spacing={3}>
-          <FormControl fullWidth size="small" error={showAudiencesError}>
-            <FormLabel htmlFor="idjag_allowed_audiences">
-              {t('applications:edit.advanced.idJag.labels.allowedAudiences', 'Allowed audiences')} *
-            </FormLabel>
-            <Autocomplete
-              id="idjag_allowed_audiences"
-              multiple
-              freeSolo
-              fullWidth
-              options={[]}
-              value={allowedAudiences}
-              disabled={disabled}
-              onChange={(_event, newValue) => handleAudiencesChange(newValue as string[])}
-              renderTags={(value, getTagProps) =>
-                value.map((option, index) => <Chip label={option} {...getTagProps({index})} key={option} />)
-              }
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  placeholder={t(
-                    'applications:edit.advanced.idJag.allowedAudiences.placeholder',
-                    'Type an audience and press Enter',
-                  )}
-                  error={showAudiencesError}
-                  helperText={
-                    showAudiencesError
-                      ? t('applications:edit.advanced.idJag.allowedAudiences.error', 'Add at least one audience.')
-                      : t(
-                          'applications:edit.advanced.idJag.allowedAudiences.hint',
-                          'Each assertion targets exactly one of these audiences.',
-                        )
+          {isEnabled && (
+            <>
+              <FormControl fullWidth size="small" error={showAudiencesError}>
+                <FormLabel htmlFor="idjag_allowed_audiences">
+                  {t('applications:edit.advanced.idJag.labels.allowedAudiences', 'Allowed audiences')} *
+                </FormLabel>
+                <Autocomplete
+                  id="idjag_allowed_audiences"
+                  multiple
+                  freeSolo
+                  fullWidth
+                  options={[]}
+                  value={allowedAudiences}
+                  disabled={disabled}
+                  onChange={(_event, newValue) => handleAudiencesChange(newValue as string[])}
+                  renderTags={(value, getTagProps) =>
+                    value.map((option, index) => <Chip label={option} {...getTagProps({index})} key={option} />)
                   }
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      placeholder={t(
+                        'applications:edit.advanced.idJag.allowedAudiences.placeholder',
+                        'Type an audience and press Enter',
+                      )}
+                      error={showAudiencesError}
+                      helperText={
+                        showAudiencesError
+                          ? t('applications:edit.advanced.idJag.allowedAudiences.error', 'Add at least one audience.')
+                          : t(
+                              'applications:edit.advanced.idJag.allowedAudiences.hint',
+                              'Each assertion targets exactly one of these audiences.',
+                            )
+                      }
+                    />
+                  )}
                 />
-              )}
-            />
-          </FormControl>
+              </FormControl>
 
-          <FormControl size="small" error={showValidityPeriodError}>
-            <FormLabel htmlFor="idjag_validity_period">
-              {t('applications:edit.advanced.idJag.labels.validityPeriod', 'Assertion validity')}
-            </FormLabel>
-            <TextField
-              id="idjag_validity_period"
-              type="number"
-              size="small"
-              disabled={disabled}
-              value={validityPeriodValue}
-              error={showValidityPeriodError}
-              helperText={
-                showValidityPeriodError
-                  ? t('applications:edit.advanced.idJag.validityPeriod.error', 'Enter a value of at least 1 second.')
-                  : undefined
-              }
-              onChange={(e) => handleValidityPeriodChange(e.target.value)}
-              inputProps={{min: 1}}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    {t('applications:edit.advanced.idJag.labels.seconds', 'seconds')}
-                  </InputAdornment>
-                ),
-              }}
-              sx={{maxWidth: 220}}
-            />
-            {!showValidityPeriodError && (
-              <Typography variant="caption" color="text.secondary" sx={{mt: 0.5}}>
-                {t(
-                  'applications:edit.advanced.idJag.validityPeriod.hint',
-                  'How long an issued assertion stays valid. Default 300.',
+              <FormControl size="small" error={showValidityPeriodError}>
+                <FormLabel htmlFor="idjag_validity_period">
+                  {t('applications:edit.advanced.idJag.labels.validityPeriod', 'Assertion validity')}
+                </FormLabel>
+                <TextField
+                  id="idjag_validity_period"
+                  type="number"
+                  size="small"
+                  disabled={disabled}
+                  value={validityPeriodValue}
+                  error={showValidityPeriodError}
+                  helperText={
+                    showValidityPeriodError
+                      ? t(
+                          'applications:edit.advanced.idJag.validityPeriod.error',
+                          'Enter a value of at least 1 second.',
+                        )
+                      : undefined
+                  }
+                  onChange={(e) => handleValidityPeriodChange(e.target.value)}
+                  inputProps={{min: 1}}
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        {t('applications:edit.advanced.idJag.labels.seconds', 'seconds')}
+                      </InputAdornment>
+                    ),
+                  }}
+                  sx={{maxWidth: 220}}
+                />
+                {!showValidityPeriodError && (
+                  <Typography variant="caption" color="text.secondary" sx={{mt: 0.5}}>
+                    {t(
+                      'applications:edit.advanced.idJag.validityPeriod.hint',
+                      'How long an issued assertion stays valid. Default 300.',
+                    )}
+                  </Typography>
                 )}
-              </Typography>
-            )}
-          </FormControl>
+              </FormControl>
+            </>
+          )}
 
           <Typography variant="caption" color="text.secondary">
-            {t(
-              'applications:edit.advanced.idJag.grantTypeHint',
-              'The token exchange grant type is enabled together with this feature.',
-            )}
+            {isIssuanceUnavailable
+              ? issuanceUnavailableHint
+              : t(
+                  'applications:edit.advanced.idJag.grantTypeHint',
+                  'The token exchange grant type is enabled together with this feature.',
+                )}
           </Typography>
         </Stack>
       )}

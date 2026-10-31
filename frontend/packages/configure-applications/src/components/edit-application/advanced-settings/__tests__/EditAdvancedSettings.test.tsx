@@ -17,6 +17,11 @@ vi.mock('@thunderid/react', async (importOriginal) => ({
   useThunderID: mockUseThunderID,
 }));
 
+// The identity assertions card reads the runtime's metadata; it stays unknown here so nothing is blocked.
+vi.mock('@thunderid/configure-connections', () => ({
+  useAuthorizationServerMetadata: () => ({data: undefined}),
+}));
+
 vi.mock('@thunderid/contexts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/contexts')>()),
   useConfig: () => ({

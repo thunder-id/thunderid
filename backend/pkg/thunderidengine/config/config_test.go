@@ -41,3 +41,14 @@ func TestServerTimeoutsFallBackWhenNotPositive(t *testing.T) {
 	assert.Equal(t, 180*time.Second, configured.Write())
 	assert.Equal(t, 90*time.Second, configured.Idle())
 }
+
+// ID-JAG issuance and acceptance stay on unless a deployment switches them off, so an engine embedder
+// that sets no ID-JAG configuration keeps the per-client and per-connection behavior it had.
+func TestIDJAGRolesAreOnUnlessSwitchedOff(t *testing.T) {
+	var unset IDJAGConfig
+	assert.True(t, unset.Issuance.IsEnabled())
+	assert.True(t, unset.Acceptance.IsEnabled())
+
+	assert.True(t, IDJAGRoleConfig{Enabled: new(true)}.IsEnabled())
+	assert.False(t, IDJAGRoleConfig{Enabled: new(false)}.IsEnabled())
+}

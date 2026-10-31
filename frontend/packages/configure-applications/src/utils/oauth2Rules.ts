@@ -32,6 +32,16 @@ export function isIdJagEnabled(config: OAuth2Config | undefined): boolean {
 }
 
 /**
+ * Returns whether the runtime is known not to issue identity assertions (ID-JAG), because its
+ * authorization server metadata does not list the token exchange grant they are issued through.
+ * Returns false while the metadata is unknown (`grantTypesSupported` undefined: loading, failed,
+ * or a document without the field), so nothing is blocked on missing information.
+ */
+export function isIdJagIssuanceUnavailable(grantTypesSupported: string[] | undefined): boolean {
+  return Array.isArray(grantTypesSupported) && !grantTypesSupported.includes(OAuth2GrantTypes.TOKEN_EXCHANGE);
+}
+
+/**
  * Derives state flags from an OAuth2 configuration.
  */
 export function deriveOAuth2Flags(config: OAuth2Config): OAuth2Flags {

@@ -79,7 +79,8 @@ func newGrantHandlerProvider(
 		grantProvider.cibaGrantHandler = newCIBAGrantHandler(cibaService, tokenBuilder, attrCacheService,
 			resourceService, enforcementService)
 	}
-	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeJWTBearer) {
+	// The jwt-bearer grant accepts only ID-JAGs, so it is not served while ID-JAG acceptance is off.
+	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeJWTBearer) && cfg.OAuth.IDJAG.Acceptance.IsEnabled() {
 		grantProvider.jwtBearerGrantHandler = newJWTBearerGrantHandler(
 			tokenBuilder, tokenValidator, resourceService, rbacAuthzService, actorProvider)
 	}

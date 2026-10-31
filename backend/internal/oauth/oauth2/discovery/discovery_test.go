@@ -623,6 +623,29 @@ func (suite *DiscoveryTestSuite) TestAuthorizationGrantProfilesSupported_NotOnOA
 	assert.NotContains(suite.T(), w.Body.String(), "authorization_grant_profiles_supported")
 }
 
+// With ID-JAG acceptance off the jwt-bearer grant is not served, so it is not advertised even though it is
+// an allowed grant type, and neither is the ID-JAG profile.
+func (suite *DiscoveryTestSuite) TestAuthorizationGrantProfilesSupported_NotAdvertisedWhenIDJAGAcceptanceOff() {
+	allowedGrantTypes := []string{"client_credentials", string(providers.GrantTypeJWTBearer)}
+	testConfig := &config.Config{
+		Server: engineconfig.ServerConfig{Hostname: "localhost", Port: 8080},
+		JWT:    engineconfig.JWTConfig{Issuer: "https://auth.example.com"},
+		OAuth: config.OAuthConfig{
+			AllowedGrantTypes: allowedGrantTypes,
+			IDJAG:             engineconfig.IDJAGConfig{Acceptance: engineconfig.IDJAGRoleConfig{Enabled: new(false)}},
+		},
+	}
+	svc := newDiscoveryService(
+		suite.cryptoMock, newTestJWEService(suite.cryptoMock), nil,
+		suite.oauthCfgFromServerConfig(testConfig))
+
+	metadata := svc.GetOAuth2AuthorizationServerMetadata(context.Background())
+
+	assert.Equal(suite.T(), []string{"client_credentials"}, metadata.GrantTypesSupported)
+	assert.Empty(suite.T(), metadata.AuthorizationGrantProfilesSupported)
+	assert.Equal(suite.T(), []string{"client_credentials", string(providers.GrantTypeJWTBearer)}, allowedGrantTypes)
+}
+
 func (suite *DiscoveryTestSuite) TestOIDCDiscovery_EngineOverridesLandInWellKnown() {
 	suite.cryptoMock.EXPECT().GetPublicKeys(mock.Anything, providers.PublicKeyFilter{}).
 		Return([]providers.PublicKeyInfo{{KeyID: "k1", Algorithm: string(cryptolib.AlgorithmRS256)}}, nil)

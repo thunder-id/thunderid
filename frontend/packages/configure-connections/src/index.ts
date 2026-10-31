@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // APIs
+export {default as useAuthorizationServerMetadata} from './api/useAuthorizationServerMetadata';
 export {default as useConnection} from './api/useConnection';
 export {default as useConnectionInstances} from './api/useConnectionInstances';
 export * from './api/useConnectionInstances';
@@ -44,6 +45,7 @@ export * from './constants/subject-mapping';
 
 // Models
 export * from './models/authenticators';
+export * from './models/authorization-server-metadata';
 export * from './models/connection';
 export * from './models/identity-provider';
 export * from './models/requests';

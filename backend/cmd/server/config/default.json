@@ -157,6 +157,14 @@
     "cimd": {
       "enabled": true
     },
+    "id_jag": {
+      "issuance": {
+        "enabled": true
+      },
+      "acceptance": {
+        "enabled": true
+      }
+    },
     "par": {
       "require_par": false,
       "expires_in": 60

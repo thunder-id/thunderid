@@ -3482,6 +3482,31 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_DisabledR
 	assert.Contains(suite.T(), errResp.ErrorDescription, "not permitted to request ID-JAGs")
 }
 
+// A deployment with ID-JAG issuance off refuses a client that has ID-JAG enabled with the same error as
+// a client without it, before the subject token is validated.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_IssuanceDisabledForDeploymentRejected() {
+	suite.handler.cfg.OAuth.IDJAG.Issuance.Enabled = new(false)
+	suite.oauthApp.Token.IDJAG = &providers.IDJAGConfig{
+		Enabled:          true,
+		AllowedAudiences: []string{testIDJAGAudience},
+	}
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       "subject-token",
+		SubjectTokenType:   string(constants.TokenTypeIdentifierIDToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+		Audiences:          []string{testIDJAGAudience},
+	}
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidTarget, errResp.Error)
+	assert.Equal(suite.T(), "The client is not permitted to request ID-JAGs", errResp.ErrorDescription)
+}
+
 func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_IDJAG_InvalidSubjectToken() {
 	suite.oauthApp.Token.IDJAG = &providers.IDJAGConfig{
 		Enabled:          true,

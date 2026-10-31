@@ -918,3 +918,51 @@ func (ts *IDJAGConsumptionTestSuite) TestIDJAG_DPoPBoundAccessToken() {
 	ts.Require().True(ok, "access token should contain cnf claim")
 	ts.NotEmpty(cnf["jkt"], "cnf.jkt should be present for DPoP-bound token")
 }
+
+// TestIDJAGConsumption_AcceptanceSwitchedOff verifies that oauth.id_jag.acceptance.enabled: false stops
+// serving the jwt-bearer grant and advertising it, before the assertion is validated: the refused
+// assertion is accepted once the switch is back on.
+func (ts *IDJAGConsumptionTestSuite) TestIDJAGConsumption_AcceptanceSwitchedOff() {
+	assertion := ts.buildIDJAGAssertion()
+	restore := restartWithOAuthConfig(ts.T(), switchIDJAGRoleOff("acceptance"))
+
+	resp, statusCode, err := ts.consumeIDJAG(assertion, nil, consumptionClientID, consumptionClientSecret)
+	ts.Require().NoError(err)
+	ts.Equal(http.StatusBadRequest, statusCode)
+	ts.Equal("unsupported_grant_type", resp.Error)
+	ts.Equal("Unsupported grant type", resp.ErrorDescription)
+
+	for _, path := range []string{"/.well-known/oauth-authorization-server", "/.well-known/openid-configuration"} {
+		ts.Run(path, func() {
+			metadata := ts.fetchGrantMetadata(path)
+			ts.Contains(metadata.GrantTypesSupported, "authorization_code")
+			ts.NotContains(metadata.GrantTypesSupported, jwtBearerGrantType)
+			ts.NotContains(metadata.AuthorizationGrantProfilesSupported, idJAGGrantProfile)
+		})
+	}
+
+	ts.Require().NoError(restore(), "restore the oauth config")
+	resp, statusCode, err = ts.consumeIDJAG(assertion, nil, consumptionClientID, consumptionClientSecret)
+	ts.Require().NoError(err)
+	ts.Equalf(http.StatusOK, statusCode, "%s: %s", resp.Error, resp.ErrorDescription)
+}
+
+// discoveryGrantMetadata is the part of the server metadata that says which grants and grant profiles
+// are served.
+type discoveryGrantMetadata struct {
+	GrantTypesSupported                 []string `json:"grant_types_supported"`
+	AuthorizationGrantProfilesSupported []string `json:"authorization_grant_profiles_supported"`
+}
+
+// fetchGrantMetadata reads the grant fields of the server metadata document at path.
+func (ts *IDJAGConsumptionTestSuite) fetchGrantMetadata(path string) discoveryGrantMetadata {
+	ts.T().Helper()
+	resp, err := testutils.GetRawHTTPClient().Get(testutils.TestServerURL + path)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var metadata discoveryGrantMetadata
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&metadata))
+	return metadata
+}
