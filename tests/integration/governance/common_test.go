@@ -239,6 +239,33 @@ func failAuthentication(t *testing.T, identifierKey, identifierValue string, cou
 	return refusals
 }
 
+// failAuthenticationConcurrently starts a burst together and checks its responses on the test goroutine.
+func failAuthenticationConcurrently(t *testing.T, username string, count int) {
+	t.Helper()
+	type result struct {
+		status int
+		body   []byte
+		err    error
+	}
+	start := make(chan struct{})
+	results := make(chan result, count)
+	for i := range count {
+		go func() {
+			<-start
+			status, body, err := testutils.AuthenticateWithCredentialRaw("username", username, "password",
+				"DefinitelyNotTheSecret!"+strconv.Itoa(i))
+			results <- result{status: status, body: body, err: err}
+		}()
+	}
+	close(start)
+	for range count {
+		answer := <-results
+		require.NoError(t, answer.err, "concurrent authentication request failed")
+		require.Equal(t, http.StatusUnauthorized, answer.status,
+			"a wrong secret must produce an authentication refusal: %s", answer.body)
+	}
+}
+
 // failHeldAuthentication presents a wrong secret count times to a held account and requires every
 // attempt to state the hold by code, as the correct secret's refusal does.
 func failHeldAuthentication(t *testing.T, identifierKey, identifierValue string, count int, code string) {
@@ -299,12 +326,25 @@ func runtimeRevision(t *testing.T, entityID string) string {
 }
 
 // servedRung returns the duration of the lock the runtime row holds for a method ("account" for the
-// account-wide entry): its unlock time less the failure that formed it, both written from one clock
-// reading, so the answer does not depend on how long the test took to read it.
+// account-wide entry): its unlock time less the row's last write. Read it right after formation, before
+// any other runtime write.
 func servedRung(t *testing.T, entityID, method string) time.Duration {
 	t.Helper()
-	unlockAt, failedAt := storedLock(t, entityID, method)
-	return unlockAt.Sub(failedAt)
+	unlockAt, _ := storedLock(t, entityID, method)
+	updatedAt := runtimeColumn(t, entityID, "UPDATED_AT")
+	for _, layout := range []string{
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02 15:04:05.999999999Z07",
+		time.RFC3339Nano,
+	} {
+		formedAt, err := time.Parse(layout, updatedAt)
+		if err == nil {
+			return unlockAt.Sub(formedAt.UTC().Truncate(time.Second))
+		}
+	}
+	require.FailNow(t, "unreadable runtime write timestamp", "%q", updatedAt)
+	return 0
 }
 
 // storedExpiry returns the unlock time the runtime row holds for a method. Unlike the status read, it

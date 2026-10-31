@@ -342,3 +342,18 @@ func (ts *GovernanceEventsTestSuite) countEvents(eventType, subject string) int 
 	}
 	return matched
 }
+
+func (ts *GovernanceEventsTestSuite) TestConcurrentFailuresPublishOneLockEpisode() {
+	userID, username, _ := ts.fixture.newUser(ts.T(), "concurrent_events", nil)
+
+	failAuthenticationConcurrently(ts.T(), username, shippedUserLockThreshold*4)
+
+	locked := ts.awaitEvent(eventIdentityLocked, userID)
+	ts.Equal(float64(1), locked.Data[eventKeyLockCount], "the burst must publish the first episode")
+	ts.Equal("credential", locked.Str(eventKeyLockMethod))
+	failHeldAuthentication(ts.T(), "username", username, shippedUserLockThreshold, statedLockCode)
+	// This later event is the barrier for every lock event the completed burst published.
+	runAdministrationFlow(ts.T(), unlockFlowHandle, userID)
+	ts.awaitEvent(eventIdentityUnlocked, userID)
+	ts.Equal(1, ts.countEvents(eventIdentityLocked, userID), "one episode must publish one lock event")
+}

@@ -63,6 +63,8 @@ The default configuration uses SQLite, which stores data in local files. SQLite 
 | `entity` | User accounts and credentials |
 | `runtime_persistent` | Long-lived operational state: revoked tokens, SSO sessions, consents, and account access state |
 
+Route runtime persistent database reads and writes to the primary. Do not route account access checks to asynchronous read replicas, because replication lag can delay enforcement of a suspension or lock.
+
 Configure each database in `deployment.yaml`:
 
 ```yaml

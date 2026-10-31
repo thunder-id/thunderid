@@ -10,9 +10,6 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// formationRetries bounds the re-reads when a concurrent writer wins the lock-formation guard.
-const formationRetries = 3
-
 // permanentUnlockAt is the stored unlock time for a permanent lock (duration zero). It compares
 // correctly both as a string and as a timestamp.
 const permanentUnlockAt = "9999-12-31T23:59:59Z"

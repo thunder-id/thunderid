@@ -44,17 +44,6 @@ type AccessState struct {
 	LastLoginAt string `json:"lastLoginAt"`
 }
 
-// observedFor returns the entry recorded for a method, whether or not it is currently locked.
-func (a AccessState) observedFor(method providers.AuthenticationMethod) LockEntry {
-	if method == AuthenticationMethodAccount {
-		if a.Lock.Account == nil {
-			return LockEntry{}
-		}
-		return *a.Lock.Account
-	}
-	return a.Lock.AuthenticationMethods[method]
-}
-
 // LockState holds the account-wide entry and the per-method entries. A live account entry holds under
 // either granularity; method entries are not read under account granularity.
 type LockState struct {

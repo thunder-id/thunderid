@@ -5,15 +5,19 @@ package identitygovernance
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/serverconfig"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
+	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/serverconfigmock"
+	"github.com/thunder-id/thunderid/tests/mocks/transactionmock"
 )
 
 type InitTestSuite struct {
@@ -25,14 +29,15 @@ func TestInitTestSuite(t *testing.T) {
 }
 
 func (s *InitTestSuite) TestInitializeRequiresAnEntityStateProvider() {
-	svc, notifier, err := Initialize(nil, serverconfigmock.NewServerConfigServiceMock(s.T()), Config{}, nil, nil, nil)
+	svc, notifier, err := Initialize(nil, nil, serverconfigmock.NewServerConfigServiceMock(s.T()),
+		Config{}, nil, nil, nil)
 	s.Require().ErrorIs(err, errNoEntityStateProvider)
 	s.Nil(svc)
 	s.Nil(notifier)
 }
 
 func (s *InitTestSuite) TestInitializeRequiresAServerConfigService() {
-	svc, notifier, err := Initialize(newEntityStateProviderMock(s.T()), nil, Config{}, nil, nil, nil)
+	svc, notifier, err := Initialize(nil, newEntityStateProviderMock(s.T()), nil, Config{}, nil, nil, nil)
 	s.Require().ErrorIs(err, errNoServerConfigService)
 	s.Nil(svc)
 	s.Nil(notifier)
@@ -40,7 +45,7 @@ func (s *InitTestSuite) TestInitializeRequiresAServerConfigService() {
 
 // Without notification dependencies the service is built and there is no notifier to stop.
 func (s *InitTestSuite) TestInitializeWithoutNotificationsBuildsTheService() {
-	svc, notifier, err := Initialize(newEntityStateProviderMock(s.T()),
+	svc, notifier, err := Initialize(s.dbProvider(), newEntityStateProviderMock(s.T()),
 		serverconfigmock.NewServerConfigServiceMock(s.T()), Config{}, nil, nil, nil)
 	s.Require().NoError(err)
 	s.NotNil(svc)
@@ -49,7 +54,7 @@ func (s *InitTestSuite) TestInitializeWithoutNotificationsBuildsTheService() {
 
 // With notification dependencies the returned notifier stops the workers, so a later notice is dropped.
 func (s *InitTestSuite) TestTheReturnedNotifierStops() {
-	svc, notifier, err := Initialize(newEntityStateProviderMock(s.T()),
+	svc, notifier, err := Initialize(s.dbProvider(), newEntityStateProviderMock(s.T()),
 		serverconfigmock.NewServerConfigServiceMock(s.T()), Config{}, s.notificationDependencies(), nil, nil)
 	s.Require().NoError(err)
 	s.Require().NotNil(notifier)
@@ -78,7 +83,7 @@ func (s *InitTestSuite) TestInitializeBuildsNoNotifierWithoutEveryDependency() {
 			deps := s.notificationDependencies()
 			tc.remove(deps)
 
-			svc, notifier, err := Initialize(newEntityStateProviderMock(s.T()),
+			svc, notifier, err := Initialize(s.dbProvider(), newEntityStateProviderMock(s.T()),
 				serverconfigmock.NewServerConfigServiceMock(s.T()), Config{}, deps, nil, nil)
 
 			s.Require().NoError(err)
@@ -94,7 +99,7 @@ func (s *InitTestSuite) TestTheSectionAndTheSenderAreReadThroughTheServerConfigS
 	reader := serverconfigmock.NewServerConfigServiceMock(s.T())
 	reader.EXPECT().GetMergedConfig(mock.Anything, string(serverconfig.ConfigNameAccountAccess)).
 		Return(section, nil).Once()
-	svc, notifier, err := Initialize(newEntityStateProviderMock(s.T()), reader,
+	svc, notifier, err := Initialize(s.dbProvider(), newEntityStateProviderMock(s.T()), reader,
 		Config{AccountAccess: testAccountAccessConfig()}, s.notificationDependencies(), nil, nil)
 	s.Require().NoError(err)
 	defer notifier.Stop()
@@ -113,4 +118,40 @@ func (s *InitTestSuite) notificationDependencies() *NotificationDependencies {
 		Senders:     notificationmock.NewNotificationSenderServiceInterfaceMock(s.T()),
 		EntityTypes: entitytypemock.NewEntityTypeServiceInterfaceMock(s.T()),
 	}
+}
+
+// dbProvider supplies the runtime transactioner used by governance.
+func (s *InitTestSuite) dbProvider() *providermock.DBProviderInterfaceMock {
+	dbProvider := providermock.NewDBProviderInterfaceMock(s.T())
+	dbProvider.EXPECT().GetRuntimePersistentDBTransactioner().Return(transaction.NewNoOpTransactioner(), nil).Once()
+	return dbProvider
+}
+
+func (s *InitTestSuite) TestInitializeRequiresTheRuntimeTransactioner() {
+	dbProvider := providermock.NewDBProviderInterfaceMock(s.T())
+	dbErr := errors.New("runtime database unavailable")
+	dbProvider.EXPECT().GetRuntimePersistentDBTransactioner().Return(nil, dbErr).Once()
+
+	svc, notifier, err := Initialize(dbProvider, newEntityStateProviderMock(s.T()),
+		serverconfigmock.NewServerConfigServiceMock(s.T()), Config{}, nil, nil, nil)
+
+	s.Require().ErrorIs(err, dbErr)
+	s.Contains(err.Error(), "transactioner")
+	s.Nil(svc)
+	s.Nil(notifier)
+}
+
+func (s *InitTestSuite) TestInitializeUsesTheRuntimeTransactioner() {
+	dbProvider := providermock.NewDBProviderInterfaceMock(s.T())
+	transactioner := transactionmock.NewTransactionerMock(s.T())
+	dbProvider.EXPECT().GetRuntimePersistentDBTransactioner().Return(transactioner, nil).Once()
+
+	svc, notifier, err := Initialize(dbProvider, newEntityStateProviderMock(s.T()),
+		serverconfigmock.NewServerConfigServiceMock(s.T()), Config{}, nil, nil, nil)
+
+	s.Require().NoError(err)
+	governance, ok := svc.(*identityGovernanceService)
+	s.Require().True(ok)
+	s.Same(transactioner, governance.transactioner)
+	s.Nil(notifier)
 }

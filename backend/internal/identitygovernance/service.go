@@ -7,6 +7,7 @@ package identitygovernance
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
@@ -116,8 +117,9 @@ type entityStateProvider interface {
 
 // identityGovernanceService is the governance authority.
 type identityGovernanceService struct {
-	entityState entityStateProvider
-	source      accountAccessSourceInterface
+	entityState   entityStateProvider
+	source        accountAccessSourceInterface
+	transactioner providers.Transactioner
 	// notifier is optional; locks form the same without it.
 	notifier LockNotifierInterface
 	// authorizer is optional; nil permits.
@@ -130,11 +132,13 @@ type identityGovernanceService struct {
 
 // newIdentityGovernanceService builds the governance service.
 func newIdentityGovernanceService(entityState entityStateProvider, source accountAccessSourceInterface,
-	notifier LockNotifierInterface, authorizer sysauthz.SystemAuthorizationServiceInterface,
+	transactioner providers.Transactioner, notifier LockNotifierInterface,
+	authorizer sysauthz.SystemAuthorizationServiceInterface,
 	observability providers.ObservabilityProvider) *identityGovernanceService {
 	return &identityGovernanceService{
 		entityState:   entityState,
 		source:        source,
+		transactioner: transactioner,
 		notifier:      notifier,
 		authorizer:    authorizer,
 		observability: observability,
@@ -501,8 +505,7 @@ func (s *identityGovernanceService) decideUnder(ctx context.Context, entity Gove
 	return refuse(policy.discloseAccountHold, providers.AccessRefusalReasonLocked)
 }
 
-// countFailure records one failure against the effective method and forms a lock when the threshold is
-// reached. A store failure is logged and leaves the attempt uncounted.
+// countFailure records a failure and forms any resulting lock in one transaction.
 func (s *identityGovernanceService) countFailure(ctx context.Context, entity GovernedEntity,
 	method providers.AuthenticationMethod, policy lockoutPolicy) {
 	effective := effectiveMethodFor(policy.granularity, method)
@@ -513,58 +516,41 @@ func (s *identityGovernanceService) countFailure(ctx context.Context, entity Gov
 	if policy.failureWindow > 0 {
 		windowStart = now.Add(-policy.failureWindow)
 	}
-	observed, recorded, err := s.entityState.IncrementFailure(ctx, entity.ID, effective, now, windowStart)
+	var episode LockEpisode
+	formed := false
+	err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		formed = false
+		observed, recorded, err := s.entityState.IncrementFailure(txCtx, entity.ID, effective, now, windowStart)
+		if err != nil || !recorded {
+			return err
+		}
+
+		// The increment holds the row until commit; start the lock after any wait for that row.
+		lockNow := s.now()
+		if !shouldFormLock(policy, observed, lockNow) {
+			return nil
+		}
+		episode = nextLockEpisode(policy, observed, lockNow)
+		formed, err = s.entityState.FormLock(txCtx, entity.ID, effective, observed, episode, lockNow)
+		if err != nil {
+			return err
+		}
+		if !formed {
+			return errors.New("account lock formation did not update the runtime row")
+		}
+		return nil
+	})
 	if err != nil {
-		s.logStoreFailure(ctx, "Failed to record a failed attempt", entity.ID, err)
+		s.logStoreFailure(ctx, "Failed to record a failed attempt and its account lock", entity.ID, err)
 		return
 	}
-	if !recorded {
-		// No row, or the store's hold guard skipped the write.
+	if !formed {
 		return
 	}
 
-	s.formLockIfEligible(ctx, entity, effective, policy, observed, now)
-}
-
-// formLockIfEligible opens a lock episode when the counters reach the threshold, re-reading up to
-// formationRetries times when a concurrent writer wins the guard. A store failure is logged and stops
-// the attempt; the recorded failures stay.
-func (s *identityGovernanceService) formLockIfEligible(ctx context.Context, entity GovernedEntity,
-	effective providers.AuthenticationMethod, policy lockoutPolicy, observed LockEntry, now time.Time) {
-	for range formationRetries {
-		if !shouldFormLock(policy, observed, now) {
-			return
-		}
-
-		episode := nextLockEpisode(policy, observed, now)
-
-		formed, err := s.entityState.FormLock(ctx, entity.ID, effective, observed, episode, now)
-		if err != nil {
-			s.logStoreFailure(ctx, "Failed to form an account lock", entity.ID, err)
-			return
-		}
-		if formed {
-			// Only the guard's winner reaches here, so one lock is recorded once and sends one notice.
-			// Scheduling never blocks.
-			s.auditLockFormed(ctx, entity, effective, episode)
-			if s.notifier != nil {
-				s.notifier.NotifyLockFormed(ctx, entity, effective, episode)
-			}
-			return
-		}
-
-		// The row changed. Re-read and decide again.
-		refreshed, err := s.entityState.GetGovernedEntity(ctx, entity.ID, true)
-		if err != nil {
-			s.logStoreFailure(ctx, "Failed to re-read the identity to form an account lock", entity.ID, err)
-			return
-		}
-		if refreshed == nil {
-			// Deleted after the failure was counted; there is nothing left to lock.
-			return
-		}
-		observed = refreshed.AccessState.observedFor(effective)
-		observed.Revision = refreshed.Revision
+	s.auditLockFormed(ctx, entity, effective, episode)
+	if s.notifier != nil {
+		s.notifier.NotifyLockFormed(ctx, entity, effective, episode)
 	}
 }
 

@@ -4,6 +4,7 @@
 package governance
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -182,4 +183,36 @@ func (ts *LockoutTestSuite) TestUnlockingAnUnlockedAccountIsHarmless() {
 	ts.Equal("ACTIVE", readStatus(ts.T(), userID).Value, "the account must stay active")
 	ts.True(authenticate(ts.T(), "username", username, password).succeeded(),
 		"the account must stay usable")
+}
+
+func (ts *LockoutTestSuite) TestConcurrentFailuresFormOneLockAndHeldAttemptsWriteNothing() {
+	applyPolicy(ts.T(), longRungLockoutPolicy())
+	userID, username, password := ts.users.newUser(ts.T(), "concurrent", nil)
+
+	failAuthenticationConcurrently(ts.T(), username, lockThreshold*4)
+
+	ts.Equal("LOCKED", readStatus(ts.T(), userID).Value, "the burst must form a lock")
+	var attributes struct {
+		AccessState struct {
+			Lock struct {
+				AuthenticationMethods map[string]struct {
+					FailureCount        int `json:"failureCount"`
+					ConsecutiveFailures int `json:"consecutiveFailures"`
+					LockCount           int `json:"lockCount"`
+				} `json:"authenticationMethods"`
+			} `json:"lock"`
+		} `json:"accessState"`
+	}
+	ts.Require().NoError(json.Unmarshal([]byte(runtimeColumn(ts.T(), userID, "RUNTIME_ATTRIBUTES")), &attributes))
+	entry, recorded := attributes.AccessState.Lock.AuthenticationMethods["credential"]
+	ts.Require().True(recorded, "the failed method must hold the lock")
+	ts.Equal(1, entry.LockCount, "a concurrent burst must open one episode")
+	ts.Zero(entry.FailureCount, "forming the episode must reset its window counter")
+	ts.Equal(lockThreshold, entry.ConsecutiveFailures, "counting must stop once the threshold forms a lock")
+	revision := runtimeRevision(ts.T(), userID)
+
+	failAuthenticationConcurrently(ts.T(), username, lockThreshold*2)
+	requireRefusedAsHeld(ts.T(), authenticate(ts.T(), "username", username, password), statedLockCode,
+		"the correct password must be refused after the burst")
+	ts.Equal(revision, runtimeRevision(ts.T(), userID), "held attempts must write nothing")
 }
