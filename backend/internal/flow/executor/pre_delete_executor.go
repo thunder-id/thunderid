@@ -26,8 +26,9 @@ type userDeletionProvider interface {
 // revocation plan those executors consume.
 //
 // Nothing downstream re-derives the plan or reads it from the request: the plan travels on
-// SharedRuntimeData, which is unexported on the engine context, never serialized to the client, and
-// only writable by an executor. That is what makes the breadth recorded here binding on every node
+// SharedRuntimeData, which is unexported on the engine context and never serialized to the client. An
+// executor writes it, and the one other writer is a service handing a system post flow the shared data
+// its pre flow returned, unchanged. That is what makes the breadth recorded here binding on every node
 // that follows, rather than something the caller can influence per request.
 type preDeleteExecutor struct {
 	providers.Executor
@@ -43,7 +44,7 @@ func newPreDeleteExecutor(factory core.FlowFactoryInterface,
 		[]providers.Input{
 			{Identifier: revocationInputSubject, Type: providers.InputTypeText, Required: true},
 		}, nil, &providers.ExecutorMeta{
-			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeAdministration},
+			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeAdministration, providers.FlowTypeSystem},
 			DefaultMode:        string(revocation.ModeAll),
 			SupportedModes:     []string{string(revocation.ModeAll)},
 		})
