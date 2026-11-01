@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return */
-import {render, screen, waitFor, userEvent} from '@thunderid/test-utils';
-import type * as OxygenUI from '@wso2/oxygen-ui';
-import {type ReactElement, type ReactNode} from 'react';
+import {render, screen, waitFor, userEvent, within} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type useDeleteUserTypeHook from '../../api/useDeleteUserType';
 import type useGetUserTypesHook from '../../api/useGetUserTypes';
-import type {UserTypeListResponse, UserTypeListItem} from '../../types/user-types';
+import type {UserTypeListResponse} from '../../types/user-types';
 import UserTypesList from '../UserTypesList';
 
 const {mockLoggerError} = vi.hoisted(() => ({
@@ -16,144 +14,11 @@ const {mockLoggerError} = vi.hoisted(() => ({
 }));
 
 const mockNavigate = vi.fn();
+const rowOf = (userTypeId: string): HTMLElement => screen.getAllByText(userTypeId)[0].closest<HTMLElement>('tr')!;
+const bodyRows = (): HTMLElement[] => screen.getAllByRole('row').slice(1);
+const firstCells = (): string[] => bodyRows().map((row) => within(row).getAllByRole('cell')[0].textContent ?? '');
 const mockMutateAsync = vi.fn();
 const mockRefetchUserTypes = vi.fn();
-
-type MockDataGridRow = UserTypeListItem & Record<string, unknown>;
-
-type MockDataGridColumn =
-  | {
-      field?: string;
-      valueGetter?: (_value: unknown, row: MockDataGridRow) => unknown;
-      renderCell?: (params: {row: MockDataGridRow; field: string; value: unknown; id: string}) => ReactNode;
-    }
-  | null
-  | undefined;
-
-interface MockDataGridProps {
-  rows?: MockDataGridRow[];
-  columns?: MockDataGridColumn[];
-  loading?: boolean;
-  onRowClick?: (params: {row: MockDataGridRow}) => void;
-  getRowId?: (row: MockDataGridRow) => string;
-}
-
-// Mock @wso2/oxygen-ui to avoid CSS import issues and use ListingTable
-vi.mock('@wso2/oxygen-ui', async () => {
-  const actual = await vi.importActual<typeof OxygenUI>('@wso2/oxygen-ui');
-  return {
-    ...actual,
-    DataGrid: {
-      ...(actual.DataGrid ?? {}),
-      GridColDef: {},
-      GridRenderCellParams: {},
-    },
-    ListingTable: {
-      Provider: ({
-        children,
-        loading = false,
-        variant = undefined,
-      }: {
-        children: ReactNode;
-        loading?: boolean;
-        variant?: string;
-      }) => (
-        <div data-testid="listing-table-provider" data-loading={loading ? 'true' : 'false'} data-variant={variant}>
-          {children}
-        </div>
-      ),
-      Container: ({children, disablePaper = false}: {children: ReactNode; disablePaper?: boolean}) => (
-        <div data-testid="listing-table-container" data-disable-paper={disablePaper ? 'true' : undefined}>
-          {children}
-        </div>
-      ),
-      DataGrid: ({
-        rows = [],
-        columns = [],
-        loading = false,
-        onRowClick = undefined,
-        getRowId = undefined,
-      }: MockDataGridProps) => (
-        <div data-testid="data-grid" data-loading={loading ? 'true' : 'false'}>
-          {rows.map((row: MockDataGridRow) => {
-            const rowId = getRowId ? getRowId(row) : String(row.id ?? '');
-            return (
-              <div
-                key={rowId}
-                role="row"
-                data-testid={`row-${rowId}`}
-                onClick={() => onRowClick?.({row})}
-                onKeyDown={() => onRowClick?.({row})}
-                tabIndex={0}
-              >
-                {columns.map((column) => {
-                  if (!column?.field) return null;
-
-                  const fallbackValue = (row as Record<string, unknown>)[column.field];
-                  const value =
-                    typeof column.valueGetter === 'function' ? column.valueGetter(undefined, row) : fallbackValue;
-
-                  const params = {
-                    row,
-                    field: column.field,
-                    value,
-                    id: rowId,
-                  };
-
-                  const content = (typeof column.renderCell === 'function' ? column.renderCell(params) : value) as
-                    | ReactNode
-                    | null
-                    | undefined;
-
-                  if (content === null || content === undefined) {
-                    return null;
-                  }
-
-                  return (
-                    <span key={`${rowId}-${column.field}`} className="MuiDataGrid-cell">
-                      {content}
-                    </span>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </div>
-      ),
-      CellIcon: ({
-        primary,
-        secondary = undefined,
-        icon = undefined,
-      }: {
-        primary: string;
-        secondary?: ReactNode;
-        icon?: ReactNode;
-      }) => (
-        <>
-          {icon}
-          <span>{primary}</span>
-          {secondary && <span>{secondary}</span>}
-        </>
-      ),
-      RowActions: ({children}: {children: ReactNode}): ReactElement => children as ReactElement,
-      EmptyState: ({
-        title = undefined,
-        description = undefined,
-        action = undefined,
-      }: {
-        title?: string;
-        description?: string;
-        action?: ReactNode;
-      }) => (
-        <div>
-          {title && <div>{title}</div>}
-          {description && <div>{description}</div>}
-          {action}
-        </div>
-      ),
-    },
-  };
-});
 
 // Mock react-router
 vi.mock('react-router', async () => {
@@ -254,15 +119,15 @@ describe('UserTypesList', () => {
   it('renders DataGrid with user types', () => {
     render(<UserTypesList />);
 
-    expect(screen.getByTestId('row-schema1')).toHaveTextContent('Employee Schema');
-    expect(screen.getByTestId('row-schema2')).toHaveTextContent('Contractor Schema');
+    expect(rowOf('schema1')).toHaveTextContent('Employee Schema');
+    expect(rowOf('schema2')).toHaveTextContent('Contractor Schema');
   });
 
-  it('uses the data grid variant inside a paper container', () => {
+  it('renders the listing as a card table', () => {
     render(<UserTypesList />);
 
-    expect(screen.getByTestId('listing-table-provider')).toHaveAttribute('data-variant', 'data-grid');
-    expect(screen.getByTestId('listing-table-container')).not.toHaveAttribute('data-disable-paper');
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
   });
 
   it('names the edit and delete actions of each row', () => {
@@ -288,8 +153,8 @@ describe('UserTypesList', () => {
   it('shows the handle under the display name', () => {
     render(<UserTypesList />);
 
-    expect(screen.getByTestId('row-schema1')).toHaveTextContent('employee');
-    expect(screen.getByTestId('row-schema2')).toHaveTextContent('contractor');
+    expect(rowOf('schema1')).toHaveTextContent('employee');
+    expect(rowOf('schema2')).toHaveTextContent('contractor');
   });
 
   it('shows organization unit names when available', () => {
@@ -338,7 +203,7 @@ describe('UserTypesList', () => {
 
     render(<UserTypesList />);
 
-    expect(screen.getByTestId('listing-table-provider')).toHaveAttribute('data-loading', 'true');
+    expect(screen.getByRole('table')).toHaveAttribute('aria-busy', 'true');
   });
 
   it('renders a read error state in place of the grid', async () => {
@@ -356,7 +221,7 @@ describe('UserTypesList', () => {
     await waitFor(() => {
       expect(screen.getByText('Failed to load user types')).toBeInTheDocument();
     });
-    expect(screen.queryByTestId('data-grid')).not.toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
   it('retries the query when Refresh is clicked on the read error state', async () => {
@@ -391,7 +256,7 @@ describe('UserTypesList', () => {
     render(<UserTypesList />);
 
     // Row click navigates to the user type view page
-    const row = screen.getByTestId('row-schema1');
+    const row = rowOf('schema1');
     await user.click(row);
 
     await waitFor(() => {
@@ -477,7 +342,7 @@ describe('UserTypesList', () => {
     const user = userEvent.setup();
     render(<UserTypesList />);
 
-    const row = screen.getByTestId('row-schema1');
+    const row = rowOf('schema1');
     await user.click(row);
 
     await waitFor(() => {
@@ -518,9 +383,8 @@ describe('UserTypesList', () => {
 
     render(<UserTypesList />);
 
-    const grid = screen.getByTestId('data-grid');
-    expect(grid).toBeInTheDocument();
-    expect(grid).toHaveAttribute('data-loading', 'false');
+    expect(screen.getByRole('table')).toHaveAttribute('aria-busy', 'false');
+    expect(screen.getByText('No rows')).toBeInTheDocument();
   });
 
   it('keeps delete dialog open on delete error', async () => {
@@ -552,7 +416,7 @@ describe('UserTypesList', () => {
 
     render(<UserTypesList />);
 
-    const row = screen.getByTestId('row-schema1');
+    const row = rowOf('schema1');
     await user.click(row);
 
     // Navigation was called but failed - the catch handler silently handles the error
@@ -608,5 +472,26 @@ describe('UserTypesList', () => {
         }),
       );
     });
+  });
+
+  it('sorts user types by name, ID, organization unit and self registration', async () => {
+    const user = userEvent.setup();
+    render(<UserTypesList />);
+
+    await user.click(screen.getByRole('button', {name: 'Name'}));
+    expect(firstCells()[0]).toContain('Contractor Schema');
+
+    await user.click(screen.getByRole('button', {name: 'User type ID'}));
+    expect(firstCells()[0]).toContain('Employee Schema');
+
+    await user.click(screen.getByRole('button', {name: 'Organization unit'}));
+    expect(firstCells()[0]).toContain('Contractor Schema');
+    await user.click(screen.getByRole('button', {name: 'Organization unit'}));
+    expect(firstCells()[0]).toContain('Employee Schema');
+
+    await user.click(screen.getByRole('button', {name: 'Self registration'}));
+    expect(firstCells()[0]).toContain('Employee Schema');
+    await user.click(screen.getByRole('button', {name: 'Self registration'}));
+    expect(firstCells()[0]).toContain('Contractor Schema');
   });
 });

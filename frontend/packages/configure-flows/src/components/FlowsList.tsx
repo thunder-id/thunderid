@@ -1,10 +1,8 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice, useFlowListColumns} from '@thunderid/components';
-import {useDataGridLocaleText} from '@thunderid/hooks';
+import {CardListingTable, QueryErrorNotice, useFlowListColumns} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
-import {ListingTable} from '@wso2/oxygen-ui';
 import {useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -18,7 +16,6 @@ export default function FlowsList(): JSX.Element {
   const flowRoutes = useFlowRoutes();
   const {t} = useTranslation();
   const logger = useLogger('FlowsList');
-  const dataGridLocaleText = useDataGridLocaleText();
   const {data, isLoading, error, refetch} = useGetFlows();
 
   // Resolves an error through the `flows` catalog. `t` defaults to the `common` namespace, so
@@ -71,35 +68,14 @@ export default function FlowsList(): JSX.Element {
 
   return (
     <>
-      <ListingTable.Provider variant="data-grid" loading={isLoading}>
-        <ListingTable.Container>
-          <ListingTable.DataGrid
-            rows={data?.flows ?? []}
-            columns={columns}
-            getRowId={(row): string => (row as BasicFlowDefinition).id}
-            onRowClick={(params) => {
-              handleOpenClick(params.row as BasicFlowDefinition);
-            }}
-            rowHeight={64}
-            initialState={{
-              pagination: {
-                paginationModel: {pageSize: 10},
-              },
-            }}
-            pageSizeOptions={[5, 10, 25, 50]}
-            disableRowSelectionOnClick
-            // Filtering is not wired end to end, so the column filter panel stays hidden.
-            disableColumnFilter
-            localeText={dataGridLocaleText}
-            autoHeight
-            sx={{
-              '& .MuiDataGrid-row': {
-                cursor: 'pointer',
-              },
-            }}
-          />
-        </ListingTable.Container>
-      </ListingTable.Provider>
+      <CardListingTable
+        rows={data?.flows ?? []}
+        columns={columns}
+        getRowId={(row) => row.id}
+        onRowClick={handleOpenClick}
+        loading={isLoading}
+        pageSizeOptions={[5, 10, 25, 50]}
+      />
 
       <FlowDeleteDialog open={deleteDialogOpen} flowId={selectedFlow?.id ?? null} onClose={handleDeleteDialogClose} />
     </>

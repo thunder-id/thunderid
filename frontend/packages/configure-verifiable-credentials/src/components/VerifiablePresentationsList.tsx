@@ -1,10 +1,9 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice} from '@thunderid/components';
-import {useDataGridLocaleText} from '@thunderid/hooks';
+import {QueryErrorNotice, CardListingTable, type CardListingTableColumn} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
-import {IconButton, Typography, Tooltip, DataGrid, ListingTable} from '@wso2/oxygen-ui';
+import {IconButton, Typography, Tooltip, ListingTable} from '@wso2/oxygen-ui';
 import {Pencil, QrCode as QrCodeIcon, ShieldCheck, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -22,7 +21,6 @@ export default function VerifiablePresentationsList(): JSX.Element {
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('VerifiablePresentationsList');
-  const dataGridLocaleText = useDataGridLocaleText();
   const routes = useVerifiableCredentialRoutes();
 
   // Resolves an error through the `verifiable-presentations` catalog. `t` defaults to the `common`
@@ -61,43 +59,39 @@ export default function VerifiablePresentationsList(): JSX.Element {
     setSelectedId(null);
   };
 
-  const columns: DataGrid.GridColDef<VerifiablePresentationSummary>[] = useMemo(
+  const columns: CardListingTableColumn<VerifiablePresentationSummary>[] = useMemo(
     () => [
       {
         field: 'name',
-        headerName: t('verifiable-presentations:listing.columns.name'),
-        flex: 1,
+        header: t('verifiable-presentations:listing.columns.name'),
+        sortValue: (row) => row.name,
         minWidth: 180,
-        renderCell: (params: DataGrid.GridRenderCellParams<VerifiablePresentationSummary>): JSX.Element => (
+        render: (row: VerifiablePresentationSummary): JSX.Element => (
           <ListingTable.CellIcon
             icon={<ShieldCheck size={20} />}
-            primary={params.row.name ?? '-'}
-            secondary={params.row.handle}
+            primary={row.name ?? '-'}
+            secondary={row.handle}
             sx={{width: '100%'}}
           />
         ),
       },
       {
         field: 'ouHandle',
-        headerName: t('verifiable-presentations:listing.columns.organizationUnit'),
-        flex: 1,
+        header: t('verifiable-presentations:listing.columns.organizationUnit'),
+        sortValue: (row) => row.ouHandle,
         minWidth: 160,
-        renderCell: (params: DataGrid.GridRenderCellParams<VerifiablePresentationSummary>): JSX.Element => (
+        render: (row: VerifiablePresentationSummary): JSX.Element => (
           <Typography variant="body2" sx={{fontFamily: 'monospace', fontSize: '0.875rem'}}>
-            {params.row.ouHandle ?? params.row.ouId ?? '-'}
+            {row.ouHandle ?? row.ouId ?? '-'}
           </Typography>
         ),
       },
       {
         field: 'actions',
-        headerName: t('verifiable-presentations:listing.columns.actions'),
+        header: t('verifiable-presentations:listing.columns.actions'),
         width: 160,
         align: 'center',
-        headerAlign: 'center',
-        sortable: false,
-        filterable: false,
-        hideable: false,
-        renderCell: (params: DataGrid.GridRenderCellParams<VerifiablePresentationSummary>): JSX.Element => (
+        render: (row: VerifiablePresentationSummary): JSX.Element => (
           <ListingTable.RowActions>
             <Tooltip title={t('verifiable-presentations:listing.verify', 'Verify')}>
               <IconButton
@@ -105,7 +99,7 @@ export default function VerifiablePresentationsList(): JSX.Element {
                 aria-label={t('verifiable-presentations:listing.verify', 'Verify')}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setVerifyHandle(params.row.handle);
+                  setVerifyHandle(row.handle);
                 }}
               >
                 <QrCodeIcon size={16} />
@@ -117,7 +111,7 @@ export default function VerifiablePresentationsList(): JSX.Element {
                 aria-label={t('common:actions.edit', 'Edit')}
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleEditClick(params.row.id);
+                  handleEditClick(row.id);
                 }}
               >
                 <Pencil size={16} />
@@ -130,7 +124,7 @@ export default function VerifiablePresentationsList(): JSX.Element {
                 aria-label={t('common:actions.delete', 'Delete')}
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleDeleteClick(params.row.id);
+                  handleDeleteClick(row.id);
                 }}
               >
                 <Trash2 size={16} />
@@ -157,28 +151,16 @@ export default function VerifiablePresentationsList(): JSX.Element {
 
   return (
     <>
-      <ListingTable.Provider variant="data-grid" loading={isLoading}>
-        <ListingTable.Container>
-          <ListingTable.DataGrid
-            rows={data ?? []}
-            columns={columns}
-            getRowId={(row) => (row as VerifiablePresentationSummary).id}
-            onRowClick={(params) => {
-              handleEditClick((params.row as VerifiablePresentationSummary).id);
-            }}
-            rowHeight={64}
-            pageSizeOptions={[5, 10, 25]}
-            disableRowSelectionOnClick
-            // Filtering is not wired end to end, so the column filter panel stays hidden.
-            disableColumnFilter
-            localeText={dataGridLocaleText}
-            autoHeight
-            sx={{
-              '& .MuiDataGrid-row': {cursor: 'pointer'},
-            }}
-          />
-        </ListingTable.Container>
-      </ListingTable.Provider>
+      <CardListingTable
+        rows={data ?? []}
+        columns={columns}
+        getRowId={(row) => row.id}
+        onRowClick={(row) => {
+          handleEditClick(row.id);
+        }}
+        loading={isLoading}
+        pageSizeOptions={[5, 10, 25]}
+      />
 
       <VerifiablePresentationDeleteDialog open={deleteDialogOpen} vpId={selectedId} onClose={handleDeleteDialogClose} />
 

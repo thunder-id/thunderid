@@ -1,8 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice} from '@thunderid/components';
-import {useDataGridLocaleText} from '@thunderid/hooks';
+import {QueryErrorNotice, CardListingTable, type CardListingTableColumn} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {
   Box,
@@ -33,7 +32,6 @@ export default function ResourceServersList(): JSX.Element {
   const routes = useResourceServerRoutes();
   const {t} = useTranslation();
   const logger = useLogger('ResourceServersList');
-  const dataGridLocaleText = useDataGridLocaleText();
 
   // Resolves an error through the `resourceServers` catalog. `t` defaults to the `common`
   // namespace, so this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with
@@ -101,26 +99,26 @@ export default function ResourceServersList(): JSX.Element {
     setMenuTarget(null);
   }, []);
 
-  const columns: DataGrid.GridColDef<ResourceServer>[] = useMemo(
+  const columns: CardListingTableColumn<ResourceServer>[] = useMemo(
     () => [
       {
         field: 'name',
-        headerName: t('resourceServers:listing.columns.name', 'Name'),
-        flex: 1,
+        header: t('resourceServers:listing.columns.name', 'Name'),
+        sortValue: (row) => row.name,
         minWidth: 200,
-        renderCell: (params: DataGrid.GridRenderCellParams<ResourceServer>) => (
+        render: (row: ResourceServer) => (
           <ListingTable.CellIcon
             icon={<Server size={20} />}
             primary={
               <Stack direction="row" spacing={1} alignItems="center">
-                <span>{params.row.name}</span>
-                {params.row.id === defaultId && (
+                <span>{row.name}</span>
+                {row.id === defaultId && (
                   <Chip label={t('resourceServers:listing.default', 'Default')} size="small" variant="outlined" />
                 )}
               </Stack>
             }
             secondary={
-              params.row.isReadOnly ? (
+              row.isReadOnly ? (
                 <Chip
                   label={t('resourceServers:listing.systemResourceServer', 'System resource server')}
                   size="small"
@@ -134,22 +132,22 @@ export default function ResourceServersList(): JSX.Element {
       },
       {
         field: 'type',
-        headerName: t('resourceServers:listing.columns.type', 'Type'),
-        flex: 0.8,
+        header: t('resourceServers:listing.columns.type', 'Type'),
+        sortValue: (row) => row.type,
         minWidth: 120,
-        renderCell: (params: DataGrid.GridRenderCellParams<ResourceServer>) => (
-          <Chip label={getResourceServerTypeLabel(params.row.type, t)} size="small" variant="outlined" />
+        render: (row: ResourceServer) => (
+          <Chip label={getResourceServerTypeLabel(row.type, t)} size="small" variant="outlined" />
         ),
       },
       {
         field: 'identifier',
-        headerName: t('resourceServers:listing.columns.identifier', 'Identifier'),
-        flex: 1.5,
+        header: t('resourceServers:listing.columns.identifier', 'Identifier'),
+        sortValue: (row) => row.identifier,
         minWidth: 240,
-        renderCell: (params: DataGrid.GridRenderCellParams<ResourceServer>) =>
-          params.row.identifier ? (
+        render: (row: ResourceServer) =>
+          row.identifier ? (
             <Typography variant="body2" color="text.secondary" sx={{fontFamily: 'monospace', fontSize: '0.8rem'}}>
-              {params.row.identifier}
+              {row.identifier}
             </Typography>
           ) : (
             <Typography variant="body2" color="text.disabled">
@@ -159,16 +157,12 @@ export default function ResourceServersList(): JSX.Element {
       },
       {
         field: 'actions',
-        headerName: t('resourceServers:listing.columns.actions', 'Actions'),
+        header: t('resourceServers:listing.columns.actions', 'Actions'),
         width: 150,
         align: 'center',
-        headerAlign: 'center',
-        sortable: false,
-        filterable: false,
-        hideable: false,
-        renderCell: (params: DataGrid.GridRenderCellParams<ResourceServer>): JSX.Element => (
+        render: (row: ResourceServer): JSX.Element => (
           <ListingTable.RowActions>
-            {params.row.isReadOnly ? (
+            {row.isReadOnly ? (
               <Tooltip title={t('common:status.readOnly', 'Read only')}>
                 <IconButton
                   size="small"
@@ -188,7 +182,7 @@ export default function ResourceServersList(): JSX.Element {
                     onClick={(e) => {
                       e.stopPropagation();
                       (async (): Promise<void> => {
-                        await navigate(routes.detail(params.row.id));
+                        await navigate(routes.detail(row.id));
                       })().catch((err: unknown) => {
                         logger.error('Failed to navigate to resource server detail', {error: err});
                       });
@@ -204,7 +198,7 @@ export default function ResourceServersList(): JSX.Element {
                     aria-label={t('common:actions.delete', 'Delete')}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setDeleteTarget(params.row);
+                      setDeleteTarget(row);
                     }}
                   >
                     <Trash2 size={16} />
@@ -214,7 +208,7 @@ export default function ResourceServersList(): JSX.Element {
                   <IconButton
                     size="small"
                     aria-label={t('resourceServers:listing.actions.more', 'More actions')}
-                    onClick={(e) => handleMenuOpen(e, params.row)}
+                    onClick={(e) => handleMenuOpen(e, row)}
                   >
                     <EllipsisVertical size={16} />
                   </IconButton>
@@ -242,34 +236,24 @@ export default function ResourceServersList(): JSX.Element {
 
   return (
     <>
-      <ListingTable.Provider variant="data-grid" loading={isLoading}>
-        <ListingTable.Container>
-          <ListingTable.DataGrid
-            rows={data?.resourceServers ?? []}
-            columns={columns}
-            getRowId={(row) => (row as ResourceServer).id}
-            onRowClick={(params) => {
-              (async (): Promise<void> => {
-                await navigate(routes.detail((params.row as ResourceServer).id));
-              })().catch((err: unknown) => {
-                logger.error('Failed to navigate to resource server detail', {error: err});
-              });
-            }}
-            rowHeight={64}
-            rowCount={data?.totalResults ?? 0}
-            paginationMode="server"
-            paginationModel={paginationModel}
-            onPaginationModelChange={setPaginationModel}
-            pageSizeOptions={[5, 10, 25]}
-            disableRowSelectionOnClick
-            // Filtering is not wired end to end, so the column filter panel stays hidden.
-            disableColumnFilter
-            localeText={dataGridLocaleText}
-            autoHeight
-            sx={{'& .MuiDataGrid-row': {cursor: 'pointer'}}}
-          />
-        </ListingTable.Container>
-      </ListingTable.Provider>
+      <CardListingTable
+        rows={data?.resourceServers ?? []}
+        columns={columns}
+        getRowId={(row) => row.id}
+        onRowClick={(row) => {
+          (async (): Promise<void> => {
+            await navigate(routes.detail(row.id));
+          })().catch((err: unknown) => {
+            logger.error('Failed to navigate to resource server detail', {error: err});
+          });
+        }}
+        loading={isLoading}
+        paginationMode="server"
+        rowCount={data?.totalResults ?? 0}
+        paginationModel={paginationModel}
+        onPaginationModelChange={setPaginationModel}
+        pageSizeOptions={[5, 10, 25]}
+      />
 
       <Menu
         anchorEl={menuAnchor}

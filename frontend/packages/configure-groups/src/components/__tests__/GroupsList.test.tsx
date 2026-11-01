@@ -1,125 +1,12 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {screen, waitFor} from '@testing-library/react';
+import {screen, waitFor, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {renderWithProviders} from '@thunderid/test-utils';
-import type * as OxygenUI from '@wso2/oxygen-ui';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import type {GroupListResponse} from '../../models/group';
 import GroupsList from '../GroupsList';
-
-interface MockDataGridProps {
-  rows?: {id: string; name?: string; [key: string]: unknown}[];
-  columns?: {
-    field?: string;
-    valueGetter?: (value: unknown, row: Record<string, unknown>) => unknown;
-    renderCell?: (params: {row: Record<string, unknown>; field: string; value: unknown; id: string}) => React.ReactNode;
-  }[];
-  loading?: boolean;
-  onRowClick?: (params: {row: unknown}, details: unknown, event: unknown) => void;
-  getRowId?: (row: {id: string; [key: string]: unknown}) => string;
-}
-
-vi.mock('@wso2/oxygen-ui', async () => {
-  const actual = await vi.importActual<typeof OxygenUI>('@wso2/oxygen-ui');
-  return {
-    ...actual,
-    DataGrid: {
-      ...(actual.DataGrid ?? {}),
-      GridColDef: {},
-      GridRenderCellParams: {},
-    },
-    ListingTable: {
-      Provider: ({
-        children,
-        loading = false,
-        variant = undefined,
-      }: {
-        children: React.ReactNode;
-        loading?: boolean;
-        variant?: string;
-      }) => (
-        <div data-testid="listing-table-provider" data-loading={loading ? 'true' : 'false'} data-variant={variant}>
-          {children}
-        </div>
-      ),
-      Container: ({children, disablePaper = false}: {children: React.ReactNode; disablePaper?: boolean}) => (
-        <div data-testid="listing-table-container" data-disable-paper={disablePaper ? 'true' : undefined}>
-          {children}
-        </div>
-      ),
-      CellIcon: ({
-        icon,
-        primary,
-        secondary = undefined,
-      }: {
-        icon: React.ReactNode;
-        primary: React.ReactNode;
-        secondary?: React.ReactNode;
-      }) => (
-        <div data-testid="cell-icon">
-          {icon}
-          <span>{primary}</span>
-          {secondary && <span>{secondary}</span>}
-        </div>
-      ),
-      RowActions: ({children}: {children: React.ReactNode}) => <div data-testid="row-actions">{children}</div>,
-      DataGrid: ({
-        rows = [],
-        columns = [],
-        loading = false,
-        onRowClick = undefined,
-        getRowId = undefined,
-      }: MockDataGridProps) => (
-        <div data-testid="data-grid" data-loading={loading}>
-          {rows.map((row) => {
-            const rowId = getRowId ? getRowId(row) : row.id;
-            return (
-              <div key={rowId} className="MuiDataGrid-row-container">
-                <button
-                  type="button"
-                  className="MuiDataGrid-row"
-                  onClick={() => onRowClick?.({row}, {}, {})}
-                  data-testid={`row-${rowId}`}
-                >
-                  {row.name}
-                </button>
-                {columns.map((column) => {
-                  if (!column?.field) return null;
-                  const value = column.valueGetter ? column.valueGetter(undefined, row) : row[column.field];
-                  const content = column.renderCell
-                    ? column.renderCell({row, field: column.field, value, id: String(rowId)})
-                    : value;
-                  return (
-                    <span key={`${rowId}-${column.field}`} className="MuiDataGrid-cell">
-                      {content as React.ReactNode}
-                    </span>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </div>
-      ),
-      EmptyState: ({
-        title = undefined,
-        description = undefined,
-        action = undefined,
-      }: {
-        title?: string;
-        description?: string;
-        action?: React.ReactNode;
-      }) => (
-        <div>
-          {title && <div>{title}</div>}
-          {description && <div>{description}</div>}
-          {action}
-        </div>
-      ),
-    },
-  };
-});
 
 const mockNavigate = vi.fn();
 vi.mock('react-router', async () => {
@@ -150,6 +37,14 @@ vi.mock('@thunderid/logger/react', () => ({
   useLogger: () => mockLogger,
 }));
 
+const rowOf = (name: string): HTMLElement => screen.getByText(name).closest<HTMLElement>('tr')!;
+
+const bodyCells = (column: number): string[] =>
+  screen
+    .getAllByRole('row')
+    .slice(1)
+    .map((row) => within(row).getAllByRole('cell')[column].textContent ?? '');
+
 describe('GroupsList', () => {
   const mockGroupsData: GroupListResponse = {
     totalResults: 2,
@@ -174,19 +69,89 @@ describe('GroupsList', () => {
     vi.clearAllMocks();
   });
 
-  it('should render groups in the data grid', () => {
+  it('should render groups in a card table', () => {
     renderWithProviders(<GroupsList />);
 
-    expect(screen.getByTestId('row-g1')).toHaveTextContent('Group One');
-    expect(screen.getByTestId('row-g2')).toHaveTextContent('Group Two');
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(rowOf('Group One')).toBeInTheDocument();
+    expect(rowOf('Group Two')).toBeInTheDocument();
   });
 
   it('should render the description as a secondary line only when present', () => {
     renderWithProviders(<GroupsList />);
 
-    const nameCells = screen.getAllByTestId('cell-icon');
-    expect(nameCells[0]).toHaveTextContent('Group OneFirst group');
-    expect(nameCells[1]).toHaveTextContent(/^Group Two$/);
+    expect(bodyCells(0)).toEqual(['Group OneFirst group', 'Group Two']);
+  });
+
+  it('should render the organization unit, falling back to the ID and then a dash', () => {
+    mockUseGetGroups.mockReturnValue({
+      data: {
+        ...mockGroupsData,
+        groups: [
+          {id: 'g1', name: 'Group One', ouId: 'ou1', ouHandle: 'engineering'},
+          {id: 'g2', name: 'Group Two', ouId: 'ou2'},
+          {id: 'g3', name: 'Group Three'},
+        ],
+      },
+      isLoading: false,
+      error: null,
+    });
+    renderWithProviders(<GroupsList />);
+
+    expect(bodyCells(1)).toEqual(['engineering', 'ou2', '-']);
+  });
+
+  it('should sort the groups by name and by organization unit', async () => {
+    const user = userEvent.setup();
+    mockUseGetGroups.mockReturnValue({
+      data: {
+        ...mockGroupsData,
+        groups: [
+          {id: 'g1', name: 'Beta', ouId: 'ou1', ouHandle: 'sales'},
+          {id: 'g2', name: 'Alpha', ouId: 'ou2', ouHandle: 'support'},
+          {id: 'g3', name: 'Gamma', ouId: 'ou3', ouHandle: 'engineering'},
+        ],
+      },
+      isLoading: false,
+      error: null,
+    });
+    renderWithProviders(<GroupsList />);
+
+    await user.click(screen.getByRole('button', {name: 'Name'}));
+    expect(bodyCells(0)).toEqual(['Alpha', 'Beta', 'Gamma']);
+
+    await user.click(screen.getByRole('button', {name: 'Organization unit'}));
+    expect(bodyCells(1)).toEqual(['engineering', 'sales', 'support']);
+  });
+
+  it('should request the first page of ten groups, then the page the user moves to', async () => {
+    const user = userEvent.setup();
+    mockUseGetGroups.mockReturnValue({
+      data: {...mockGroupsData, totalResults: 30},
+      isLoading: false,
+      error: null,
+    });
+    renderWithProviders(<GroupsList />);
+
+    expect(mockUseGetGroups).toHaveBeenLastCalledWith({limit: 10, offset: 0});
+
+    await user.click(screen.getByRole('button', {name: 'Go to next page'}));
+    expect(mockUseGetGroups).toHaveBeenLastCalledWith({limit: 10, offset: 10});
+
+    await user.click(screen.getByRole('combobox'));
+    await user.click(screen.getByRole('option', {name: '25'}));
+    expect(mockUseGetGroups).toHaveBeenLastCalledWith({limit: 25, offset: 0});
+  });
+
+  it('should show the empty row when there are no groups', () => {
+    mockUseGetGroups.mockReturnValue({
+      data: {...mockGroupsData, totalResults: 0, count: 0, groups: []},
+      isLoading: false,
+      error: null,
+    });
+    renderWithProviders(<GroupsList />);
+
+    expect(screen.getByText('No rows')).toBeInTheDocument();
   });
 
   it('should not render a secondary line for an empty description', () => {
@@ -198,14 +163,7 @@ describe('GroupsList', () => {
 
     renderWithProviders(<GroupsList />);
 
-    expect(screen.getByTestId('cell-icon')).toHaveTextContent(/^Group Three$/);
-  });
-
-  it('should render the data grid variant inside a paper container', () => {
-    renderWithProviders(<GroupsList />);
-
-    expect(screen.getByTestId('listing-table-provider')).toHaveAttribute('data-variant', 'data-grid');
-    expect(screen.getByTestId('listing-table-container')).not.toHaveAttribute('data-disable-paper');
+    expect(bodyCells(0)).toEqual(['Group Three']);
   });
 
   it('should label the row action buttons', () => {
@@ -232,7 +190,7 @@ describe('GroupsList', () => {
     });
     renderWithProviders(<GroupsList />);
 
-    expect(screen.getByTestId('listing-table-provider')).toHaveAttribute('data-loading', 'true');
+    expect(screen.getByRole('table')).toHaveAttribute('aria-busy', 'true');
   });
 
   it('should show error state', () => {
@@ -253,7 +211,7 @@ describe('GroupsList', () => {
     mockNavigate.mockResolvedValue(undefined);
     renderWithProviders(<GroupsList />);
 
-    await user.click(screen.getByTestId('row-g1'));
+    await user.click(rowOf('Group One'));
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/groups/g1');
@@ -281,7 +239,7 @@ describe('GroupsList', () => {
     mockNavigate.mockRejectedValue(new Error('navigation failed'));
     renderWithProviders(<GroupsList />);
 
-    await user.click(screen.getByTestId('row-g1'));
+    await user.click(rowOf('Group One'));
 
     await waitFor(() => {
       expect(mockLogger.error).toHaveBeenCalledWith('Failed to navigate to group', {

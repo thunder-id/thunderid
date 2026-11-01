@@ -4,8 +4,7 @@
 import {focusManager} from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import {renderWithProviders, screen, waitFor, within} from '@thunderid/test-utils';
-import {beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
-import {page} from 'vitest/browser';
+import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {apiError, createHttpRouter, SERVER_URL, type HttpCall} from '../../__tests__/http';
 import GatewaysListPage from '../GatewaysListPage';
 
@@ -41,11 +40,6 @@ const routes = {
   'GET /gateways': gateways,
 };
 
-// The grid renders only the columns that fit, so a desktop width keeps the actions column in the DOM.
-beforeAll(async () => {
-  await page.viewport(1280, 800);
-});
-
 beforeEach(() => {
   mockHttpRequest.mockReset();
   mockNavigate.mockReset();
@@ -65,6 +59,42 @@ describe('GatewaysListPage', () => {
     expect(screen.queryByText('Applied version')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', {name: 'Capture current configuration'})).not.toBeInTheDocument();
     expect(mockHttpRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks the table busy until the gateways load', async () => {
+    mockHttpRequest.mockImplementation(createHttpRouter(routes));
+    renderWithProviders(<GatewaysListPage />);
+
+    expect(screen.getByRole('table')).toHaveAttribute('aria-busy', 'true');
+    await screen.findByText('production');
+    expect(screen.getByRole('table')).toHaveAttribute('aria-busy', 'false');
+  });
+
+  it('says when no gateway is registered', async () => {
+    mockHttpRequest.mockImplementation(createHttpRouter({'GET /gateways': []}));
+    renderWithProviders(<GatewaysListPage />);
+
+    expect(await screen.findByText('No gateways are registered yet.')).toBeInTheDocument();
+  });
+
+  it('sorts the gateways by name, base URL and creation time', async () => {
+    const user = userEvent.setup();
+    mockHttpRequest.mockImplementation(createHttpRouter(routes));
+    renderWithProviders(<GatewaysListPage />);
+    await screen.findByText('production');
+    const firstRow = (): HTMLElement => screen.getAllByRole('row')[1];
+
+    await user.click(screen.getByRole('button', {name: 'Name'}));
+    expect(firstRow()).toHaveTextContent('production');
+    await user.click(screen.getByRole('button', {name: 'Name'}));
+    expect(firstRow()).toHaveTextContent('staging');
+
+    await user.click(screen.getByRole('button', {name: 'Base URL'}));
+    expect(firstRow()).toHaveTextContent('production');
+
+    await user.click(screen.getByRole('button', {name: 'Created'}));
+    expect(firstRow()).toHaveTextContent('production');
+    expect(screen.getByRole('columnheader', {name: 'Created'})).toHaveAttribute('aria-sort', 'ascending');
   });
 
   it('opens a gateway from its row', async () => {

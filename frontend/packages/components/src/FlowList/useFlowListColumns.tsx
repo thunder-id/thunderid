@@ -1,10 +1,11 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Chip, DataGrid, IconButton, ListingTable, Tooltip} from '@wso2/oxygen-ui';
+import {Chip, IconButton, ListingTable, Tooltip} from '@wso2/oxygen-ui';
 import {Eye, Pencil, Trash2, Workflow} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
+import type {CardListingTableColumn} from '../CardListingTable/CardListingTable';
 
 /**
  * The fields of a flow a flow list shows.
@@ -33,6 +34,17 @@ export interface FlowListColumnsOptions<T extends FlowListRow> {
   onDelete?: (flow: T) => void;
 }
 
+function formatUpdatedAt(row: FlowListRow): string {
+  const date = new Date(row.updatedAt);
+  return date.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 /**
  * Columns of a flow list: name, type, last update and the row actions. A read-only flow offers View;
  * any other flow offers Edit, and Delete when `onDelete` is given.
@@ -42,67 +54,57 @@ export interface FlowListColumnsOptions<T extends FlowListRow> {
 export default function useFlowListColumns<T extends FlowListRow>({
   onOpen,
   onDelete = undefined,
-}: FlowListColumnsOptions<T>): DataGrid.GridColDef<T>[] {
+}: FlowListColumnsOptions<T>): CardListingTableColumn<T>[] {
   const {t} = useTranslation();
 
   return useMemo(
-    (): DataGrid.GridColDef<T>[] => [
+    (): CardListingTableColumn<T>[] => [
       {
         field: 'name',
-        headerName: t('flows:listing.columns.name', 'Name'),
-        flex: 1,
+        header: t('flows:listing.columns.name', 'Name'),
+        sortValue: (row) => row.name,
         minWidth: 220,
-        renderCell: (params: DataGrid.GridRenderCellParams<T>): JSX.Element => (
+        render: (row: T): JSX.Element => (
           <ListingTable.CellIcon
             icon={<Workflow size={20} />}
-            primary={params.row.name}
-            secondary={params.row.handle}
+            primary={row.name}
+            secondary={row.handle}
             sx={{width: '100%'}}
           />
         ),
       },
       {
         field: 'flowType',
-        headerName: t('flows:listing.columns.flowType', 'Type'),
+        header: t('flows:listing.columns.flowType', 'Type'),
+        sortValue: (row) => row.flowType,
         width: 180,
-        renderCell: (params: DataGrid.GridRenderCellParams<T>): JSX.Element => (
-          <Chip label={params.row.flowType} size="small" variant="outlined" />
-        ),
+        render: (row: T): JSX.Element => <Chip label={row.flowType} size="small" variant="outlined" />,
       },
       {
         field: 'updatedAt',
-        headerName: t('flows:listing.columns.updatedAt', 'Last updated'),
+        header: t('flows:listing.columns.updatedAt', 'Last updated'),
         width: 180,
-        valueGetter: (_value, row): string => {
-          const date = new Date(row.updatedAt);
-          return date.toLocaleDateString(undefined, {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          });
+        sortValue: (row) => {
+          const time = new Date(row.updatedAt).getTime();
+          return Number.isNaN(time) ? null : time;
         },
+        render: formatUpdatedAt,
       },
       {
         field: 'actions',
-        headerName: t('flows:listing.columns.actions', 'Actions'),
+        header: t('flows:listing.columns.actions', 'Actions'),
         width: 150,
         align: 'center',
-        headerAlign: 'center',
-        sortable: false,
-        filterable: false,
-        hideable: false,
-        renderCell: (params: DataGrid.GridRenderCellParams<T>): JSX.Element => (
+        render: (row: T): JSX.Element => (
           <ListingTable.RowActions>
-            {params.row.isReadOnly ? (
+            {row.isReadOnly ? (
               <Tooltip title={t('common:actions.view', 'View')}>
                 <IconButton
                   size="small"
                   aria-label={t('common:actions.view', 'View')}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onOpen(params.row);
+                    onOpen(row);
                   }}
                 >
                   <Eye size={16} />
@@ -116,7 +118,7 @@ export default function useFlowListColumns<T extends FlowListRow>({
                     aria-label={t('common:actions.edit', 'Edit')}
                     onClick={(e) => {
                       e.stopPropagation();
-                      onOpen(params.row);
+                      onOpen(row);
                     }}
                   >
                     <Pencil size={16} />
@@ -130,7 +132,7 @@ export default function useFlowListColumns<T extends FlowListRow>({
                       aria-label={t('common:actions.delete', 'Delete')}
                       onClick={(e) => {
                         e.stopPropagation();
-                        onDelete(params.row);
+                        onDelete(row);
                       }}
                     >
                       <Trash2 size={16} />

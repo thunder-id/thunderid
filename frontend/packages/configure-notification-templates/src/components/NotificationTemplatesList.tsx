@@ -1,8 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice} from '@thunderid/components';
-import {useDataGridLocaleText} from '@thunderid/hooks';
+import {QueryErrorNotice, CardListingTable, type CardListingTableColumn} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, DataGrid, IconButton, ListingTable, Tooltip} from '@wso2/oxygen-ui';
 import {Mail, MessageSquare, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
@@ -37,7 +36,6 @@ export default function NotificationTemplatesList({channel}: NotificationTemplat
   const navigate = useNavigate();
   const logger = useLogger('NotificationTemplatesList');
   const routes = useNotificationTemplateRoutes();
-  const dataGridLocaleText = useDataGridLocaleText();
 
   const [paginationModel, setPaginationModel] = useState<DataGrid.GridPaginationModel>({pageSize: 10, page: 0});
   const {data, isLoading, error, refetch} = useGetNotificationTemplates(channel, {
@@ -64,32 +62,28 @@ export default function NotificationTemplatesList({channel}: NotificationTemplat
     [channel, logger, navigate, routes],
   );
 
-  const columns: DataGrid.GridColDef<TemplateSummary>[] = useMemo(
+  const columns: CardListingTableColumn<TemplateSummary>[] = useMemo(
     () => [
       {
         field: 'displayName',
-        headerName: t('listing.columns.name', 'Name'),
-        flex: 1,
+        header: t('listing.columns.name', 'Name'),
+        sortValue: (row) => row.displayName,
         minWidth: 280,
-        renderCell: (params: DataGrid.GridRenderCellParams<TemplateSummary>): JSX.Element => (
+        render: (row: TemplateSummary): JSX.Element => (
           <ListingTable.CellIcon
             sx={{width: '100%'}}
             icon={channel === 'sms' ? <MessageSquare size={20} /> : <Mail size={20} />}
-            primary={params.row.displayName}
-            secondary={params.row.description}
+            primary={row.displayName}
+            secondary={row.description}
           />
         ),
       },
       {
         field: 'actions',
-        headerName: t('listing.columns.actions', 'Actions'),
+        header: t('listing.columns.actions', 'Actions'),
         width: 120,
         align: 'right',
-        headerAlign: 'right',
-        sortable: false,
-        filterable: false,
-        hideable: false,
-        renderCell: (params: DataGrid.GridRenderCellParams<TemplateSummary>): JSX.Element => (
+        render: (row: TemplateSummary): JSX.Element => (
           <ListingTable.RowActions>
             <Tooltip title={t('common:actions.edit', 'Edit')}>
               <IconButton
@@ -97,7 +91,7 @@ export default function NotificationTemplatesList({channel}: NotificationTemplat
                 aria-label={t('common:actions.edit', 'Edit')}
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleEditClick(params.row.id);
+                  handleEditClick(row.id);
                 }}
               >
                 <Pencil size={16} />
@@ -110,7 +104,7 @@ export default function NotificationTemplatesList({channel}: NotificationTemplat
                 aria-label={t('common:actions.delete', 'Delete')}
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleDeleteClick(params.row);
+                  handleDeleteClick(row);
                 }}
               >
                 <Trash2 size={16} />
@@ -136,34 +130,20 @@ export default function NotificationTemplatesList({channel}: NotificationTemplat
 
   return (
     <Box data-testid="notification-templates-list">
-      <ListingTable.Provider variant="data-grid" loading={isLoading}>
-        <ListingTable.Container>
-          <ListingTable.DataGrid
-            rows={rows}
-            columns={columns}
-            getRowId={(row): string => (row as TemplateSummary).id}
-            onRowClick={(params) => {
-              handleEditClick((params.row as TemplateSummary).id);
-            }}
-            paginationMode="server"
-            rowCount={data?.totalResults ?? 0}
-            paginationModel={paginationModel}
-            onPaginationModelChange={setPaginationModel}
-            pageSizeOptions={[5, 10, 25, 50]}
-            rowHeight={64}
-            disableRowSelectionOnClick
-            // Filtering is not wired end to end, so the column filter panel stays hidden.
-            disableColumnFilter
-            localeText={dataGridLocaleText}
-            autoHeight
-            sx={{
-              '& .MuiDataGrid-row': {
-                cursor: 'pointer',
-              },
-            }}
-          />
-        </ListingTable.Container>
-      </ListingTable.Provider>
+      <CardListingTable
+        rows={rows}
+        columns={columns}
+        getRowId={(row) => row.id}
+        onRowClick={(row) => {
+          handleEditClick(row.id);
+        }}
+        loading={isLoading}
+        paginationMode="server"
+        rowCount={data?.totalResults ?? 0}
+        paginationModel={paginationModel}
+        onPaginationModelChange={setPaginationModel}
+        pageSizeOptions={[5, 10, 25, 50]}
+      />
 
       <NotificationTemplateDeleteDialog
         open={deleteTarget !== null}

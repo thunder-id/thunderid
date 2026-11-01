@@ -92,6 +92,7 @@ Third-party brand marks (Google, GitHub, React, and so on) are exported from `@t
 | `QueryErrorNotice` | Every read failure (see Error Display in frontend/AGENTS.md) | Hand-roll an `<Alert>` or empty state for a failed query |
 | `SettingsCard` | Each titled section of an edit page tab, including the danger zone | Build sections from bare `Paper` + `Typography` |
 | `UnsavedChangesBar` | The fixed save/reset bar on edit pages with a dirty form | Put a save button at the bottom of each tab |
+| `CardListingTable` | A page's main resource list whose rows open a detail page: Oxygen's `card` `ListingTable` with paging (client or server), sorting, skeleton rows while loading, and an empty row | Build a `ListingTable variant="card"` with its own paging and sorting |
 | `FullScreenCreationWizardLayout` | Every create flow: breadcrumbs, close, progress bar, optional live preview, footer actions | Build a wizard frame per feature |
 | `CopyableField` | A labeled read-only value with a copy button (IDs, endpoints, client IDs) | Write another `navigator.clipboard` + "copied" timeout handler |
 | `CopyableId` | An unlabeled inline monospace ID with copy | Same as above |
@@ -147,20 +148,23 @@ to the rules, not to the nearest example.
 </PageContent>
 ```
 
-The table is `ListingTable.Provider variant="data-grid" loading={isLoading}` > `ListingTable.Container` (a paper
-surface, so no `disablePaper`) > `ListingTable.DataGrid`, with `ListingTable.RowActions` for per-row actions
-(reference: `packages/configure-groups/src/components/GroupsList.tsx`). Start from Oxygen's "Guides/Choosing a Table"
-story (`stories/Guides/ChoosingATable.stories.tsx`), then choose the `ListingTable` variant by what the table holds:
+The table is `CardListingTable` from `@thunderid/components`, Oxygen's `card` `ListingTable` (a card table in the
+"Choosing a Table" guide), with `ListingTable.RowActions` for per-row actions (reference:
+`packages/configure-groups/src/components/GroupsList.tsx`). Columns are `CardListingTableColumn`s: `render(row)` draws
+the cell, and a `sortValue(row)` makes the column sortable. Pass `paginationMode="server"` with `rowCount`,
+`paginationModel` and `onPaginationModelChange` when the API pages the list. Start from Oxygen's "Guides/Choosing a
+Table" story (`stories/Guides/ChoosingATable.stories.tsx`), then choose the table by what it holds:
 
 | Table | Variant | Reference |
 |---|---|---|
-| Top-level resource list whose rows open a detail page | `data-grid` on the `Provider`, in a paper `ListingTable.Container` | `configure-groups` `GroupsList` |
+| Top-level resource list whose rows open a detail page | `card`, through `CardListingTable` | `configure-groups` `GroupsList` |
 | Sub-records inside an edit page, and pickers in dialogs (members, assignments, checkbox selection) | `data-grid` on the `Provider`, in a paper `ListingTable.Container` with a fixed height | `configure-groups` `ManageMembersSection`, `AddMemberDialog` |
 | Small static table, often with expandable rows | `table` (the default) with `density="compact"` | `configure-import-export` `ResourceSummaryTable` |
 
 - Render the name column as `ListingTable.CellIcon`: the resource's avatar or its sidebar icon (size 20), the name as
-  `primary`, and a description or handle as `secondary` where one exists. A two-line cell needs `rowHeight={64}`,
-  as in Oxygen's "DataGrid Row Actions" story, since the default 52px row is too short for it.
+  `primary`, and a description or handle as `secondary` where one exists. In a `ListingTable.DataGrid`, a two-line
+  cell needs `rowHeight={64}`, as in Oxygen's "DataGrid Row Actions" story, since the default 52px row is too short
+  for it. Card table rows grow to fit.
 - Type chips are neutral: `size="small" variant="outlined"`, no color. Keep color only on status chips, which also
   carry a text label.
 - Keep row actions always visible. `RowActions visibility="hover"` reveals them on mouse hover only, so a keyboard user
@@ -286,8 +290,9 @@ component's Accessibility block in Storybook before using it, then apply these r
   (`PageLoadingAnimation` already has one).
 - **Hide decorative icons** next to visible text with `aria-hidden`.
 - **Name icon-only columns.** A table column that holds only row-action buttons still needs a translated header name.
-  For `DataGrid`, set the column's `headerName` from the feature's `<namespace>:listing.columns.actions` key, as every
-  list does (for example `groups:listing.columns.actions`). For a plain table, put an `aria-label` on the header cell.
+  Use the feature's `<namespace>:listing.columns.actions` key, as every list does (for example
+  `groups:listing.columns.actions`): the column's `header` in `CardListingTable`, or its `headerName` in a `DataGrid`.
+  For any other plain table, put an `aria-label` on the header cell.
 - **Interactive means a real control.** Do not put `onClick` on a plain `Box`, `Typography`, `Stack`, or `Avatar`. Use
   `Button`, `IconButton`, `ButtonBase`, `Link`, or a `ListItemButton`, so it is focusable and works with Enter and
   Space. A `Box component="button"` works too, but prefer `ButtonBase`. Do not nest a button or link inside another

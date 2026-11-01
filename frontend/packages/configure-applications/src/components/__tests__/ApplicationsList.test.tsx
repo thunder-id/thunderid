@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
-import {render, screen, waitFor} from '@thunderid/test-utils';
+import {render, screen, waitFor, within} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import type {ApplicationListResponse} from '../../models/responses';
@@ -34,82 +34,6 @@ vi.mock('@wso2/oxygen-ui', async (importOriginal) => {
   return {
     ...actual,
     OxygenUIThemeProvider: ({children}: {children: React.ReactNode}) => children,
-    ListingTable: {
-      ...actual.ListingTable,
-      Provider: ({children, variant = undefined}: {children: React.ReactNode; variant?: string}) => (
-        <div data-testid="listing-provider" data-variant={variant}>
-          {children}
-        </div>
-      ),
-      Container: ({children, disablePaper = undefined}: {children: React.ReactNode; disablePaper?: boolean}) => (
-        <div data-testid="listing-container" data-disable-paper={disablePaper}>
-          {children}
-        </div>
-      ),
-      DataGrid: ({
-        rows,
-        columns,
-        onRowClick = undefined,
-        getRowId,
-      }: {
-        rows: Record<string, unknown>[];
-        columns: {
-          field: string;
-          renderCell?: (params: {row: Record<string, unknown>; tabIndex: number}) => React.ReactElement;
-          valueGetter?: (value: unknown, row: Record<string, unknown>) => string;
-        }[];
-        onRowClick?: (params: {row: Record<string, unknown>}) => void;
-        getRowId: (row: Record<string, unknown>) => string;
-      }) => (
-        <div role="grid" data-testid="data-grid">
-          {rows.map((row: Record<string, unknown>) => (
-            <div
-              key={getRowId(row)}
-              role="row"
-              onClick={() => onRowClick?.({row})}
-              onKeyDown={() => onRowClick?.({row})}
-              tabIndex={0}
-            >
-              {columns.map(
-                (col: {
-                  field: string;
-                  renderCell?: (params: {row: Record<string, unknown>; tabIndex: number}) => React.ReactElement;
-                  valueGetter?: (value: unknown, row: Record<string, unknown>) => string;
-                }) => {
-                  if (col.renderCell) {
-                    // The real grid hands an unfocused cell tabIndex -1.
-                    return <div key={col.field}>{col.renderCell({row, tabIndex: -1})}</div>;
-                  }
-                  if (col.valueGetter) {
-                    return <div key={col.field}>{col.valueGetter(null, row)}</div>;
-                  }
-                  return <div key={col.field}>{row[col.field] as string}</div>;
-                },
-              )}
-            </div>
-          ))}
-          <div>
-            1–{rows.length} of {rows.length}
-          </div>
-        </div>
-      ),
-      CellIcon: ({
-        primary,
-        secondary = undefined,
-        icon = undefined,
-      }: {
-        primary: string;
-        secondary?: string;
-        icon?: React.ReactNode;
-      }) => (
-        <>
-          {icon}
-          <span>{primary}</span>
-          {secondary && <span>{secondary}</span>}
-        </>
-      ),
-      RowActions: ({children}: {children: React.ReactNode}): React.ReactElement => children as React.ReactElement,
-    },
   };
 });
 
@@ -178,6 +102,8 @@ describe('ApplicationsList', () => {
   });
 
   const renderComponent = () => render(<ApplicationsList />);
+  const bodyRows = (): HTMLElement[] => screen.getAllByRole('row').slice(1);
+  const firstCells = (): string[] => bodyRows().map((row) => within(row).getAllByRole('cell')[0].textContent ?? '');
 
   it('should render loading state', () => {
     vi.mocked(useGetApplications).mockReturnValue({
@@ -188,8 +114,7 @@ describe('ApplicationsList', () => {
 
     renderComponent();
 
-    // DataGrid shows loading state through its internal overlay, not a standalone progressbar
-    expect(screen.getByRole('grid')).toBeInTheDocument();
+    expect(screen.getByRole('table')).toHaveAttribute('aria-busy', 'true');
   });
 
   it('should render error state', () => {
@@ -242,15 +167,15 @@ describe('ApplicationsList', () => {
     expect(screen.getByText('Active')).toBeInTheDocument();
   });
 
-  it("should keep the status indicators in the grid's roving focus rather than the page tab order", () => {
+  it('should keep the status indicators reachable from the keyboard', () => {
     renderComponent();
 
     const indicators = screen.getAllByRole('img', {name: 'Active'});
     expect(indicators.length).toBeGreaterThan(0);
-    indicators.forEach((indicator) => expect(indicator).toHaveAttribute('tabindex', '-1'));
+    indicators.forEach((indicator) => expect(indicator).toHaveAttribute('tabindex', '0'));
   });
 
-  it('should render the listing as a papered data grid', () => {
+  it('should render the listing as a card table', () => {
     vi.mocked(useGetApplications).mockReturnValue({
       data: mockApplicationsData,
       isLoading: false,
@@ -259,8 +184,8 @@ describe('ApplicationsList', () => {
 
     renderComponent();
 
-    expect(screen.getByTestId('listing-provider')).toHaveAttribute('data-variant', 'data-grid');
-    expect(screen.getByTestId('listing-container')).not.toHaveAttribute('data-disable-paper');
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
   });
 
   it('should give each row action button an accessible name', () => {
@@ -370,7 +295,7 @@ describe('ApplicationsList', () => {
 
     renderComponent();
 
-    const rows = screen.getAllByRole('row');
+    const rows = bodyRows();
 
     expect(rows.length).toBeGreaterThanOrEqual(1);
     await user.click(rows[0]);
@@ -415,7 +340,7 @@ describe('ApplicationsList', () => {
 
     renderComponent();
 
-    const rows = screen.getAllByRole('row');
+    const rows = bodyRows();
     expect(rows.length).toBeGreaterThan(0);
     await user.click(rows[0]);
 
@@ -423,7 +348,7 @@ describe('ApplicationsList', () => {
       expect(mockNavigate).toHaveBeenCalledWith('/applications/app-1');
     });
 
-    expect(screen.getByRole('grid')).toBeInTheDocument();
+    expect(screen.getByRole('table')).toBeInTheDocument();
   });
 
   it('should handle empty applications list', () => {
@@ -439,9 +364,7 @@ describe('ApplicationsList', () => {
 
     renderComponent();
 
-    // DataGrid should still render but with no rows
-    const grid = screen.getByRole('grid');
-    expect(grid).toBeInTheDocument();
+    expect(screen.getByText('No rows')).toBeInTheDocument();
   });
 
   it('should navigate to view page when clicking row', async () => {
@@ -455,8 +378,7 @@ describe('ApplicationsList', () => {
 
     renderComponent();
 
-    const rows = screen.getAllByRole('row');
-    // The mock DataGrid has no header row, so index 0 is the first data row (app-1)
+    const rows = bodyRows();
     expect(rows.length).toBeGreaterThan(0);
     await user.click(rows[0]);
 
@@ -476,28 +398,13 @@ describe('ApplicationsList', () => {
 
     renderComponent();
 
-    const rows = screen.getAllByRole('row');
-    // Click on second data row (index 1, no header row in mock)
+    const rows = bodyRows();
     expect(rows.length).toBeGreaterThan(1);
     await user.click(rows[1]);
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/applications/app-2');
     });
-  });
-
-  it('should prevent row selection on click', () => {
-    vi.mocked(useGetApplications).mockReturnValue({
-      data: mockApplicationsData,
-      isLoading: false,
-      error: null,
-    } as ReturnType<typeof useGetApplications>);
-
-    renderComponent();
-
-    // Verify disableRowSelectionOnClick is applied by checking grid props
-    const grid = screen.getByRole('grid');
-    expect(grid).toBeInTheDocument();
   });
 
   it('should display pagination controls', () => {
@@ -507,13 +414,17 @@ describe('ApplicationsList', () => {
       error: null,
     } as ReturnType<typeof useGetApplications>);
 
+    vi.mocked(useDataGridLocaleText).mockReturnValue({
+      paginationDisplayedRows: ({from, to, count}) => `${from}–${to} of ${count}`,
+    });
+
     renderComponent();
 
-    // Check for pagination elements
     expect(screen.getByText(/1–2 of 2/)).toBeInTheDocument();
   });
 
-  it('should apply cursor pointer style to rows', () => {
+  it('should sort applications by name, type and client ID', async () => {
+    const user = userEvent.setup();
     vi.mocked(useGetApplications).mockReturnValue({
       data: mockApplicationsData,
       isLoading: false,
@@ -522,9 +433,15 @@ describe('ApplicationsList', () => {
 
     renderComponent();
 
-    const grid = screen.getByRole('grid');
-    expect(grid).toBeInTheDocument();
-    // The cursor style is applied via sx prop to the DataGrid
+    await user.click(screen.getByRole('button', {name: 'Name'}));
+    await user.click(screen.getByRole('button', {name: 'Name'}));
+    expect(firstCells()[0]).toContain('Test App 2');
+
+    await user.click(screen.getByRole('button', {name: 'Type'}));
+    expect(bodyRows()).toHaveLength(2);
+
+    await user.click(screen.getByRole('button', {name: 'Client ID'}));
+    expect(firstCells()[0]).toContain('Test App 1');
   });
 
   it('should handle avatar image error', () => {

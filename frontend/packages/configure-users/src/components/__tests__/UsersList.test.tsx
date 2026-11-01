@@ -1,10 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen, waitFor, userEvent} from '@thunderid/test-utils';
-import type * as OxygenUI from '@wso2/oxygen-ui';
-import {DataGrid} from '@wso2/oxygen-ui';
-import React from 'react';
+import {render, screen, waitFor, userEvent, within} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {UserListResponse} from '../../models/users';
 import UsersList from '../UsersList';
@@ -14,142 +11,6 @@ const {mockLoggerError} = vi.hoisted(() => ({
 }));
 
 const mockNavigate = vi.fn();
-
-// Mock DataGrid to avoid CSS import issues
-interface MockRow {
-  id: string;
-  display?: string;
-  attributes?: Record<string, unknown>;
-  [key: string]: unknown;
-}
-
-interface MockDataGridProps {
-  rows?: MockRow[];
-  columns?: DataGrid.GridColDef<MockRow>[];
-  loading?: boolean;
-  onRowClick?: (params: {row: MockRow}, event: never, details: never) => void;
-  getRowId?: (row: MockRow) => string;
-  [key: string]: unknown;
-}
-
-vi.mock('@wso2/oxygen-ui', async () => {
-  const actual = await vi.importActual<typeof OxygenUI>('@wso2/oxygen-ui');
-  return {
-    ...actual,
-    DataGrid: {
-      ...(actual.DataGrid ?? {}),
-      GridColDef: {} as never,
-      GridRenderCellParams: {} as never,
-    },
-    ListingTable: {
-      Provider: ({children, variant = undefined}: {children: React.ReactNode; variant?: string}) => (
-        <div data-testid="listing-provider" data-variant={variant}>
-          {children}
-        </div>
-      ),
-      Container: ({children, disablePaper = undefined}: {children: React.ReactNode; disablePaper?: boolean}) => (
-        <div data-testid="listing-container" data-disable-paper={disablePaper}>
-          {children}
-        </div>
-      ),
-      DataGrid: ({
-        rows = [],
-        columns = [],
-        loading = undefined,
-        onRowClick = undefined,
-        getRowId = undefined,
-      }: MockDataGridProps) => (
-        <div data-testid="data-grid" data-loading={loading}>
-          {rows.map((row) => {
-            const rowId = getRowId ? getRowId(row) : row.id;
-            const displayText = row.display ?? rowId;
-
-            return (
-              <div key={rowId} className="MuiDataGrid-row-container">
-                <button
-                  type="button"
-                  className="MuiDataGrid-row"
-                  onClick={() => {
-                    if (onRowClick) {
-                      onRowClick({row}, {} as never, {} as never);
-                    }
-                  }}
-                  data-testid={`row-${rowId}`}
-                >
-                  {displayText}
-                </button>
-                {columns?.map((column) => {
-                  if (column?.field === undefined) return null;
-
-                  let value: unknown;
-                  if (typeof column.valueGetter === 'function') {
-                    value = column.valueGetter({} as never, row as never, column as never, {} as never);
-                  } else if (column.field in row) {
-                    value = row[column.field];
-                  } else {
-                    value = row.attributes?.[column.field];
-                  }
-
-                  const params = {
-                    row,
-                    field: column.field,
-                    value,
-                    id: rowId,
-                    // The real grid hands an unfocused cell tabIndex -1.
-                    tabIndex: -1,
-                  };
-
-                  const content = typeof column.renderCell === 'function' ? column.renderCell(params as never) : value;
-
-                  if (content === null || content === undefined) {
-                    return null;
-                  }
-
-                  // Convert content to a renderable format
-                  let renderableContent: React.ReactNode;
-                  if (typeof content === 'string' || typeof content === 'number' || typeof content === 'boolean') {
-                    renderableContent = String(content);
-                  } else if (React.isValidElement(content)) {
-                    renderableContent = content;
-                  } else if (Array.isArray(content)) {
-                    renderableContent = JSON.stringify(content);
-                  } else if (typeof content === 'object') {
-                    renderableContent = JSON.stringify(content);
-                  } else {
-                    renderableContent = '';
-                  }
-
-                  return (
-                    <span key={`${rowId}-${column.field}`} className="MuiDataGrid-cell">
-                      {renderableContent}
-                    </span>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </div>
-      ),
-      CellIcon: ({primary}: {primary: string}) => <span>{primary}</span>,
-      RowActions: ({children}: {children: React.ReactNode}): React.ReactElement => children as React.ReactElement,
-      EmptyState: ({
-        title = '',
-        description = '',
-        action = null,
-      }: {
-        title?: string;
-        description?: string;
-        action?: React.ReactNode;
-      }) => (
-        <div>
-          {title && <div>{title}</div>}
-          {description && <div>{description}</div>}
-          {action}
-        </div>
-      ),
-    },
-  };
-});
 
 // Mock react-router
 vi.mock('react-router', async () => {
@@ -195,6 +56,10 @@ vi.mock('@/components/UserDeleteDialog', () => ({
       </div>
     ) : null,
 }));
+
+const rowOf = (userId: string): HTMLElement => screen.getAllByText(userId)[0].closest<HTMLElement>('tr')!;
+const bodyRows = (): HTMLElement[] => screen.getAllByRole('row').slice(1);
+const firstCells = (): string[] => bodyRows().map((row) => within(row).getAllByRole('cell')[0].textContent ?? '');
 
 describe('UsersList', () => {
   const mockUsersData: UserListResponse = {
@@ -242,8 +107,8 @@ describe('UsersList', () => {
     render(<UsersList />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('row-user1')).toHaveTextContent('John Doe');
-      expect(screen.getByTestId('row-user2')).toHaveTextContent('Jane Smith');
+      expect(rowOf('user1')).toHaveTextContent('John Doe');
+      expect(rowOf('user2')).toHaveTextContent('Jane Smith');
     });
   });
 
@@ -265,19 +130,19 @@ describe('UsersList', () => {
     });
   });
 
-  it("keeps the status indicators in the grid's roving focus rather than the page tab order", async () => {
+  it('keeps the status indicators reachable from the keyboard', async () => {
     render(<UsersList />);
 
     const indicators = await screen.findAllByRole('img', {name: 'Active'});
     expect(indicators.length).toBeGreaterThan(0);
-    indicators.forEach((indicator) => expect(indicator).toHaveAttribute('tabindex', '-1'));
+    indicators.forEach((indicator) => expect(indicator).toHaveAttribute('tabindex', '0'));
   });
 
-  it('renders the listing as a papered data grid', () => {
+  it('renders the listing as a card table', () => {
     render(<UsersList />);
 
-    expect(screen.getByTestId('listing-provider')).toHaveAttribute('data-variant', 'data-grid');
-    expect(screen.getByTestId('listing-container')).not.toHaveAttribute('data-disable-paper');
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
   });
 
   it('gives each row action button an accessible name', () => {
@@ -291,8 +156,7 @@ describe('UsersList', () => {
     render(<UsersList />);
 
     await waitFor(() => {
-      const grid = screen.getByTestId('data-grid');
-      expect(grid).toBeInTheDocument();
+      expect(bodyRows()).toHaveLength(2);
     });
   });
 
@@ -305,8 +169,7 @@ describe('UsersList', () => {
 
     render(<UsersList />);
 
-    const grid = screen.getByTestId('data-grid');
-    expect(grid).toBeInTheDocument();
+    expect(screen.getByRole('table')).toHaveAttribute('aria-busy', 'true');
   });
 
   it('displays error from users request', async () => {
@@ -327,7 +190,7 @@ describe('UsersList', () => {
     render(<UsersList />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('row-user1')).toHaveTextContent('John Doe');
+      expect(rowOf('user1')).toHaveTextContent('John Doe');
     });
 
     const deleteButtons = screen.getAllByRole('button', {name: /delete/i});
@@ -339,10 +202,10 @@ describe('UsersList', () => {
     render(<UsersList />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('row-user1')).toHaveTextContent('John Doe');
+      expect(rowOf('user1')).toHaveTextContent('John Doe');
     });
 
-    const row = screen.getByTestId('row-user1');
+    const row = rowOf('user1');
     await user.click(row);
 
     await waitFor(() => {
@@ -355,7 +218,7 @@ describe('UsersList', () => {
     render(<UsersList />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('row-user1')).toHaveTextContent('John Doe');
+      expect(rowOf('user1')).toHaveTextContent('John Doe');
     });
 
     expect(screen.queryByTestId('user-delete-dialog')).not.toBeInTheDocument();
@@ -374,7 +237,7 @@ describe('UsersList', () => {
     render(<UsersList />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('row-user1')).toHaveTextContent('John Doe');
+      expect(rowOf('user1')).toHaveTextContent('John Doe');
     });
 
     const deleteButtons = screen.getAllByRole('button', {name: /delete/i});
@@ -405,7 +268,7 @@ describe('UsersList', () => {
       expect(screen.getByText('Failed to load users')).toBeInTheDocument();
     });
 
-    expect(screen.queryByTestId('data-grid')).not.toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
   it('handles error when row click navigation fails', async () => {
@@ -416,10 +279,10 @@ describe('UsersList', () => {
     render(<UsersList />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('row-user1')).toHaveTextContent('John Doe');
+      expect(rowOf('user1')).toHaveTextContent('John Doe');
     });
 
-    const row = screen.getByTestId('row-user1');
+    const row = rowOf('user1');
     await user.click(row);
 
     await waitFor(() => {
@@ -433,7 +296,7 @@ describe('UsersList', () => {
     render(<UsersList />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('row-user1')).toHaveTextContent('John Doe');
+      expect(rowOf('user1')).toHaveTextContent('John Doe');
     });
 
     const viewButtons = screen.getAllByRole('button', {name: /^edit$/i});
@@ -451,7 +314,7 @@ describe('UsersList', () => {
     render(<UsersList />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('row-user2')).toHaveTextContent('Jane Smith');
+      expect(rowOf('user2')).toHaveTextContent('Jane Smith');
     });
 
     const viewButtons = screen.getAllByRole('button', {name: /^edit$/i});
@@ -471,7 +334,7 @@ describe('UsersList', () => {
     render(<UsersList />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('row-user1')).toHaveTextContent('John Doe');
+      expect(rowOf('user1')).toHaveTextContent('John Doe');
     });
 
     const viewButtons = screen.getAllByRole('button', {name: /^edit$/i});
@@ -503,8 +366,7 @@ describe('UsersList', () => {
     render(<UsersList />);
 
     await waitFor(() => {
-      const grid = screen.getByTestId('data-grid');
-      expect(grid).toBeInTheDocument();
+      expect(screen.getByText('No rows')).toBeInTheDocument();
     });
   });
 
@@ -529,7 +391,7 @@ describe('UsersList', () => {
     render(<UsersList />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('row-user1')).toHaveTextContent('user1');
+      expect(rowOf('user1')).toHaveTextContent('user1');
     });
   });
 
@@ -537,11 +399,37 @@ describe('UsersList', () => {
     render(<UsersList />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('row-user1')).toHaveTextContent('John Doe');
-      expect(screen.getByTestId('row-user2')).toHaveTextContent('Jane Smith');
+      expect(rowOf('user1')).toHaveTextContent('John Doe');
+      expect(rowOf('user2')).toHaveTextContent('Jane Smith');
     });
 
     const deleteButtons = screen.getAllByRole('button', {name: /delete/i});
     expect(deleteButtons.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('sorts users by name, ID and organization unit', async () => {
+    const user = userEvent.setup();
+    mockUseGetUsers.mockReturnValue({
+      data: {
+        ...mockUsersData,
+        users: [
+          {...mockUsersData.users[0], ouHandle: 'sales'},
+          {...mockUsersData.users[1], ouHandle: 'engineering'},
+        ],
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    render(<UsersList />);
+
+    await user.click(screen.getByRole('button', {name: 'Name'}));
+    expect(firstCells()[0]).toContain('Jane Smith');
+
+    await user.click(screen.getByRole('button', {name: 'User ID'}));
+    expect(firstCells()[0]).toContain('John Doe');
+
+    await user.click(screen.getByRole('button', {name: 'Organization unit'}));
+    expect(firstCells()[0]).toContain('Jane Smith');
   });
 });

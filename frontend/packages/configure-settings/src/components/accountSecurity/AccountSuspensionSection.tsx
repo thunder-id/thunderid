@@ -4,15 +4,15 @@
 import {
   LIFECYCLE_FLOW_PURPOSES,
   QueryErrorNotice,
+  CardListingTable,
   SettingsCard,
   getLifecycleFlowPurposes,
   useFlowListColumns,
   type LifecycleCategory,
 } from '@thunderid/components';
 import {useAdministration} from '@thunderid/contexts';
-import {useDataGridLocaleText} from '@thunderid/hooks';
 import type {AdministrationFlowConfigKeyValue, BasicFlowSummary} from '@thunderid/utils';
-import {ListingTable, Stack, Typography} from '@wso2/oxygen-ui';
+import {Stack, Typography} from '@wso2/oxygen-ui';
 import {useCallback, useMemo, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, useNavigate} from 'react-router';
@@ -50,7 +50,6 @@ export default function AccountSuspensionSection(): JSX.Element {
   const navigate = useNavigate();
   const routes = useSettingsRoutes();
   const administration = useAdministration();
-  const dataGridLocaleText = useDataGridLocaleText();
 
   const purposes: AdministrationFlowConfigKeyValue[] = useMemo(
     () =>
@@ -102,30 +101,15 @@ export default function AccountSuspensionSection(): JSX.Element {
     body = (
       <Stack spacing={2}>
         {(isLoading || flows.length > 0) && (
-          <ListingTable.Provider variant="data-grid-card" loading={isLoading}>
-            <ListingTable.Container disablePaper>
-              <ListingTable.DataGrid
-                rows={flows}
-                columns={columns}
-                localeText={dataGridLocaleText}
-                getRowId={(row): string => (row as BasicFlowSummary).id}
-                onRowClick={(params) => {
-                  handleOpenClick(params.row as BasicFlowSummary);
-                }}
-                rowHeight={64}
-                // Eight lifecycle purposes cap the rows at eight, so no paging or column menu.
-                hideFooter
-                disableColumnMenu
-                disableRowSelectionOnClick
-                autoHeight
-                sx={{
-                  '& .MuiDataGrid-row': {
-                    cursor: 'pointer',
-                  },
-                }}
-              />
-            </ListingTable.Container>
-          </ListingTable.Provider>
+          <CardListingTable
+            rows={flows}
+            columns={columns}
+            getRowId={(row) => row.id}
+            onRowClick={handleOpenClick}
+            loading={isLoading}
+            // Eight lifecycle purposes cap the rows at eight, so no paging.
+            hidePagination
+          />
         )}
         {unconfigured.length > 0 && (
           <Stack spacing={0.5} data-testid="account-suspension-unconfigured">

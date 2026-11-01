@@ -1,11 +1,16 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {AccessStatusIndicator, QueryErrorNotice, ResourceAvatar} from '@thunderid/components';
+import {
+  AccessStatusIndicator,
+  QueryErrorNotice,
+  ResourceAvatar,
+  CardListingTable,
+  type CardListingTableColumn,
+} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
-import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
-import {Box, Chip, IconButton, Tooltip, Typography, ListingTable, DataGrid} from '@wso2/oxygen-ui';
+import {Box, Chip, IconButton, Tooltip, Typography, ListingTable} from '@wso2/oxygen-ui';
 import {Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -25,7 +30,6 @@ export default function ApplicationsList(): JSX.Element {
   const {config} = useConfig();
   const {t} = useTranslation();
   const logger = useLogger('ApplicationsList');
-  const dataGridLocaleText = useDataGridLocaleText();
   const {data, isLoading, error, refetch} = useGetApplications();
   const consoleClientId = config?.client?.client_id;
 
@@ -62,36 +66,36 @@ export default function ApplicationsList(): JSX.Element {
     setSelectedAppId(null);
   };
 
-  const columns: DataGrid.GridColDef<BasicApplication>[] = useMemo(
+  const columns: CardListingTableColumn<BasicApplication>[] = useMemo(
     () => [
       {
         field: 'name',
-        headerName: t('applications:listing.columns.name'),
-        flex: 2,
+        header: t('applications:listing.columns.name'),
+        sortValue: (row) => row.name,
         minWidth: 260,
-        renderCell: (params: DataGrid.GridRenderCellParams<BasicApplication>): JSX.Element => (
+        render: (row: BasicApplication): JSX.Element => (
           <ListingTable.CellIcon
             sx={{width: '100%'}}
             icon={
               <ResourceAvatar
                 variant="rounded"
-                value={params.row.logoUrl}
+                value={row.logoUrl}
                 size={30}
                 fallback={ApplicationConstants.DEFAULT_AVATAR}
               />
             }
-            primary={params.row.name}
-            secondary={params.row.description}
+            primary={row.name}
+            secondary={row.description}
           />
         ),
       },
       {
         field: 'template',
-        headerName: t('applications:listing.columns.template'),
-        flex: 0.8,
+        header: t('applications:listing.columns.template'),
+        sortValue: (row) => getTemplateMetadata(row.template)?.displayName,
         minWidth: 120,
-        renderCell: (params: DataGrid.GridRenderCellParams<BasicApplication>): JSX.Element => {
-          const templateMetadata = getTemplateMetadata(params.row.template);
+        render: (row: BasicApplication): JSX.Element => {
+          const templateMetadata = getTemplateMetadata(row.template);
           return templateMetadata ? (
             <Chip label={templateMetadata.displayName} size="small" variant="outlined" />
           ) : (
@@ -101,13 +105,13 @@ export default function ApplicationsList(): JSX.Element {
       },
       {
         field: 'clientId',
-        headerName: t('applications:listing.columns.clientId'),
-        flex: 1,
+        header: t('applications:listing.columns.clientId'),
+        sortValue: (row) => row.clientId,
         minWidth: 200,
-        renderCell: (params: DataGrid.GridRenderCellParams<BasicApplication>): JSX.Element =>
-          params.row.clientId ? (
+        render: (row: BasicApplication): JSX.Element =>
+          row.clientId ? (
             <Typography variant="body2" sx={{fontFamily: 'monospace', fontSize: '0.875rem'}}>
-              {params.row.clientId}
+              {row.clientId}
             </Typography>
           ) : (
             <>-</>
@@ -115,26 +119,20 @@ export default function ApplicationsList(): JSX.Element {
       },
       {
         field: 'status',
-        headerName: t('applications:listing.columns.status', 'Status'),
-        flex: 0.4,
+        header: t('applications:listing.columns.status', 'Status'),
         minWidth: 110,
-        sortable: false,
-        renderCell: (params: DataGrid.GridRenderCellParams<BasicApplication>): JSX.Element => (
-          <AccessStatusIndicator status={params.row.status} category="application" tabIndex={params.tabIndex} />
+        render: (row: BasicApplication): JSX.Element => (
+          <AccessStatusIndicator status={row.status} category="application" />
         ),
       },
       {
         field: 'actions',
-        headerName: t('applications:listing.columns.actions'),
+        header: t('applications:listing.columns.actions'),
         width: 150,
         align: 'center',
-        headerAlign: 'center',
-        sortable: false,
-        filterable: false,
-        hideable: false,
-        renderCell: (params: DataGrid.GridRenderCellParams<BasicApplication>): JSX.Element => (
+        render: (row: BasicApplication): JSX.Element => (
           <ListingTable.RowActions>
-            {params.row.isReadOnly ? (
+            {row.isReadOnly ? (
               <Tooltip title={t('common:status.readOnly', 'Read only')}>
                 <IconButton
                   size="small"
@@ -153,13 +151,13 @@ export default function ApplicationsList(): JSX.Element {
                     aria-label={t('common:actions.edit', 'Edit')}
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleEditClick(params.row.id);
+                      handleEditClick(row.id);
                     }}
                   >
                     <Pencil size={16} />
                   </IconButton>
                 </Tooltip>
-                {!isSystemConsoleClient(params.row.clientId, consoleClientId) && (
+                {!isSystemConsoleClient(row.clientId, consoleClientId) && (
                   <Tooltip title={t('common:actions.delete', 'Delete')}>
                     <IconButton
                       size="small"
@@ -167,7 +165,7 @@ export default function ApplicationsList(): JSX.Element {
                       aria-label={t('common:actions.delete', 'Delete')}
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDeleteClick(params.row.id);
+                        handleDeleteClick(row.id);
                       }}
                     >
                       <Trash2 size={16} />
@@ -197,35 +195,16 @@ export default function ApplicationsList(): JSX.Element {
 
   return (
     <Box data-testid="applications-list">
-      <ListingTable.Provider variant="data-grid" loading={isLoading}>
-        <ListingTable.Container>
-          <ListingTable.DataGrid
-            rows={data?.applications ?? []}
-            columns={columns}
-            getRowId={(row): string => (row as BasicApplication).id}
-            onRowClick={(params) => {
-              handleEditClick((params.row as BasicApplication).id);
-            }}
-            initialState={{
-              pagination: {
-                paginationModel: {pageSize: 10},
-              },
-            }}
-            pageSizeOptions={[5, 10, 25, 50]}
-            disableRowSelectionOnClick
-            // Filtering is not wired end to end, so the column filter panel stays hidden.
-            disableColumnFilter
-            localeText={dataGridLocaleText}
-            rowHeight={64}
-            autoHeight
-            sx={{
-              '& .MuiDataGrid-row': {
-                cursor: 'pointer',
-              },
-            }}
-          />
-        </ListingTable.Container>
-      </ListingTable.Provider>
+      <CardListingTable
+        rows={data?.applications ?? []}
+        columns={columns}
+        getRowId={(row) => row.id}
+        onRowClick={(row) => {
+          handleEditClick(row.id);
+        }}
+        loading={isLoading}
+        pageSizeOptions={[5, 10, 25, 50]}
+      />
 
       <ApplicationDeleteDialog
         open={deleteDialogOpen}

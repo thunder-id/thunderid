@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
-import {render, renderHook, screen, fireEvent} from '@thunderid/test-utils';
+import {render, renderHook, screen, fireEvent, within} from '@thunderid/test-utils';
 import {useTranslation} from 'react-i18next';
 import {describe, expect, it, vi, beforeAll, beforeEach} from 'vitest';
 import TranslationsList from '@/components/TranslationsList';
@@ -15,10 +15,6 @@ vi.mock('react-router', async () => {
     useNavigate: () => mockNavigate,
   };
 });
-
-vi.mock('../../../../hooks/useDataGridLocaleText', () => ({
-  default: () => ({}),
-}));
 
 const mockMutate = vi.fn();
 vi.mock('@thunderid/i18n', async (importOriginal) => {
@@ -39,61 +35,6 @@ vi.mock('@thunderid/logger/react', () => ({
   useLogger: () => ({error: vi.fn(), info: vi.fn(), warn: vi.fn(), debug: vi.fn()}),
 }));
 
-// Provide lightweight MUI mocks for DataGrid + ListingTable
-vi.mock('@wso2/oxygen-ui', async () => {
-  const actual = await vi.importActual<typeof import('@wso2/oxygen-ui')>('@wso2/oxygen-ui');
-  return {
-    ...actual,
-    ListingTable: {
-      Provider: ({children, loading, variant}: {children: React.ReactNode; loading: boolean; variant: string}) => (
-        <div data-testid="data-grid" data-loading={String(loading)} data-variant={variant}>
-          {children}
-        </div>
-      ),
-      Container: ({children, disablePaper = undefined}: {children: React.ReactNode; disablePaper?: boolean}) => (
-        <div data-testid="listing-container" data-disable-paper={disablePaper}>
-          {children}
-        </div>
-      ),
-      DataGrid: ({
-        rows,
-        columns,
-        onRowClick = undefined,
-      }: {
-        rows: {id: string; code: string}[];
-        columns: {renderCell?: (params: {row: {id: string; code: string}}) => React.ReactNode}[];
-        onRowClick?: (params: {row: {id: string; code: string}}) => void;
-      }) => (
-        <>
-          {rows.map((row) => (
-            <div
-              key={row.id}
-              data-testid={`row-${row.id}`}
-              role="row"
-              onClick={() => onRowClick?.({row})}
-              onKeyDown={(e) => e.key === 'Enter' && onRowClick?.({row})}
-              tabIndex={0}
-            >
-              {row.code}
-              {columns.map((col, i) => (
-                // eslint-disable-next-line react/no-array-index-key
-                <span key={i}>{col.renderCell?.({row})}</span>
-              ))}
-            </div>
-          ))}
-        </>
-      ),
-      RowActions: ({children}: {children: React.ReactNode}) => children,
-      CellIcon: ({primary = null, secondary = null}: {primary?: React.ReactNode; secondary?: React.ReactNode}) => (
-        <span>
-          {primary}
-          {secondary}
-        </span>
-      ),
-    },
-  };
-});
-
 // Mock TranslationDeleteDialog to control it directly
 const mockDeleteDialog = vi.fn();
 vi.mock('@/components/TranslationDeleteDialog', () => ({
@@ -110,6 +51,8 @@ vi.mock('@/components/TranslationDeleteDialog', () => ({
   },
 }));
 
+const rowOf = (code: string): HTMLElement => screen.getByText(`Language(${code})`).closest<HTMLElement>('tr')!;
+
 describe('TranslationsList', () => {
   let t: (key: string) => string;
 
@@ -124,21 +67,45 @@ describe('TranslationsList', () => {
   it('renders rows for each language', () => {
     render(<TranslationsList />);
 
-    expect(screen.getByTestId('row-fr-FR')).toBeInTheDocument();
-    expect(screen.getByTestId('row-de-DE')).toBeInTheDocument();
+    expect(rowOf('fr-FR')).toBeInTheDocument();
+    expect(rowOf('de-DE')).toBeInTheDocument();
   });
 
-  it('renders the listing as a papered data grid', () => {
+  it('renders the listing as a card table', () => {
     render(<TranslationsList />);
 
-    expect(screen.getByTestId('data-grid')).toHaveAttribute('data-variant', 'data-grid');
-    expect(screen.getByTestId('listing-container')).not.toHaveAttribute('data-disable-paper');
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getAllByRole('row')).toHaveLength(3);
+  });
+
+  it('shows the flag, display name and code of each language', () => {
+    render(<TranslationsList />);
+
+    const row = rowOf('fr-FR');
+    expect(within(row).getByText('Flag(fr-FR)')).toBeInTheDocument();
+    expect(within(row).getByText('fr-FR')).toBeInTheDocument();
+  });
+
+  it('sorts the languages by code', async () => {
+    const user = userEvent.setup();
+    render(<TranslationsList />);
+    const codes = (): string[] =>
+      screen
+        .getAllByRole('row')
+        .slice(1)
+        .map((row) => within(row).getByText(/^[a-z]{2}-[A-Z]{2}$/).textContent ?? '');
+
+    await user.click(screen.getByRole('button', {name: t('translations:listing.columns.language')}));
+    expect(codes()).toEqual(['de-DE', 'fr-FR']);
+
+    await user.click(screen.getByRole('button', {name: t('translations:listing.columns.language')}));
+    expect(codes()).toEqual(['fr-FR', 'de-DE']);
   });
 
   it('navigates to the edit page when a row is clicked', () => {
     render(<TranslationsList />);
 
-    fireEvent.click(screen.getByTestId('row-fr-FR'));
+    fireEvent.click(rowOf('fr-FR'));
 
     expect(mockNavigate).toHaveBeenCalledWith('/translations/fr-FR');
   });

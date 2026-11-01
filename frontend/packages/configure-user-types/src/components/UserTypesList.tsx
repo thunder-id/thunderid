@@ -1,8 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice} from '@thunderid/components';
-import {useDataGridLocaleText} from '@thunderid/hooks';
+import {QueryErrorNotice, CardListingTable, type CardListingTableColumn} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
 import {
@@ -18,7 +17,6 @@ import {
   DialogContentText,
   DialogActions,
   Button,
-  DataGrid,
 } from '@wso2/oxygen-ui';
 import {Eye, Pencil, Trash2, UserRoundCog} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useMemo, useState} from 'react';
@@ -29,16 +27,11 @@ import useGetUserTypes from '../api/useGetUserTypes';
 import useUserTypeRoutes from '../hooks/useUserTypeRoutes';
 import type {UserTypeListItem} from '../types/user-types';
 
-type GridColDef<R extends DataGrid.GridValidRowModel = DataGrid.GridValidRowModel> = DataGrid.GridColDef<R>;
-type GridRenderCellParams<R extends DataGrid.GridValidRowModel = DataGrid.GridValidRowModel> =
-  DataGrid.GridRenderCellParams<R>;
-
 export default function UserTypesList() {
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('UserTypesList');
   const routes = useUserTypeRoutes();
-  const dataGridLocaleText = useDataGridLocaleText();
 
   const {data: userTypesData, isLoading, error: userTypesRequestError, refetch} = useGetUserTypes();
   const deleteUserTypeMutation = useDeleteUserType();
@@ -80,67 +73,65 @@ export default function UserTypesList() {
     }
   };
 
-  const columns: GridColDef<UserTypeListItem>[] = useMemo(
+  const columns: CardListingTableColumn<UserTypeListItem>[] = useMemo(
     () => [
       {
         field: 'displayName',
-        headerName: t('userTypes:listing.columns.name', 'Name'),
-        flex: 1.5,
+        header: t('userTypes:listing.columns.name', 'Name'),
+        sortValue: (row) => row.displayName,
         minWidth: 220,
-        renderCell: (params: DataGrid.GridRenderCellParams<UserTypeListItem>) => (
+        render: (row: UserTypeListItem) => (
           <ListingTable.CellIcon
             icon={<UserRoundCog size={20} />}
-            primary={params.row.displayName}
-            secondary={params.row.handle}
+            primary={row.displayName}
+            secondary={row.handle}
             sx={{width: '100%'}}
           />
         ),
       },
       {
         field: 'id',
-        headerName: t('userTypes:listing.columns.id', 'User type ID'),
+        header: t('userTypes:listing.columns.id', 'User type ID'),
+        sortValue: (row) => row.id,
         width: 350,
-        renderCell: (params: DataGrid.GridRenderCellParams<UserTypeListItem>) => (
+        render: (row: UserTypeListItem) => (
           <Typography variant="body2" sx={{fontFamily: 'monospace', fontSize: '0.875rem'}}>
-            {params.row.id}
+            {row.id}
           </Typography>
         ),
       },
       {
         field: 'ouHandle',
-        headerName: t('userTypes:listing.columns.organizationUnit', 'Organization unit'),
-        flex: 1,
+        header: t('userTypes:listing.columns.organizationUnit', 'Organization unit'),
+        sortValue: (row) => row.ouHandle,
         minWidth: 220,
-        renderCell: (params: DataGrid.GridRenderCellParams<UserTypeListItem>) => (
+        render: (row: UserTypeListItem) => (
           <Typography variant="body2" sx={{fontFamily: 'monospace', fontSize: '0.875rem'}}>
-            {params.row.ouHandle ?? params.row.ouId ?? t('common:messages.noData')}
+            {row.ouHandle ?? row.ouId ?? t('common:messages.noData')}
           </Typography>
         ),
       },
       {
         field: 'allowSelfRegistration',
-        headerName: t('userTypes:listing.columns.allowSelfRegistration', 'Self registration'),
+        header: t('userTypes:listing.columns.allowSelfRegistration', 'Self registration'),
+        sortValue: (row) => (row.allowSelfRegistration ? 1 : 0),
         width: 200,
-        renderCell: (params: GridRenderCellParams<UserTypeListItem>) => (
+        render: (row: UserTypeListItem) => (
           <Chip
-            label={params.row.allowSelfRegistration ? t('common:status.enabled') : t('common:status.disabled')}
-            color={params.row.allowSelfRegistration ? 'success' : 'default'}
+            label={row.allowSelfRegistration ? t('common:status.enabled') : t('common:status.disabled')}
+            color={row.allowSelfRegistration ? 'success' : 'default'}
             size="small"
           />
         ),
       },
       {
         field: 'actions',
-        headerName: t('userTypes:listing.columns.actions', 'Actions'),
+        header: t('userTypes:listing.columns.actions', 'Actions'),
         width: 150,
         align: 'center',
-        headerAlign: 'center',
-        sortable: false,
-        filterable: false,
-        hideable: false,
-        renderCell: (params: GridRenderCellParams<UserTypeListItem>) => (
+        render: (row: UserTypeListItem) => (
           <ListingTable.RowActions>
-            {params.row.isReadOnly ? (
+            {row.isReadOnly ? (
               <Tooltip title={t('common:status.readOnly', 'Read only')}>
                 <IconButton
                   size="small"
@@ -159,7 +150,7 @@ export default function UserTypesList() {
                     aria-label={t('common:actions.edit', 'Edit')}
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleViewClick(params.row.id);
+                      handleViewClick(row.id);
                     }}
                   >
                     <Pencil size={16} />
@@ -172,7 +163,7 @@ export default function UserTypesList() {
                     aria-label={t('common:actions.delete', 'Delete')}
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDeleteClick(params.row.id);
+                      handleDeleteClick(row.id);
                     }}
                   >
                     <Trash2 size={16} />
@@ -201,35 +192,16 @@ export default function UserTypesList() {
 
   return (
     <>
-      <ListingTable.Provider variant="data-grid" loading={isLoading}>
-        <ListingTable.Container>
-          <ListingTable.DataGrid
-            rows={userTypesData?.types ?? []}
-            columns={columns}
-            getRowId={(row) => (row as UserTypeListItem).id}
-            onRowClick={(params) => {
-              handleViewClick((params.row as UserTypeListItem).id);
-            }}
-            rowHeight={64}
-            initialState={{
-              pagination: {
-                paginationModel: {pageSize: 10},
-              },
-            }}
-            pageSizeOptions={[5, 10, 25, 50]}
-            disableRowSelectionOnClick
-            // Filtering is not wired end to end, so the column filter panel stays hidden.
-            disableColumnFilter
-            localeText={dataGridLocaleText}
-            autoHeight
-            sx={{
-              '& .MuiDataGrid-row': {
-                cursor: 'pointer',
-              },
-            }}
-          />
-        </ListingTable.Container>
-      </ListingTable.Provider>
+      <CardListingTable
+        rows={userTypesData?.types ?? []}
+        columns={columns}
+        getRowId={(row) => row.id}
+        onRowClick={(row) => {
+          handleViewClick(row.id);
+        }}
+        loading={isLoading}
+        pageSizeOptions={[5, 10, 25, 50]}
+      />
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteDialogOpen} onClose={handleDeleteCancel}>

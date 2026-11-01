@@ -25,11 +25,13 @@ vi.mock('@thunderid/logger/react', () => ({
   useLogger: () => ({error: vi.fn(), info: vi.fn(), debug: vi.fn()}),
 }));
 
+const mockNavigate = vi.fn();
+
 vi.mock('react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router')>();
   return {
     ...actual,
-    useNavigate: () => vi.fn(),
+    useNavigate: () => mockNavigate,
   };
 });
 
@@ -100,12 +102,112 @@ describe('ResourceServersList', () => {
     });
   });
 
-  it('renders the grid inside a paper container as a plain data grid', () => {
+  it('renders the resource servers as a card table', () => {
     renderWithProviders(<ResourceServersList />);
 
-    expect(screen.getByRole('grid').closest('.MuiPaper-root')).not.toBeNull();
-    // The card variant sizes rows to their content, while the plain grid keeps the fixed two-line height.
-    expect(screen.getAllByRole('row')[1]).toHaveStyle({minHeight: '64px', maxHeight: '64px'});
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    ['Name', 'Type', 'Identifier', 'Actions'].forEach((header) => {
+      expect(screen.getByRole('columnheader', {name: header})).toBeInTheDocument();
+    });
+    expect(screen.getByText('https://api.example.com')).toBeInTheDocument();
+  });
+
+  it('sorts by each sortable column', () => {
+    renderWithProviders(<ResourceServersList />);
+    const firstNames = (): string[] =>
+      screen
+        .getAllByRole('row')
+        .slice(1)
+        .map((row) => within(row).getAllByRole('cell')[0].textContent ?? '');
+
+    fireEvent.click(screen.getByRole('button', {name: 'Name'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Name'}));
+    expect(firstNames()[0]).toContain('System MCP');
+    expect(screen.getByRole('columnheader', {name: 'Name'})).toHaveAttribute('aria-sort', 'descending');
+
+    fireEvent.click(screen.getByRole('button', {name: 'Type'}));
+    expect(firstNames()[0]).toContain('Payments API');
+
+    fireEvent.click(screen.getByRole('button', {name: 'Identifier'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Identifier'}));
+    expect(firstNames()[0]).toContain('System MCP');
+  });
+
+  it('shows a dash for a resource server without an identifier', () => {
+    mockUseGetResourceServers.mockReturnValue({
+      data: {...twoRowsResponse, resourceServers: [{...twoRowsResponse.resourceServers[0], identifier: ''}]},
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+    renderWithProviders(<ResourceServersList />);
+
+    expect(within(screen.getAllByRole('row')[1]).getByText('-')).toBeInTheDocument();
+  });
+
+  it('opens the resource server when its row is clicked', async () => {
+    mockNavigate.mockResolvedValue(undefined);
+    renderWithProviders(<ResourceServersList />);
+
+    fireEvent.click(screen.getByText('https://api.example.com'));
+
+    await vi.waitFor(() => expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('rs-1')));
+  });
+
+  it('opens the resource server from its Edit action, without opening it twice', async () => {
+    mockNavigate.mockResolvedValue(undefined);
+    renderWithProviders(<ResourceServersList />);
+
+    fireEvent.click(screen.getByRole('button', {name: 'Edit'}));
+
+    await vi.waitFor(() => expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('rs-1')));
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the list open when navigating to a resource server fails', async () => {
+    mockNavigate.mockRejectedValue(new Error('navigation failed'));
+    renderWithProviders(<ResourceServersList />);
+
+    fireEvent.click(screen.getByText('https://api.example.com'));
+    fireEvent.click(screen.getByRole('button', {name: 'Edit'}));
+
+    await vi.waitFor(() => expect(mockNavigate).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('table')).toBeInTheDocument();
+  });
+
+  it('does not open the resource server when Delete is clicked', () => {
+    renderWithProviders(<ResourceServersList />);
+
+    fireEvent.click(screen.getByRole('button', {name: 'Delete'}));
+
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('fetches the next page from the server', () => {
+    mockUseGetResourceServers.mockReturnValue({
+      data: {...twoRowsResponse, totalResults: 12},
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+    renderWithProviders(<ResourceServersList />);
+
+    expect(mockUseGetResourceServers).toHaveBeenLastCalledWith({limit: 10, offset: 0});
+    fireEvent.click(screen.getByRole('button', {name: 'Go to next page'}));
+
+    expect(mockUseGetResourceServers).toHaveBeenLastCalledWith({limit: 10, offset: 10});
+  });
+
+  it('marks the table busy while the resource servers load', () => {
+    mockUseGetResourceServers.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+      refetch: mockRefetch,
+    });
+    renderWithProviders(<ResourceServersList />);
+
+    expect(screen.getByRole('table')).toHaveAttribute('aria-busy', 'true');
   });
 
   it('renders the type chip label for a normal row', () => {
@@ -143,8 +245,8 @@ describe('ResourceServersList', () => {
   it('marks only the read-only row as a system resource server', () => {
     renderWithProviders(<ResourceServersList />);
 
-    const systemRow = screen.getByText('System MCP').closest<HTMLElement>('[role="row"]')!;
-    const normalRow = screen.getByText('Payments API').closest<HTMLElement>('[role="row"]')!;
+    const systemRow = screen.getByText('System MCP').closest('tr')!;
+    const normalRow = screen.getByText('Payments API').closest('tr')!;
     expect(within(systemRow).getByText('System resource server')).toBeInTheDocument();
     expect(within(normalRow).queryByText('System resource server')).not.toBeInTheDocument();
   });

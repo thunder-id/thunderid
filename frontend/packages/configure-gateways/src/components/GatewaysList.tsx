@@ -1,10 +1,9 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice} from '@thunderid/components';
-import {useDataGridLocaleText} from '@thunderid/hooks';
+import {QueryErrorNotice, CardListingTable, type CardListingTableColumn} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
-import {Chip, DataGrid, IconButton, ListingTable, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
+import {Chip, IconButton, ListingTable, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
 import {Network, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -22,7 +21,6 @@ export default function GatewaysList(): JSX.Element {
   const {t} = useTranslation();
   const tForErrors = useGatewayErrorTranslator();
   const logger = useLogger('GatewaysList');
-  const dataGridLocaleText = useDataGridLocaleText();
   const {data, isLoading, error, refetch} = useGetGateways();
   const [deleteTarget, setDeleteTarget] = useState<Gateway | null>(null);
 
@@ -37,22 +35,20 @@ export default function GatewaysList(): JSX.Element {
     [navigate, routes, logger],
   );
 
-  const columns: DataGrid.GridColDef<Gateway>[] = useMemo(
+  const columns: CardListingTableColumn<Gateway>[] = useMemo(
     () => [
       {
         field: 'name',
-        headerName: t('gateways:list.columns.name', 'Name'),
-        flex: 1,
+        header: t('gateways:list.columns.name', 'Name'),
+        sortValue: (row) => row.name,
         minWidth: 180,
-        renderCell: (params: DataGrid.GridRenderCellParams<Gateway>) => (
+        render: (row: Gateway) => (
           <ListingTable.CellIcon
             icon={<Network size={20} />}
             primary={
               <Stack direction="row" spacing={1} alignItems="center">
-                <span>{params.row.name}</span>
-                {params.row.isDefault && (
-                  <Chip size="small" variant="outlined" label={t('gateways:default', 'Default')} />
-                )}
+                <span>{row.name}</span>
+                {row.isDefault && <Chip size="small" variant="outlined" label={t('gateways:default', 'Default')} />}
               </Stack>
             }
             sx={{width: '100%'}}
@@ -61,35 +57,32 @@ export default function GatewaysList(): JSX.Element {
       },
       {
         field: 'baseUrl',
-        headerName: t('gateways:list.columns.baseUrl', 'Base URL'),
-        flex: 1.5,
+        header: t('gateways:list.columns.baseUrl', 'Base URL'),
+        sortValue: (row) => row.baseUrl,
         minWidth: 240,
-        renderCell: (params: DataGrid.GridRenderCellParams<Gateway>) => (
+        render: (row: Gateway) => (
           <Typography variant="body2" color="text.secondary" sx={{fontFamily: 'monospace', fontSize: '0.8rem'}}>
-            {params.row.baseUrl}
+            {row.baseUrl}
           </Typography>
         ),
       },
       {
         field: 'createdAt',
-        headerName: t('gateways:list.columns.createdAt', 'Created'),
+        header: t('gateways:list.columns.createdAt', 'Created'),
+        sortValue: (row) => row.createdAt,
         width: 200,
-        renderCell: (params: DataGrid.GridRenderCellParams<Gateway>) => (
+        render: (row: Gateway) => (
           <Typography variant="body2" color="text.secondary">
-            {formatTimestamp(params.row.createdAt)}
+            {formatTimestamp(row.createdAt)}
           </Typography>
         ),
       },
       {
         field: 'actions',
-        headerName: t('gateways:list.columns.actions', 'Actions'),
+        header: t('gateways:list.columns.actions', 'Actions'),
         width: 120,
         align: 'center',
-        headerAlign: 'center',
-        sortable: false,
-        filterable: false,
-        hideable: false,
-        renderCell: (params: DataGrid.GridRenderCellParams<Gateway>): JSX.Element => (
+        render: (row: Gateway): JSX.Element => (
           <ListingTable.RowActions>
             <Tooltip title={t('common:actions.edit', 'Edit')}>
               <IconButton
@@ -97,7 +90,7 @@ export default function GatewaysList(): JSX.Element {
                 aria-label={t('common:actions.edit', 'Edit')}
                 onClick={(e) => {
                   e.stopPropagation();
-                  openDetail(params.row.id);
+                  openDetail(row.id);
                 }}
               >
                 <Pencil size={16} />
@@ -110,7 +103,7 @@ export default function GatewaysList(): JSX.Element {
                 aria-label={t('common:actions.delete', 'Delete')}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setDeleteTarget(params.row);
+                  setDeleteTarget(row);
                 }}
               >
                 <Trash2 size={16} />
@@ -139,26 +132,15 @@ export default function GatewaysList(): JSX.Element {
   return (
     <>
       {error && <QueryErrorNotice error={error} t={tForErrors} variant="inline" onRetry={() => void refetch()} />}
-      <ListingTable.Provider variant="data-grid" loading={isLoading}>
-        <ListingTable.Container>
-          <ListingTable.DataGrid
-            rows={data ?? []}
-            columns={columns}
-            getRowId={(row) => (row as Gateway).id}
-            onRowClick={(params) => openDetail((params.row as Gateway).id)}
-            disableRowSelectionOnClick
-            disableColumnFilter
-            localeText={{
-              ...dataGridLocaleText,
-              noRowsLabel: t('gateways:list.empty', 'No gateways are registered yet.'),
-            }}
-            initialState={{pagination: {paginationModel: {pageSize: 10}}}}
-            pageSizeOptions={[5, 10, 25]}
-            autoHeight
-            sx={{'& .MuiDataGrid-row': {cursor: 'pointer'}}}
-          />
-        </ListingTable.Container>
-      </ListingTable.Provider>
+      <CardListingTable
+        rows={data ?? []}
+        columns={columns}
+        getRowId={(row) => row.id}
+        onRowClick={(row) => openDetail(row.id)}
+        loading={isLoading}
+        pageSizeOptions={[5, 10, 25]}
+        emptyLabel={t('gateways:list.empty', 'No gateways are registered yet.')}
+      />
 
       <GatewayDeleteDialog
         open={deleteTarget !== null}

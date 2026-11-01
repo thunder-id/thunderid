@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
-import {render, screen, waitFor} from '@thunderid/test-utils';
+import {render, screen, waitFor, within} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import type {RoleListResponse} from '../../models/role';
@@ -26,104 +26,6 @@ vi.mock('@thunderid/hooks', async (importOriginal) => {
   return {
     ...actual,
     useDataGridLocaleText: vi.fn(),
-  };
-});
-
-// Mock @wso2/oxygen-ui to avoid cssstyle issues with CSS variables
-vi.mock('@wso2/oxygen-ui', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@wso2/oxygen-ui')>();
-  return {
-    ...actual,
-    OxygenUIThemeProvider: ({children}: {children: React.ReactNode}) => children,
-    ListingTable: {
-      Provider: ({children, variant = undefined}: {children: React.ReactNode; variant?: string}) => (
-        <div data-testid="listing-table-provider" data-variant={variant}>
-          {children}
-        </div>
-      ),
-      Container: ({children, disablePaper = false}: {children: React.ReactNode; disablePaper?: boolean}) => (
-        <div data-testid="listing-table-container" data-disable-paper={disablePaper ? 'true' : undefined}>
-          {children}
-        </div>
-      ),
-      CellIcon: ({
-        icon,
-        primary,
-        secondary = undefined,
-      }: {
-        icon: React.ReactNode;
-        primary: React.ReactNode;
-        secondary?: React.ReactNode;
-      }) => (
-        <div data-testid="cell-icon">
-          {icon}
-          <span>{primary}</span>
-          {secondary && <span>{secondary}</span>}
-        </div>
-      ),
-      DataGrid: ({
-        rows,
-        columns,
-        onRowClick = undefined,
-        getRowId,
-      }: {
-        rows: Record<string, unknown>[];
-        columns: {
-          field: string;
-          renderCell?: (params: {row: Record<string, unknown>}) => React.ReactElement;
-          valueGetter?: (value: unknown, row: Record<string, unknown>) => string;
-        }[];
-        onRowClick?: (params: {row: Record<string, unknown>}) => void;
-        getRowId: (row: Record<string, unknown>) => string;
-      }) => (
-        <div role="grid" data-testid="data-grid">
-          {rows.map((row: Record<string, unknown>) => (
-            <div
-              key={getRowId(row)}
-              role="row"
-              onClick={() => onRowClick?.({row})}
-              onKeyDown={() => onRowClick?.({row})}
-              tabIndex={0}
-            >
-              {columns.map(
-                (col: {
-                  field: string;
-                  renderCell?: (params: {row: Record<string, unknown>}) => React.ReactElement;
-                  valueGetter?: (value: unknown, row: Record<string, unknown>) => string;
-                }) => {
-                  if (col.renderCell) {
-                    return <div key={col.field}>{col.renderCell({row})}</div>;
-                  }
-                  if (col.valueGetter) {
-                    return <div key={col.field}>{col.valueGetter(null, row)}</div>;
-                  }
-                  return <div key={col.field}>{row[col.field] as string}</div>;
-                },
-              )}
-            </div>
-          ))}
-          <div>
-            1–{rows.length} of {rows.length}
-          </div>
-        </div>
-      ),
-      RowActions: ({children}: {children: React.ReactNode}): React.ReactElement => children as React.ReactElement,
-      EmptyState: ({
-        title = undefined,
-        description = undefined,
-        action = undefined,
-      }: {
-        title?: string;
-        description?: string;
-        action?: React.ReactNode;
-      }) => (
-        <div>
-          {title && <div>{title}</div>}
-          {description && <div>{description}</div>}
-          {action}
-        </div>
-      ),
-    },
   };
 });
 
@@ -152,6 +54,14 @@ vi.mock('@thunderid/logger/react', () => ({
 const {default: useGetRoles} = await import('../../api/useGetRoles');
 const {useNavigate} = await import('react-router');
 const {useDataGridLocaleText} = await import('@thunderid/hooks');
+
+const rowOf = (name: string): HTMLElement => screen.getByText(name).closest<HTMLElement>('tr')!;
+
+const bodyCells = (column: number): string[] =>
+  screen
+    .getAllByRole('row')
+    .slice(1)
+    .map((row) => within(row).getAllByRole('cell')[column].textContent ?? '');
 
 describe('RolesList', () => {
   let mockNavigate: ReturnType<typeof vi.fn>;
@@ -185,7 +95,7 @@ describe('RolesList', () => {
 
   const renderComponent = () => render(<RolesList />);
 
-  it('should pass loading=true to ListingTable.Provider while fetching', () => {
+  it('should mark the table busy while fetching', () => {
     vi.mocked(useGetRoles).mockReturnValue({
       data: undefined,
       isLoading: true,
@@ -194,10 +104,7 @@ describe('RolesList', () => {
 
     renderComponent();
 
-    // Smoke-test: component renders without error in loading state.
-    // The real loading indicator is owned by ListingTable.Provider (not testable with this mock).
-    expect(screen.getByRole('grid')).toBeInTheDocument();
-    expect(screen.queryByRole('row')).not.toBeInTheDocument();
+    expect(screen.getByRole('table')).toHaveAttribute('aria-busy', 'true');
   });
 
   it('should render error state', () => {
@@ -238,9 +145,7 @@ describe('RolesList', () => {
 
     renderComponent();
 
-    const nameCells = screen.getAllByTestId('cell-icon');
-    expect(nameCells[0]).toHaveTextContent('Admin RoleAdministrator role');
-    expect(nameCells[1]).toHaveTextContent(/^Viewer Role$/);
+    expect(bodyCells(0)).toEqual(['Admin RoleAdministrator role', 'Viewer Role']);
   });
 
   it('should not render a secondary line for an empty description', () => {
@@ -252,10 +157,10 @@ describe('RolesList', () => {
 
     renderComponent();
 
-    expect(screen.getByTestId('cell-icon')).toHaveTextContent(/^Auditor Role$/);
+    expect(bodyCells(0)).toEqual(['Auditor Role']);
   });
 
-  it('should render the data grid variant inside a paper container', () => {
+  it('should render the roles in a card table', () => {
     vi.mocked(useGetRoles).mockReturnValue({
       data: mockRolesData,
       isLoading: false,
@@ -264,8 +169,71 @@ describe('RolesList', () => {
 
     renderComponent();
 
-    expect(screen.getByTestId('listing-table-provider')).toHaveAttribute('data-variant', 'data-grid');
-    expect(screen.getByTestId('listing-table-container')).not.toHaveAttribute('data-disable-paper');
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getAllByRole('row')).toHaveLength(3);
+  });
+
+  it('should render the organization unit, falling back to the ID and then a dash', () => {
+    vi.mocked(useGetRoles).mockReturnValue({
+      data: {
+        ...mockRolesData,
+        roles: [
+          {id: 'role-1', name: 'Admin Role', ouId: 'ou-1', ouHandle: 'engineering'},
+          {id: 'role-2', name: 'Viewer Role', ouId: 'ou-2'},
+          {id: 'role-3', name: 'Auditor Role'},
+        ],
+      },
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useGetRoles>);
+
+    renderComponent();
+
+    expect(bodyCells(1)).toEqual(['engineering', 'ou-2', '-']);
+  });
+
+  it('should sort the roles by name and by organization unit', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useGetRoles).mockReturnValue({
+      data: {
+        ...mockRolesData,
+        roles: [
+          {id: 'role-1', name: 'Beta', ouId: 'ou-1', ouHandle: 'sales'},
+          {id: 'role-2', name: 'Alpha', ouId: 'ou-2', ouHandle: 'support'},
+          {id: 'role-3', name: 'Gamma', ouId: 'ou-3', ouHandle: 'engineering'},
+        ],
+      },
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useGetRoles>);
+
+    renderComponent();
+
+    await user.click(screen.getByRole('button', {name: 'Name'}));
+    expect(bodyCells(0)).toEqual(['Alpha', 'Beta', 'Gamma']);
+
+    await user.click(screen.getByRole('button', {name: 'Organization unit'}));
+    expect(bodyCells(1)).toEqual(['engineering', 'sales', 'support']);
+  });
+
+  it('should request the first page of ten roles, then the page the user moves to', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useGetRoles).mockReturnValue({
+      data: {...mockRolesData, totalResults: 30},
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetRoles>);
+
+    renderComponent();
+
+    expect(useGetRoles).toHaveBeenLastCalledWith({limit: 10, offset: 0});
+
+    await user.click(screen.getByRole('button', {name: 'Go to next page'}));
+    expect(useGetRoles).toHaveBeenLastCalledWith({limit: 10, offset: 10});
+
+    await user.click(screen.getByRole('combobox'));
+    await user.click(screen.getByRole('option', {name: '25'}));
+    expect(useGetRoles).toHaveBeenLastCalledWith({limit: 25, offset: 0});
   });
 
   it('should label the row action buttons', () => {
@@ -341,9 +309,7 @@ describe('RolesList', () => {
 
     renderComponent();
 
-    const rows = screen.getAllByRole('row');
-    expect(rows.length).toBeGreaterThanOrEqual(1);
-    await user.click(rows[0]);
+    await user.click(rowOf('Admin Role'));
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/roles/role-1');
@@ -384,8 +350,8 @@ describe('RolesList', () => {
 
     renderComponent();
 
-    expect(screen.getByRole('grid')).toBeInTheDocument();
-    expect(screen.queryByRole('row')).not.toBeInTheDocument();
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getByText('No rows')).toBeInTheDocument();
   });
 
   it('should navigate to correct role when clicking different row', async () => {
@@ -399,9 +365,7 @@ describe('RolesList', () => {
 
     renderComponent();
 
-    const rows = screen.getAllByRole('row');
-    expect(rows.length).toBeGreaterThan(1);
-    await user.click(rows[1]);
+    await user.click(rowOf('Viewer Role'));
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/roles/role-2');
@@ -421,14 +385,15 @@ describe('RolesList', () => {
 
     renderComponent();
 
-    const rows = screen.getAllByRole('row');
-    expect(rows.length).toBeGreaterThan(0);
-    await user.click(rows[0]);
+    await user.click(rowOf('Admin Role'));
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/roles/role-1');
+      expect(mockLoggerError).toHaveBeenCalledWith('Failed to navigate to role', {
+        error: navigationError,
+        roleId: 'role-1',
+      });
     });
 
-    expect(screen.getByRole('grid')).toBeInTheDocument();
+    expect(screen.getByRole('table')).toBeInTheDocument();
   });
 });

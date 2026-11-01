@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
-import {render, screen, waitFor} from '@thunderid/test-utils';
+import {render, screen, waitFor, within} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import type {AgentListResponse} from '../../models/agent';
@@ -32,96 +32,6 @@ vi.mock('@wso2/oxygen-ui', async (importOriginal) => {
   return {
     ...actual,
     OxygenUIThemeProvider: ({children}: {children: React.ReactNode}) => children,
-    ListingTable: {
-      Provider: ({children, variant = undefined}: {children: React.ReactNode; variant?: string}) => (
-        <div data-testid="listing-provider" data-variant={variant}>
-          {children}
-        </div>
-      ),
-      Container: ({children, disablePaper = undefined}: {children: React.ReactNode; disablePaper?: boolean}) => (
-        <div data-testid="listing-container" data-disable-paper={disablePaper}>
-          {children}
-        </div>
-      ),
-      DataGrid: ({
-        rows,
-        columns,
-        onRowClick = undefined,
-        getRowId,
-      }: {
-        rows: Record<string, unknown>[];
-        columns: {
-          field: string;
-          renderCell?: (params: {row: Record<string, unknown>; tabIndex: number}) => React.ReactElement;
-          valueGetter?: (value: unknown, row: Record<string, unknown>) => string;
-        }[];
-        onRowClick?: (params: {row: Record<string, unknown>}) => void;
-        getRowId: (row: Record<string, unknown>) => string;
-      }) => (
-        <div role="grid" data-testid="data-grid">
-          {rows.map((row: Record<string, unknown>) => (
-            <div
-              key={getRowId(row)}
-              role="row"
-              onClick={() => onRowClick?.({row})}
-              onKeyDown={() => onRowClick?.({row})}
-              tabIndex={0}
-            >
-              {columns.map(
-                (col: {
-                  field: string;
-                  renderCell?: (params: {row: Record<string, unknown>; tabIndex: number}) => React.ReactElement;
-                  valueGetter?: (value: unknown, row: Record<string, unknown>) => string;
-                }) => {
-                  if (col.renderCell) {
-                    // The real grid hands an unfocused cell tabIndex -1.
-                    return <div key={col.field}>{col.renderCell({row, tabIndex: -1})}</div>;
-                  }
-                  if (col.valueGetter) {
-                    return <div key={col.field}>{col.valueGetter(null, row)}</div>;
-                  }
-                  return <div key={col.field}>{row[col.field] as string}</div>;
-                },
-              )}
-            </div>
-          ))}
-          <div>
-            1–{rows.length} of {rows.length}
-          </div>
-        </div>
-      ),
-      CellIcon: ({
-        primary,
-        secondary = undefined,
-        icon = undefined,
-      }: {
-        primary: string;
-        secondary?: string;
-        icon?: React.ReactNode;
-      }) => (
-        <>
-          {icon}
-          <span>{primary}</span>
-          {secondary && <span>{secondary}</span>}
-        </>
-      ),
-      RowActions: ({children}: {children: React.ReactNode}): React.ReactElement => children as React.ReactElement,
-      EmptyState: ({
-        title = undefined,
-        description = undefined,
-        action = undefined,
-      }: {
-        title?: string;
-        description?: string;
-        action?: React.ReactNode;
-      }): React.ReactElement => (
-        <div>
-          {title && <h2>{title}</h2>}
-          {description && <p>{description}</p>}
-          {action}
-        </div>
-      ),
-    },
   };
 });
 
@@ -188,6 +98,8 @@ describe('AgentsList', () => {
   });
 
   const renderComponent = () => render(<AgentsList />);
+  const bodyRows = (): HTMLElement[] => screen.getAllByRole('row').slice(1);
+  const firstCells = (): string[] => bodyRows().map((row) => within(row).getAllByRole('cell')[0].textContent ?? '');
 
   it('should render loading state', () => {
     vi.mocked(useGetAgents).mockReturnValue({
@@ -198,7 +110,7 @@ describe('AgentsList', () => {
 
     renderComponent();
 
-    expect(screen.getByRole('grid')).toBeInTheDocument();
+    expect(screen.getByRole('table')).toHaveAttribute('aria-busy', 'true');
   });
 
   it('should render error state', () => {
@@ -261,15 +173,15 @@ describe('AgentsList', () => {
     expect(screen.getByText('Active')).toBeInTheDocument();
   });
 
-  it("should keep the status indicators in the grid's roving focus rather than the page tab order", () => {
+  it('should keep the status indicators reachable from the keyboard', () => {
     renderComponent();
 
     const indicators = screen.getAllByRole('img', {name: 'Active'});
     expect(indicators.length).toBeGreaterThan(0);
-    indicators.forEach((indicator) => expect(indicator).toHaveAttribute('tabindex', '-1'));
+    indicators.forEach((indicator) => expect(indicator).toHaveAttribute('tabindex', '0'));
   });
 
-  it('should render the listing as a papered data grid', () => {
+  it('should render the listing as a card table', () => {
     vi.mocked(useGetAgents).mockReturnValue({
       data: mockAgentsData,
       isLoading: false,
@@ -278,8 +190,9 @@ describe('AgentsList', () => {
 
     renderComponent();
 
-    expect(screen.getByTestId('listing-provider')).toHaveAttribute('data-variant', 'data-grid');
-    expect(screen.getByTestId('listing-container')).not.toHaveAttribute('data-disable-paper');
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+    expect(bodyRows()).toHaveLength(2);
   });
 
   it('should give each row action button an accessible name', () => {
@@ -413,8 +326,7 @@ describe('AgentsList', () => {
 
     renderComponent();
 
-    const rows = screen.getAllByRole('row');
-    await user.click(rows[0]);
+    await user.click(bodyRows()[0]);
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/agents/agent-1');
@@ -454,8 +366,7 @@ describe('AgentsList', () => {
 
     renderComponent();
 
-    const rows = screen.getAllByRole('row');
-    await user.click(rows[0]);
+    await user.click(bodyRows()[0]);
 
     await waitFor(() => {
       expect(mockLoggerError).toHaveBeenCalledWith(
@@ -477,6 +388,29 @@ describe('AgentsList', () => {
 
     renderComponent();
 
-    expect(screen.getByRole('grid')).toBeInTheDocument();
+    expect(screen.getByText('No rows')).toBeInTheDocument();
+  });
+
+  it('should sort agents by name, ID and organization unit', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useGetAgents).mockReturnValue({
+      data: mockAgentsData,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetAgents>);
+
+    renderComponent();
+
+    await user.click(screen.getByRole('button', {name: 'Name'}));
+    await user.click(screen.getByRole('button', {name: 'Name'}));
+    expect(firstCells()[0]).toContain('Test Agent 2');
+
+    await user.click(screen.getByRole('button', {name: 'Agent ID'}));
+    expect(firstCells()[0]).toContain('Test Agent 1');
+
+    await user.click(screen.getByRole('button', {name: 'Organization unit'}));
+    expect(firstCells()[0]).toContain('Test Agent 1');
+    await user.click(screen.getByRole('button', {name: 'Organization unit'}));
+    expect(firstCells()[0]).toContain('Test Agent 2');
   });
 });

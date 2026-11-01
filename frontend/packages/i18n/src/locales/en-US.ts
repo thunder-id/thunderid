@@ -772,6 +772,10 @@ const translations = {
     'dataTable.paginationRowsPerPage': 'Rows per page:',
     'dataTable.paginationDisplayedRows': ({from, to, count}: {from: number; to: number; count: number}) =>
       `${from}–${to} of ${count !== -1 ? count : `more than ${to}`}`,
+    'dataTable.paginationFirstPage': 'Go to first page',
+    'dataTable.paginationPreviousPage': 'Go to previous page',
+    'dataTable.paginationNextPage': 'Go to next page',
+    'dataTable.paginationLastPage': 'Go to last page',
 
     // Row reordering text
     'dataTable.rowReorderingHeaderName': 'Row reordering',

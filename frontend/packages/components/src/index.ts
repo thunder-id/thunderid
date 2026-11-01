@@ -2,6 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Components
+export {default as CardListingTable} from './CardListingTable/CardListingTable';
+export type {
+  CardListingTableColumn,
+  CardListingTablePaginationModel,
+  CardListingTableProps,
+} from './CardListingTable/CardListingTable';
 export {default as CopyableField} from './CopyableField/CopyableField';
 export type {CopyableFieldProps} from './CopyableField/CopyableField';
 export {default as CspOriginHint} from './CspOriginHint/CspOriginHint';

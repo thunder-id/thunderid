@@ -3,9 +3,9 @@
 
 import {screen, within} from '@testing-library/react';
 import {render, userEvent} from '@thunderid/test-utils';
-import {ListingTable} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {describe, expect, it, vi} from 'vitest';
+import CardListingTable from '../../CardListingTable/CardListingTable';
 import useFlowListColumns, {type FlowListRow} from '../useFlowListColumns';
 
 // The package initializes no i18next instance, so the fallback is the rendered copy.
@@ -13,6 +13,10 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, fallback?: string) => (typeof fallback === 'string' ? fallback : key),
   }),
+}));
+
+vi.mock('@thunderid/hooks', () => ({
+  useDataGridLocaleText: () => ({}),
 }));
 
 const flows: FlowListRow[] = [
@@ -36,19 +40,15 @@ const flows: FlowListRow[] = [
 function FlowTable({
   onOpen,
   onDelete = undefined,
+  rows = flows,
 }: {
   onOpen: (flow: FlowListRow) => void;
   onDelete?: (flow: FlowListRow) => void;
+  rows?: FlowListRow[];
 }): JSX.Element {
   const columns = useFlowListColumns<FlowListRow>({onOpen, onDelete});
 
-  return (
-    <ListingTable.Provider variant="data-grid-card">
-      <ListingTable.Container disablePaper>
-        <ListingTable.DataGrid rows={flows} columns={columns} hideFooter autoHeight />
-      </ListingTable.Container>
-    </ListingTable.Provider>
-  );
+  return <CardListingTable rows={rows} columns={columns} getRowId={(row) => row.id} hidePagination />;
 }
 
 const rowOf = (name: string): HTMLElement => screen.getByRole('row', {name: new RegExp(name)});
@@ -64,6 +64,24 @@ describe('useFlowListColumns', () => {
     expect(within(row).getByText('suspend-users')).toBeInTheDocument();
     expect(within(row).getByText('ADMINISTRATION')).toBeInTheDocument();
     expect(within(row).getByText(/Jan.*2025|2025.*Jan/)).toBeInTheDocument();
+  });
+
+  it('sorts by the update time, not by the formatted date text', async () => {
+    const rows: FlowListRow[] = [
+      {...flows[0], id: 'later', name: 'Later', updatedAt: '2026-04-15T10:00:00Z'},
+      {...flows[0], id: 'earlier', name: 'Earlier', updatedAt: '2025-01-15T10:00:00Z'},
+    ];
+    render(<FlowTable onOpen={vi.fn()} rows={rows} />);
+    const header = screen.getByRole('columnheader', {name: 'Last updated'});
+
+    await userEvent.click(within(header).getByRole('button', {name: 'Last updated'}));
+
+    const names = screen
+      .getAllByRole('row')
+      .slice(1)
+      .map((row) => within(row).getAllByRole('cell')[0].textContent ?? '');
+    expect(names[0]).toContain('Earlier');
+    expect(names[1]).toContain('Later');
   });
 
   it('opens and deletes an editable flow through its own actions', async () => {

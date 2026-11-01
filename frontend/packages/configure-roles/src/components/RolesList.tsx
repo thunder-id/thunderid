@@ -1,8 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice} from '@thunderid/components';
-import {useDataGridLocaleText} from '@thunderid/hooks';
+import {QueryErrorNotice, CardListingTable, type CardListingTableColumn} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {IconButton, Typography, Tooltip, DataGrid, ListingTable} from '@wso2/oxygen-ui';
 import {Eye, ShieldCheck, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
@@ -21,7 +20,6 @@ export default function RolesList(): JSX.Element {
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('RolesList');
-  const dataGridLocaleText = useDataGridLocaleText();
   const routes = useRoleRoutes();
   const [paginationModel, setPaginationModel] = useState<DataGrid.GridPaginationModel>({pageSize: 10, page: 0});
 
@@ -58,45 +56,41 @@ export default function RolesList(): JSX.Element {
     setSelectedRoleId(null);
   };
 
-  const columns: DataGrid.GridColDef<RoleSummary>[] = useMemo(
+  const columns: CardListingTableColumn<RoleSummary>[] = useMemo(
     () => [
       {
         field: 'name',
-        headerName: t('roles:listing.columns.name'),
-        flex: 1,
+        header: t('roles:listing.columns.name'),
+        sortValue: (row) => row.name,
         minWidth: 200,
-        renderCell: (params: DataGrid.GridRenderCellParams<RoleSummary>): JSX.Element => (
+        render: (row: RoleSummary): JSX.Element => (
           <ListingTable.CellIcon
             icon={<ShieldCheck size={20} />}
-            primary={params.row.name}
-            secondary={params.row.description === '' ? undefined : params.row.description}
+            primary={row.name}
+            secondary={row.description === '' ? undefined : row.description}
             sx={{width: '100%'}}
           />
         ),
       },
       {
         field: 'ouHandle',
-        headerName: t('roles:listing.columns.organizationUnit'),
-        flex: 1,
+        header: t('roles:listing.columns.organizationUnit'),
+        sortValue: (row) => row.ouHandle ?? row.ouId,
         minWidth: 200,
-        renderCell: (params: DataGrid.GridRenderCellParams<RoleSummary>) => (
+        render: (row: RoleSummary) => (
           <Typography variant="body2" sx={{fontFamily: 'monospace', fontSize: '0.875rem'}}>
-            {params.row.ouHandle ?? params.row.ouId ?? '-'}
+            {row.ouHandle ?? row.ouId ?? '-'}
           </Typography>
         ),
       },
       {
         field: 'actions',
-        headerName: t('roles:listing.columns.actions'),
+        header: t('roles:listing.columns.actions'),
         width: 150,
         align: 'center',
-        headerAlign: 'center',
-        sortable: false,
-        filterable: false,
-        hideable: false,
-        renderCell: (params: DataGrid.GridRenderCellParams<RoleSummary>): JSX.Element => (
+        render: (row: RoleSummary): JSX.Element => (
           <ListingTable.RowActions>
-            {params.row.isReadOnly ? (
+            {row.isReadOnly ? (
               <Tooltip title={t('common:status.readOnly', 'Read only')}>
                 <IconButton
                   size="small"
@@ -115,7 +109,7 @@ export default function RolesList(): JSX.Element {
                     aria-label={t('common:actions.edit', 'Edit')}
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleViewClick(params.row.id);
+                      handleViewClick(row.id);
                     }}
                   >
                     <Pencil size={16} />
@@ -128,7 +122,7 @@ export default function RolesList(): JSX.Element {
                     color="error"
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDeleteClick(params.row.id);
+                      handleDeleteClick(row.id);
                     }}
                   >
                     <Trash2 size={16} />
@@ -157,37 +151,25 @@ export default function RolesList(): JSX.Element {
 
   return (
     <>
-      <ListingTable.Provider variant="data-grid" loading={isLoading}>
-        <ListingTable.Container>
-          <ListingTable.DataGrid
-            rows={data?.roles ?? []}
-            columns={columns}
-            getRowId={(row) => (row as RoleSummary).id}
-            onRowClick={(params) => {
-              const roleId = (params.row as RoleSummary).id;
-              (async (): Promise<void> => {
-                await navigate(routes.roles.detail(roleId));
-              })().catch((_error: unknown) => {
-                logger.error('Failed to navigate to role', {error: _error, roleId});
-              });
-            }}
-            paginationMode="server"
-            rowCount={data?.totalResults ?? 0}
-            paginationModel={paginationModel}
-            onPaginationModelChange={setPaginationModel}
-            pageSizeOptions={[5, 10, 25]}
-            disableRowSelectionOnClick
-            // Filtering is not wired end to end, so the column filter panel stays hidden.
-            disableColumnFilter
-            localeText={dataGridLocaleText}
-            autoHeight
-            rowHeight={64}
-            sx={{
-              '& .MuiDataGrid-row': {cursor: 'pointer'},
-            }}
-          />
-        </ListingTable.Container>
-      </ListingTable.Provider>
+      <CardListingTable
+        rows={data?.roles ?? []}
+        columns={columns}
+        getRowId={(row) => row.id}
+        onRowClick={(row) => {
+          const roleId = row.id;
+          (async (): Promise<void> => {
+            await navigate(routes.roles.detail(roleId));
+          })().catch((_error: unknown) => {
+            logger.error('Failed to navigate to role', {error: _error, roleId});
+          });
+        }}
+        loading={isLoading}
+        paginationMode="server"
+        rowCount={data?.totalResults ?? 0}
+        paginationModel={paginationModel}
+        onPaginationModelChange={setPaginationModel}
+        pageSizeOptions={[5, 10, 25]}
+      />
 
       <RoleDeleteDialog open={deleteDialogOpen} roleId={selectedRoleId} onClose={handleDeleteDialogClose} />
     </>

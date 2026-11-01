@@ -16,12 +16,6 @@ vi.mock('../../../api/useGetAccountLifecycleFlows', () => ({
   default: (...args: unknown[]): unknown => mockUseGetAccountLifecycleFlows(...args) as unknown,
 }));
 
-// A marker label, so the test can see the grid use the Console's translated locale text.
-vi.mock('@thunderid/hooks', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@thunderid/hooks')>()),
-  useDataGridLocaleText: () => ({columnHeaderSortIconLabel: 'Sort this column'}),
-}));
-
 vi.mock('react-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-router')>()),
   useNavigate: () => mockNavigate,
@@ -45,7 +39,7 @@ const loaded = (flows: ReturnType<typeof flow>[], unconfigured: string[] = []) =
   refetch: vi.fn(),
 });
 
-const row = (name: string): HTMLElement => screen.getByText(name).closest<HTMLElement>('[role="row"]')!;
+const row = (name: string): HTMLElement => screen.getByText(name).closest('tr')!;
 
 describe('AccountSuspensionSection', () => {
   beforeEach(() => {
@@ -101,7 +95,7 @@ describe('AccountSuspensionSection', () => {
         'agentUnsuspendFlow',
         'userSuspendFlow',
       ]);
-      expect(screen.getByRole('grid')).toBeInTheDocument();
+      expect(screen.getByRole('table')).toBeInTheDocument();
     });
 
     it('says in one sentence that there are no flows when no operation runs as one', () => {
@@ -119,7 +113,7 @@ describe('AccountSuspensionSection', () => {
           'Suspend, unsuspend, and unlock do not run through flows in this console, so there are no flows to manage.',
         ),
       ).toBeVisible();
-      expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+      expect(screen.queryByRole('table')).not.toBeInTheDocument();
       expect(screen.queryByTestId('account-suspension-unconfigured')).not.toBeInTheDocument();
     });
   });
@@ -164,11 +158,17 @@ describe('AccountSuspensionSection', () => {
     expect(mockNavigate).toHaveBeenCalledTimes(2);
   });
 
-  it('labels the grid with the Console locale text', () => {
-    mockUseGetAccountLifecycleFlows.mockReturnValue(loaded([flow('f-1', 'User suspend flow')]));
+  it('sorts the flows by a column, and shows no paging for the short list', async () => {
+    mockUseGetAccountLifecycleFlows.mockReturnValue(
+      loaded([flow('f-1', 'User suspend flow'), flow('f-2', 'Agent unlock flow')]),
+    );
     renderWithProviders(<AccountSuspensionSection />);
 
-    expect(screen.getAllByLabelText('Sort this column').length).toBeGreaterThan(0);
+    await userEvent.click(screen.getByRole('button', {name: 'Name'}));
+
+    expect(screen.getByRole('columnheader', {name: 'Name'})).toHaveAttribute('aria-sort', 'ascending');
+    expect(screen.getAllByRole('row')[1]).toHaveTextContent('Agent unlock flow');
+    expect(screen.queryByRole('button', {name: 'Go to next page'})).not.toBeInTheDocument();
   });
 
   it('opens the flow editor when a row is clicked', async () => {
@@ -195,14 +195,14 @@ describe('AccountSuspensionSection', () => {
     mockUseGetAccountLifecycleFlows.mockReturnValue(loaded([], ['userSuspendFlow']));
     const {unmount} = renderWithProviders(<AccountSuspensionSection />);
 
-    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.getByText('Suspend users: Not configured.')).toBeVisible();
     unmount();
 
     mockUseGetAccountLifecycleFlows.mockReturnValue(loaded([flow('f-1', 'User suspend flow')]));
     renderWithProviders(<AccountSuspensionSection />);
 
-    expect(screen.getByRole('grid')).toBeInTheDocument();
+    expect(screen.getByRole('table')).toBeInTheDocument();
     expect(screen.queryByTestId('account-suspension-unconfigured')).not.toBeInTheDocument();
   });
 
@@ -210,7 +210,7 @@ describe('AccountSuspensionSection', () => {
     mockUseGetAccountLifecycleFlows.mockReturnValue({data: undefined, isLoading: true, error: null, refetch: vi.fn()});
     renderWithProviders(<AccountSuspensionSection />);
 
-    expect(document.querySelector('.MuiDataGrid-skeletonLoadingOverlay')).toBeInTheDocument();
+    expect(screen.getByRole('table')).toHaveAttribute('aria-busy', 'true');
     expect(screen.queryByTestId('account-suspension-unconfigured')).not.toBeInTheDocument();
   });
 
@@ -226,7 +226,7 @@ describe('AccountSuspensionSection', () => {
 
     expect(screen.getByText('Failed to load the account lifecycle flows.')).toBeVisible();
     expect(screen.queryByText('boom')).not.toBeInTheDocument();
-    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', {name: 'Refresh'}));
     expect(refetch).toHaveBeenCalled();
   });

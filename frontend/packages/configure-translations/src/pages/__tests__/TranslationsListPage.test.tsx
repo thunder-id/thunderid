@@ -17,10 +17,6 @@ vi.mock('react-router', async () => {
   };
 });
 
-vi.mock('../../../../hooks/useDataGridLocaleText', () => ({
-  default: () => ({}),
-}));
-
 vi.mock('@thunderid/i18n', async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -36,58 +32,9 @@ vi.mock('@thunderid/logger/react', () => ({
   useLogger: () => ({error: vi.fn(), info: vi.fn(), warn: vi.fn(), debug: vi.fn()}),
 }));
 
-// Stub the MUI ListingTable with lightweight components that expose rows
-vi.mock('@wso2/oxygen-ui', async () => {
-  const actual = await vi.importActual<typeof import('@wso2/oxygen-ui')>('@wso2/oxygen-ui');
-  return {
-    ...actual,
-    ListingTable: {
-      Provider: ({children, loading}: {children: React.ReactNode; loading: boolean}) => (
-        <div data-testid="data-grid" data-loading={String(loading)}>
-          {children}
-        </div>
-      ),
-      Container: ({children}: {children: React.ReactNode}) => children,
-      DataGrid: ({
-        rows,
-        columns,
-        onRowClick = undefined,
-      }: {
-        rows: {id: string; code: string}[];
-        columns: {renderCell?: (params: {row: {id: string; code: string}}) => React.ReactNode}[];
-        onRowClick?: (params: {row: {id: string; code: string}}) => void;
-      }) => (
-        <>
-          {rows.map((row) => (
-            <div
-              key={row.id}
-              data-testid={`row-${row.id}`}
-              role="row"
-              onClick={() => onRowClick?.({row})}
-              onKeyDown={(e) => e.key === 'Enter' && onRowClick?.({row})}
-              tabIndex={0}
-            >
-              {row.code}
-              {columns.map((col, i) => (
-                // eslint-disable-next-line react/no-array-index-key
-                <span key={i}>{col.renderCell?.({row})}</span>
-              ))}
-            </div>
-          ))}
-        </>
-      ),
-      RowActions: ({children}: {children: React.ReactNode}) => children,
-      CellIcon: ({primary, secondary = null}: {primary: React.ReactNode; secondary?: React.ReactNode}) => (
-        <div>
-          <span>{primary}</span>
-          {secondary}
-        </div>
-      ),
-    },
-  };
-});
-
 const mockUseGetLanguages = vi.mocked(useGetLanguages);
+
+const rowOf = (code: string): HTMLElement => screen.getByText(`Language(${code})`).closest<HTMLElement>('tr')!;
 
 describe('TranslationsListPage', () => {
   let t: (key: string) => string;
@@ -123,26 +70,26 @@ describe('TranslationsListPage', () => {
       expect(screen.getByRole('button', {name: t('translations:listing.addLanguage')})).toBeInTheDocument();
     });
 
-    it('renders the data grid', () => {
+    it('renders the languages table', () => {
       render(<TranslationsListPage />);
 
-      expect(screen.getByTestId('data-grid')).toBeInTheDocument();
+      expect(screen.getByRole('table')).toBeInTheDocument();
     });
 
     it('renders a row for each language', () => {
       render(<TranslationsListPage />);
 
-      expect(screen.getByTestId('row-fr-FR')).toBeInTheDocument();
-      expect(screen.getByTestId('row-de-DE')).toBeInTheDocument();
+      expect(rowOf('fr-FR')).toBeInTheDocument();
+      expect(rowOf('de-DE')).toBeInTheDocument();
     });
 
-    it('passes loading=false to the grid when data has loaded', () => {
+    it('does not mark the table busy once data has loaded', () => {
       render(<TranslationsListPage />);
 
-      expect(screen.getByTestId('data-grid')).toHaveAttribute('data-loading', 'false');
+      expect(screen.getByRole('table')).toHaveAttribute('aria-busy', 'false');
     });
 
-    it('passes loading=true to the grid while data is loading', () => {
+    it('marks the table busy while data is loading', () => {
       mockUseGetLanguages.mockReturnValue({
         data: undefined,
         isLoading: true,
@@ -150,10 +97,10 @@ describe('TranslationsListPage', () => {
 
       render(<TranslationsListPage />);
 
-      expect(screen.getByTestId('data-grid')).toHaveAttribute('data-loading', 'true');
+      expect(screen.getByRole('table')).toHaveAttribute('aria-busy', 'true');
     });
 
-    it('renders an empty grid when there are no languages', () => {
+    it('renders the empty row when there are no languages', () => {
       mockUseGetLanguages.mockReturnValue({
         data: {languages: []},
         isLoading: false,
@@ -161,7 +108,8 @@ describe('TranslationsListPage', () => {
 
       render(<TranslationsListPage />);
 
-      expect(screen.queryByRole('row')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Language\(/)).not.toBeInTheDocument();
+      expect(screen.getByText(t('common:dataTable.noRowsLabel'))).toBeInTheDocument();
     });
   });
 
@@ -178,7 +126,7 @@ describe('TranslationsListPage', () => {
     it('navigates to the language edit page when a row is clicked', () => {
       render(<TranslationsListPage />);
 
-      fireEvent.click(screen.getByTestId('row-fr-FR'));
+      fireEvent.click(rowOf('fr-FR'));
 
       expect(mockNavigate).toHaveBeenCalledWith('/translations/fr-FR');
     });

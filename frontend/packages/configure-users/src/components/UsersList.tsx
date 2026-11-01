@@ -1,10 +1,16 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {AccessStatusIndicator, QueryErrorNotice, ResourceAvatar, getInitials} from '@thunderid/components';
-import {useDataGridLocaleText} from '@thunderid/hooks';
+import {
+  AccessStatusIndicator,
+  QueryErrorNotice,
+  ResourceAvatar,
+  getInitials,
+  CardListingTable,
+  type CardListingTableColumn,
+} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
-import {IconButton, Tooltip, Typography, ListingTable, DataGrid} from '@wso2/oxygen-ui';
+import {IconButton, Tooltip, Typography, ListingTable} from '@wso2/oxygen-ui';
 import {Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, useCallback} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -19,7 +25,6 @@ export default function UsersList() {
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('UsersList');
-  const dataGridLocaleText = useDataGridLocaleText();
   const routes = useUserRoutes();
 
   const {data: userData, isLoading, error, refetch} = useGetUsers();
@@ -48,16 +53,16 @@ export default function UsersList() {
     setSelectedUserId(null);
   };
 
-  const columns: DataGrid.GridColDef<UserWithDetails>[] = useMemo(
+  const columns: CardListingTableColumn<UserWithDetails>[] = useMemo(
     () => [
       {
         field: 'name',
-        headerName: t('users:listing.columns.name', 'Name'),
-        flex: 1,
+        header: t('users:listing.columns.name', 'Name'),
+        sortValue: (row) => row.display ?? row.id,
         minWidth: 200,
-        renderCell: (params: DataGrid.GridRenderCellParams<UserWithDetails>) => {
-          const displayVal = params.row.display ?? params.row.id;
-          const rawPicture = params.row.attributes?.['picture'];
+        render: (row: UserWithDetails) => {
+          const displayVal = row.display ?? row.id;
+          const rawPicture = row.attributes?.['picture'];
           const picture = typeof rawPicture === 'string' ? rawPicture : undefined;
 
           return (
@@ -77,48 +82,40 @@ export default function UsersList() {
       },
       {
         field: 'id',
-        headerName: t('users:listing.columns.userId', 'User ID'),
-        flex: 1,
+        header: t('users:listing.columns.userId', 'User ID'),
+        sortValue: (row) => row.id,
         minWidth: 200,
-        renderCell: (params: DataGrid.GridRenderCellParams<UserWithDetails>) => (
+        render: (row: UserWithDetails) => (
           <Typography variant="body2" sx={{fontFamily: 'monospace', fontSize: '0.875rem'}}>
-            {params.row.id}
+            {row.id}
           </Typography>
         ),
       },
       {
         field: 'status',
-        headerName: t('users:listing.columns.status', 'Status'),
-        flex: 0.4,
+        header: t('users:listing.columns.status', 'Status'),
         minWidth: 110,
-        sortable: false,
-        renderCell: (params: DataGrid.GridRenderCellParams<UserWithDetails>) => (
-          <AccessStatusIndicator status={params.row.status} tabIndex={params.tabIndex} />
-        ),
+        render: (row: UserWithDetails) => <AccessStatusIndicator status={row.status} />,
       },
       {
         field: 'ouHandle',
-        headerName: t('users:listing.columns.organizationUnit', 'Organization unit'),
-        flex: 0.5,
+        header: t('users:listing.columns.organizationUnit', 'Organization unit'),
+        sortValue: (row) => row.ouHandle,
         minWidth: 150,
-        renderCell: (params: DataGrid.GridRenderCellParams<UserWithDetails>) => (
+        render: (row: UserWithDetails) => (
           <Typography variant="body2" sx={{fontFamily: 'monospace', fontSize: '0.875rem'}}>
-            {params.row.ouHandle ?? params.row.ouId ?? '-'}
+            {row.ouHandle ?? row.ouId ?? '-'}
           </Typography>
         ),
       },
       {
         field: 'actions',
-        headerName: t('users:listing.columns.actions', 'Actions'),
+        header: t('users:listing.columns.actions', 'Actions'),
         width: 150,
         align: 'center',
-        headerAlign: 'center',
-        sortable: false,
-        filterable: false,
-        hideable: false,
-        renderCell: (params: DataGrid.GridRenderCellParams<UserWithDetails>) => (
+        render: (row: UserWithDetails) => (
           <ListingTable.RowActions>
-            {params.row.isReadOnly ? (
+            {row.isReadOnly ? (
               <Tooltip title={t('common:status.readOnly', 'Read only')}>
                 <IconButton
                   size="small"
@@ -137,7 +134,7 @@ export default function UsersList() {
                     aria-label={t('common:actions.edit', 'Edit')}
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleEditClick(params.row.id);
+                      handleEditClick(row.id);
                     }}
                   >
                     <Pencil size={16} />
@@ -150,7 +147,7 @@ export default function UsersList() {
                     aria-label={t('common:actions.delete', 'Delete')}
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDeleteClick(params.row.id);
+                      handleDeleteClick(row.id);
                     }}
                   >
                     <Trash2 size={16} />
@@ -179,34 +176,16 @@ export default function UsersList() {
 
   return (
     <>
-      <ListingTable.Provider variant="data-grid" loading={isLoading}>
-        <ListingTable.Container>
-          <ListingTable.DataGrid
-            rows={userData?.users ?? []}
-            columns={columns}
-            getRowId={(row) => (row as UserWithDetails).id}
-            onRowClick={(params) => {
-              handleEditClick((params.row as UserWithDetails).id);
-            }}
-            initialState={{
-              pagination: {
-                paginationModel: {pageSize: 10},
-              },
-            }}
-            pageSizeOptions={[5, 10, 25, 50]}
-            disableRowSelectionOnClick
-            // Filtering is not wired end to end, so the column filter panel stays hidden.
-            disableColumnFilter
-            localeText={dataGridLocaleText}
-            autoHeight
-            sx={{
-              '& .MuiDataGrid-row': {
-                cursor: 'pointer',
-              },
-            }}
-          />
-        </ListingTable.Container>
-      </ListingTable.Provider>
+      <CardListingTable
+        rows={userData?.users ?? []}
+        columns={columns}
+        getRowId={(row) => row.id}
+        onRowClick={(row) => {
+          handleEditClick(row.id);
+        }}
+        loading={isLoading}
+        pageSizeOptions={[5, 10, 25, 50]}
+      />
 
       {/* Delete Confirmation Dialog */}
       <UserDeleteDialog open={deleteDialogOpen} userId={selectedUserId} onClose={handleDeleteCancel} />
