@@ -1,0 +1,31 @@
+{
+  "name": "@thunderid/wayfinder-enterprise-sample",
+  "private": true,
+  "version": "1.0.0",
+  "description": "B2B travel management sample: company sign-up, roles, and per-company enterprise SSO with ThunderID.",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "lint": "eslint .",
+    "start": "next start -p 3000"
+  },
+  "dependencies": {
+    "@thunderid/nextjs": "catalog:",
+    "next": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "server-only": "0.0.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.27.0",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "eslint": "catalog:",
+    "eslint-plugin-react-hooks": "5.2.0",
+    "globals": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:"
+  }
+}

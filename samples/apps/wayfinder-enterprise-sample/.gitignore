@@ -1,0 +1,15 @@
+node_modules
+
+# Next.js
+/.next/
+/out/
+next-env.d.ts
+*.tsbuildinfo
+
+# Bookings and travel policies the app stores locally
+/data/
+
+# local env files
+.env*.local
+
+.DS_Store

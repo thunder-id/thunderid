@@ -1,0 +1,886 @@
+# Wayfinder Enterprise: a B2B travel app on ThunderID.
+#
+# Every company that signs up becomes a child organization unit of "Wayfinder Enterprise". The app,
+# its two roles and its sign-in flow are owned by that parent unit and shared with every child, so a
+# new company can sign in, assign roles and plug in its own enterprise identity provider without any
+# per-company setup by the platform team.
+#
+# Import organization-unit.yaml first. Every resource here is placed in the organization unit that
+# file creates, and the Console's test import only finds an organization unit that already exists.
+
+# Owned by the parent unit, so every company beneath it can use it.
+resource_type: user_type
+id: 019f0a10-0000-7000-8000-000000000002
+category: user
+handle: wayfinder-user
+displayName: Wayfinder User
+ouHandle: wayfinder-enterprise
+allowSelfRegistration: true
+systemAttributes:
+  display: username
+schema: {
+    "username": {
+      "type": "string",
+      "displayName": "Username",
+      "required": false,
+      "unique": true
+    },
+    "password": {
+      "type": "string",
+      "displayName": "Password",
+      "required": false,
+      "credential": true
+    },
+    "email": {
+      "type": "string",
+      "displayName": "Email",
+      "required": true,
+      "unique": true,
+      "regex": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+    },
+    "given_name": {
+      "type": "string",
+      "displayName": "First Name",
+      "required": false
+    },
+    "family_name": {
+      "type": "string",
+      "displayName": "Last Name",
+      "required": false
+    }
+  }
+
+---
+# The permissions the app's roles grant, for the app's own APIs. The ThunderID management calls the
+# admin pages make go through the app's backend instead, so no user token carries a ThunderID
+# management permission.
+resource_type: resource_server
+id: 019f0a10-0000-7000-8000-000000000003
+name: Wayfinder Enterprise API
+description: Permissions of the Wayfinder Enterprise app
+identifier: urn:wayfinder-enterprise:api
+ouHandle: wayfinder-enterprise
+delimiter: ":"
+resources:
+  - name: Booking
+    handle: booking
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Manage
+        handle: manage
+  - name: Travel policy
+    handle: policy
+    actions:
+      - name: View
+        handle: view
+      - name: Manage
+        handle: manage
+  # The admin pages manage the company's users, groups, role assignments and identity providers
+  # through the app's /api/admin route, which checks these permissions. They are the app's own,
+  # so they grant nothing on the ThunderID management API.
+  - name: User
+    handle: user
+    actions:
+      - name: View
+        handle: view
+      - name: Manage
+        handle: manage
+  - name: Group
+    handle: group
+    actions:
+      - name: View
+        handle: view
+      - name: Manage
+        handle: manage
+  - name: Role assignment
+    handle: role
+    actions:
+      - name: View
+        handle: view
+      - name: Manage
+        handle: manage
+  - name: Enterprise SSO
+    handle: sso
+    actions:
+      - name: View
+        handle: view
+      - name: Manage
+        handle: manage
+
+---
+# Makes the Wayfinder Enterprise API the deployment's default resource server, so an authorization request
+# that names no resource still gets a token for it. This applies to every application in the deployment.
+resource_type: server_config
+name: defaultResourceServer
+value:
+  resourceServerId: 019f0a10-0000-7000-8000-000000000003
+
+---
+# Shared with every company. The sign-up flow assigns it to the user who registers the company.
+resource_type: role
+id: 019f0a10-0000-7000-8000-000000000011
+name: Wayfinder Admin
+description: Manages a company's travel policy, team and enterprise sign-in
+ouHandle: wayfinder-enterprise
+permissions:
+  - resourceServerId: 019f0a10-0000-7000-8000-000000000003
+    permissions:
+      - booking:view
+      - booking:create
+      - booking:manage
+      - policy:view
+      - policy:manage
+      - user:view
+      - user:manage
+      - group:view
+      - group:manage
+      - role:view
+      - role:manage
+      - sso:view
+      - sso:manage
+sharingPolicies:
+  - id: 019f0a10-0000-7000-8000-0000000000a1
+    childUnits:
+      mode: all
+
+---
+# Shared with every company. Enterprise sign-in assigns it to users it provisions on first sign-in.
+resource_type: role
+id: 019f0a10-0000-7000-8000-000000000012
+name: Wayfinder Member
+description: Books flights within the company's travel policy
+ouHandle: wayfinder-enterprise
+permissions:
+  - resourceServerId: 019f0a10-0000-7000-8000-000000000003
+    permissions:
+      - booking:view
+      - booking:create
+      - policy:view
+sharingPolicies:
+  - id: 019f0a10-0000-7000-8000-0000000000a2
+    childUnits:
+      mode: all
+
+---
+# The app's backend holds this role, never a company admin. The management APIs the admin pages use
+# take ThunderID permissions, so the backend calls them on an admin's behalf, with a token
+# issued for the admin's own company. The role is assigned in the backend application's own
+# organization unit: only those roles count when it gets a token for a company.
+resource_type: role
+id: 019f0a10-0000-7000-8000-000000000013
+name: Wayfinder Enterprise Backend
+description: Lets the Wayfinder Enterprise backend manage roles, connections and flow variables for companies
+ouHandle: wayfinder-enterprise
+permissions:
+  - resourceServerId: 01900000-0000-7000-8000-000000000020
+    permissions:
+      - system
+assignments:
+  - id: 019f0a10-0000-7000-8000-000000000032
+    type: app
+
+---
+# Company sign-up, in two steps: the first admin's account, then the company. Creates the company as
+# a child of "Wayfinder Enterprise", creates the admin inside it and assigns the Wayfinder Admin role.
+# The sign-in flow calls this flow, so a new admin is signed in to the app as soon as it completes.
+resource_type: flow
+id: 019f0a10-0000-7000-8000-000000000022
+ouHandle: wayfinder-enterprise
+name: Wayfinder Enterprise Company Sign-up
+handle: wayfinder-enterprise-signup
+flowType: REGISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: user_type_resolver
+- id: user_type_resolver
+  type: TASK_EXECUTION
+  executor:
+    name: UserTypeResolver
+  onSuccess: prompt_account
+- id: prompt_account
+  type: PROMPT
+  meta:
+    components:
+    - alt: Wayfinder Enterprise
+      category: DISPLAY
+      id: image_logo_account
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      height: '48'
+      width: ''
+    - align: center
+      type: TEXT
+      id: heading_account
+      label: Register your company
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: text_account
+      label: First, create your account. You become your company's first admin.
+      variant: BODY_1
+    - type: BLOCK
+      id: block_account
+      components:
+      - id: input_username
+        ref: username
+        type: TEXT_INPUT
+        label: Username
+        required: true
+        placeholder: Choose a username
+      - id: input_email
+        ref: email
+        type: EMAIL_INPUT
+        label: Work email
+        required: true
+        placeholder: you@company.com
+      - id: input_password
+        ref: password
+        type: PASSWORD_INPUT
+        label: Password
+        required: true
+        placeholder: Choose a password
+      - type: ACTION
+        id: action_account
+        label: Continue
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_username
+      identifier: username
+      type: TEXT_INPUT
+      required: true
+    - ref: input_email
+      identifier: email
+      type: EMAIL_INPUT
+      required: true
+    - ref: input_password
+      identifier: password
+      type: PASSWORD_INPUT
+      required: true
+    action:
+      ref: action_account
+      nextNode: credentials_auth
+- id: credentials_auth
+  type: TASK_EXECUTION
+  executor:
+    name: CredentialsAuthExecutor
+  onSuccess: prompt_company
+  onFailure: prompt_account
+- id: prompt_company
+  type: PROMPT
+  meta:
+    components:
+    - alt: Wayfinder Enterprise
+      category: DISPLAY
+      id: image_logo_company
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      height: '48'
+      width: ''
+    - align: center
+      type: TEXT
+      id: heading_company
+      label: Tell us about your company
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: text_company
+      label: Your team signs in to its own Wayfinder workspace with this organization handle.
+      variant: BODY_1
+    - type: BLOCK
+      id: block_company
+      components:
+      - id: input_ou_name
+        ref: ouName
+        type: TEXT_INPUT
+        label: Company name
+        required: true
+        placeholder: Northstar Labs
+      - id: input_ou_handle
+        ref: ouHandle
+        type: TEXT_INPUT
+        label: Organization handle
+        required: true
+        placeholder: northstar
+      - type: ACTION
+        id: action_company
+        label: Create company
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_ou_name
+      identifier: ouName
+      type: TEXT_INPUT
+      required: true
+    - ref: input_ou_handle
+      identifier: ouHandle
+      type: TEXT_INPUT
+      required: true
+    action:
+      ref: action_company
+      nextNode: create_company
+- id: create_company
+  type: TASK_EXECUTION
+  executor:
+    name: OUExecutor
+    inputs:
+    - ref: input_ou_name
+      identifier: ouName
+      type: TEXT_INPUT
+      required: true
+    - ref: input_ou_handle
+      identifier: ouHandle
+      type: TEXT_INPUT
+      required: true
+  properties:
+    parentOuId: 019f0a10-0000-7000-8000-000000000001
+  onSuccess: provisioning
+  onIncomplete: prompt_company
+- id: provisioning
+  type: TASK_EXECUTION
+  executor:
+    name: ProvisioningExecutor
+  properties:
+    assignRole: 019f0a10-0000-7000-8000-000000000011
+  onSuccess: end
+  onIncomplete: prompt_schema_attrs
+- id: prompt_schema_attrs
+  type: PROMPT
+  meta:
+    components:
+    - alt: Wayfinder Enterprise
+      category: DISPLAY
+      id: image_logo_schema_attrs
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      height: '48'
+      width: ''
+    - align: center
+      type: TEXT
+      id: heading_schema_attrs
+      label: '{{ t(signup:forms.user_info.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_dynamic_user_inputs
+      components:
+      - type: DYNAMIC_INPUT_PLACEHOLDER
+        id: dynamic_inputs
+      - type: ACTION
+        id: action_schema_attrs
+        label: '{{ t(signup:forms.user_info.actions.continue.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs: []
+    action:
+      ref: action_schema_attrs
+      nextNode: provisioning
+- id: end
+  type: END
+
+---
+# Sign-in: a username and password, enterprise SSO, or registering a new company.
+# - Enterprise SSO asks for the company's organization handle, accepts only a company directly beneath
+#   "Wayfinder Enterprise", and signs in with the identity provider that company selected for the
+#   enterpriseIdp variable. Each company sets its own value through the app; a company that has set
+#   none cannot use enterprise SSO.
+# - Registering calls the company sign-up flow, then finishes sign-in, so the new admin lands in the
+#   app signed in.
+resource_type: flow
+id: 019f0a10-0000-7000-8000-000000000021
+ouHandle: wayfinder-enterprise
+name: Wayfinder Enterprise Sign-in
+handle: wayfinder-enterprise-signin
+flowType: AUTHENTICATION
+nodes:
+- id: start
+  type: START
+  onSuccess: prompt_signin
+- id: prompt_signin
+  type: PROMPT
+  meta:
+    components:
+    - alt: Wayfinder Enterprise
+      category: DISPLAY
+      id: image_logo_signin
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      height: '48'
+      width: ''
+    - align: center
+      type: TEXT
+      id: heading_signin
+      label: Sign in to Wayfinder Enterprise
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_credentials
+      components:
+      - id: input_username
+        ref: username
+        type: TEXT_INPUT
+        label: '{{ t(signin:forms.credentials.fields.username.label) }}'
+        required: true
+        placeholder: '{{ t(signin:forms.credentials.fields.username.placeholder) }}'
+      - id: input_password
+        ref: password
+        type: PASSWORD_INPUT
+        label: '{{ t(signin:forms.credentials.fields.password.label) }}'
+        required: true
+        placeholder: '{{ t(signin:forms.credentials.fields.password.placeholder) }}'
+      - type: ACTION
+        id: action_credentials
+        label: '{{ t(signin:forms.credentials.actions.submit.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+    - category: DISPLAY
+      id: divider_signin
+      label: Or
+      resourceType: ELEMENT
+      type: DIVIDER
+      variant: HORIZONTAL
+    - category: ACTION
+      type: BLOCK
+      id: block_enterprise
+      resourceType: ELEMENT
+      eventType: TRIGGER
+      components:
+      - category: ACTION
+        type: ACTION
+        id: action_enterprise
+        label: Sign in with enterprise SSO
+        resourceType: ELEMENT
+        variant: OUTLINED
+        eventType: TRIGGER
+    - category: DISPLAY
+      id: rich_text_register
+      action:
+        ref: action_register
+      label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">New to Wayfinder? </span><a href="#" data-action-ref="action_register" class="rich-text-link"><span class="rich-text-pre-wrap">Register your company</span></a></p>
+      resourceType: ELEMENT
+      type: RICH_TEXT
+  prompts:
+  - inputs:
+    - ref: input_username
+      identifier: username
+      type: TEXT_INPUT
+      required: true
+    - ref: input_password
+      identifier: password
+      type: PASSWORD_INPUT
+      required: true
+    action:
+      ref: action_credentials
+      nextNode: credentials_auth
+  - action:
+      ref: action_enterprise
+      nextNode: resolve_company
+  - action:
+      ref: action_register
+      nextNode: register_company
+- id: credentials_auth
+  type: TASK_EXECUTION
+  executor:
+    name: CredentialsAuthExecutor
+  onSuccess: resolve_user_company
+  onIncomplete: prompt_signin
+- id: register_company
+  type: CALL
+  flow:
+    ref: 019f0a10-0000-7000-8000-000000000022
+  onSuccess: resolve_user_company
+- id: resolve_company
+  type: TASK_EXECUTION
+  executor:
+    name: OUResolverExecutor
+    inputs:
+    - ref: input_org_handle
+      identifier: ouHandle
+      type: TEXT_INPUT
+      required: true
+  properties:
+    resolveFrom: prompt
+    parentOuId: 019f0a10-0000-7000-8000-000000000001
+    directChildrenOnly: true
+  onSuccess: company_settings
+  onIncomplete: prompt_company
+- id: prompt_company
+  type: PROMPT
+  meta:
+    components:
+    - alt: Wayfinder Enterprise
+      category: DISPLAY
+      id: image_logo_company
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      height: '48'
+      width: ''
+    - align: center
+      type: TEXT
+      id: heading_company
+      label: Enterprise sign-in
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: text_company
+      label: Enter your company's organization handle to continue with its identity provider.
+      variant: BODY_1
+    - type: BLOCK
+      id: block_company
+      components:
+      - id: input_org_handle
+        ref: ouHandle
+        type: TEXT_INPUT
+        label: Organization handle
+        required: true
+        placeholder: northstar
+      - type: ACTION
+        id: action_company
+        label: Continue
+        variant: PRIMARY
+        eventType: SUBMIT
+    - category: DISPLAY
+      id: rich_text_back_signin
+      action:
+        ref: action_back_signin
+      label: <p class="rich-text-paragraph"><a href="#" data-action-ref="action_back_signin" class="rich-text-link"><span class="rich-text-pre-wrap">Back to sign in</span></a></p>
+      resourceType: ELEMENT
+      type: RICH_TEXT
+  prompts:
+  - inputs:
+    - ref: input_org_handle
+      identifier: ouHandle
+      type: TEXT_INPUT
+      required: true
+    action:
+      ref: action_company
+      nextNode: resolve_company
+  - action:
+      ref: action_back_signin
+      nextNode: prompt_signin
+- id: company_settings
+  type: VARIABLES
+  inputs:
+  - identifier: enterpriseIdp
+    type: CONNECTION_SELECT
+    category: IDENTITY_PROVIDER
+    connectionTypes:
+    - oidc
+    label: Enterprise identity provider
+    description: The OpenID Connect identity provider the company's employees sign in with
+    defaultValue: ""
+  onSuccess: enterprise_auth
+- id: enterprise_auth
+  type: TASK_EXECUTION
+  executor:
+    name: OIDCAuthExecutor
+  properties:
+    idpId: "{{var(enterpriseIdp)}}"
+    allowAuthenticationWithoutLocalUser: true
+  onSuccess: provision_member
+- id: provision_member
+  type: TASK_EXECUTION
+  condition:
+    key: "{{ctx(userEligibleForProvisioning)}}"
+    value: "true"
+    onSkip: authorization_check
+  executor:
+    name: ProvisioningExecutor
+  properties:
+    assignRole: 019f0a10-0000-7000-8000-000000000012
+  onSuccess: authorization_check
+# The app is shared with every company, so a password sign-in or a new company's admin names no
+# organization unit. Once the user has signed in, this decides the company they sign in to: the one
+# company directly under Wayfinder Enterprise they belong to, or the one they pick when there are
+# several. Enterprise SSO decided the company before sign-in, so it passes straight through.
+- id: resolve_user_company
+  type: TASK_EXECUTION
+  executor:
+    name: OUResolverExecutor
+  properties:
+    resolveFrom: prompt
+    parentOuId: 019f0a10-0000-7000-8000-000000000001
+    directChildrenOnly: true
+  onSuccess: authorization_check
+  onIncomplete: prompt_user_company
+- id: prompt_user_company
+  type: PROMPT
+  meta:
+    components:
+    - alt: Wayfinder Enterprise
+      category: DISPLAY
+      id: image_logo_user_company
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      height: '48'
+      width: ''
+    - align: center
+      type: TEXT
+      id: heading_user_company
+      label: Choose your company
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: text_user_company
+      label: You belong to more than one company. Choose the one to sign in to.
+      variant: BODY_1
+    - type: BLOCK
+      id: block_user_company
+      components:
+      - type: SELECT
+        id: input_user_company
+        ref: ouId
+        label: Company
+        required: true
+        options: []
+      - type: ACTION
+        id: action_user_company
+        label: Continue
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_user_company
+      identifier: ouId
+      type: SELECT
+      required: true
+    action:
+      ref: action_user_company
+      nextNode: resolve_user_company
+- id: authorization_check
+  type: TASK_EXECUTION
+  executor:
+    name: AuthorizationExecutor
+  onSuccess: auth_assert
+- id: auth_assert
+  type: TASK_EXECUTION
+  executor:
+    name: AuthAssertExecutor
+  onSuccess: end
+- id: end
+  type: END
+sharingPolicies:
+  - id: 019f0a10-0000-7000-8000-0000000000a3
+    childUnits:
+      mode: all
+      overlayRules:
+        variables.enterpriseIdp:
+          editable: true
+
+---
+# The sign-in, sign-up and enterprise SSO screens ThunderID shows for the app: Wayfinder's blue and
+# yellow, its logo (the application's logoUrl) and Inter, the font the sign-in pages bundle. Assigning
+# a theme or a layout to the app also replaces ThunderID's own branding on those screens.
+resource_type: theme
+id: 019f0a10-0000-7000-8000-000000000041
+handle: wayfinder
+displayName: Wayfinder
+description: Blue and yellow screens for Wayfinder Enterprise
+# A theme belongs to a project. This is the Default project ThunderID creates at startup.
+projectId: 01900000-0000-7000-8000-000000000002
+theme:
+  defaultColorScheme: light
+  direction: ltr
+  shape:
+    borderRadius: 8
+  typography:
+    fontFamily: "'Inter Variable', Inter, 'Segoe UI', Arial, sans-serif"
+    h1:
+      fontSize: 1.75rem
+      fontWeight: 800
+      lineHeight: 1.2
+    h2:
+      fontSize: 1.375rem
+      fontWeight: 700
+      lineHeight: 1.25
+    body1:
+      fontSize: 0.95rem
+    button:
+      fontWeight: 650
+      textTransform: none
+  colorSchemes:
+    light:
+      palette:
+        primary:
+          main: '#1d4ed8'
+          dark: '#1e3a8a'
+          light: '#e8efff'
+          contrastText: '#ffffff'
+        secondary:
+          main: '#ffd166'
+          dark: '#f4b740'
+          contrastText: '#0f172a'
+        background:
+          default: '#061a33'
+          paper: '#ffffff'
+        text:
+          primary: '#0f172a'
+          secondary: '#5f6b7a'
+  components:
+    MuiButton:
+      styleOverrides:
+        containedPrimary:
+          backgroundColor: '#ffd166'
+          backgroundImage: none
+          color: '#0f172a'
+          boxShadow: '0 8px 20px rgba(255, 177, 66, 0.25)'
+          '&:hover':
+            backgroundColor: '#f4b740'
+            boxShadow: '0 8px 20px rgba(255, 177, 66, 0.35)'
+
+---
+resource_type: layout
+id: 019f0a10-0000-7000-8000-000000000042
+handle: wayfinder-centered
+displayName: Wayfinder Centered
+description: A centered card on Wayfinder's navy, blue and yellow background
+# A layout belongs to a project. This is the Default project ThunderID creates at startup.
+projectId: 01900000-0000-7000-8000-000000000002
+layout:
+  head:
+    stylesheets:
+      - id: wayfinder-background
+        type: inline
+        content: 'body{background:radial-gradient(circle at 82% 14%,rgba(255,209,102,0.35) 0,rgba(255,209,102,0) 26%),radial-gradient(circle at 12% 88%,rgba(37,99,235,0.6) 0,rgba(37,99,235,0) 42%),repeating-linear-gradient(118deg,rgba(255,209,102,0) 0 46px,rgba(255,209,102,0.07) 46px 48px),linear-gradient(135deg,#061a33 0%,#0f2f6b 58%,#1d4ed8 100%) fixed !important;}main{background:transparent !important;}'
+
+---
+resource_type: application
+id: 019f0a10-0000-7000-8000-000000000031
+ouHandle: wayfinder-enterprise
+name: Wayfinder Enterprise
+description: B2B travel management sample on ThunderID
+type: fullstack
+url: http://localhost:3000
+logoUrl: data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMzIiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCAyMzIgNDgiIHJvbGU9ImltZyIgYXJpYS1sYWJlbD0iV2F5ZmluZGVyIEVudGVycHJpc2UiPgogIDxyZWN0IHg9IjIiIHk9IjIiIHdpZHRoPSI0NCIgaGVpZ2h0PSI0NCIgcng9IjEwIiBmaWxsPSIjZmZkMTY2Ii8+CiAgPHBhdGggZD0iTTEyIDI1LjUgMzcgMTNsLTYuNSAyMy02LjItNy40LTUuMyA0LjQuNi03LjF6IiBmaWxsPSIjMDYxYTMzIi8+CiAgPHBhdGggZD0ibTE5LjYgMjguNSAxNy40LTE1LjUtMTIuNyAxNS42eiIgZmlsbD0iIzFkNGVkOCIvPgogIDx0ZXh0IHg9IjU4IiB5PSIyNiIgZm9udC1mYW1pbHk9IkludGVyLCAnU2Vnb2UgVUknLCBBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMSIgZm9udC13ZWlnaHQ9IjgwMCIgZmlsbD0iIzBmMTcyYSI+V2F5ZmluZGVyPC90ZXh0PgogIDx0ZXh0IHg9IjU5IiB5PSI0MSIgZm9udC1mYW1pbHk9IkludGVyLCAnU2Vnb2UgVUknLCBBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxMCIgZm9udC13ZWlnaHQ9IjcwMCIgbGV0dGVyLXNwYWNpbmc9IjIuNiIgZmlsbD0iIzFkNGVkOCI+RU5URVJQUklTRTwvdGV4dD4KPC9zdmc+Cg==
+themeId: 019f0a10-0000-7000-8000-000000000041
+layoutId: 019f0a10-0000-7000-8000-000000000042
+authFlowHandle: wayfinder-enterprise-signin
+isRegistrationFlowEnabled: true
+registrationFlowHandle: wayfinder-enterprise-signup
+isRecoveryFlowEnabled: false
+assertion:
+  validityPeriod: 3600
+loginConsent:
+  validityPeriod: 0
+allowedUserTypes:
+  - wayfinder-user
+sharingPolicies:
+  - id: 019f0a10-0000-7000-8000-0000000000a4
+    childUnits:
+      mode: all
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: {{.WAYFINDER_ENTERPRISE_CLIENT_ID}}
+      clientSecret: {{.WAYFINDER_ENTERPRISE_CLIENT_SECRET}}
+      redirectUris:
+        {{- range .WAYFINDER_ENTERPRISE_REDIRECT_URIS}}
+        - {{.}}
+        {{- end}}
+      postLogoutRedirectUris:
+        {{- range .WAYFINDER_ENTERPRISE_POST_LOGOUT_REDIRECT_URIS}}
+        - {{.}}
+        {{- end}}
+      grantTypes:
+        - authorization_code
+        - refresh_token
+      responseTypes:
+        - code
+      tokenEndpointAuthMethod: client_secret_basic
+      pkceRequired: true
+      publicClient: false
+      requirePushedAuthorizationRequests: false
+      token:
+        accessToken:
+          userConfig:
+            validityPeriod: 3600
+            attributes:
+              - username
+              - email
+              - given_name
+              - family_name
+              - roles
+              - ouId
+              - ouHandle
+              - ouName
+        idToken:
+          validityPeriod: 3600
+          userAttributes:
+            - username
+            - email
+            - given_name
+            - family_name
+            - roles
+            - ouId
+            - ouHandle
+            - ouName
+          responseType: JWT
+        refreshToken:
+          validityPeriod: 86400
+      userInfo:
+        responseType: JSON
+        userAttributes:
+          - username
+          - email
+          - given_name
+          - family_name
+          - roles
+          - ouId
+          - ouHandle
+          - ouName
+      scopeClaims:
+        profile:
+          - username
+          - given_name
+          - family_name
+        email:
+          - email
+          - email_verified
+        roles:
+          - roles
+        ou:
+          - ouId
+          - ouHandle
+          - ouName
+
+---
+# The confidential client the app's backend uses for the root-only management calls it makes on a
+# company admin's behalf. It signs no one in. It is shared with every company, so the backend requests
+# a token for the admin's company at /ou/{ouId}/oauth2/token, and the token names that company.
+resource_type: application
+id: 019f0a10-0000-7000-8000-000000000032
+ouHandle: wayfinder-enterprise
+name: Wayfinder Enterprise Backend
+description: Backend client of the Wayfinder Enterprise sample
+type: m2m
+sharingPolicies:
+  - id: 019f0a10-0000-7000-8000-0000000000a5
+    childUnits:
+      mode: all
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: {{.WAYFINDER_ENTERPRISE_BACKEND_CLIENT_ID}}
+      clientSecret: {{.WAYFINDER_ENTERPRISE_BACKEND_CLIENT_SECRET}}
+      grantTypes:
+        - client_credentials
+      tokenEndpointAuthMethod: client_secret_basic
+      publicClient: false
+      token:
+        accessToken:
+          clientConfig:
+            attributes:
+              - ouId
+              - ouHandle
+              - ouName

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="232" height="48" viewBox="0 0 232 48" role="img" aria-label="Wayfinder Enterprise">
+  <rect x="2" y="2" width="44" height="44" rx="10" fill="#ffd166"/>
+  <path d="M12 25.5 37 13l-6.5 23-6.2-7.4-5.3 4.4.6-7.1z" fill="#061a33"/>
+  <path d="m19.6 28.5 17.4-15.5-12.7 15.6z" fill="#1d4ed8"/>
+  <text x="58" y="26" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="21" font-weight="800" fill="#ffffff">Wayfinder</text>
+  <text x="59" y="41" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="10" font-weight="700" letter-spacing="2.6" fill="#ffd166">ENTERPRISE</text>
+</svg>

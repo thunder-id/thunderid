@@ -36,6 +36,7 @@ catalog:
   '@testing-library/jest-dom': 6.9.1
   '@testing-library/react': 16.3.0
   '@testing-library/user-event': 14.6.1
+  '@thunderid/nextjs': 1.15.3
   '@thunderid/react': 1.17.1
   '@thunderid/react-router': 1.15.1
   '@types/lodash-es': 4.17.12
