@@ -43,6 +43,16 @@ type roleStoreInterface interface {
 	DeleteAssignmentsByAssignee(ctx context.Context, assigneeType, assigneeID string) (int64, error)
 	AddAssignments(ctx context.Context, id string, assignments []RoleAssignment) error
 	RemoveAssignments(ctx context.Context, id string, assignments []RoleAssignment) error
+	// The mandated assignment methods write the rows a sharing policy owns. Direct assignments and
+	// the methods above never touch them, except the deletes that remove every row of a role,
+	// an assignee or an organization unit.
+	AddMandatedAssignments(ctx context.Context, policyID, roleID, ouID string, assignee RoleAssignment) error
+	ListMandatedAssignments(ctx context.Context, policyID string) ([]MandatedAssignment, error)
+	DeleteMandatedAssignments(ctx context.Context, policyID string, filter MandatedFilter) error
+	// ListMandatedRoleUnits lists each role a sharing policy mandates in an organization unit, once.
+	ListMandatedRoleUnits(ctx context.Context) ([]MandatedRoleUnit, error)
+	// ListMandatedAssignmentsForRole lists a role's mandated assignments in ouID, or in every unit when it is empty.
+	ListMandatedAssignmentsForRole(ctx context.Context, roleID, ouID string) ([]RoleAssignment, error)
 	CheckRoleNameExists(ctx context.Context, ouID, name string) (bool, error)
 	CheckRoleNameExistsExcludingID(ctx context.Context, ouID, name, excludeRoleID string) (bool, error)
 	// GetAuthorizedPermissionsByResourceServer counts only assignments made in assignmentOUID when
@@ -395,10 +405,15 @@ func parseAssignmentResults(results []map[string]interface{}) ([]RoleAssignment,
 		if err != nil {
 			return nil, err
 		}
+		policyID, err := parseStringField(row, "sharing_policy_id")
+		if err != nil {
+			return nil, err
+		}
 		assignments = append(assignments, RoleAssignment{
-			ID:   assigneeID,
-			Type: AssigneeType(assigneeType),
-			OUID: ouID,
+			ID:       assigneeID,
+			Type:     AssigneeType(assigneeType),
+			OUID:     ouID,
+			PolicyID: policyID,
 		})
 	}
 
@@ -617,6 +632,128 @@ func (s *roleStore) RemoveAssignments(ctx context.Context, id string, assignment
 	return nil
 }
 
+// AddMandatedAssignments adds the assignment a sharing policy mandates for a role in an organization unit.
+func (s *roleStore) AddMandatedAssignments(
+	ctx context.Context, policyID, roleID, ouID string, assignee RoleAssignment) error {
+	if policyID == "" {
+		return errEmptyPolicyID
+	}
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return err
+	}
+
+	_, err = dbClient.ExecuteContext(
+		ctx, queryCreateRoleAssignment, roleID, ouID, assignee.Type, assignee.ID, policyID, s.scope(ctx))
+	if err != nil {
+		return fmt.Errorf("failed to add mandated assignment to role: %w", err)
+	}
+	return nil
+}
+
+// ListMandatedAssignments lists the assignments a sharing policy mandates.
+func (s *roleStore) ListMandatedAssignments(ctx context.Context, policyID string) ([]MandatedAssignment, error) {
+	if policyID == "" {
+		return nil, errEmptyPolicyID
+	}
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return nil, err
+	}
+
+	results, err := dbClient.QueryContext(ctx, queryGetMandatedAssignmentsByPolicy, policyID, s.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get mandated assignments: %w", err)
+	}
+
+	mandated := make([]MandatedAssignment, 0, len(results))
+	for _, row := range results {
+		roleID, err := parseStringField(row, "role_id")
+		if err != nil {
+			return nil, err
+		}
+		assignments, err := parseAssignmentResults([]map[string]interface{}{row})
+		if err != nil {
+			return nil, err
+		}
+		mandated = append(mandated, MandatedAssignment{RoleID: roleID, Assignment: assignments[0]})
+	}
+	return mandated, nil
+}
+
+// DeleteMandatedAssignments deletes the assignments a sharing policy mandates, in one organization
+// unit when the filter names one, for one role there when it also names a role, and everywhere otherwise.
+func (s *roleStore) DeleteMandatedAssignments(ctx context.Context, policyID string, filter MandatedFilter) error {
+	if policyID == "" {
+		return errEmptyPolicyID
+	}
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case filter.OUID == "" && filter.RoleID != "":
+		return errMandatedRoleWithoutOU
+	case filter.OUID == "":
+		_, err = dbClient.ExecuteContext(ctx, queryDeleteMandatedAssignmentsByPolicy, policyID, s.scope(ctx))
+	case filter.RoleID == "":
+		_, err = dbClient.ExecuteContext(
+			ctx, queryDeleteMandatedAssignmentsByPolicyInOU, policyID, filter.OUID, s.scope(ctx))
+	default:
+		_, err = dbClient.ExecuteContext(ctx, queryDeleteMandatedAssignmentsByPolicyRoleInOU,
+			policyID, filter.OUID, filter.RoleID, s.scope(ctx))
+	}
+	if err != nil {
+		return fmt.Errorf("failed to delete mandated assignments: %w", err)
+	}
+	return nil
+}
+
+// ListMandatedRoleUnits lists each role a sharing policy mandates in an organization unit, once.
+func (s *roleStore) ListMandatedRoleUnits(ctx context.Context) ([]MandatedRoleUnit, error) {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return nil, err
+	}
+
+	results, err := dbClient.QueryContext(ctx, queryGetMandatedRoleUnits, s.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get mandated roles: %w", err)
+	}
+
+	units := make([]MandatedRoleUnit, 0, len(results))
+	for _, row := range results {
+		fields, err := parseStringFields(row, "sharing_policy_id", "role_id", "assignment_ou_id")
+		if err != nil {
+			return nil, err
+		}
+		units = append(units, MandatedRoleUnit{PolicyID: fields[0], RoleID: fields[1], OUID: fields[2]})
+	}
+	return units, nil
+}
+
+// ListMandatedAssignmentsForRole lists a role's mandated assignments in ouID, or in every unit when it is empty.
+func (s *roleStore) ListMandatedAssignmentsForRole(
+	ctx context.Context, roleID, ouID string) ([]RoleAssignment, error) {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return nil, err
+	}
+
+	var results []map[string]interface{}
+	if ouID == "" {
+		results, err = dbClient.QueryContext(ctx, queryGetMandatedAssignmentsByRole, roleID, s.scope(ctx))
+	} else {
+		results, err = dbClient.QueryContext(
+			ctx, queryGetMandatedAssignmentsByRoleInOU, roleID, ouID, s.scope(ctx))
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get mandated assignments of role: %w", err)
+	}
+	return parseAssignmentResults(results)
+}
+
 // getRolePermissions retrieves all permissions for a role.
 func (s *roleStore) getRolePermissions(
 	ctx context.Context, dbClient provider.DBClientInterface, id string) ([]ResourcePermissions, error) {
@@ -705,7 +842,7 @@ func addAssignmentsToRole(
 ) error {
 	for _, assignment := range assignments {
 		_, err := dbClient.ExecuteContext(
-			ctx, queryCreateRoleAssignment, id, assignment.OUID, assignment.Type, assignment.ID, deploymentID)
+			ctx, queryCreateRoleAssignment, id, assignment.OUID, assignment.Type, assignment.ID, "", deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to add assignment to role: %w", err)
 		}

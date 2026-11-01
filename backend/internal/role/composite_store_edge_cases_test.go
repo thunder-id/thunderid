@@ -966,6 +966,43 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestDeleteAssignmentsInOU_Dele
 	suite.mockFileStore.AssertNotCalled(suite.T(), "DeleteAssignmentsInOU", mock.Anything, mock.Anything, mock.Anything)
 }
 
+// Only the database holds the assignments sharing policies mandate.
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestListMandatedAssignmentsForRole_ReadsTheDatabase() {
+	rows := []RoleAssignment{{ID: "user1", Type: assigneeTypeEntity, OUID: "ou-child", PolicyID: "policy1"}}
+	suite.mockDBStore.On("ListMandatedAssignmentsForRole", suite.ctx, "role1", "ou-child").Return(rows, nil)
+
+	got, err := suite.store.ListMandatedAssignmentsForRole(suite.ctx, "role1", "ou-child")
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), rows, got)
+	suite.mockFileStore.AssertNotCalled(suite.T(), "ListMandatedAssignmentsForRole",
+		mock.Anything, mock.Anything, mock.Anything)
+}
+
+// Only the database holds the roles sharing policies mandate.
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestListMandatedRoleUnits_ReadsTheDatabase() {
+	units := []MandatedRoleUnit{{PolicyID: "policy1", RoleID: "role1", OUID: "ou-child"}}
+	suite.mockDBStore.On("ListMandatedRoleUnits", suite.ctx).Return(units, nil)
+
+	got, err := suite.store.ListMandatedRoleUnits(suite.ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), units, got)
+	suite.mockFileStore.AssertNotCalled(suite.T(), "ListMandatedRoleUnits", mock.Anything)
+}
+
+// A mandated assignment in the database does not hide the declared direct assignment of the same
+// assignee, while a direct one in the database still does.
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestMergeAssignments_KeepsADeclaredAssignmentBesideAMandatedOne() {
+	declared := RoleAssignment{ID: "user1", Type: assigneeTypeEntity, OUID: "ou-child"}
+	mandatedRow := RoleAssignment{ID: "user1", Type: assigneeTypeEntity, OUID: "ou-child", PolicyID: "policy1"}
+
+	assert.Equal(suite.T(), []RoleAssignment{mandatedRow, declared},
+		mergeAssignments([]RoleAssignment{mandatedRow}, []RoleAssignment{declared}))
+	assert.Equal(suite.T(), []RoleAssignment{declared},
+		mergeAssignments([]RoleAssignment{declared}, []RoleAssignment{declared}))
+}
+
 // The same assignee assigned in two organization units is two assignments, not a duplicate.
 func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestMergeAssignments_KeepsOneAssigneeInTwoOUs() {
 	merged := mergeAssignments(

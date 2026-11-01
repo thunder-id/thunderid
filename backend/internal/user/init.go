@@ -34,11 +34,11 @@ func Initialize(
 	governance identitygovernance.IdentityGovernanceServiceInterface,
 	sharingService sharing.SharingServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
-) (UserServiceInterface, oupkg.OUUserResolver, declarativeresource.ResourceExporter, error) {
+) (ConfigurableUserService, oupkg.OUUserResolver, declarativeresource.ResourceExporter, error) {
 	// Step 1: Create service with entity service
 	userService := newUserService(authzService, entityService, ouService, entityTypeService, governance,
 		valueCapturer, sharingService)
-	sharingService.RegisterResourceType(newUserSharingDeclaration(userService))
+	sharingService.RegisterResourceType(userService.sharingDeclaration)
 	entityService.RegisterSharedCategory(providers.EntityCategoryUser, UserSharingType)
 
 	// Step 2: Load user-specific indexed attributes into the entity store.
@@ -52,7 +52,8 @@ func Initialize(
 		if err := entityService.LoadDeclarativeResources(makeUserDeclarativeConfig(userService)); err != nil {
 			return nil, nil, nil, err
 		}
-		// After the users, since a declared policy names a user that must already be there.
+		// After the users, since a declared policy names a user that must already be there. The roles a declared
+		// policy mandates are applied once SetRoleAssignmentService injects roles, which load after users.
 		if err := sharingService.LoadDeclarativeResources(
 			context.Background(), makeUserSharingConfig(userService)); err != nil {
 			return nil, nil, nil, err

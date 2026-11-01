@@ -1448,6 +1448,7 @@ func (suite *RoleServiceTestSuite) TestUpdateRole_PermissionValidationErrors() {
 func (suite *RoleServiceTestSuite) TestDeleteRole_Success() {
 	suite.mockStore.On("IsRoleExist", mock.Anything,
 		"role1").Return(true, nil)
+	suite.unmandated()
 	suite.mockSharingService.EXPECT().DeletePoliciesForResource(mock.Anything, RoleSharingType, "role1").
 		Return(nil).Once()
 	suite.mockStore.On("DeleteAssignmentsByRoleID", mock.Anything,
@@ -1463,6 +1464,7 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_Success() {
 func (suite *RoleServiceTestSuite) TestDeleteRole_WithAssignments() {
 	suite.mockStore.On("IsRoleExist", mock.Anything,
 		"role1").Return(true, nil)
+	suite.unmandated()
 	suite.mockSharingService.EXPECT().DeletePoliciesForResource(mock.Anything, RoleSharingType, "role1").
 		Return(nil).Once()
 	suite.mockStore.On("DeleteAssignmentsByRoleID", mock.Anything,
@@ -1504,6 +1506,7 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_GetRoleError() {
 func (suite *RoleServiceTestSuite) TestDeleteRole_GetAssignmentsCountError() {
 	suite.mockStore.On("IsRoleExist", mock.Anything,
 		"role1").Return(true, nil)
+	suite.unmandated()
 	suite.mockSharingService.EXPECT().DeletePoliciesForResource(mock.Anything, RoleSharingType, "role1").
 		Return(nil).Once()
 	suite.mockStore.On("DeleteAssignmentsByRoleID", mock.Anything,
@@ -1518,6 +1521,7 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_GetAssignmentsCountError() {
 func (suite *RoleServiceTestSuite) TestDeleteRole_StoreError() {
 	suite.mockStore.On("IsRoleExist", mock.Anything,
 		"role1").Return(true, nil)
+	suite.unmandated()
 	suite.mockSharingService.EXPECT().DeletePoliciesForResource(mock.Anything, RoleSharingType, "role1").
 		Return(nil).Once()
 	suite.mockStore.On("DeleteAssignmentsByRoleID", mock.Anything,
@@ -1535,6 +1539,7 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_StoreError() {
 // role in place to retry.
 func (suite *RoleServiceTestSuite) TestDeleteRole_SharingPolicyRemovalFails() {
 	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
+	suite.unmandated()
 	suite.mockSharingService.EXPECT().DeletePoliciesForResource(mock.Anything, RoleSharingType, "role1").
 		Return(&tidcommon.InternalServerError).Once()
 
@@ -1543,6 +1548,56 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_SharingPolicyRemovalFails() {
 	suite.Require().NotNil(err)
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 	suite.mockStore.AssertNotCalled(suite.T(), "DeleteAssignmentsByRoleID", mock.Anything, mock.Anything)
+	suite.mockStore.AssertNotCalled(suite.T(), "DeleteRole", mock.Anything, mock.Anything)
+}
+
+// unmandated stubs role1 as mandated by no user sharing policy.
+func (suite *RoleServiceTestSuite) unmandated() {
+	suite.mockStore.On("ListMandatedAssignmentsForRole", mock.Anything, "role1", "").Return([]RoleAssignment{}, nil)
+}
+
+// A role a user share still mandates is not deleted: the share would go on naming a role that no
+// longer exists. The check runs in the deleting transaction, before anything is touched.
+func (suite *RoleServiceTestSuite) TestDeleteRole_RefusedWhileMandated() {
+	type txKey struct{}
+	var ended error
+	txr := transactionmock.NewTransactionerMock(suite.T())
+	txr.EXPECT().Transact(mock.Anything, mock.Anything).
+		RunAndReturn(func(ctx context.Context, txFunc func(context.Context) error) error {
+			ended = txFunc(context.WithValue(ctx, txKey{}, true))
+			return ended
+		}).Once()
+	suite.service = newRoleService(suite.mockStore, suite.mockEntityService, suite.mockGroupService,
+		suite.mockOUService, suite.mockResourceService, txr, newAllowAllRoleAuthz(suite.T()),
+		suite.mockSharingService)
+	inTx := mock.MatchedBy(func(ctx context.Context) bool { return ctx.Value(txKey{}) != nil })
+	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
+	suite.mockStore.On("ListMandatedAssignmentsForRole", inTx, "role1", "").Return([]RoleAssignment{
+		{ID: testUserID1, Type: assigneeTypeEntity, OUID: "ou-child", PolicyID: "user-policy"},
+	}, nil)
+
+	err := suite.service.DeleteRole(context.Background(), "role1")
+
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorMandatedRoleCannotBeDeleted.Code, err.Code)
+	suite.Error(ended, "the transaction is rolled back")
+	suite.mockSharingService.AssertNotCalled(suite.T(), "DeletePoliciesForResource",
+		mock.Anything, mock.Anything, mock.Anything)
+	suite.mockStore.AssertNotCalled(suite.T(), "DeleteAssignmentsByRoleID", mock.Anything, mock.Anything)
+	suite.mockStore.AssertNotCalled(suite.T(), "DeleteRole", mock.Anything, mock.Anything)
+}
+
+func (suite *RoleServiceTestSuite) TestDeleteRole_MandateCheckFailureIsAServerError() {
+	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
+	suite.mockStore.On("ListMandatedAssignmentsForRole", mock.Anything, "role1", "").
+		Return(nil, errors.New("db down"))
+
+	err := suite.service.DeleteRole(context.Background(), "role1")
+
+	suite.Require().NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+	suite.mockSharingService.AssertNotCalled(suite.T(), "DeletePoliciesForResource",
+		mock.Anything, mock.Anything, mock.Anything)
 	suite.mockStore.AssertNotCalled(suite.T(), "DeleteRole", mock.Anything, mock.Anything)
 }
 
@@ -1560,6 +1615,7 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_PurgesPoliciesInTheRoleTransac
 		suite.mockSharingService)
 	inTx := mock.MatchedBy(func(ctx context.Context) bool { return ctx.Value(txKey{}) != nil })
 	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
+	suite.unmandated()
 	suite.mockSharingService.EXPECT().DeletePoliciesForResource(inTx, RoleSharingType, "role1").Return(nil).Once()
 	suite.mockStore.On("DeleteAssignmentsByRoleID", inTx, "role1").Return(nil)
 	suite.mockStore.On("DeleteRole", inTx, "role1").Return(errors.New("db down"))
@@ -2153,6 +2209,8 @@ func (s *RoleChangeValidationTestSuite) mutableRoleGranting(permissions []Resour
 		Return(RoleWithPermissions{ID: targetRoleID, OUID: "ou-1", Permissions: permissions}, nil)
 	s.ous.On("GetOrganizationUnit", mock.Anything, "ou-1").Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil)
 	s.store.On("IsRoleDeclarative", mock.Anything, targetRoleID).Return(false, nil)
+	s.store.On("ListMandatedAssignmentsForRole", mock.Anything, targetRoleID, "").
+		Return([]RoleAssignment{}, nil).Maybe()
 }
 
 func (s *RoleChangeValidationTestSuite) mutableRoleGrantingLicense() {
@@ -2243,6 +2301,21 @@ func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_RefusesDeclarativ
 
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorImmutableRole.Code, svcErr.Code)
+}
+
+// A deletion DeleteRole would refuse because a user share mandates the role revokes nothing.
+func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_RefusesAMandatedRole() {
+	s.store.On("ListMandatedAssignmentsForRole", mock.Anything, targetRoleID, "").Return([]RoleAssignment{
+		{ID: targetUserID, Type: assigneeTypeEntity, OUID: "ou-child", PolicyID: "user-policy"},
+	}, nil)
+	s.mutableRoleGranting([]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}})
+
+	target, svcErr := s.service.ValidateDeleteRole(context.Background(), targetRoleID)
+
+	s.Nil(target)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorMandatedRoleCannotBeDeleted.Code, svcErr.Code)
+	s.resources.AssertNotCalled(s.T(), "GetResourceServer", mock.Anything, mock.Anything)
 }
 
 func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_RequiresARole() {
@@ -2710,6 +2783,26 @@ func (suite *RoleServiceTestSuite) TestDeleteSharingPolicyRefusesADeclaredOne() 
 
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorSharingPolicyDeclared.Code, svcErr.Code)
+}
+
+// A sharing change the framework refuses because the role is mandated where the change would take it
+// away answers with that refusal, not with a generic sharing policy error.
+func (suite *RoleServiceTestSuite) TestSharingChangeRefusedForAMandatedRoleKeepsItsError() {
+	suite.stubSharedRole()
+	suite.mockSharingService.EXPECT().GetPolicy(mock.Anything, "p1").
+		Return(sharing.Policy{ID: "p1", ResourceType: RoleSharingType, ResourceID: "role1"}, nil)
+	req := sharing.PolicyRequest{Version: 1}
+	suite.mockSharingService.EXPECT().UpdatePolicy(mock.Anything, "p1", req).
+		Return(sharing.Policy{}, &ErrorRoleMandatedInOU).Once()
+	suite.mockSharingService.EXPECT().DeletePolicy(mock.Anything, "p1").Return(&ErrorRoleMandatedInOU).Once()
+
+	_, svcErr := suite.service.UpdateSharingPolicy(context.Background(), "role1", "p1", req)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorRoleMandatedInOU.Code, svcErr.Code)
+
+	svcErr = suite.service.DeleteSharingPolicy(context.Background(), "role1", "p1")
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorRoleMandatedInOU.Code, svcErr.Code)
 }
 
 func (suite *RoleServiceTestSuite) TestListSharingPoliciesPagesTheRolesPolicies() {

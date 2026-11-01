@@ -460,6 +460,7 @@ func (s *importService) ImportResources(
 	imported := 0
 	failed := 0
 	flowIDAliases := make(map[string]string)
+	var mandating []userSharingReplay
 
 	orderedDocs := orderDocumentsByDependencies(docs)
 
@@ -472,9 +473,10 @@ func (s *importService) ImportResources(
 			}
 		}
 
+		pendingBefore := len(mandating)
 		outcome, resolved := s.resolveReferences(ctx, doc)
 		if resolved {
-			outcome = s.importDocument(ctx, doc, options, request.DryRun, flowIDAliases)
+			outcome = s.importDocument(ctx, doc, options, request.DryRun, flowIDAliases, &mandating)
 		}
 		if outcome.Status == statusSuccess {
 			switch doc.ResourceType {
@@ -487,6 +489,9 @@ func (s *importService) ImportResources(
 			}
 		}
 		results = append(results, outcome)
+		for i := pendingBefore; i < len(mandating); i++ {
+			mandating[i].resultIndex = len(results) - 1
+		}
 
 		if doc.ResourceType == resourceTypeFlow && outcome.Status == statusSuccess && originalFlowID != "" &&
 			outcome.ResourceID != "" && originalFlowID != outcome.ResourceID {
@@ -502,6 +507,12 @@ func (s *importService) ImportResources(
 			}
 		}
 	}
+
+	// Users are imported before the roles their sharing policies may mandate, so those policies are replayed now,
+	// for every user imported, whatever failed after it.
+	refused := s.replayMandatingUserSharing(ctx, mandating, results)
+	imported -= refused
+	failed += refused
 
 	// Deletions run after the upserts so that resources moved or replaced by this same request are in
 	// place before their predecessors are pruned.
@@ -605,6 +616,7 @@ func (s *importService) DeleteResource(
 
 func (s *importService) importDocument(
 	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool, flowIDAliases map[string]string,
+	mandating *[]userSharingReplay,
 ) ImportItemOutcome {
 	switch doc.ResourceType {
 	case resourceTypeApplication:
@@ -634,7 +646,7 @@ func (s *importService) importDocument(
 	case resourceTypeLayout:
 		return s.importLayout(ctx, doc, options, dryRun)
 	case resourceTypeUser:
-		return s.importUser(ctx, doc, options, dryRun)
+		return s.importUser(ctx, doc, options, dryRun, mandating)
 	case resourceTypeTranslation:
 		return s.importTranslation(ctx, doc, dryRun)
 	case resourceTypeAgent:

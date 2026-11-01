@@ -20,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -32,6 +33,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/identitygovernancemock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
@@ -4640,6 +4642,13 @@ func TestTranslateSharingError(t *testing.T) {
 		{name: "InvalidOffset", in: sharing.ErrorInvalidOffset, expected: ErrorInvalidOffset.Code},
 		{name: "AnyOtherRefusal", in: sharing.ErrorDeclaredPolicyIDConflict, expected: ErrorInvalidSharingPolicy.Code},
 		{name: "ServerError", in: tidcommon.InternalServerError, expected: tidcommon.InternalServerError.Code},
+		{name: "RolesNotOnNamedUnit", in: ErrorRolesNotOnNamedUnit, expected: ErrorRolesNotOnNamedUnit.Code},
+		{name: "RolesRuleNotFixed", in: ErrorRolesRuleNotFixed, expected: ErrorRolesRuleNotFixed.Code},
+		{name: "RoleNotInOU", in: role.ErrorMandatedRoleNotInOU, expected: role.ErrorMandatedRoleNotInOU.Code},
+		{name: "MandatedRolesNotSupported", in: role.ErrorMandatedRolesNotSupported,
+			expected: role.ErrorMandatedRolesNotSupported.Code},
+		{name: "GrantNotPermitted", in: sysauthz.ErrorGrantNotPermitted,
+			expected: sysauthz.ErrorGrantNotPermitted.Code},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -4652,6 +4661,75 @@ func TestTranslateSharingError(t *testing.T) {
 		})
 	}
 	require.Nil(t, translateSharingError(nil))
+}
+
+// A refusal of the roles a share mandates reaches the caller of every policy write with its own code.
+func TestSharingPolicy_WritesKeepTheMandatedRoleRefusal(t *testing.T) {
+	refusal := role.ErrorMandatedRoleNotInOU
+	allowed := map[security.Action][]string{security.ActionUpdateUser: {shareOwnerOU}}
+	req := sharing.PolicyRequest{}
+
+	t.Run("Create", func(t *testing.T) {
+		f := newSharingFixture(t, allowed)
+		f.sharing.On("CreatePolicy", mock.Anything, UserSharingType, svcTestUserID1, shareOwnerOU, req).
+			Return(sharing.Policy{}, &refusal).Once()
+
+		_, err := f.service.CreateSharingPolicy(context.Background(), svcTestUserID1, req)
+
+		require.NotNil(t, err)
+		require.Equal(t, refusal.Code, err.Code)
+	})
+	t.Run("Update", func(t *testing.T) {
+		f := newSharingFixture(t, allowed)
+		f.sharing.On("GetPolicy", mock.Anything, sharePolicyID).
+			Return(userPolicy(shareOwnerOU), (*tidcommon.ServiceError)(nil)).Once()
+		f.sharing.On("UpdatePolicy", mock.Anything, sharePolicyID, req).
+			Return(sharing.Policy{}, &sysauthz.ErrorGrantNotPermitted).Once()
+
+		_, err := f.service.UpdateSharingPolicy(context.Background(), svcTestUserID1, sharePolicyID, req)
+
+		require.NotNil(t, err)
+		require.Equal(t, sysauthz.ErrorGrantNotPermitted.Code, err.Code)
+	})
+}
+
+// The overlay a unit is answered with carries the roles its share mandates there.
+func TestSharingPolicy_ResolveOverlayCarriesTheMandatedRoles(t *testing.T) {
+	f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUser: {shareChildOU}})
+	roles := []string{"role-a"}
+	rules := map[string]sharing.OverlayRule{RolesFieldKey: {Value: &roles}}
+	f.sharing.On("ResolveOverlayRules", mock.Anything, UserSharingType, svcTestUserID1, shareChildOU).
+		Return(sharing.ResolvedOverlay{OUID: shareChildOU, Visible: true, Rules: rules},
+			(*tidcommon.ServiceError)(nil)).Once()
+
+	overlay, err := f.service.ResolveSharingOverlay(context.Background(), svcTestUserID1, shareChildOU)
+
+	require.Nil(t, err)
+	require.Equal(t, rules, overlay.Rules)
+}
+
+// The service hands the role assignment service to its sharing declaration, which applies the declared mandates
+// that waited for it.
+func TestSetRoleAssignmentService_AppliesTheWaitingDeclaredMandates(t *testing.T) {
+	sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+	service := newUserService(nil, nil, nil, nil, nil, nil, sharingMock)
+	roles := []string{"role-a"}
+	declared := userPolicy(shareOwnerOU)
+	declared.Declared = true
+	declared.ChildUnits = &sharing.ChildUnits{Mode: sharing.ChildUnitsSelected,
+		Units: []sharing.ChildUnit{{OUID: shareChildOU, Reach: sharing.ReachUnit}}}
+	declared.Rules = []sharing.StoredRule{{FieldKey: RolesFieldKey,
+		Grant:     sharing.GrantRef{Section: sharing.SectionChildUnits, OUID: shareChildOU},
+		Requested: sharing.OverlayRule{Value: &roles}, Resolved: sharing.OverlayRule{Value: &roles}}}
+	require.Nil(t, service.sharingDeclaration.OnPolicyWritten(context.Background(), declared))
+
+	assignments := rolemock.NewRoleAssignmentServiceInterfaceMock(t)
+	sharingMock.EXPECT().IsVisible(mock.Anything, role.RoleSharingType, "role-a", shareOwnerOU).Return(true, nil).Once()
+	assignments.EXPECT().ApplyMandatedAssignments(mock.Anything, sharePolicyID,
+		role.RoleAssignment{ID: svcTestUserID1, Type: role.AssigneeTypeUser},
+		map[string][]string{shareChildOU: {"role-a"}}).Return(nil).Once()
+
+	require.NoError(t, service.SetRoleAssignmentService(context.Background(), assignments))
 }
 
 func TestUserService_DeleteUser_AbortedWhenSharingPurgeFails(t *testing.T) {

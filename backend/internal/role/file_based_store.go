@@ -425,6 +425,32 @@ func (f *fileBasedStore) RemoveAssignments(ctx context.Context, id string, assig
 	return errors.New("RemoveAssignments is not supported in file-based store")
 }
 
+// AddMandatedAssignments is not supported in file-based store.
+func (f *fileBasedStore) AddMandatedAssignments(
+	_ context.Context, _, _, _ string, _ RoleAssignment) error {
+	return errors.New("AddMandatedAssignments is not supported in file-based store")
+}
+
+// ListMandatedAssignments is not supported in file-based store.
+func (f *fileBasedStore) ListMandatedAssignments(_ context.Context, _ string) ([]MandatedAssignment, error) {
+	return nil, errors.New("ListMandatedAssignments is not supported in file-based store")
+}
+
+// DeleteMandatedAssignments is not supported in file-based store.
+func (f *fileBasedStore) DeleteMandatedAssignments(_ context.Context, _ string, _ MandatedFilter) error {
+	return errors.New("DeleteMandatedAssignments is not supported in file-based store")
+}
+
+// ListMandatedRoleUnits returns no roles, since the file-based store holds no mandated assignments.
+func (f *fileBasedStore) ListMandatedRoleUnits(_ context.Context) ([]MandatedRoleUnit, error) {
+	return []MandatedRoleUnit{}, nil
+}
+
+// ListMandatedAssignmentsForRole returns no assignments, since the file-based store holds no mandated ones.
+func (f *fileBasedStore) ListMandatedAssignmentsForRole(_ context.Context, _, _ string) ([]RoleAssignment, error) {
+	return []RoleAssignment{}, nil
+}
+
 // CheckRoleNameExists checks if a role with the given name exists in the file-based store.
 func (f *fileBasedStore) CheckRoleNameExists(ctx context.Context, ouID, name string) (bool, error) {
 	list, err := f.GenericFileBasedStore.List()

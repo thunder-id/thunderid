@@ -53,7 +53,7 @@ func Initialize(
 
 	// Registered before declarative resources load, because loading seeds the sharing policies those
 	// files declare and the framework refuses a type it does not know.
-	sharingService.RegisterResourceType(newRoleSharingDeclaration(roleService, assignmentService))
+	sharingService.RegisterResourceType(newRoleSharingDeclaration(roleService, assignmentService, roleStore, ouService))
 
 	// Step 3: Load declarative resources into store (if applicable)
 	if fileStore != nil {
@@ -69,6 +69,11 @@ func Initialize(
 			context.Background(), fileStore, entityService, groupService, sharingService); err != nil {
 			return nil, nil, nil, nil, fmt.Errorf("failed to load role resources: %w", err)
 		}
+	}
+
+	// Step 4: Drop the mandates no user share holds up any longer, once the declared role policies are in.
+	if err := assignmentService.reconcileMandatedAssignments(context.Background()); err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("failed to reconcile mandated role assignments: %w", err)
 	}
 
 	roleHandler := newRoleHandler(roleService, assignmentService)

@@ -89,15 +89,17 @@ var (
 	// queryCreateRoleAssignment creates a new role assignment.
 	queryCreateRoleAssignment = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-10",
-		Query: `INSERT INTO "ROLE_ASSIGNMENT" (ROLE_ID, ASSIGNMENT_OU_ID, ASSIGNEE_TYPE, ASSIGNEE_ID, DEPLOYMENT_ID)
-			VALUES ($1, $2, $3, $4, $5)
-			ON CONFLICT (ROLE_ID, DEPLOYMENT_ID, ASSIGNMENT_OU_ID, ASSIGNEE_TYPE, ASSIGNEE_ID) DO NOTHING`,
+		Query: `INSERT INTO "ROLE_ASSIGNMENT"
+			(ROLE_ID, ASSIGNMENT_OU_ID, ASSIGNEE_TYPE, ASSIGNEE_ID, SHARING_POLICY_ID, DEPLOYMENT_ID)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			ON CONFLICT (ROLE_ID, DEPLOYMENT_ID, ASSIGNMENT_OU_ID, ASSIGNEE_TYPE, ASSIGNEE_ID, SHARING_POLICY_ID)
+			DO NOTHING`,
 	}
 
 	// queryGetRoleAssignments retrieves all assignments for a role with pagination.
 	queryGetRoleAssignments = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-11",
-		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID FROM "ROLE_ASSIGNMENT"
+		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID, SHARING_POLICY_ID FROM "ROLE_ASSIGNMENT"
 			WHERE ROLE_ID = $1 AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT LIMIT $2 OFFSET $3`,
 	}
 
@@ -107,12 +109,12 @@ var (
 		Query: `SELECT COUNT(*) as total FROM "ROLE_ASSIGNMENT" WHERE ROLE_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
-	// queryDeleteRoleAssignmentsByIDs deletes specific assignments for a role.
+	// queryDeleteRoleAssignmentsByIDs deletes specific direct assignments for a role.
 	queryDeleteRoleAssignmentsByIDs = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-13",
 		Query: `DELETE FROM "ROLE_ASSIGNMENT" ` +
 			`WHERE ROLE_ID = $1 AND ASSIGNMENT_OU_ID = $2 AND ASSIGNEE_TYPE = $3 AND ASSIGNEE_ID = $4 ` +
-			`AND DEPLOYMENT_ID = $5`,
+			`AND SHARING_POLICY_ID = '' AND DEPLOYMENT_ID = $5`,
 	}
 
 	// queryDeleteAllRoleAssignments deletes all assignments for a role (used for cascade delete).
@@ -151,7 +153,7 @@ var (
 	// queryGetRoleAssignmentsByType retrieves assignments for a role filtered by assignee type with pagination.
 	queryGetRoleAssignmentsByType = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-17",
-		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID FROM "ROLE_ASSIGNMENT"
+		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID, SHARING_POLICY_ID FROM "ROLE_ASSIGNMENT"
 			WHERE ROLE_ID = $1 AND ASSIGNEE_TYPE = $5 AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT LIMIT $2 OFFSET $3`,
 	}
 
@@ -178,7 +180,7 @@ var (
 	// queryGetRoleAssignmentsInOU retrieves the assignments made in one organization unit for a role.
 	queryGetRoleAssignmentsInOU = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-30",
-		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID FROM "ROLE_ASSIGNMENT"
+		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID, SHARING_POLICY_ID FROM "ROLE_ASSIGNMENT"
 			WHERE ROLE_ID = $1 AND ASSIGNMENT_OU_ID = $2 AND DEPLOYMENT_ID = $5
 			ORDER BY CREATED_AT LIMIT $3 OFFSET $4`,
 	}
@@ -194,7 +196,7 @@ var (
 	// organization unit for a role.
 	queryGetRoleAssignmentsByTypeInOU = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-32",
-		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID FROM "ROLE_ASSIGNMENT"
+		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID, SHARING_POLICY_ID FROM "ROLE_ASSIGNMENT"
 			WHERE ROLE_ID = $1 AND ASSIGNEE_TYPE = $2 AND ASSIGNMENT_OU_ID = $3 AND DEPLOYMENT_ID = $6
 			ORDER BY CREATED_AT LIMIT $4 OFFSET $5`,
 	}
@@ -211,6 +213,58 @@ var (
 	queryDeleteRoleAssignmentsInOU = dbmodel.DBQuery{
 		ID:    "RLQ-ROLE_MGT-34",
 		Query: `DELETE FROM "ROLE_ASSIGNMENT" WHERE ROLE_ID = $1 AND ASSIGNMENT_OU_ID = $2 AND DEPLOYMENT_ID = $3`,
+	}
+
+	// queryGetMandatedAssignmentsByPolicy lists the assignments a sharing policy mandates.
+	queryGetMandatedAssignmentsByPolicy = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-36",
+		Query: `SELECT ROLE_ID, ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID, SHARING_POLICY_ID FROM "ROLE_ASSIGNMENT"
+			WHERE SHARING_POLICY_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY CREATED_AT`,
+	}
+
+	// queryDeleteMandatedAssignmentsByPolicy deletes every assignment a sharing policy mandates.
+	queryDeleteMandatedAssignmentsByPolicy = dbmodel.DBQuery{
+		ID:    "RLQ-ROLE_MGT-37",
+		Query: `DELETE FROM "ROLE_ASSIGNMENT" WHERE SHARING_POLICY_ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
+
+	// queryDeleteMandatedAssignmentsByPolicyInOU deletes the assignments a sharing policy mandates in one
+	// organization unit.
+	queryDeleteMandatedAssignmentsByPolicyInOU = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-38",
+		Query: `DELETE FROM "ROLE_ASSIGNMENT" ` +
+			`WHERE SHARING_POLICY_ID = $1 AND ASSIGNMENT_OU_ID = $2 AND DEPLOYMENT_ID = $3`,
+	}
+
+	// queryGetMandatedAssignmentsByRole lists the assignments sharing policies mandate for a role.
+	queryGetMandatedAssignmentsByRole = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-39",
+		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID, SHARING_POLICY_ID FROM "ROLE_ASSIGNMENT"
+			WHERE ROLE_ID = $1 AND SHARING_POLICY_ID <> '' AND DEPLOYMENT_ID = $2`,
+	}
+
+	// queryGetMandatedAssignmentsByRoleInOU lists the assignments sharing policies mandate for a role in
+	// one organization unit.
+	queryGetMandatedAssignmentsByRoleInOU = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-40",
+		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID, SHARING_POLICY_ID FROM "ROLE_ASSIGNMENT"
+			WHERE ROLE_ID = $1 AND ASSIGNMENT_OU_ID = $2 AND SHARING_POLICY_ID <> '' AND DEPLOYMENT_ID = $3`,
+	}
+
+	// queryGetMandatedRoleUnits lists each role a sharing policy mandates in an organization unit, once.
+	queryGetMandatedRoleUnits = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-41",
+		Query: `SELECT DISTINCT SHARING_POLICY_ID, ROLE_ID, ASSIGNMENT_OU_ID FROM "ROLE_ASSIGNMENT"
+			WHERE SHARING_POLICY_ID <> '' AND DEPLOYMENT_ID = $1
+			ORDER BY SHARING_POLICY_ID, ROLE_ID, ASSIGNMENT_OU_ID`,
+	}
+
+	// queryDeleteMandatedAssignmentsByPolicyRoleInOU deletes the assignments a sharing policy mandates for one role in
+	// one organization unit.
+	queryDeleteMandatedAssignmentsByPolicyRoleInOU = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-42",
+		Query: `DELETE FROM "ROLE_ASSIGNMENT" ` +
+			`WHERE SHARING_POLICY_ID = $1 AND ASSIGNMENT_OU_ID = $2 AND ROLE_ID = $3 AND DEPLOYMENT_ID = $4`,
 	}
 )
 

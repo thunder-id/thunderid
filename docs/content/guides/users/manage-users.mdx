@@ -92,6 +92,65 @@ For what each operation does, see [Suspend and Restore Accounts](../../account-p
 Deleting a user is permanent. The user's account, attributes, and group memberships are removed immediately.
 :::
 
+## Mandate Roles on a Shared User
+
+A user can be [shared](../../key-concepts/resource-sharing.mdx) with the organization units beneath the one that owns it. A share can also mandate roles: for a child organization unit that the share names, it assigns the user the roles you list, in that organization unit.
+
+A roles rule is accepted in one place only. It must sit on a unit listed under `childUnits` in `selected` mode, with `reach: unit`. A roles rule on `childUnits` in `all` mode, on `allUnits`, or on a unit with `reach: subtree` is refused with `USR-1039`.
+
+```bash
+curl -X POST https://localhost:8090/users/{userId}/sharing-policies \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "childUnits": {
+      "mode": "selected",
+      "units": [
+        {
+          "ouId": "acme-customer-a",
+          "reach": "unit",
+          "overlayRules": {
+            "roles": {
+              "editable": false,
+              "value": ["<roleId>"]
+            }
+          }
+        }
+      ]
+    }
+  }'
+```
+
+The rule must set `editable` to `false` and list at least one role ID in `value`. Other shapes are refused:
+
+| Rule | Error |
+|---|---|
+| `editable: true`, or `allowedValues` | `USR-1029`, because the rule would widen what the issuing organization unit holds. |
+| No `value`, an empty `value`, or `excludedValues` | `USR-1040` |
+| Roles on a server whose roles load only from resource files | `ROL-1038` |
+
+Each role must also meet these requirements:
+
+- The role is owned by, or shared with, the receiving organization unit. Otherwise the request fails with `ROL-1035`. <ProductName /> never shares the role for you.
+- You hold every permission the role grants, the same rule as for adding a role assignment. Otherwise the request fails with `403 Forbidden` and the code `SAZ-4030`. See [Permission Requirements](./manage-roles.mdx#permission-requirements).
+
+Mandating roles needs only the permission to manage users (`system:user`), not the permission to manage roles. An administrator who can share a user can therefore assign that user roles in the child organization units the share names, limited to roles that grant nothing the administrator lacks.
+
+### How a Mandate Behaves
+
+- Writing the share creates the mandated assignments in that organization unit. Updating the share brings them in line with the new list of roles, and deleting the share removes them.
+- The child organization unit cannot remove a mandated assignment. It can still assign the same role to the same user directly, and it can remove that direct assignment. It can also add its own roles for the user.
+- A role assignment response carries `isReadOnly: true` when the share mandates the assignment, and `isReadOnly: false` for a direct assignment.
+- A share that the child organization unit makes onward can carry only roles from its own mandate.
+- `GET /users/{id}/overlay-rules?ouId=<ouId>` returns the `roles` rule that applies to the asking organization unit.
+- A role export leaves mandated assignments out, because they follow the share and would import back as direct assignments.
+
+:::note
+Removing a mandate does not revoke tokens that are already issued. The roles disappear from newly issued tokens, which matches removing the assignment directly through the REST API.
+:::
+
+To import a user whose shares carry roles, put the user, the role, and the share in one import document. <ProductName /> replays the shares after the roles, so the document round-trips. See [Import Resources](../declarative-configurations/import-resources.mdx).
+
 ## Search and Filter Users
 
 Use the search bar at the top of the **Users** list to filter users by name or email. Use the pagination controls to navigate through pages of results.
@@ -101,5 +160,6 @@ Use the search bar at the top of the **Users** list to filter users by name or e
 - [User Types](../user-types) - Define schemas and attribute rules for each user type
 - [Organization Units](../../organization-units/manage-organization-units) - Manage the organizational hierarchy that contains users
 - [Roles](../manage-roles) - Assign roles to grant permissions to users
+- [Resource Sharing](../../key-concepts/resource-sharing.mdx) - How a sharing policy reaches other organization units
 - [Account Protection](../../account-protection/overview) - How locks and suspensions hold a user
 - [Flows](../../flows/what-are-flows) - Configure registration flows for self-service sign-up

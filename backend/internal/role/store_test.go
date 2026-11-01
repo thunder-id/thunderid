@@ -447,7 +447,7 @@ func (suite *RoleStoreTestSuite) TestCreateRole() {
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRolePermission, "role1", "rs1",
 					"perm2", testDeploymentID).Return(int64(1), nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRoleAssignment, "role1",
-					"ou1", assigneeTypeEntity, "user1", testDeploymentID).Return(int64(1), nil)
+					"ou1", assigneeTypeEntity, "user1", "", testDeploymentID).Return(int64(1), nil)
 			},
 			shouldErr: false,
 		},
@@ -541,7 +541,7 @@ func (suite *RoleStoreTestSuite) TestCreateRole() {
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRole, "role1", "ou1", "Test Role",
 					"Test Description", testDeploymentID).Return(int64(1), nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRoleAssignment, "role1",
-					"ou1", assigneeTypeEntity, "user1", testDeploymentID).
+					"ou1", assigneeTypeEntity, "user1", "", testDeploymentID).
 					Return(int64(0), assignError)
 			},
 			shouldErr: true,
@@ -893,8 +893,8 @@ func (suite *RoleStoreTestSuite) TestGetRoleAssignments_Success() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleAssignments, "role1", 10, 0, testDeploymentID).
 		Return([]map[string]interface{}{
-			{"assignee_id": "user1", "assignee_type": "entity", "assignment_ou_id": "ou1"},
-			{"assignee_id": "group1", "assignee_type": "group", "assignment_ou_id": "ou1"},
+			{"assignee_id": "user1", "assignee_type": "entity", "assignment_ou_id": "ou1", "sharing_policy_id": ""},
+			{"assignee_id": "group1", "assignee_type": "group", "assignment_ou_id": "ou1", "sharing_policy_id": ""},
 		}, nil)
 
 	assignments, err := suite.store.GetRoleAssignments(context.Background(), "role1", "", 10, 0)
@@ -1171,7 +1171,7 @@ func (suite *RoleStoreTestSuite) TestAddAssignments() {
 			setupMocks: func() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRoleAssignment, "role1",
-					"ou1", assigneeTypeEntity, testUserID1, testDeploymentID).Return(int64(1), nil)
+					"ou1", assigneeTypeEntity, testUserID1, "", testDeploymentID).Return(int64(1), nil)
 			},
 			shouldErr: false,
 		},
@@ -1185,7 +1185,7 @@ func (suite *RoleStoreTestSuite) TestAddAssignments() {
 				execError := errors.New("insert failed")
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRoleAssignment, "role1",
-					"ou1", assigneeTypeEntity, testUserID1, testDeploymentID).Return(int64(0), execError)
+					"ou1", assigneeTypeEntity, testUserID1, "", testDeploymentID).Return(int64(0), execError)
 			},
 			shouldErr:    true,
 			errorMessage: "failed to add assignment to role",
@@ -2132,7 +2132,7 @@ func (suite *RoleStoreTestSuite) TestDeleteAssignmentsByAssignee() {
 // Naming an organization unit narrows each assignment read to the assignments made there.
 func (suite *RoleStoreTestSuite) TestAssignmentReadsInOU() {
 	row := []map[string]interface{}{
-		{"assignee_id": "user1", "assignee_type": "entity", "assignment_ou_id": "ou-child"},
+		{"assignee_id": "user1", "assignee_type": "entity", "assignment_ou_id": "ou-child", "sharing_policy_id": ""},
 	}
 	total := []map[string]interface{}{{"total": int64(4)}}
 
@@ -2366,4 +2366,348 @@ func loadRuntimeForScope() {
 	_ = config.InitializeServerRuntime("", &config.Config{
 		Server: engineconfig.ServerConfig{Identifier: testDeploymentID},
 	})
+}
+
+const mandatedPolicyID = "policy1"
+
+var mandatedUser = RoleAssignment{ID: "user1", Type: assigneeTypeEntity}
+
+func (suite *RoleStoreTestSuite) expectConfigDBClient() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+}
+
+func (suite *RoleStoreTestSuite) TestAddMandatedAssignments() {
+	assignee := RoleAssignment{ID: testUserID1, Type: assigneeTypeEntity}
+
+	suite.Run("Success", func() {
+		suite.SetupTest()
+		suite.expectConfigDBClient()
+		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRoleAssignment, "role1", "ou-child",
+			assigneeTypeEntity, testUserID1, mandatedPolicyID, testDeploymentID).Return(int64(1), nil).Once()
+
+		suite.NoError(suite.store.AddMandatedAssignments(
+			context.Background(), mandatedPolicyID, "role1", "ou-child", assignee))
+	})
+
+	suite.Run("EmptyPolicyIDIsRefusedBeforeAnyQuery", func() {
+		suite.SetupTest()
+
+		err := suite.store.AddMandatedAssignments(context.Background(), "", "role1", "ou-child", assignee)
+
+		suite.ErrorIs(err, errEmptyPolicyID)
+		suite.mockDBProvider.AssertNotCalled(suite.T(), "GetConfigDBClient")
+		suite.mockDBClient.AssertNotCalled(suite.T(), "ExecuteContext")
+	})
+
+	suite.Run("ExecError", func() {
+		suite.SetupTest()
+		suite.expectConfigDBClient()
+		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRoleAssignment, "role1", "ou-child",
+			assigneeTypeEntity, testUserID1, mandatedPolicyID, testDeploymentID).
+			Return(int64(0), errors.New("insert failed")).Once()
+
+		err := suite.store.AddMandatedAssignments(
+			context.Background(), mandatedPolicyID, "role1", "ou-child", assignee)
+
+		suite.Error(err)
+		suite.Contains(err.Error(), "failed to add mandated assignment to role")
+	})
+
+	suite.Run("DBClientError", func() {
+		suite.SetupTest()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("db client error"))
+
+		suite.Error(suite.store.AddMandatedAssignments(
+			context.Background(), mandatedPolicyID, "role1", "ou-child", assignee))
+	})
+}
+
+func (suite *RoleStoreTestSuite) TestListMandatedAssignments() {
+	suite.Run("Success", func() {
+		suite.SetupTest()
+		suite.expectConfigDBClient()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetMandatedAssignmentsByPolicy,
+			mandatedPolicyID, testDeploymentID).Return([]map[string]interface{}{
+			{"role_id": "role1", "assignee_id": testUserID1, "assignee_type": "entity",
+				"assignment_ou_id": "ou-child", "sharing_policy_id": mandatedPolicyID},
+			{"role_id": "role2", "assignee_id": "group1", "assignee_type": "group",
+				"assignment_ou_id": "ou-other", "sharing_policy_id": mandatedPolicyID},
+		}, nil).Once()
+
+		got, err := suite.store.ListMandatedAssignments(context.Background(), mandatedPolicyID)
+
+		suite.Require().NoError(err)
+		suite.Equal([]MandatedAssignment{
+			{RoleID: "role1", Assignment: RoleAssignment{
+				ID: testUserID1, Type: assigneeTypeEntity, OUID: "ou-child", PolicyID: mandatedPolicyID}},
+			{RoleID: "role2", Assignment: RoleAssignment{
+				ID: "group1", Type: AssigneeType("group"), OUID: "ou-other", PolicyID: mandatedPolicyID}},
+		}, got)
+	})
+
+	suite.Run("EmptyPolicyIDIsRefusedBeforeAnyQuery", func() {
+		suite.SetupTest()
+
+		got, err := suite.store.ListMandatedAssignments(context.Background(), "")
+
+		suite.ErrorIs(err, errEmptyPolicyID)
+		suite.Nil(got)
+		suite.mockDBProvider.AssertNotCalled(suite.T(), "GetConfigDBClient")
+	})
+
+	suite.Run("QueryError", func() {
+		suite.SetupTest()
+		suite.expectConfigDBClient()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetMandatedAssignmentsByPolicy,
+			mandatedPolicyID, testDeploymentID).Return(nil, errors.New("query failed")).Once()
+
+		_, err := suite.store.ListMandatedAssignments(context.Background(), mandatedPolicyID)
+
+		suite.Error(err)
+		suite.Contains(err.Error(), "failed to get mandated assignments")
+	})
+
+	suite.Run("RowWithoutRoleIDFailsToParse", func() {
+		suite.SetupTest()
+		suite.expectConfigDBClient()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetMandatedAssignmentsByPolicy,
+			mandatedPolicyID, testDeploymentID).Return([]map[string]interface{}{
+			{"assignee_id": testUserID1, "assignee_type": "entity", "assignment_ou_id": "ou-child",
+				"sharing_policy_id": mandatedPolicyID},
+		}, nil).Once()
+
+		_, err := suite.store.ListMandatedAssignments(context.Background(), mandatedPolicyID)
+
+		suite.Error(err)
+		suite.Contains(err.Error(), "role_id")
+	})
+
+	suite.Run("RowWithoutPolicyIDFailsToParse", func() {
+		suite.SetupTest()
+		suite.expectConfigDBClient()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetMandatedAssignmentsByPolicy,
+			mandatedPolicyID, testDeploymentID).Return([]map[string]interface{}{
+			{"role_id": "role1", "assignee_id": testUserID1, "assignee_type": "entity",
+				"assignment_ou_id": "ou-child"},
+		}, nil).Once()
+
+		_, err := suite.store.ListMandatedAssignments(context.Background(), mandatedPolicyID)
+
+		suite.Error(err)
+		suite.Contains(err.Error(), "sharing_policy_id")
+	})
+
+	suite.Run("DBClientError", func() {
+		suite.SetupTest()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("db client error"))
+
+		_, err := suite.store.ListMandatedAssignments(context.Background(), mandatedPolicyID)
+
+		suite.Error(err)
+	})
+}
+
+func (suite *RoleStoreTestSuite) TestListMandatedAssignmentsForRole() {
+	rows := []map[string]interface{}{
+		{"assignee_id": testUserID1, "assignee_type": "entity", "assignment_ou_id": "ou-child",
+			"sharing_policy_id": mandatedPolicyID},
+	}
+	expected := []RoleAssignment{
+		{ID: testUserID1, Type: assigneeTypeEntity, OUID: "ou-child", PolicyID: mandatedPolicyID},
+	}
+
+	suite.Run("EveryUnit", func() {
+		suite.SetupTest()
+		suite.expectConfigDBClient()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetMandatedAssignmentsByRole,
+			"role1", testDeploymentID).Return(rows, nil).Once()
+
+		got, err := suite.store.ListMandatedAssignmentsForRole(context.Background(), "role1", "")
+
+		suite.Require().NoError(err)
+		suite.Equal(expected, got)
+	})
+
+	suite.Run("OneUnit", func() {
+		suite.SetupTest()
+		suite.expectConfigDBClient()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetMandatedAssignmentsByRoleInOU,
+			"role1", "ou-child", testDeploymentID).Return(rows, nil).Once()
+
+		got, err := suite.store.ListMandatedAssignmentsForRole(context.Background(), "role1", "ou-child")
+
+		suite.Require().NoError(err)
+		suite.Equal(expected, got)
+	})
+
+	suite.Run("QueryError", func() {
+		suite.SetupTest()
+		suite.expectConfigDBClient()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetMandatedAssignmentsByRole,
+			"role1", testDeploymentID).Return(nil, errors.New("query failed")).Once()
+
+		_, err := suite.store.ListMandatedAssignmentsForRole(context.Background(), "role1", "")
+
+		suite.Error(err)
+		suite.Contains(err.Error(), "failed to get mandated assignments of role")
+	})
+
+	suite.Run("UnparsableRow", func() {
+		suite.SetupTest()
+		suite.expectConfigDBClient()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetMandatedAssignmentsByRoleInOU,
+			"role1", "ou-child", testDeploymentID).Return([]map[string]interface{}{{"assignee_id": 1}}, nil).Once()
+
+		_, err := suite.store.ListMandatedAssignmentsForRole(context.Background(), "role1", "ou-child")
+
+		suite.Error(err)
+	})
+
+	suite.Run("DBClientError", func() {
+		suite.SetupTest()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("db client error"))
+
+		_, err := suite.store.ListMandatedAssignmentsForRole(context.Background(), "role1", "")
+
+		suite.Error(err)
+	})
+}
+
+func (suite *RoleStoreTestSuite) TestListMandatedRoleUnits() {
+	suite.Run("Success", func() {
+		suite.SetupTest()
+		suite.expectConfigDBClient()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetMandatedRoleUnits, testDeploymentID).
+			Return([]map[string]interface{}{
+				{"sharing_policy_id": "policy1", "role_id": "role1", "assignment_ou_id": "ou-child"},
+				{"sharing_policy_id": "policy2", "role_id": "role1", "assignment_ou_id": "ou-other"},
+			}, nil).Once()
+
+		got, err := suite.store.ListMandatedRoleUnits(context.Background())
+
+		suite.Require().NoError(err)
+		suite.Equal([]MandatedRoleUnit{
+			{PolicyID: "policy1", RoleID: "role1", OUID: "ou-child"},
+			{PolicyID: "policy2", RoleID: "role1", OUID: "ou-other"},
+		}, got)
+	})
+
+	suite.Run("QueryError", func() {
+		suite.SetupTest()
+		suite.expectConfigDBClient()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetMandatedRoleUnits, testDeploymentID).
+			Return(nil, errors.New("query failed")).Once()
+
+		_, err := suite.store.ListMandatedRoleUnits(context.Background())
+
+		suite.Error(err)
+		suite.Contains(err.Error(), "failed to get mandated roles")
+	})
+
+	suite.Run("UnparsableRow", func() {
+		suite.SetupTest()
+		suite.expectConfigDBClient()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetMandatedRoleUnits, testDeploymentID).
+			Return([]map[string]interface{}{{"sharing_policy_id": "policy1"}}, nil).Once()
+
+		_, err := suite.store.ListMandatedRoleUnits(context.Background())
+
+		suite.Error(err)
+	})
+
+	suite.Run("DBClientError", func() {
+		suite.SetupTest()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("db client error"))
+
+		_, err := suite.store.ListMandatedRoleUnits(context.Background())
+
+		suite.Error(err)
+	})
+}
+
+func (suite *RoleStoreTestSuite) TestDeleteMandatedAssignments() {
+	testCases := []struct {
+		name   string
+		filter MandatedFilter
+		query  dbmodel.DBQuery
+		args   []interface{}
+	}{
+		{
+			name:   "ByPolicy",
+			filter: MandatedFilter{},
+			query:  queryDeleteMandatedAssignmentsByPolicy,
+			args:   []interface{}{mandatedPolicyID, testDeploymentID},
+		},
+		{
+			name:   "ByPolicyAndOU",
+			filter: MandatedFilter{OUID: "ou-child"},
+			query:  queryDeleteMandatedAssignmentsByPolicyInOU,
+			args:   []interface{}{mandatedPolicyID, "ou-child", testDeploymentID},
+		},
+		{
+			name:   "ByPolicyRoleAndOU",
+			filter: MandatedFilter{OUID: "ou-child", RoleID: "role1"},
+			query:  queryDeleteMandatedAssignmentsByPolicyRoleInOU,
+			args:   []interface{}{mandatedPolicyID, "ou-child", "role1", testDeploymentID},
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.expectConfigDBClient()
+			suite.mockDBClient.On("ExecuteContext",
+				append([]interface{}{mock.Anything, tc.query}, tc.args...)...).Return(int64(1), nil).Once()
+
+			suite.NoError(suite.store.DeleteMandatedAssignments(context.Background(), mandatedPolicyID, tc.filter))
+		})
+
+		suite.Run(tc.name+"ExecError", func() {
+			suite.SetupTest()
+			suite.expectConfigDBClient()
+			suite.mockDBClient.On("ExecuteContext",
+				append([]interface{}{mock.Anything, tc.query}, tc.args...)...).
+				Return(int64(0), errors.New("delete failed")).Once()
+
+			err := suite.store.DeleteMandatedAssignments(context.Background(), mandatedPolicyID, tc.filter)
+
+			suite.Error(err)
+			suite.Contains(err.Error(), "failed to delete mandated assignments")
+		})
+
+		suite.Run(tc.name+"EmptyPolicyIDIsRefusedBeforeAnyQuery", func() {
+			suite.SetupTest()
+
+			err := suite.store.DeleteMandatedAssignments(context.Background(), "", tc.filter)
+
+			suite.ErrorIs(err, errEmptyPolicyID)
+			suite.mockDBProvider.AssertNotCalled(suite.T(), "GetConfigDBClient")
+		})
+	}
+
+	suite.Run("RoleWithoutOUIsRefusedBeforeAnyDelete", func() {
+		suite.SetupTest()
+		suite.expectConfigDBClient()
+
+		err := suite.store.DeleteMandatedAssignments(
+			context.Background(), mandatedPolicyID, MandatedFilter{RoleID: "role1"})
+
+		suite.ErrorIs(err, errMandatedRoleWithoutOU)
+		suite.mockDBClient.AssertNotCalled(suite.T(), "ExecuteContext")
+	})
+
+	suite.Run("DBClientError", func() {
+		suite.SetupTest()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("db client error"))
+
+		suite.Error(suite.store.DeleteMandatedAssignments(context.Background(), mandatedPolicyID, MandatedFilter{}))
+	})
+}
+
+// A direct removal must never reach a mandated row, and a mandated list must never return a direct one.
+func (suite *RoleStoreTestSuite) TestDirectAndMandatedQueriesDiffer() {
+	suite.Contains(queryDeleteRoleAssignmentsByIDs.Query, "SHARING_POLICY_ID = ''")
+	suite.Contains(queryGetMandatedAssignmentsByRole.Query, "SHARING_POLICY_ID <> ''")
+	suite.Contains(queryGetMandatedAssignmentsByRoleInOU.Query, "SHARING_POLICY_ID <> ''")
+	suite.Contains(queryGetMandatedRoleUnits.Query, "SHARING_POLICY_ID <> ''")
 }

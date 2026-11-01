@@ -289,6 +289,9 @@ func (s *sharingService) createPolicy(
 	}
 
 	if declared {
+		if svcErr := s.notifyDeclaredPolicy(ctx, policy); svcErr != nil {
+			return Policy{}, svcErr
+		}
 		s.fileStore.seed(policy)
 		s.clearCaches(ctx)
 		return policy, nil
@@ -298,10 +301,16 @@ func (s *sharingService) createPolicy(
 		if err := s.store.CreatePolicy(txCtx, policy); err != nil {
 			return err
 		}
+		if err := s.notifyPolicyWritten(txCtx, policy); err != nil {
+			return err
+		}
 		// A reshare can narrow what the units beneath it may do, which leaves values they saved for a field
 		// they may no longer change.
 		return s.dropObsoleteValues(txCtx, rt, resourceID)
 	}); err != nil {
+		if svcErr, stopped := hookFailure(err); stopped {
+			return Policy{}, svcErr
+		}
 		// The check above and this insert are not atomic, so a concurrent create can take the one
 		// slot between them and leave this one rejected. Re-reading names the policy that won,
 		// which is the one to edit, rather than reporting a bare failure. Asking the database again
@@ -1273,6 +1282,11 @@ func (s *sharingService) UpdatePolicy(
 		if err := s.store.ReplacePolicyContents(txCtx, proposed, current.Version); err != nil {
 			return err
 		}
+		written := proposed
+		written.Version = current.Version + 1
+		if err := s.notifyPolicyWritten(txCtx, written); err != nil {
+			return err
+		}
 		// Rules stored beneath this policy were clamped against a ceiling that may just have
 		// moved, so they are recomputed in the same transaction rather than left stale.
 		if err := s.rematerializeDependents(txCtx, current); err != nil {
@@ -1288,6 +1302,9 @@ func (s *sharingService) UpdatePolicy(
 		// An edit that pins a field, or stops governing it, leaves the values units saved for it behind.
 		return s.dropObsoleteValues(txCtx, current.ResourceType, current.ResourceID)
 	}); err != nil {
+		if svcErr, stopped := hookFailure(err); stopped {
+			return Policy{}, svcErr
+		}
 		if errors.Is(err, errPolicyNotFound) {
 			return Policy{}, &ErrorVersionMismatch
 		}
@@ -1424,6 +1441,10 @@ func (s *sharingService) rematerializeDependents(ctx context.Context, edited Pol
 		if err := s.store.ReplacePolicyContents(ctx, descendant, descendant.Version); err != nil {
 			return err
 		}
+		descendant.Version++
+		if err := s.notifyPolicyWritten(ctx, descendant); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -1520,10 +1541,17 @@ func (s *sharingService) DeletePoliciesForResource(
 			if p.Declared {
 				continue
 			}
-			if svcErr := s.DeletePolicy(txCtx, p.ID); svcErr != nil {
+			// Only a policy the lookup no longer finds is skipped. Whatever the delete itself answers, a hook's
+			// refusal included, stops the purge whatever its code.
+			current, svcErr := s.GetPolicy(txCtx, p.ID)
+			if svcErr != nil {
 				if svcErr.Code == ErrorPolicyNotFound.Code {
 					continue
 				}
+				failure = svcErr
+				return errPolicyPurgeRefused
+			}
+			if svcErr = s.deletePolicy(txCtx, current); svcErr != nil {
 				failure = svcErr
 				return errPolicyPurgeRefused
 			}
@@ -1552,19 +1580,26 @@ func (s *sharingService) DeletePolicy(ctx context.Context, policyID string) *tid
 	if svcErr != nil {
 		return svcErr
 	}
+	return s.deletePolicy(ctx, policy)
+}
+
+// deletePolicy is DeletePolicy for a policy already read.
+func (s *sharingService) deletePolicy(ctx context.Context, policy Policy) *tidcommon.ServiceError {
 	if policy.Declared {
 		return &ErrorPolicyDeclared
 	}
 
 	if err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		// Listed before the delete, not after. PARENT_POLICY_ID cascades, so the reshares beneath
-		// this policy are gone by the time it returns, and cleanup would never learn which
-		// organization units they had reached. Those units are exactly the ones losing the resource.
+		// Listed before the delete, so cleanup knows the reshares beneath this policy. PARENT_POLICY_ID carries no
+		// foreign key: cleanUpLostVisibility removes those reshares, and fires the remove hook for each.
 		before, err := s.store.ListAllPoliciesForResource(txCtx, policy.ResourceType, policy.ResourceID)
 		if err != nil {
 			return err
 		}
-		if err := s.store.DeletePolicy(txCtx, policyID); err != nil {
+		if err := s.store.DeletePolicy(txCtx, policy.ID); err != nil {
+			return err
+		}
+		if err := s.notifyPolicyRemoved(txCtx, policy); err != nil {
 			return err
 		}
 		if err := s.cleanUpLostVisibility(txCtx, policy, before); err != nil {
@@ -1573,6 +1608,9 @@ func (s *sharingService) DeletePolicy(ctx context.Context, policyID string) *tid
 		// A deleted policy may have been what let a unit change a field.
 		return s.dropObsoleteValues(txCtx, policy.ResourceType, policy.ResourceID)
 	}); err != nil {
+		if svcErr, stopped := hookFailure(err); stopped {
+			return svcErr
+		}
 		s.logger.Error(ctx, "Failed to delete sharing policy", log.Error(err))
 		return &tidcommon.InternalServerError
 	}
@@ -1723,6 +1761,9 @@ func (s *sharingService) cleanUpLostVisibility(ctx context.Context, changed Poli
 			if err := s.store.DeletePolicy(ctx, p.ID); err != nil {
 				return err
 			}
+			if err := s.notifyPolicyRemoved(ctx, p); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -1770,6 +1811,66 @@ func (s *sharingService) notifyVisibilityLost(
 		return nil
 	}
 	return hooks.OnVisibilityLost(ctx, resourceID, ouID)
+}
+
+// policyWriteHooks returns a resource type's PolicyWriteHooks, if its declaration implements them.
+func (s *sharingService) policyWriteHooks(rt ResourceType) (PolicyWriteHooks, bool) {
+	decl, ok := s.registry.get(rt)
+	if !ok {
+		return nil, false
+	}
+	hooks, ok := decl.(PolicyWriteHooks)
+	return hooks, ok
+}
+
+// notifyPolicyWritten tells a resource type that one of its policies was written, if it asked to be told.
+func (s *sharingService) notifyPolicyWritten(ctx context.Context, p Policy) error {
+	hooks, ok := s.policyWriteHooks(p.ResourceType)
+	if !ok {
+		return nil
+	}
+	return NewResourceTypeError(hooks.OnPolicyWritten(ctx, p))
+}
+
+// notifyPolicyRemoved tells a resource type that one of its policies was removed, if it asked to be told.
+func (s *sharingService) notifyPolicyRemoved(ctx context.Context, p Policy) error {
+	hooks, ok := s.policyWriteHooks(p.ResourceType)
+	if !ok {
+		return nil
+	}
+	return NewResourceTypeError(hooks.OnPolicyRemoved(ctx, p))
+}
+
+// notifyDeclaredPolicy tells a resource type that a declared policy was written, in a transaction of its own since
+// a declaration is written outside one. A type without PolicyWriteHooks opens none.
+func (s *sharingService) notifyDeclaredPolicy(ctx context.Context, p Policy) *tidcommon.ServiceError {
+	if _, ok := s.policyWriteHooks(p.ResourceType); !ok {
+		return nil
+	}
+	if err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		return s.notifyPolicyWritten(txCtx, p)
+	}); err != nil {
+		if svcErr, stopped := hookFailure(err); stopped {
+			return svcErr
+		}
+		s.logger.Error(ctx, "Failed to declare sharing policy", log.String("policyID", p.ID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	return nil
+}
+
+// hookFailure returns what a change stopped by a ResourceTypeError answers its caller: a client error as the resource
+// type gave it, anything else as an internal error, which the resource type has already logged with its cause.
+// stopped is false when no resource type stopped the change.
+func hookFailure(err error) (svcErr *tidcommon.ServiceError, stopped bool) {
+	var hookErr *ResourceTypeError
+	if !errors.As(err, &hookErr) {
+		return nil, false
+	}
+	if hookErr.svcErr.Type == tidcommon.ClientErrorType {
+		return hookErr.svcErr, true
+	}
+	return &tidcommon.InternalServerError, true
 }
 
 // ousReachedBy enumerates every organization unit a policy's grants could have reached.
