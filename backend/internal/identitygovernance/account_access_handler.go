@@ -5,6 +5,7 @@ package identitygovernance
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -41,7 +42,7 @@ func (h accountAccessHandler) Decode(raw json.RawMessage) (any, error) {
 
 // Validate refuses a write while a declarative document exists, then checks the incoming value on
 // its own and laid over the base. A nil readOnly means this is the declarative load.
-func (h accountAccessHandler) Validate(incoming, readOnly, _ any) error {
+func (h accountAccessHandler) Validate(_ context.Context, incoming, readOnly, _ any) error {
 	if ro, ok := readOnly.(accountAccessValue); ok && !ro.isEmpty() {
 		return errDeclarativeAccountAccessLocked
 	}

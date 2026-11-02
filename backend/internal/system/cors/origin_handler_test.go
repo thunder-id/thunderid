@@ -4,6 +4,7 @@
 package cors
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -30,7 +31,7 @@ func (suite *OriginHandlerTestSuite) validate(raw string) error {
 	if err != nil {
 		return err
 	}
-	return v.Validate(decoded, nil, nil)
+	return v.Validate(context.Background(), decoded, nil, nil)
 }
 
 func (suite *OriginHandlerTestSuite) TestLiteralsAndRegexOK() {
