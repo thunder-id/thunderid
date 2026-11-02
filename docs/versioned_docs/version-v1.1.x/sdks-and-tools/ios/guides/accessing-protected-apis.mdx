@@ -1,0 +1,127 @@
+---
+title: Accessing Protected APIs
+docType: guide
+description: Make authenticated API requests from an iOS application using bearer tokens from the ThunderID SDK.
+---
+
+# Accessing Protected APIs
+
+When your app needs to call a backend API that requires authentication, use `ThunderIDClient.getAccessToken()` to retrieve a valid access token and attach it as a Bearer token to your requests. The SDK automatically refreshes the token if it has expired.
+
+## Using URLSession
+
+The following example calls a protected API endpoint using the standard `URLSession`:
+
+```swift title="APIClient.swift" showLineNumbers
+import Foundation
+import ThunderIDSwiftUI
+
+func fetchProtectedResource(state: ThunderIDState) async throws -> Data {
+    let token = try await state.client.getAccessToken()
+
+    var request = URLRequest(url: URL(string: "https://localhost:8090/api/resource")!)
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+    let (data, response) = try await URLSession.shared.data(for: request)
+
+    guard let httpResponse = response as? HTTPURLResponse,
+          (200..<300).contains(httpResponse.statusCode) else {
+        throw URLError(.badServerResponse)
+    }
+
+    return data
+}
+```
+
+Call it from a SwiftUI view:
+
+```swift title="ResourceView.swift" showLineNumbers
+import SwiftUI
+import ThunderIDSwiftUI
+
+struct ResourceView: View {
+    @EnvironmentObject var state: ThunderIDState
+    @State private var result: String = ""
+
+    var body: some View {
+        Text(result.isEmpty ? "Loading..." : result)
+            .task {
+                do {
+                    let data = try await fetchProtectedResource(state: state)
+                    result = String(data: data, encoding: .utf8) ?? ""
+                } catch {
+                    result = "Error: \(error.localizedDescription)"
+                }
+            }
+    }
+}
+```
+
+## Token Refresh
+
+`getAccessToken()` refreshes the access token automatically when it is expired, as long as a valid refresh token is available. You do not need to handle refresh manually.
+
+If the refresh token is also expired, `getAccessToken()` throws `IAMError` with code `.sessionExpired`. Handle this by signing the user out:
+
+```swift
+do {
+    let token = try await state.client.getAccessToken()
+    // use token
+} catch let error as IAMError where error.code == .sessionExpired {
+    _ = try? await state.client.signOut()
+    await state.refresh()
+} catch {
+    print("Unexpected error: \(error)")
+}
+```
+
+## Using Alamofire
+
+If your project uses [Alamofire](https://github.com/Alamofire/Alamofire), create a request interceptor that injects the access token:
+
+```swift title="ThunderIDRequestInterceptor.swift" showLineNumbers
+import Alamofire
+import ThunderIDSwiftUI
+
+final class ThunderIDRequestInterceptor: RequestInterceptor {
+    let state: ThunderIDState
+
+    init(state: ThunderIDState) {
+        self.state = state
+    }
+
+    func adapt(
+        _ urlRequest: URLRequest,
+        for session: Session,
+        completion: @escaping (Result<URLRequest, Error>) -> Void
+    ) {
+        Task {
+            do {
+                let token = try await state.client.getAccessToken()
+                var request = urlRequest
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                completion(.success(request))
+            } catch {
+                completion(.failure(error))
+            }
+        }
+    }
+}
+```
+
+Create a session with the interceptor and use it for all protected requests:
+
+```swift
+let interceptor = ThunderIDRequestInterceptor(state: state)
+let session = Session(interceptor: interceptor)
+
+session.request("https://localhost:8090/api/resource")
+    .responseDecodable(of: MyResponse.self) { response in
+        print(response.value ?? "No data")
+    }
+```
+
+:::tip API Server URL
+The <ProductName /> API server runs on `https://localhost:8090` by default in local development. Replace this with your production server URL when deploying.
+:::

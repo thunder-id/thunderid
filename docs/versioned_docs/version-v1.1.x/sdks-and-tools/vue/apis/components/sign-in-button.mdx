@@ -1,0 +1,135 @@
+---
+title: <SignInButton />
+docType: reference
+description: Trigger the sign-in authentication flow from a pre-styled button component in Vue applications.
+---
+
+# `<SignInButton />`
+
+The `SignInButton` component initiates the sign-in flow when clicked. It automatically handles loading state and error handling, and supports custom UI via a scoped default slot. If a `signInUrl` is configured on the [`<ThunderIDProvider />`](../../providers/thunderid-provider), the button navigates to that URL instead of triggering the embedded flow.
+
+## Usage
+
+You can use `SignInButton` in two main ways: as a simple button or with a scoped slot for more control over the UI and behavior.
+
+### Basic Usage
+
+Use `SignInButton` as a simple button to trigger sign-in.
+
+```vue title="src/App.vue" showLineNumbers
+<script setup>
+import { SignInButton } from '@thunderid/vue'
+</script>
+
+<template>
+  <SignInButton />
+</template>
+```
+
+:::note
+You can simply use the `SignInButton` component without any slot content (`<SignInButton />`) to render a default button with the text "Sign In".
+:::
+
+## Props
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `signInOptions` | `Record<string, any>` | ❌ | Sign-in options forwarded to the underlying client. Overrides any `signInOptions` set on `<ThunderIDProvider />`. |
+| `class` | `string` | ❌ | CSS class applied to the rendered button |
+| `style` | `string \| object` | ❌ | Inline styles applied to the rendered button |
+
+## Events
+
+| Event | Payload | Description |
+| :--- | :--- | :--- |
+| `click` | `MouseEvent` | Emitted after the sign-in flow is triggered |
+| `error` | `unknown` | Emitted when the sign-in flow throws an error |
+
+## Slot Props
+
+The default slot receives the following scoped slot props:
+
+| Prop | Type | Description |
+| :--- | :--- | :--- |
+| `isLoading` | `boolean` | `true` while the sign-in flow is in progress |
+
+## Customization
+
+The `SignInButton` component is designed for easy customization to fit your application's design system.
+
+### CSS Classes and Styling
+
+You can use the `class` attribute to apply custom CSS classes to the button.
+
+```vue title="src/App.vue" {6} showLineNumbers
+<script setup>
+import { SignInButton } from '@thunderid/vue'
+</script>
+
+<template>
+  <SignInButton class="custom-sign-in-button">
+    Sign In
+  </SignInButton>
+</template>
+```
+
+#### Default CSS Classes
+
+The button includes a default vendor-prefixed class for targeting:
+
+- `.thunderid-sign-in-button`: Main sign-in button element
+
+### CSS Custom Properties (CSS Variables)
+
+You can theme the button and other SDK components using CSS variables:
+
+```css title="src/style.css" showLineNumbers
+:root {
+  --thunderid-primary-color: #007bff;
+  --thunderid-primary-hover: #0056b3;
+  --thunderid-border-radius: 8px;
+  --thunderid-font-family: 'Inter', sans-serif;
+  --thunderid-button-padding: 12px 24px;
+}
+```
+
+### Scoped Slot for Custom UI
+
+You can customize the button UI using a scoped slot. This exposes the `isLoading` state directly, giving you the flexibility to use any library like Tailwind CSS, shadcn-vue, Vuetify, etc.
+
+```vue title="src/App.vue" {7-26} showLineNumbers
+<script setup>
+import { SignInButton } from '@thunderid/vue'
+</script>
+
+<template>
+  <SignInButton>
+    <template #default="{ isLoading }">
+      <button
+        :disabled="isLoading"
+        class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition disabled:opacity-50 flex items-center gap-2"
+      >
+        <svg
+          class="w-4 h-4"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+        >
+          <path d="M16 17l5-5m0 0l-5-5m5 5H9" />
+          <path d="M19 12a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        {{ isLoading ? 'Signing in...' : 'Sign In' }}
+      </button>
+    </template>
+  </SignInButton>
+</template>
+```
+
+:::tip
+When you provide a scoped slot, the rendered `<button>` element inside the slot does not need its own click handler. The `SignInButton` wrapper handles the click and triggers sign-in automatically.
+:::
+
+## Error Handling
+
+If sign-in fails, an `error` event is emitted with the error payload and a `ThunderIDRuntimeError` is thrown with a descriptive message.

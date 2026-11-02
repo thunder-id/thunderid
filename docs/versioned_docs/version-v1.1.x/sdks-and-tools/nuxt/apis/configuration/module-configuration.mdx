@@ -1,0 +1,123 @@
+---
+title: Module Configuration
+docType: reference
+description: Configure the ThunderID Nuxt module in nuxt.config.ts with client credentials, session options, and middleware.
+---
+
+# Module Configuration
+
+The `@thunderid/nuxt` module is configured via the `thunderid` key in `nuxt.config.ts`. The configuration covers credentials, redirect URLs, session handling, and UI preferences.
+
+## Usage
+
+```ts title="nuxt.config.ts" showLineNumbers
+export default defineNuxtConfig({
+  modules: ['@thunderid/nuxt'],
+  thunderid: {
+    clientId: '<your-client-id>',
+    clientSecret: '<your-client-secret>',
+    baseUrl: 'https://localhost:8090',
+    afterSignInUrl: '/dashboard',
+    afterSignOutUrl: '/',
+    scopes: ['openid', 'profile', 'internal_login'],
+    preferences: {
+      theme: {
+        inheritFromBranding: true,
+        mode: 'system',
+      },
+    },
+  },
+})
+```
+
+## Environment Variables
+
+Secret values should be provided through environment variables rather than hardcoded in `nuxt.config.ts`. The module reads the following variables automatically:
+
+| Variable | Maps to |
+| :--- | :--- |
+| `NUXT_PUBLIC_THUNDERID_BASE_URL` | `baseUrl` |
+| `NUXT_PUBLIC_THUNDERID_CLIENT_ID` | `clientId` |
+| `NUXT_THUNDERID_CLIENT_SECRET` | `clientSecret` |
+| `NUXT_THUNDERID_SESSION_SECRET` | `sessionSecret` |
+
+:::note
+`clientSecret` and `sessionSecret` are placed in the Nuxt private runtime config and are never exposed to the browser.
+:::
+
+## Configuration Options
+
+| Option | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `baseUrl` | `string` | ✅ | The base URL of the <ProductName /> instance (e.g., `https://localhost:8090`) |
+| `clientId` | `string` | ✅ | Client ID of your application |
+| `clientSecret` | `string` | ✅ | Client secret of your application |
+| `sessionSecret` | `string` | ✅ | Secret used to sign session cookies. Must be at least 32 characters |
+| `afterSignInUrl` | `string` | ❌ | URL to redirect to after a successful sign-in. Defaults to `'/'` |
+| `afterSignOutUrl` | `string` | ❌ | URL to redirect to after sign-out. Defaults to `'/'` |
+| `signInUrl` | `string` | ❌ | Custom sign-in page URL. Defaults to `'/api/auth/signin'` |
+| `signUpUrl` | `string` | ❌ | Custom sign-up page URL. Defaults to `'/api/auth/signup'` |
+| `scopes` | `string[]` | ❌ | OIDC scopes to request. Defaults to `['openid', 'profile']` |
+| `applicationId` | `string` | ❌ | Application ID used for branding and flow configuration |
+| `platform` | `string` | ❌ | Platform identifier for the SDK |
+| `tokenRequest` | `object` | ❌ | Token endpoint request configuration |
+| `preferences` | `object` | ❌ | UI and behavior preferences |
+
+### `tokenRequest`
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `authMethod` | `TokenEndpointAuthMethod` | Token endpoint authentication method (e.g., `'client_secret_basic'`, `'client_secret_post'`) |
+
+### `preferences`
+
+The `preferences` object controls SSR data-fetching behavior and UI customization.
+
+#### Theme (`preferences.theme`)
+
+| Property | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `inheritFromBranding` | `boolean` | `true` | Fetch branding from <ProductName /> and apply it to SDK components. Set to `false` to skip the branding fetch on each SSR request |
+| `mode` | `'light' \| 'dark' \| 'system' \| 'class' \| 'branding'` | `'system'` | Theme mode. `'system'` follows the user's OS preference; `'branding'` uses the fetched branding colors |
+
+#### Internationalization (`preferences.i18n`)
+
+| Property | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `language` | `string` | Browser default | Default language code for SDK UI components (e.g., `'en-US'`, `'fr-FR'`) |
+| `fallbackLanguage` | `string` | `'en-US'` | Fallback language when a translation is not available |
+| `bundles` | `object` | `{}` | Custom translation bundles to override default text |
+
+#### User Data (`preferences.user`)
+
+Controls which data is fetched server-side during SSR and hydrated into the client.
+
+| Property | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `fetchUserProfile` | `boolean` | `true` | Fetch the user's profile on each SSR request and hydrate it into the client |
+
+## Advanced Configuration
+
+### Minimal Configuration (No SSR Data Fetching)
+
+Disable server-side data fetching to reduce SSR latency when you don't need user profile data pre-loaded:
+
+```ts title="nuxt.config.ts" showLineNumbers
+export default defineNuxtConfig({
+  modules: ['@thunderid/nuxt'],
+  thunderid: {
+    clientId: process.env.NUXT_PUBLIC_THUNDERID_CLIENT_ID!,
+    clientSecret: process.env.NUXT_THUNDERID_CLIENT_SECRET!,
+    baseUrl: process.env.NUXT_PUBLIC_THUNDERID_BASE_URL!,
+    preferences: {
+      theme: {
+        inheritFromBranding: false,
+      },
+      user: {
+        fetchUserProfile: false,
+      },
+    },
+  },
+})
+```
+

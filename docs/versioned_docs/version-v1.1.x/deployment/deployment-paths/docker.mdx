@@ -1,0 +1,205 @@
+---
+title: Docker
+docType: guide
+sidebar_position: 1
+persona: iam
+description: Deploy using Docker, a portable, self-contained setup with full configuration control and no cluster infrastructure required.
+---
+
+import {NextSteps, NextStepsCard} from '@site/src/components/NextSteps';
+
+# Deploy <ProductName /> with Docker
+
+This guide walks you through deploying <ProductName /> using Docker. Run it as a single container with SQLite, or connect it to an external PostgreSQL database for a more durable setup, all without any cluster infrastructure.
+
+## Prerequisites
+
+Before you begin, ensure the following tools are installed:
+
+| Tool | Minimum Version | Installation Guide | Version Check |
+|------|----------------|--------------------|---------------|
+| Docker | 20.10 | [Install Docker](https://docs.docker.com/engine/install/) | `docker --version` |
+
+Verify your installation:
+
+```bash
+docker --version
+docker run hello-world
+```
+
+<ProductName /> listens on port `8090` by default. Ensure that port is available on your host.
+
+## Run <ProductName /> with Docker
+
+### Step 1: Pull the Image
+
+Pin to a specific release tag for reproducible deployments:
+
+```bash
+docker pull ghcr.io/thunder-id/thunderid:<version>
+```
+
+### Step 2: Set Up the Server
+
+Run the one-time setup script before starting <ProductName /> for the first time. It initializes the configuration and database. Mount a named volume for `config/certs`, where setup generates this deployment's TLS, JWT signing, and encryption keys, and one for `config/secrets`, where setup writes the Direct Auth Secret, so the server can read them. If you are using SQLite, also mount a volume for the database so it persists:
+
+```bash
+docker run -it --rm \
+  -v thunderid-data:/opt/thunderid/database \
+  -v thunderid-certs:/opt/thunderid/config/certs \
+  -v thunderid-secrets:/opt/thunderid/config/secrets \
+  ghcr.io/thunder-id/thunderid:<version> \
+  ./setup.sh
+```
+
+The container exits after setup completes. The generated key material is unique to this deployment and is reused on later runs. The server fails to start if it is missing, so always run setup, with the `config/certs` and `config/secrets` volumes mounted, before starting the server.
+
+### Step 3: Start the Server
+
+Run <ProductName /> in the background with a restart policy so it recovers from host reboots and unexpected exits:
+
+```bash
+docker run -d \
+  --name thunderid \
+  --restart unless-stopped \
+  -p 8090:8090 \
+  -v thunderid-data:/opt/thunderid/database \
+  -v thunderid-certs:/opt/thunderid/config/certs \
+  -v thunderid-secrets:/opt/thunderid/config/secrets \
+  ghcr.io/thunder-id/thunderid:<version>
+```
+
+<ProductName /> is now running at `https://localhost:8090`. Mount the same `thunderid-certs` and `thunderid-secrets` volumes you used during setup so the server reads the generated key material and the Direct Auth Secret.
+
+To follow the logs:
+
+```bash
+docker logs -f thunderid
+```
+
+### Customize the Configuration
+
+To override the default server configuration, mount a custom `deployment.yaml` file. Create a `deployment.yaml` based on the <RepoLink path="/blob/main/backend/cmd/server/deployment.yaml">default configuration</RepoLink>. For Docker, update the `server` block so the server is reachable through the published port, setting `hostname` to `0.0.0.0` and adding a `public_url`:
+
+```yaml
+server:
+  hostname: "0.0.0.0"
+  public_url: "https://localhost:8090"
+  port: 8090
+  security:
+    direct_auth_secret: "file://config/secrets/direct_auth_secret"
+```
+
+Then pass it to the container:
+
+```bash
+docker run -d \
+  --name thunderid \
+  --restart unless-stopped \
+  -p 8090:8090 \
+  -v $(pwd)/deployment.yaml:/opt/thunderid/deployment.yaml \
+  -v thunderid-data:/opt/thunderid/database \
+  -v thunderid-certs:/opt/thunderid/config/certs \
+  -v thunderid-secrets:/opt/thunderid/config/secrets \
+  ghcr.io/thunder-id/thunderid:<version>
+```
+
+To also use custom TLS certificates, mount them alongside the configuration:
+
+```bash
+docker run -d \
+  --name thunderid \
+  --restart unless-stopped \
+  -p 8090:8090 \
+  -v $(pwd)/deployment.yaml:/opt/thunderid/deployment.yaml \
+  -v $(pwd)/certs/server.cert:/opt/thunderid/config/certs/server.cert \
+  -v $(pwd)/certs/server.key:/opt/thunderid/config/certs/server.key \
+  -v thunderid-data:/opt/thunderid/database \
+  -v thunderid-certs:/opt/thunderid/config/certs \
+  -v thunderid-secrets:/opt/thunderid/config/secrets \
+  ghcr.io/thunder-id/thunderid:<version>
+```
+
+The mounted files provide the server TLS certificate; the JWT signing and encryption keys still come from the `thunderid-certs` volume that setup populated.
+
+## Access <ProductName />
+
+Once the container is running, access <ProductName /> at the following endpoints:
+
+| Endpoint | URL |
+|----------|-----|
+| Server URL | `https://localhost:8090` |
+| <ProductName /> Console | `https://localhost:8090/console` |
+
+## Database Setup
+
+### Embedded SQLite (Default)
+
+<ProductName /> uses SQLite by default. No additional setup is required: it works out of the box with no external dependencies.
+
+Mount a named volume to persist the database across container restarts:
+
+```bash
+-v thunderid-data:/opt/thunderid/database
+```
+
+### External PostgreSQL
+
+For a more durable setup, connect <ProductName /> to an external PostgreSQL database. <ProductName /> ships with a Docker Compose file to spin up a PostgreSQL instance alongside the server.
+
+:::note
+This step requires [Docker Compose](https://docs.docker.com/compose/install/) (version 2.0 or later).
+:::
+
+1. Navigate to the `install/local-development` directory:
+
+    ```bash
+    cd install/local-development
+    ```
+
+2. Start PostgreSQL in the background:
+
+    ```bash
+    docker compose up -d
+    ```
+
+3. View PostgreSQL logs:
+
+    ```bash
+    docker compose logs -f
+    ```
+
+4. Stop PostgreSQL:
+
+    ```bash
+    docker compose down
+    ```
+
+    To stop PostgreSQL and delete all data:
+
+    ```bash
+    docker compose down -v
+    ```
+
+## Next Steps
+
+<NextSteps>
+  <NextStepsCard
+    title="Docker Production Recommendations"
+    description="Harden your Docker deployment: configure a reverse proxy, set resource limits, add health checks, and manage secrets securely."
+    href="../docker-production"
+    cta="Go to Docker production guide"
+  />
+  <NextStepsCard
+    title="Deploy on Kubernetes"
+    description="Run <ProductName /> on your own cluster with full control over infrastructure, scaling, and configuration."
+    href="../kubernetes"
+    cta="Go to Kubernetes guide"
+  />
+  <NextStepsCard
+    title="Deploy on OpenChoreo"
+    description="Use a platform-managed deployment model with environment separation and promotion workflows."
+    href="../openchoreo"
+    cta="Go to OpenChoreo guide"
+  />
+</NextSteps>

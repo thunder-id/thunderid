@@ -1,0 +1,82 @@
+---
+title: ThunderID Middleware
+docType: reference
+description: Initialize the Express SDK and attach the client to the request lifecycle
+---
+
+# `thunderID()`
+
+The `thunderID()` function returns Express middleware that initializes a `ThunderIDExpressClient` and attaches it to both `req.thunderIDAuth` and `res.thunderIDAuth`.
+
+## Signature
+
+```ts
+thunderID(config: ThunderIDExpressConfig): express.RequestHandler
+```
+
+## Import
+
+```js
+const {thunderID} = require('@thunderid/express');
+```
+
+## Overview
+
+Use `thunderID()` near the top of your middleware stack. It initializes the SDK once, then exposes the initialized client to later middleware and route handlers.
+
+Unlike the old `thunderID()` router, this middleware does **not** mount any routes automatically. Register sign-in and sign-out handlers explicitly.
+
+## Usage
+
+```js title="index.js" showLineNumbers
+const express = require('express');
+const cookieParser = require('cookie-parser');
+const {thunderID, handleSignIn, handleSignOut} = require('@thunderid/express');
+
+const app = express();
+
+app.use(cookieParser());
+app.use(express.json());
+app.use(
+  thunderID({
+    baseUrl: 'https://localhost:8090',
+    clientId: '<your-client-id>',
+    clientSecret: '<your-client-secret>',
+  }),
+);
+
+app.get('/login', handleSignIn());
+app.get('/logout', handleSignOut());
+```
+
+## Middleware Ordering
+
+- Mount `cookie-parser` before routes that depend on `req.cookies`
+- Mount `express.json()` before `handleFlow()` if you use embedded sign-in
+- Mount `thunderID()` before `handleSignIn()`, `handleSignOut()`, `protect()`, or `handleFlow()`
+
+## Runtime Behavior
+
+- Creates a `ThunderIDExpressClient`
+- Initializes the client with the provided configuration
+- Attaches the initialized client to:
+  - `req.thunderIDAuth`
+  - `res.thunderIDAuth`
+
+If `afterSignInUrl` or `afterSignOutUrl` is not provided, the middleware resolves defaults from the first incoming request origin:
+
+- `afterSignInUrl`: `${origin}/login`
+- `afterSignOutUrl`: `${origin}/logout`
+
+## Notes
+
+- `ThunderIDExpressConfig` is currently an alias of `ExpressClientConfig`
+- The initialized client is available to later handlers such as `handleSignIn()` and to route handlers that call `req.thunderIDAuth.getUserFromRequest(req)`
+
+## Related APIs
+
+- [`handleSignIn()`](../handle-sign-in)
+- [`handleSignOut()`](../handle-sign-out)
+- [`protect()`](../protect)
+- [`handleFlow()`](../handle-flow)
+- [`ExpressClientConfig`](../../configuration/express-client-config)

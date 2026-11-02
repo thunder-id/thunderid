@@ -1,0 +1,47 @@
+---
+title: <User />
+docType: reference
+description: Display authenticated user information such as name, email, and profile picture in React applications.
+---
+
+# `<User />`
+
+The `User` component is a declarative way to access the authenticated user object from the <ProductName /> authentication context. It uses render props to expose the user data, making it easy to display user information or conditionally render UI based on authentication state.
+
+## Usage
+
+Use the `User` component to access and display user information in your React application.
+
+### Basic Usage
+
+Display the user's name and email:
+
+```jsx title="src/App.jsx" showLineNumbers
+import { User } from '@thunderid/react'
+
+function App() {
+  return (
+    <User fallback={<p>Please sign in</p>}>
+      {(user) => (
+        <div>
+          <h1>Welcome, {user?.displayName}!</h1>
+          <p>Email: {user?.email}</p>
+        </div>
+      )}
+    </User>
+  )
+}
+
+export default App
+```
+
+:::note
+The user object will be `null` if no user is signed in. Use the `fallback` prop to show alternative content.
+:::
+
+## Props
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `children` | `(user: User \| null) => ReactNode` | ✅ | Render prop function that receives the user object |
+| `fallback` | `ReactNode` | ❌ | Content to render when no user is signed in |

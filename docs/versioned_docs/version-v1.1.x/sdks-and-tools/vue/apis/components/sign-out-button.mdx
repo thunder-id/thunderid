@@ -1,0 +1,129 @@
+---
+title: <SignOutButton />
+docType: reference
+description: Sign out the current user, clear their session, and redirect to the configured post-logout URL.
+---
+
+# `<SignOutButton />`
+
+The `SignOutButton` component signs out the current user, clears their session, and revokes authentication tokens when clicked. It automatically handles loading state and error handling, and supports custom UI via a scoped default slot.
+
+## Usage
+
+You can use `SignOutButton` in two main ways: as a simple button or with a scoped slot for more control over the UI and behavior.
+
+### Basic Usage
+
+Use `SignOutButton` as a simple button to trigger sign-out.
+
+```vue title="src/App.vue" showLineNumbers
+<script setup>
+import { SignOutButton } from '@thunderid/vue'
+</script>
+
+<template>
+  <SignOutButton />
+</template>
+```
+
+:::note
+You can simply use the `SignOutButton` component without any slot content (`<SignOutButton />`) to render a default button with the text "Sign Out".
+:::
+
+## Props
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `class` | `string` | ❌ | CSS class applied to the rendered button |
+| `style` | `string \| object` | ❌ | Inline styles applied to the rendered button |
+
+## Events
+
+| Event | Payload | Description |
+| :--- | :--- | :--- |
+| `click` | `MouseEvent` | Emitted after the sign-out flow is triggered |
+| `error` | `unknown` | Emitted when the sign-out flow throws an error |
+
+## Slot Props
+
+The default slot receives the following scoped slot props:
+
+| Prop | Type | Description |
+| :--- | :--- | :--- |
+| `isLoading` | `boolean` | `true` while the sign-out flow is in progress |
+
+## Customization
+
+The `SignOutButton` component is designed for easy customization to fit your application's design system.
+
+### CSS Classes and Styling
+
+You can use the `class` attribute to apply custom CSS classes to the button.
+
+```vue title="src/App.vue" {6} showLineNumbers
+<script setup>
+import { SignOutButton } from '@thunderid/vue'
+</script>
+
+<template>
+  <SignOutButton class="custom-sign-out-button">
+    Sign Out
+  </SignOutButton>
+</template>
+```
+
+#### Default CSS Classes
+
+The button includes a default vendor-prefixed class for targeting:
+
+- `.thunderid-sign-out-button`: Main sign-out button element
+
+### CSS Custom Properties (CSS Variables)
+
+You can theme the button and other SDK components using CSS variables:
+
+```css title="src/style.css" showLineNumbers
+:root {
+  --thunderid-primary-color: #007bff;
+  --thunderid-primary-hover: #0056b3;
+  --thunderid-border-radius: 8px;
+  --thunderid-font-family: 'Inter', sans-serif;
+  --thunderid-button-padding: 12px 24px;
+}
+```
+
+### Scoped Slot for Custom UI
+
+You can customize the button UI using a scoped slot. This exposes the `isLoading` state directly, giving you the flexibility to use any library like Tailwind CSS, shadcn-vue, Vuetify, etc.
+
+```vue title="src/App.vue" {7-25} showLineNumbers
+<script setup>
+import { SignOutButton } from '@thunderid/vue'
+</script>
+
+<template>
+  <SignOutButton>
+    <template #default="{ isLoading }">
+      <button
+        :disabled="isLoading"
+        class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition disabled:opacity-50 flex items-center gap-2"
+      >
+        <svg
+          class="w-4 h-4"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+        >
+          <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+        </svg>
+        {{ isLoading ? 'Signing out...' : 'Sign Out' }}
+      </button>
+    </template>
+  </SignOutButton>
+</template>
+```
+
+## Error Handling
+
+If sign-out fails, an `error` event is emitted with the error payload and a `ThunderIDRuntimeError` is thrown with a descriptive message.

@@ -1,0 +1,284 @@
+---
+title: Accessing Protected APIs
+docType: guide
+description: Make authenticated HTTP requests from a Vue application using the Browser SDK's built-in HTTP client.
+---
+
+# Accessing Protected APIs
+
+When building applications with <ProductName />, you'll often need to call protected APIs that require authentication. This guide shows you how to make authenticated HTTP requests using the <ProductName /> Vue SDK.
+
+## Using SDK Built-in HTTP Client
+
+When your application is wrapped with `<ThunderIDProvider />`, you can use the `useThunderID` composable to access the authenticated `http` module. This module has the following features:
+
+- Includes the necessary authentication headers (Bearer token)
+- Handles token refresh when tokens expire
+- Provides methods like `request()` and `requestAll()` for making API calls
+
+:::tip Accessing the HTTP Client
+You can access the `http` client in two ways:
+
+1. **Inside a component**: Use the `useThunderID` composable to get the `http` instance
+   ```ts
+   const { http } = useThunderID()
+   ```
+
+2. **Outside a component** (e.g., in utility functions or services): Import `http` directly
+   ```ts
+   import { http } from '@thunderid/vue'
+   ```
+:::
+
+### Basic API Request
+
+The following examples show how to use the <ProductName /> SDK's `http` module to call a protected API endpoint.
+
+#### Using the Composable Inside a Component
+
+```vue title="src/UserProfileView.vue" showLineNumbers
+<script setup>
+import { ref, watchEffect } from 'vue'
+import { useThunderID } from '@thunderid/vue'
+
+const { http, isSignedIn } = useThunderID()
+const userData = ref(null)
+
+watchEffect(async () => {
+  if (!isSignedIn.value) {
+    return
+  }
+
+  try {
+    const response = await http.request({
+      url: 'https://localhost:8090/users/<user_id>',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      method: 'GET',
+    })
+
+    userData.value = response.data
+  } catch (error) {
+    console.error('Error fetching user data:', error)
+  }
+})
+</script>
+
+<template>
+  <div v-if="!isSignedIn">Please sign in to view your profile.</div>
+  <div v-else>
+    <h2>User Profile</h2>
+    <pre v-if="userData">{{ JSON.stringify(userData, null, 2) }}</pre>
+  </div>
+</template>
+```
+
+#### Using Direct Import Outside a Component
+
+```ts title="src/services/userService.ts" showLineNumbers
+import { http } from '@thunderid/vue'
+
+export async function fetchUser(userId: string) {
+  try {
+    const response = await http.request({
+      url: `https://localhost:8090/users/${userId}`,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      method: 'GET',
+    })
+
+    return response.data
+  } catch (error) {
+    console.error('Error fetching user:', error)
+    throw error
+  }
+}
+```
+
+```vue title="src/UserProfileView.vue" showLineNumbers
+<script setup>
+import { ref, watchEffect } from 'vue'
+import { useThunderID } from '@thunderid/vue'
+import { fetchUser } from './services/userService'
+
+const { isSignedIn } = useThunderID()
+const userData = ref(null)
+
+watchEffect(async () => {
+  if (!isSignedIn.value) {
+    return
+  }
+
+  try {
+    userData.value = await fetchUser('<user_id>')
+  } catch (error) {
+    console.error('Error loading user data:', error)
+  }
+})
+</script>
+
+<template>
+  <div v-if="!isSignedIn">Please sign in to view your profile.</div>
+  <div v-else>
+    <h2>User Profile</h2>
+    <pre v-if="userData">{{ JSON.stringify(userData, null, 2) }}</pre>
+  </div>
+</template>
+```
+
+:::tip API Configuration
+Replace `<user_id>` with the actual user ID you want to fetch. The <ProductName /> API server runs on `https://localhost:8090` by default.
+:::
+
+:::note Storage Type Requirement
+The storage type must be set to `webWorker` for the token to be automatically attached. If it's set to `sessionStorage` or `localStorage`, you may implement your own function for attaching the access token to the network request.
+:::
+
+:::warning
+Note that you don't need to manually specify the Authorization header: the `http` function intercepts the request and attaches the access token automatically.
+:::
+
+### Parallel API Requests
+
+In case you want to send multiple API requests in parallel, you can use `http.requestAll` to simultaneously trigger parallel network requests and receive responses after all network requests are completed.
+
+The following code snippet shows how to send multiple network requests in parallel:
+
+```vue title="src/UserProfileView.vue" showLineNumbers
+<script setup>
+import { ref, watchEffect } from 'vue'
+import { useThunderID } from '@thunderid/vue'
+
+const { http, isSignedIn } = useThunderID()
+const userData = ref({
+  profile: null,
+  applications: [],
+})
+
+watchEffect(async () => {
+  if (!isSignedIn.value) {
+    return
+  }
+
+  const requests = [
+    {
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      method: 'GET',
+      url: 'https://localhost:8090/users/<user_id>',
+    },
+    {
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      method: 'GET',
+      url: 'https://localhost:8090/applications',
+    },
+  ]
+
+  try {
+    const response = await http.requestAll(requests)
+    userData.value = {
+      profile: response[0].data,
+      applications: response[1].data,
+    }
+  } catch (error) {
+    console.error('Error fetching data:', error)
+  }
+})
+</script>
+
+<template>
+  <pre>{{ JSON.stringify(userData, null, 4) }}</pre>
+</template>
+```
+
+## Using a GraphQL Client
+
+If you are not using `webWorker` as the storage type, use the `getAccessToken` function to fetch the access token. Then manually attach the token to the GraphQL client's authentication headers.
+
+:::note Storage Type Limitation
+This approach is not available when the storage type is set to `webWorker`. The SDK automatically manages the access token and does not expose it to the main thread.
+:::
+
+The following example shows how to configure a GraphQL client with authentication using the access token:
+
+```ts title="src/graphql/client.ts" showLineNumbers
+import { ApolloClient, InMemoryCache, createHttpLink } from '@apollo/client/core'
+import { setContext } from '@apollo/client/link/context'
+
+export function createAuthenticatedClient(accessToken: string) {
+  const httpLink = createHttpLink({
+    uri: 'https://localhost:8090/graphql',
+  })
+
+  const authLink = setContext((_, { headers }) => ({
+    headers: {
+      ...headers,
+      authorization: accessToken ? `Bearer ${accessToken}` : '',
+    },
+  }))
+
+  return new ApolloClient({
+    link: authLink.concat(httpLink),
+    cache: new InMemoryCache(),
+  })
+}
+```
+
+```vue title="src/UserProfileView.vue" showLineNumbers
+<script setup>
+import { ref, watchEffect } from 'vue'
+import { useThunderID } from '@thunderid/vue'
+import { gql } from '@apollo/client/core'
+import { createAuthenticatedClient } from './graphql/client'
+
+const GET_USER = gql`
+  query GetUser($id: ID!) {
+    user(id: $id) {
+      id
+      email
+      username
+      firstName
+      lastName
+    }
+  }
+`
+
+const { isSignedIn, getAccessToken } = useThunderID()
+const userData = ref(null)
+
+watchEffect(async () => {
+  if (!isSignedIn.value) {
+    return
+  }
+
+  try {
+    const accessToken = await getAccessToken()
+    const client = createAuthenticatedClient(accessToken)
+
+    const { data } = await client.query({
+      query: GET_USER,
+      variables: { id: '<user_id>' },
+    })
+
+    userData.value = data.user
+  } catch (error) {
+    console.error('Error fetching user data:', error)
+  }
+})
+</script>
+
+<template>
+  <div v-if="!isSignedIn">Please sign in to view your profile.</div>
+  <div v-else>
+    <h2>User Profile</h2>
+    <pre v-if="userData">{{ JSON.stringify(userData, null, 2) }}</pre>
+  </div>
+</template>
+```
+
+:::tip
+Replace `<user_id>` with the actual user ID you want to fetch. This example uses Apollo Client, but you can apply the same pattern with other GraphQL clients like urql or graphql-request.
+:::

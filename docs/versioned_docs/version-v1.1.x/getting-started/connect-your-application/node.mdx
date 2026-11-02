@@ -1,0 +1,214 @@
+---
+toc_progress: quickstart
+title: Node.js Quickstart
+docType: quickstart
+sidebar_position: 5
+persona: app
+description: Authenticate a Node.js service to {{ProductName}} as itself using the OAuth 2.0 client_credentials grant with the @thunderid/node SDK.
+---
+
+import {
+  Boxes,
+  Package,
+  LogIn,
+  BookOpen,
+  Clock,
+  Server,
+  Hexagon,
+  FileCode,
+} from '@wso2/oxygen-ui-icons-react';
+
+# Node.js Quickstart
+
+Use this guide to add <ProductName /> authentication to a Node.js service using the `@thunderid/node` SDK.
+
+<SdkQuickstartDownload packageId="node" sample="quickstarts/node" icon={<NodeLogo size={22} />} promptFlow="redirect-based" />
+
+<TutorialHero>
+
+## What You Will Learn
+
+<TutorialHeroItem icon={<Boxes />}>Create a Node.js project</TutorialHeroItem>
+<TutorialHeroItem icon={<Package />}>Install the <code>@thunderid/node</code> package</TutorialHeroItem>
+<TutorialHeroItem icon={<LogIn />}>Authenticate a service with the <code>client_credentials</code> grant</TutorialHeroItem>
+<TutorialHeroItem icon={<BookOpen />}>Use the resulting access token to call business logic</TutorialHeroItem>
+
+## Prerequisites
+
+<TutorialHeroItem icon={<Clock />}>About 10 minutes</TutorialHeroItem>
+<TutorialHeroItem icon={<Hexagon />}>Node.js 18+ installed on your system</TutorialHeroItem>
+<TutorialHeroItem icon={<Package />}>npm, yarn, or pnpm</TutorialHeroItem>
+<TutorialHeroItem icon={<FileCode />}>Your preferred code editor</TutorialHeroItem>
+
+</TutorialHero>
+
+<Stepper stepNode="h2" as="h2">
+
+## Run <ProductName />
+
+Start a local <ProductName /> instance. Pick the method that works best for you:
+
+<RunThunderID />
+
+Once it's running, the console is available at [https://localhost:8090/console](https://localhost:8090/console).
+
+## Create an Application
+
+1. Sign in to the Console.
+
+    :::info Test User
+    If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
+    :::
+
+2. Navigate to **Applications**.
+3. Click **Add Application**.
+4. From the **Choose a type** page, select **Backend Service**.
+5. Enter a name (e.g. `My Node.js Service`).
+6. Click **Create**.
+
+:::info Machine-to-Machine
+Backend Service applications are pre-configured for the `client_credentials` grant with `client_secret_basic` authentication. No OAuth 2.0 redirect URI or extra setup is needed.
+:::
+
+:::note Note
+Copy the **Client ID** from the **General** tab, and the **Client Secret** from the window that pops up when the application is created; it's shown only once (if lost, regenerate it from the application's **Credentials** tab).
+:::
+
+## Create a Node.js Project
+
+Initialize a new Node.js project:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    mkdir my-node-service
+    cd my-node-service
+    npm init -y
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    mkdir my-node-service
+    cd my-node-service
+    yarn init -y
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    mkdir my-node-service
+    cd my-node-service
+    pnpm init
+  </CodeBlock>
+</CodeGroup>
+
+## Install @thunderid/node
+
+Install the <ProductName /> Node.js SDK:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm install @thunderid/node
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn add @thunderid/node
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm add @thunderid/node
+  </CodeBlock>
+</CodeGroup>
+
+## Authenticate as the Service
+
+Create an `index.mjs` file and initialize `ThunderIDNodeClient` with `grantType: 'client_credentials'`. With that set, `getAccessToken()` authenticates as the service itself, no session and no sign-in, and transparently fetches, caches, and refreshes the token.
+
+```js title="index.mjs" showLineNumbers
+import { ThunderIDNodeClient } from '@thunderid/node';
+
+const client = new ThunderIDNodeClient();
+
+await client.initialize({
+  baseUrl: 'https://localhost:8090',
+  clientId: '<your-client-id>',
+  clientSecret: '<your-client-secret>',
+  grantType: 'client_credentials',
+});
+
+const accessToken = await client.getAccessToken();
+const { scope } = await client.decodeJwtToken(accessToken);
+
+console.log(`Authenticated with scope: ${scope}`);
+```
+
+:::warning Configuration
+Replace `<your-client-id>` and `<your-client-secret>` with the **Client ID** and **Client Secret** from your <ProductName /> application.
+:::
+
+### Configuration Parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `baseUrl` | Your <ProductName /> instance URL (e.g., `https://localhost:8090`) |
+| `clientId` | The Client ID from your <ProductName /> application |
+| `clientSecret` | The Client Secret from your <ProductName /> application |
+| `grantType` | Set to `'client_credentials'` to authenticate the service as itself, with no user and no browser redirect |
+
+## Call Business Logic With the Token
+
+A real backend keeps authentication in its own module instead of scattering it across business logic. Update `index.mjs` so the rest of the app asks for a token only when it needs one, instead of handling `getAccessToken()` and the `Authorization` header directly:
+
+```js title="index.mjs" showLineNumbers
+import { ThunderIDNodeClient } from '@thunderid/node';
+
+const client = new ThunderIDNodeClient();
+
+await client.initialize({
+  baseUrl: 'https://localhost:8090',
+  clientId: '<your-client-id>',
+  clientSecret: '<your-client-secret>',
+  grantType: 'client_credentials',
+});
+
+async function getStock(sku) {
+  const accessToken = await client.getAccessToken();
+
+  // A real backend would attach this as `Authorization: Bearer ${accessToken}`
+  // on a request to a separate inventory service. This quickstart just proves
+  // the token was obtained before answering.
+  console.log(`Requesting ${sku} with a valid access token`);
+
+  return { sku, inStock: true };
+}
+
+const item = await getStock('SKU-100');
+console.log(item);
+```
+
+## Run Your Service
+
+Start the script:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    node index.mjs
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn node index.mjs
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm node index.mjs
+  </CodeBlock>
+</CodeGroup>
+
+:::tip Success
+The script authenticates once, prints the scope it received, then calls `getStock()` and prints the result before exiting.
+:::
+
+</Stepper>
+
+## What's Next
+
+<NextSteps>
+  <NextStepsCard title="Agent Authentication" href="../../../guides/agents/authentication" description="Request specific scopes, narrow tokens to a resource server, and troubleshoot the token endpoint directly." cta="Read the Guide" />
+  <NextStepsCard title="Node.js SDK Reference" href="../../../sdks-and-tools/node/overview" description="Explore the full API reference for the Node.js SDK." cta="API Reference" />
+</NextSteps>

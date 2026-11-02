@@ -1,0 +1,189 @@
+---
+title: Add an OIDC Identity Provider
+docType: guide
+sidebar_position: 4
+persona: iam
+description: Configure a generic OpenID Connect identity provider for federated authentication.
+---
+
+# Add an OIDC Identity Provider
+
+This guide explains how to register a generic OpenID Connect (OIDC) identity provider (IdP) in <ProductName />. Use this type for any standard OIDC-compliant provider.
+
+## Prerequisites
+
+- <ProductName /> is running. See [Get Started](../../../getting-started/get-thunderid).
+- You can sign in to the <ProductName /> Console.
+- A client application registered in the external OIDC provider with a **Client ID** and **Client Secret**, and permission to add the **Redirect URI** shown by the Console.
+
+:::tip Finding endpoint URLs
+Most OIDC providers publish their endpoint URLs in a discovery document at:
+
+```text
+https://<provider-domain>/.well-known/openid-configuration
+```
+
+Open this URL in a browser to find the `authorization_endpoint`, `token_endpoint`, `userinfo_endpoint`, `jwks_uri`, and `issuer` values.
+:::
+
+## Create the OIDC Connection
+
+<Stepper stepNode="h3" as="h3">
+
+### Step 1: Add a Custom Connection
+
+1. Sign in to the <ProductName /> Console.
+2. Navigate to **Connections**.
+3. Click the **Add custom connection** card.
+
+### Step 2: Choose the Connection Type
+
+1. On the **Connection type** step, click **OpenID Connect Provider**.
+2. Click **Continue**.
+
+### Step 3: Name the Connection
+
+1. Enter a **Connection name**, or pick one of the suggested names.
+2. Click **Continue**.
+
+### Step 4: Configure the Connection
+
+The form shows a setup hint with the **Redirect URI**. Before creating the connection, copy it and register it as the callback URL with your OIDC provider.
+
+Enter the following fields, then click **Create connection**:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| **Client ID** | Yes | The client ID issued by the OIDC provider. |
+| **Client secret** | Yes | The client secret issued by the OIDC provider. |
+| **Authorization endpoint** | Yes | The provider's authorization endpoint, used to start the sign-in flow. |
+| **Token endpoint** | Yes | The provider's token endpoint, used to exchange the authorization code for tokens. |
+
+</Stepper>
+
+Optional settings are not part of the creation wizard. After creation, open the connection and configure them on its edit page:
+
+| Field | Description |
+|-------|-------------|
+| **UserInfo endpoint** | The provider's userinfo endpoint. Used to fetch additional profile claims. |
+| **JWKS endpoint** | The URL of the provider's JSON Web Key Set. Required when **Enable token exchange** is on. |
+| **Issuer** | The provider's issuer identifier, expected in tokens from this provider. Required when **Enable token exchange** is on. |
+| **Scopes** | Space-separated OIDC scopes to request. Defaults to `openid email profile` if left blank. |
+| **Prompt** | Optional prompt value forwarded to the provider's authorization request, for example `select_account` or `consent`. |
+
+Under **Federation**, turn on **Enable token exchange** to accept subject tokens from this provider for token exchange. This makes **Issuer** and **JWKS endpoint** required, and reveals an optional **Trusted token audience** field, the accepted audience value for external tokens during token exchange.
+
+## Attribute Configuration
+
+External providers emit attributes under their own names, which may differ from the attribute names <ProductName /> uses locally (for example, a provider may emit `given_name` where your user type defines `firstName`). Open the connection and go to the **Attribute Configuration** tab to map external attributes to local user attributes.
+
+### User Type Resolution
+
+By default, every federated identity resolves to the connection's **Default User Type**. To derive the user type from an incoming claim instead, turn on **Resolve user type from an attribute** and set the attribute whose value decides the user type (for example, `user_type`; supports dot notation for nested claims, for example `profile.role`).
+
+Under **Value Mapping**, map each external attribute value to a local user type (for example, `staff` to `Employee`, `partner` to `Contractor`) using **Add Value**. The **Default User Type** remains the fallback used when the claim is missing or its value has no mapping.
+
+The resolved user type selects which mapping set applies under **Attribute Mappings**.
+
+### Attribute Mappings
+
+Click **Add User Type** to add a mapping set for a user type, then click **Add Mapping** to add attribute mappings within that set. Each mapping has:
+
+| Field | Description |
+|-------|-------------|
+| **External Attribute** | The external attribute name (for example, `given_name`). |
+| **Local Attribute** | The target local attribute (for example, `firstName`). Must be an attribute defined in that user type's schema. |
+
+Behavior:
+
+- The external attribute supports complex forms. Use **dot notation** to read a value nested inside another attribute. For example, `email.work` reads the `work` field from an `email` object.
+- The local attribute must be defined in the user type's schema; this is validated when you save the connection.
+- An attribute whose name is mapped is renamed to its local attribute; attributes without a mapping pass through unchanged.
+
+The mapping applies both when a user signs in through this connection in an authentication flow and when a token from this provider is exchanged (see [Trusted Issuer](../../trusted-issuer)). The resulting local attributes flow into the issued access and ID tokens, subject to the application's `userAttributes` configuration.
+
+### Authorization Mapping
+
+Map attribute values this provider asserts, such as group membership, onto local roles, groups, or permissions, under **Authorization Mapping**. Click **Add Mapping** to add a mapping for a claim, then choose how its values resolve:
+
+- **Direct** (the default): each value the claim asserts is looked up by name against an existing role, group, or permission of the chosen **Target Type**. A value with no exact match, or more than one, confers nothing.
+- **Advanced**: turn the mapping's toggle on to compare the claim's values against an explicit rule table instead of matching by name.
+
+| Field | Description |
+|-------|-------------|
+| **Key** | The claim to read (for example, `groups`). Supports dot notation for a nested claim. |
+| **Value Type** | Advanced only. How to interpret the claim's value(s): `String`, `Number`, `Boolean`, or `Array`. Defaults to `String`. |
+| **Delimiter** | Splits a string claim into multiple values (for example, a space-delimited scope string). Leave unset for a single value. Only applies when Value Type is `String`. |
+| **Operator** | Advanced only, per rule. `Equals`/`Not Equals` for a single value; `Greater Than`/`Less Than`/`Greater Than or Equal`/`Less Than or Equal` when Value Type is `Number`; `Includes`/`Not Includes` when the claim carries a set of values (an `Array`, or a `String` split by Delimiter). |
+| **Target Type** | Direct only. Whether each value is looked up as a `Role`, `Group`, or `Permission`. A `Permission` target also requires a **Resource Server**. |
+
+Behavior:
+
+- An advanced rule's targets can span roles, groups, and permissions across more than one resource server at once.
+- A mapped group also grants that group's ancestor groups, transitively, the same as a direct group assignment does.
+- Everything a mapping grants adds to whatever is already assigned directly, unless **Groups and Roles Sync** is set to **Override all**. See [Sync](#sync).
+- The mapping applies wherever the identity's attributes are read: at sign-in, when a token from this provider is exchanged, and when an identity assertion (ID-JAG) it issued is presented.
+- At sign-in, mapped permissions are granted on every sign-in. Mapped roles and groups grant access through the account's stored memberships, as **Groups and Roles Sync** decides. They apply to the session without being stored under **Session only**. Mapped groups also apply that way when groups use the `declarative` [store mode](../../../deployment/configuration#store-modes), and mapped roles when roles do.
+- If the connection can't be loaded during sign-in, sign-in fails. If a direct mapping's lookup fails, sign-in proceeds with the advanced rules' targets only, unless **Groups and Roles Sync** is set to **Override all**, in which case a returning user's sign-in fails and the account isn't changed. Token exchange and ID-JAG consumption fail the request whenever resolving the mapping fails, since there is no already-issued session to fall back to.
+- When a sign-in creates the account, the mapping's roles and groups are also assigned to it, unless **Groups and Roles Sync** is set to **Session only**. Mapped groups aren't assigned when groups use the `declarative` store mode, and mapped roles aren't when roles do. See [Sync](#sync).
+
+### Account Linking
+
+To resolve an incoming federated identity to an existing local user by attributes when the subject identifier (`sub`) does not match, add attributes under **Account Linking**. Click **Add Attribute** to add an external attribute (for example, `email`) that is matched to find the associated local user.
+
+Behavior:
+
+- Resolution tries the subject identifier (`sub`) first. If it resolves an existing user, that user is used.
+- Otherwise, every configured attribute that has a value must match, and only a unique local user is resolved.
+- Each attribute is an external claim name. It matches on every local attribute it's mapped to under **Attribute Mappings**, and on the local attribute of the same name, because mappings copy the value there too. For example, with `email` mapped to `username`, linking on `email` finds a user whose `username` or whose `email` holds the incoming address.
+- Each local attribute is matched on the value it would be provisioned with. An attribute with no mapping of its own therefore also works as a local attribute name: linking on `costCenter` with `cost_centre` mapped to `costCenter` matches on the incoming `cost_centre` value.
+- The same-named local attribute is skipped when its name has characters other than letters, digits, and underscores, which includes dot notation. Such an attribute matches only through its mappings. For example, linking on `address.email` requires a mapping such as `address.email` to `email`.
+- For a mapped attribute, the same-named local attribute is also skipped when another attribute is mapped onto that name, since that attribute's value is what is stored there. For example, with `email` mapped to `contactEmail` and `mail` mapped to `email`, linking on `email` matches on `contactEmail` only.
+- If a configured attribute has a value but nothing to match on, the attributes match no one.
+- If the configured attributes match more than one user, including when two of an attribute's local attributes name different users, the match is treated as ambiguous, the same as when one lookup matches several users.
+- If neither `sub` nor the configured attributes resolve a user, the user is treated as new (subject to the flow's provisioning configuration).
+
+### Sync
+
+Choose how each sign-in through this connection keeps the account in line with the provider under **Sync**.
+
+| Attributes Sync | Behavior |
+|-------|-------------|
+| **Override received** (the default) | The attributes named under **Attribute Mappings** for the account's user type overwrite the account's values when the provider sends them. Other attributes are kept. A read-only (declarative) user's attributes aren't updated. |
+| **No sync** | The provider's attributes are stored when a sign-in creates the account, and are not updated after. |
+| **Session only** | The account stores only the subject identifier (`sub`), the attributes its user type requires, and the values the user enters in the flow. The provider's attributes apply to the session and the issued tokens. |
+
+| Groups and Roles Sync | Behavior |
+|-------|-------------|
+| **No sync** (the default) | The roles and groups the authorization mapping resolves are assigned when a sign-in creates the account, and are not updated after. |
+| **Override all** | The account's groups and roles are matched to what the authorization mapping resolves, removals included. Groups are only changed when the mapping has a group target, and roles only when it has a role target. A name that matches more than one group or role keeps the existing membership. |
+| **Session only** | The roles and groups the authorization mapping resolves apply to the session and appear in the `groups` and `roles` claims, but are not assigned to the account. |
+
+Behavior:
+
+- Sync runs on every federated sign-in that resolves an existing account, including a registration flow that finds one.
+- Sync writes the attributes through the user type's rules. If a synced value breaks one, for example an email already used by another account, sign-in fails and the account isn't changed.
+- If the groups and roles can't be updated, sign-in also fails, and the next successful sign-in brings them in line.
+- The subject identifier (`sub`), credentials, and linked identities are never changed by sync.
+- Sync only updates attributes that have an explicit mapping. A claim with the same name as a local attribute, but no mapping, is stored when a sign-in creates the account and isn't updated after.
+- Groups and roles come only from the [Authorization Mapping](#authorization-mapping). Without one, sync does not change the account's groups or roles.
+- When groups or roles use the `declarative` [store mode](../../../deployment/configuration#store-modes), their memberships can't be written, so mapped groups or roles apply to the session and tokens only, in every mode.
+- Groups and roles set on the flow's [Provisioning](../../flows/advanced-configurations#user-provisioning-and-attributes) step are assigned when the account is created. Under **Override all** they're removed on the next sign-in unless the authorization mapping also resolves them.
+
+:::warning
+Direct mappings match groups and roles by name. A provider that sends the name of a privileged group or role, such as `Administrators`, grants it in every mode. Under **No sync** it's assigned when the account is created. Use advanced rules for privileged targets.
+
+Under **Override all**, the provider decides the stored set by name:
+
+- Renaming a local group or role stops the match, and the next sign-in removes it.
+- A name that matches more than one group or role grants nothing. A membership the user already has in one of them is kept.
+:::
+
+Groups and roles that apply to the session without being stored, under **Session only** or because their type uses the `declarative` store mode, stay in the `groups` and `roles` claims of tokens issued from a refresh token, and the permission scopes they grant survive refresh until the refresh token expires, as described in [Refresh Token](../../protocols/oauth-oidc/refresh-token). Access the provider removes after sign-in keeps working until then.
+
+Click **Save changes** to apply your attribute configuration.
+
+## Next Steps
+
+- [Connect an IdP to an Application](../connect-idp-to-application): Add this OIDC IdP to an application's authentication flow.
+- [Manage Identity Providers](../manage-identity-providers): Update or delete identity providers.

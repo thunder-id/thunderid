@@ -1,0 +1,89 @@
+---
+title: Embedded Sign-Up Flow (V2)
+docType: reference
+displayed_sidebar: javascriptSdkSidebar
+description: Embedded sign-up flow component (version 2) with improved step handling and structured state management.
+---
+
+# Embedded Sign-Up Flow (V2)
+
+`executeEmbeddedSignUpFlowV2` drives a step-by-step user registration flow using the V2 protocol.
+
+## `executeEmbeddedSignUpFlowV2(config)`
+
+Initiate or advance a V2 embedded registration flow.
+
+```ts
+import { executeEmbeddedSignUpFlowV2, EmbeddedSignUpFlowStatusV2 } from '@thunderid/javascript'
+
+// Step 1 — Initiate
+const step1 = await executeEmbeddedSignUpFlowV2({
+  baseUrl: 'https://localhost:8090',
+  payload: {
+    applicationId: '<your-app-id>',
+    flowType: 'REGISTRATION',
+  },
+})
+
+// Step 2 — Provide registration details
+const step2 = await executeEmbeddedSignUpFlowV2({
+  baseUrl: 'https://localhost:8090',
+  payload: {
+    executionId: step1.executionId,
+    inputs: {
+      username: 'newuser@example.com',
+      password: 'SecurePass123!',
+      'http://wso2.org/claims/givenname': 'New',
+      'http://wso2.org/claims/lastname': 'User',
+    },
+  },
+})
+
+if (step2.flowStatus === EmbeddedSignUpFlowStatusV2.Complete) {
+  // Registration complete — redirect or sign in
+}
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `config.url` | `string` | ✅ | Full endpoint URL. Mutually exclusive with `baseUrl` |
+| `config.baseUrl` | `string` | ✅ | <ProductName /> base URL |
+| `config.payload` | `EmbeddedSignUpFlowRequestV2` | ✅ | Flow request body |
+| `config.payload.applicationId` | `string` | ❌ | Application ID. Required for the first step |
+| `config.payload.flowType` | `string` | ❌ | Flow type. Required for the first step (e.g., `'REGISTRATION'`) |
+| `config.payload.executionId` | `string` | ❌ | Execution ID from a prior response |
+| `config.payload.action` | `string` | ❌ | Action to perform at the current step |
+| `config.payload.inputs` | `Record<string, string>` | ❌ | Registration field values |
+| `config.payload.challengeToken` | `string` | ❌ | Challenge token for verification steps |
+| `config.authId` | `string` | ❌ | Optional authentication context ID |
+
+## Response: `EmbeddedSignUpFlowResponseV2`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `executionId` | `string` | ID to pass in subsequent requests |
+| `flowStatus` | `EmbeddedSignUpFlowStatusV2` | Current flow status |
+| `type` | `EmbeddedSignUpFlowTypeV2` | `View` or `Redirection` |
+| `data` | `EmbeddedFlowResponseDataV2` | Component tree or redirect data |
+| `challengeToken` | `string` | Present when a verification step is required |
+| `redirectUrl` | `string` | Present when `type` is `Redirection` |
+| `error` | `FlowExecutionError` | Present when `flowStatus` is `Error`. Contains `code`, `message`, and `description` |
+
+## Enums
+
+### `EmbeddedSignUpFlowStatusV2`
+
+| Value | Description |
+|-------|-------------|
+| `Incomplete` | More steps required |
+| `Complete` | Registration completed successfully |
+| `Error` | Registration failed, check `error` for details |
+
+### `EmbeddedSignUpFlowTypeV2`
+
+| Value | Description |
+|-------|-------------|
+| `View` | Render the component tree in `data` |
+| `Redirection` | Redirect to `redirectUrl` |

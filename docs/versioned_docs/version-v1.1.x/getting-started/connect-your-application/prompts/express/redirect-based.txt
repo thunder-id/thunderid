@@ -1,0 +1,42 @@
+# Integrate {{productName}} Authentication in an Express Application (Inbuilt Mode)
+
+## Context
+I have an Express application and I want to integrate {{productName}} authentication using the ThunderID Express SDK with {{productName}}-hosted sign-in pages.
+
+## Requirements
+- Use `@thunderid/express` in a Node.js + Express application
+- Use `cookie-parser` and `express.json()` middleware
+- Configure ThunderID middleware with `baseUrl`, `clientId`, `clientSecret`, `afterSignInUrl`, and `afterSignOutUrl`
+- Implement `/login` with `handleSignIn()` and `/logout` with `handleSignOut()`
+- Protect a route (`/protected`) using `protect((res) => res.redirect('/login'))`
+- Add a `/me` route that returns the authenticated user profile as JSON
+- Keep the code minimal, production-lean, and fully runnable
+
+## Configuration
+- **Client ID**: {{clientId}}
+- **Client Secret**: `<your-client-secret>`
+- **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)
+- **App URL**: http://localhost:3000
+- **Login Callback Route**: `/login`
+- **Logout Callback Route**: `/logout`
+- **SDK**: @thunderid/express
+
+## Important Rules
+- Use CommonJS syntax (`require`) in `index.js`
+- Use these SDK imports exactly: `thunderID`, `handleSignIn`, `handleSignOut`, `protect`
+- Ensure redirect URL alignment: the app callback URL must be `http://localhost:3000/login`, and the post-logout redirect URL must be `http://localhost:3000/logout`
+- Do not invent unsupported SDK APIs or custom wrappers
+- Keep route names and behavior exactly as specified
+
+## Implementation Steps
+1. Create a new project and install `express` and `cookie-parser`
+2. Install `@thunderid/express`
+3. Add `index.js` with ThunderID middleware and auth routes
+4. Add `/protected` and `/me` routes with `protect()`
+5. Start the server with `node index.js`
+6. Validate the flow by opening `/protected`, then `/me`
+
+Please provide:
+- The exact terminal commands
+- A complete `index.js` file
+- A short verification checklist for sign-in, sign-out, and protected route behavior

@@ -1,0 +1,252 @@
+---
+title: StorageManager
+docType: reference
+displayed_sidebar: javascriptSdkSidebar
+description: Typed storage abstraction for auth config, session data, and OIDC metadata in the JavaScript SDK.
+---
+
+# `StorageManager`
+
+`StorageManager` is the typed storage layer used internally by `ThunderIDJavaScriptClient`. It namespaces all stored data under a storage key derived from the client ID and instance ID. The storage layer provides typed methods for each data category: configuration, OIDC provider metadata, session data, and temporary (PKCE/state) data.
+
+Use it directly only when building platform adapters that need fine-grained control over stored auth state.
+
+## Constructor
+
+```ts
+import StorageManager from '@thunderid/javascript'
+
+const storage = new StorageManager<Config>('instance_0-my-client-id', store)
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `storageKey` | `string` | Namespace key for all stored data |
+| `store` | `Storage` | Storage backend implementing `getData`, `setData`, `removeData` |
+
+## Data Categories
+
+`StorageManager` manages four separate namespaces:
+
+| Category | Description |
+|----------|-------------|
+| **Config** | Application configuration (`AuthClientConfig`) |
+| **OIDC metadata** | Discovery document from the well-known endpoint |
+| **Session** | Token response data (`access_token`, `id_token`, `refresh_token`, `expires_in`, etc.) |
+| **Temporary** | Short-lived PKCE code verifiers and state parameters |
+| **Persisted** | Long-lived data that survives session clearing (e.g., `applicationId`) |
+
+## Methods
+
+### Config Data
+
+#### `setConfigData(config)`
+
+Store the application configuration.
+
+```ts
+await storage.setConfigData({ clientId: '...', baseUrl: '...' })
+```
+
+#### `getConfigData()`
+
+Retrieve the stored configuration.
+
+```ts
+const config = await storage.getConfigData()
+```
+
+**Returns:** `Promise<AuthClientConfig<T>>`
+
+#### `getConfigDataParameter(key)`
+
+Retrieve a single config field.
+
+```ts
+const clientId = await storage.getConfigDataParameter('clientId')
+```
+
+#### `setConfigDataParameter(key, value)`
+
+Update a single config field.
+
+#### `removeConfigData()`
+
+Delete the entire stored configuration.
+
+#### `removeConfigDataParameter(key)`
+
+Delete a single config field.
+
+### OIDC Provider Metadata
+
+#### `setOIDCProviderMetaData(data)`
+
+Cache the OIDC discovery document.
+
+```ts
+await storage.setOIDCProviderMetaData({
+  token_endpoint: 'https://...',
+  authorization_endpoint: 'https://...',
+})
+```
+
+#### `loadOpenIDProviderConfiguration()`
+
+Retrieve the cached OIDC discovery document.
+
+```ts
+const meta = await storage.loadOpenIDProviderConfiguration()
+console.log(meta.token_endpoint)
+```
+
+**Returns:** `Promise<OIDCDiscoveryApiResponse>`
+
+#### `getOIDCProviderMetaDataParameter(key)`
+
+Retrieve a single field from the cached discovery document.
+
+#### `setOIDCProviderMetaDataParameter(key, value)`
+
+Update a single field in the cached discovery document.
+
+#### `removeOIDCProviderMetaData()`
+
+Delete the cached OIDC metadata.
+
+#### `removeOIDCProviderMetaDataParameter(key)`
+
+Delete a single field from the OIDC metadata.
+
+### Session Data
+
+#### `setSessionData(data, userId?)`
+
+Store token response data for a session.
+
+```ts
+await storage.setSessionData(
+  { access_token: '...', id_token: '...', expires_in: '3600', created_at: Date.now() },
+  userId,
+)
+```
+
+#### `getSessionData(userId?, instanceId?)`
+
+Retrieve session data for a user.
+
+```ts
+const session = await storage.getSessionData()
+console.log(session.access_token)
+```
+
+**Returns:** `Promise<SessionData>`
+
+#### `getSessionDataParameter(key, userId?)`
+
+Retrieve a single session field.
+
+#### `setSessionDataParameter(key, value, userId?)`
+
+Update a single session field.
+
+#### `removeSessionData(userId?)`
+
+Clear session data.
+
+#### `removeSessionDataParameter(key, userId?)`
+
+Remove a single session field.
+
+#### `setSessionStatus(status)` / `getSessionStatus()` / `removeSessionStatus()`
+
+Manage a plain-string session status flag (e.g., for tracking sign-in progress).
+
+### Temporary Data
+
+Temporary data stores short-lived values like PKCE code verifiers and state parameters. It is keyed per user session.
+
+#### `setTemporaryData(data, userId?)`
+
+Write a temporary data object.
+
+#### `getTemporaryData(userId?)`
+
+Read the full temporary data object.
+
+**Returns:** `Promise<TemporaryStore>`
+
+#### `getTemporaryDataParameter(key, userId?)`
+
+Read a single temporary value.
+
+```ts
+const codeVerifier = await storage.getTemporaryDataParameter('pkce_key', userId)
+```
+
+#### `setTemporaryDataParameter(key, value, userId?)`
+
+Write a single temporary value.
+
+#### `removeTemporaryData(userId?)`
+
+Delete all temporary data for a user.
+
+#### `removeTemporaryDataParameter(key, userId?)`
+
+Delete a single temporary value.
+
+### Persisted Data
+
+Persisted data survives session clearing. Use it for values that must outlive individual sessions (e.g., `applicationId`).
+
+#### `setPersistedData(data, userId?)`
+
+Write persisted data.
+
+#### `getPersistedData(userId?)`
+
+Read persisted data.
+
+**Returns:** `Promise<TemporaryStore>`
+
+### Custom Data
+
+#### `setCustomData<K>(key, data, userId?)`
+
+Store arbitrary typed data under a custom key.
+
+#### `getCustomData<K>(key, userId?)`
+
+Retrieve data stored under a custom key.
+
+**Returns:** `Promise<K>`
+
+## Types
+
+### `Storage`
+
+The storage backend interface. Implement this to provide a custom storage mechanism.
+
+```ts
+interface Storage {
+  getData(key: string): Promise<string | null>
+  setData(key: string, value: string): Promise<void>
+  removeData(key: string): Promise<void>
+}
+```
+
+### `SessionData`
+
+The shape of a stored token response:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `access_token` | `string` | OAuth 2.0 access token |
+| `id_token` | `string` | OIDC ID token |
+| `refresh_token` | `string` | Refresh token |
+| `expires_in` | `string` | Token lifetime in seconds |
+| `created_at` | `number` | Unix timestamp when the session was created |
+| `scope` | `string` | Space-separated granted scopes |
+| `session_state` | `string` | OIDC session state parameter |
+| `token_type` | `string` | Token type (typically `Bearer`) |

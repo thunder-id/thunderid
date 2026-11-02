@@ -1,0 +1,20 @@
+---
+title: Agents
+docType: guide
+sidebar_position: 1
+persona: iam
+description: Agents in {{ProductName}} are first-class machine identities. Onboard an agent, give it a schema and credentials, scope its access, and issue tokens for how it acts.
+---
+
+# Agents
+
+An agent in <ProductName /> is a machine identity for autonomous software, such as an AI assistant, a background worker, or a scheduled job. It is a first-class identity, separate from any user, with its own identifier, owner, credentials, attributes, and lifecycle. Because an agent carries its own identity, every action it takes is attributable to it, and its access is granted, restricted, audited, and revoked independently of any user.
+
+## What <ProductName /> provides for an agent
+
+- An identity record with an owner and a configurable attribute schema. See [Create and Manage Agents](manage-agents) and [Agent Schema](agent-schema).
+- Credentials the agent authenticates with, a client secret or a private key JWT. See [Agent Authentication](authentication).
+- Scoped access through roles and groups, so an agent reaches only what its work needs. See [Groups and roles](manage-agents#groups-and-roles).
+- Tokens for how the agent acts: on its own with an [agent token](authentication/agent-own-token), [on behalf of a user](authentication/on-behalf-of-user), or [delegated to another agent](authentication/agent-to-agent).
+
+For the concepts behind agent identity, the subject, actor, and resource model, and why an agent needs its own identity class, see the [AI Agents use cases](../../use-cases/ai-agents/overview). To connect a framework quickly, see [Getting Started](../../getting-started/connect-your-agent/langchain).

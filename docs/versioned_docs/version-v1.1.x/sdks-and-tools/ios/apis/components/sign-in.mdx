@@ -1,0 +1,109 @@
+---
+title: SignIn
+docType: reference
+description: Embedded SwiftUI sign-in form driven by the ThunderID Flow Execution API for multi-step authentication.
+---
+
+# `SignIn`
+
+The `SignIn` component renders a full app-native sign-in form. It drives the Flow Execution API loop automatically: initiating the flow, presenting the server-defined inputs and actions on each step, and completing when the user is authenticated.
+
+`SignIn` requires `.thunderIDProvider(config:)` in its ancestor view hierarchy.
+
+## Usage
+
+```swift
+import SwiftUI
+import ThunderIDSwiftUI
+
+struct AuthView: View {
+    var body: some View {
+        SignIn(applicationId: "<your-application-id>")
+            .padding()
+    }
+}
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `applicationId` | `String` | ✅ | The Application ID from your <ProductName /> application settings. Identifies which sign-in flow to execute. |
+| `onComplete` | `(() -> Void)?` | ❌ | Called when authentication completes successfully. |
+| `onError` | `((String) -> Void)?` | ❌ | Called with an error message when a flow step fails. |
+
+## Handling Completion
+
+Use `onComplete` to navigate away from the sign-in screen after a successful sign-in. `ThunderIDState.user` is updated automatically before this callback fires.
+
+```swift
+struct AuthView: View {
+    @EnvironmentObject var state: ThunderIDState
+
+    var body: some View {
+        SignIn(
+            applicationId: "<your-application-id>",
+            onComplete: {
+                // state.isSignedIn is now true; navigate to your home screen
+            },
+            onError: { errorMessage in
+                print("Sign-in error: \(errorMessage)")
+            }
+        )
+    }
+}
+```
+
+## Customization with `BaseSignIn`
+
+`BaseSignIn` is the unstyled builder variant. It manages the Flow Execution loop and passes a `SignInState` object to your content closure, giving you full control over the form's appearance.
+
+```swift
+import SwiftUI
+import ThunderIDSwiftUI
+
+struct CustomSignInView: View {
+    var body: some View {
+        BaseSignIn(applicationId: "<your-application-id>") { signInState in
+            VStack(spacing: 16) {
+                if let error = signInState.error {
+                    Text(error).foregroundStyle(.red)
+                }
+
+                ForEach(signInState.inputs, id: \.name) { input in
+                    if input.type == "PASSWORD_INPUT" {
+                        SecureField(input.name, text: signInState.binding(for: input.name))
+                    } else {
+                        TextField(input.name, text: signInState.binding(for: input.name))
+                    }
+                }
+
+                ForEach(signInState.actions, id: \.id) { action in
+                    Button(action.label ?? "Submit") {
+                        signInState.submit(actionId: action.id)
+                    }
+                    .disabled(signInState.isLoading)
+                }
+            }
+        }
+    }
+}
+```
+
+### `SignInState` Properties
+
+`SignInState` is passed to the `BaseSignIn` content closure and exposes the current flow step.
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `inputs` | `[FlowInput]` | Input fields to render for the current step. Each has a `name`, `type`, and `required` flag. |
+| `actions` | `[FlowAction]` | Submit buttons to render. Each has an `id` and an optional `label`. |
+| `isLoading` | `Bool` | `true` while a network request is in progress. |
+| `error` | `String?` | Error message from the last failed step. `nil` on success. |
+
+### `SignInState` Methods
+
+| Method | Description |
+| :--- | :--- |
+| `binding(for:)` | Returns a `Binding<String>` for the named input field. |
+| `submit(actionId:)` | Submits the current field values with the given action ID. |

@@ -1,0 +1,48 @@
+---
+title: CookieConfig
+docType: reference
+description: Session cookie name constants used by the Express SDK to configure secure HTTP-only session cookies.
+---
+
+# `CookieConfig`
+
+The Express SDK exports `CookieConfig` and `SESSION_COOKIE_NAME` for the session cookie behavior used by the SDK.
+
+## Import
+
+```js
+const {CookieConfig, SESSION_COOKIE_NAME} = require('@thunderid/express');
+```
+
+## Session Cookie Name
+
+| Export | Value | Description |
+| :--- | :--- | :--- |
+| `SESSION_COOKIE_NAME` | `'THUNDERID_SESSION_ID'` | Session cookie key used by the Express SDK |
+
+## Default Cookie Values
+
+| Property | Value |
+| :--- | :--- |
+| `defaultExpirySeconds` | `86400` |
+| `defaultHttpOnly` | `true` |
+| `defaultSameSite` | `'lax'` |
+| `defaultSecure` | `false` |
+
+## Usage
+
+You do not need to set these values directly when `sessionCookie` options are omitted from `ExpressClientConfig`. The SDK uses these defaults automatically.
+
+```js title="index.js" showLineNumbers
+const {SESSION_COOKIE_NAME} = require('@thunderid/express');
+
+app.get('/session-id', (req, res) => {
+  res.json({sessionId: req.cookies?.[SESSION_COOKIE_NAME] ?? null});
+});
+```
+
+## Related APIs
+
+- [`ExpressClientConfig`](../../configuration/express-client-config)
+- [`handleSignIn()`](../../middleware/handle-sign-in)
+- [`handleSignOut()`](../../middleware/handle-sign-out)

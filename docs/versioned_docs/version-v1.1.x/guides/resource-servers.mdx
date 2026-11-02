@@ -1,0 +1,304 @@
+---
+title: Manage Resource Servers
+docType: guide
+sidebar_position: 14
+persona: iam
+description: Create and manage resource servers, resources, and actions to define permissions.
+---
+
+# Manage Resource Servers
+
+A resource server in <ProductName /> represents an API, service, or application that defines the permissions your users and clients can request. Before you assign permissions to users through roles, you define those permissions by creating resource servers with resources and actions.
+
+## Prerequisites
+
+- A running <ProductName /> instance.
+- An organization unit to associate the resource server with. See [Organization Units](../organization-units) to create one.
+- An access token with administrative permissions.
+
+## Understanding the Permission Model
+
+<ProductName /> derives permission strings from a three-level hierarchy:
+
+```text
+Resource Server (identifier: "https://api.example.com/booking", delimiter: ":")
+├── Action: "list"           → Permission: "list"
+└── Resource: "reservations"
+    ├── Action: "create"     → Permission: "reservations:create"
+    ├── Action: "view"       → Permission: "reservations:view"
+    └── Resource: "online"
+        └── Action: "create" → Permission: "reservations:online:create"
+```
+
+Permission strings use one of two forms. Flat permissions, for server-level actions, are just the `{action-handle}` (for example, `list`). Hierarchical permissions follow `{resource-handle}{delimiter}{action-handle}` (for example, `reservations:create`). Permission strings are not prefixed by the resource server; the resource server is identified by its `identifier`, which becomes the access token audience.
+
+- **Resource Server**: container for all resources and actions. Requires a unique `identifier`. When the identifier is set to an absolute URI, the resource server is used in [resource indicator](../protocols/oauth-oidc/resource-indicators) flows (RFC 8707).
+- **Resource**: a named entity within a resource server. Resources can nest to form hierarchies.
+- **Action**: an operation that can be performed. Actions can exist at the resource server level (global) or within a specific resource.
+
+## Create a Resource Server
+
+Send a `POST` request to `/resource-servers`:
+
+```bash
+curl -kL -X POST https://localhost:8090/resource-servers \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "name": "Booking API",
+    "description": "Handles reservation operations",
+    "identifier": "https://api.example.com/booking",
+    "ouId": "<organization-unit-id>",
+    "delimiter": ":"
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "name": "Booking API",
+  "description": "Handles reservation operations",
+  "identifier": "https://api.example.com/booking",
+  "ouId": "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87",
+  "delimiter": ":"
+}
+```
+
+### Field Reference
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Display name for the resource server. Must be unique. |
+| `identifier` | Yes | Unique identifier for the resource server. When set to an absolute URI (for example, `https://api.example.com/booking`), the resource server is used in RFC 8707 resource indicator flows and the identifier becomes the access token audience claim value. |
+| `ouId` | Yes | Organization unit ID. |
+| `delimiter` | No | Character that separates hierarchy levels in permission strings. Defaults to `:`. Immutable after creation. Allowed characters: `a-z A-Z 0-9 . _ : - /`. |
+| `description` | No | Description of the resource server. |
+
+:::note
+The `delimiter` field cannot be changed after creation. Plan this value before creating the resource server.
+:::
+
+## Define Permissions
+
+You define permissions by creating actions. Actions can exist at two levels: directly on the resource server (flat permissions) or on a resource within the server (hierarchical permissions).
+
+### Flat Permissions
+
+Create actions directly on the resource server for simple, non-hierarchical permissions.
+
+```bash
+curl -kL -X POST https://localhost:8090/resource-servers/<resource-server-id>/actions \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "name": "List Bookings",
+    "description": "Permission to list all bookings",
+    "handle": "list"
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "id": "9c6d3g0g-7e8b-4d82-b454-4d2ccg87gh5e",
+  "name": "List Bookings",
+  "description": "Permission to list all bookings",
+  "handle": "list",
+  "permission": "list"
+}
+```
+
+The resulting permission is `list`. A server-level action is just the action handle.
+
+### Hierarchical Permissions
+
+For fine-grained access control, create resources first, then add actions to those resources.
+
+**1. Create a resource:**
+
+```bash
+curl -kL -X POST https://localhost:8090/resource-servers/<resource-server-id>/resources \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "name": "Reservations",
+    "handle": "reservations"
+  }'
+```
+
+**2. Add an action to the resource:**
+
+```bash
+curl -kL -X POST https://localhost:8090/resource-servers/<resource-server-id>/resources/<resource-id>/actions \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "name": "Create Reservation",
+    "handle": "create"
+  }'
+```
+
+The resulting permission is `reservations:create`.
+
+**3. Create nested resources (optional):**
+
+Resources can nest to form deeper hierarchies. Set the `parent` field to the parent resource ID:
+
+```bash
+curl -kL -X POST https://localhost:8090/resource-servers/<resource-server-id>/resources \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "name": "Online Reservations",
+    "handle": "online",
+    "parent": "<reservations-resource-id>"
+  }'
+```
+
+Actions on this nested resource produce permissions like `reservations:online:create`.
+
+:::note
+The `handle` and `parent` fields on a resource are immutable after creation.
+:::
+
+## List Resource Servers
+
+```bash
+curl -kL https://localhost:8090/resource-servers?limit=10&offset=0 \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+## Get Resource Server Details
+
+```bash
+curl -kL https://localhost:8090/resource-servers/<resource-server-id> \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+## Update a Resource Server
+
+Update the name, description, identifier, or organization unit. The `delimiter` cannot be changed.
+
+```bash
+curl -kL -X PUT https://localhost:8090/resource-servers/<resource-server-id> \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "name": "Booking API v2",
+    "description": "Updated booking operations",
+    "identifier": "https://api.example.com/booking/v2",
+    "ouId": "<organization-unit-id>"
+  }'
+```
+
+## Delete a Resource Server
+
+```bash
+curl -kL -X DELETE https://localhost:8090/resource-servers/<resource-server-id> \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+:::note
+You must delete all child resources and actions before you can delete a resource server.
+:::
+
+## Manage Resources
+
+### List Resources
+
+List top-level resources (no parent):
+
+```bash
+curl -kL https://localhost:8090/resource-servers/<resource-server-id>/resources \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+List child resources of a specific parent:
+
+```bash
+curl -kL "https://localhost:8090/resource-servers/<resource-server-id>/resources?parentId=<parent-resource-id>" \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+### Update a Resource
+
+You can update the `name` and `description`. The `handle` and `parent` cannot be changed.
+
+```bash
+curl -kL -X PUT https://localhost:8090/resource-servers/<resource-server-id>/resources/<resource-id> \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "name": "Updated Reservations",
+    "description": "Updated description"
+  }'
+```
+
+### Delete a Resource
+
+```bash
+curl -kL -X DELETE https://localhost:8090/resource-servers/<resource-server-id>/resources/<resource-id> \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+You must delete all sub-resources and actions within a resource before deleting it.
+
+## Manage Actions
+
+### List Actions
+
+List resource server level actions:
+
+```bash
+curl -kL https://localhost:8090/resource-servers/<resource-server-id>/actions \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+List actions on a specific resource:
+
+```bash
+curl -kL https://localhost:8090/resource-servers/<resource-server-id>/resources/<resource-id>/actions \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+### Update an Action
+
+You can update the `name` and `description`. The `handle` cannot be changed.
+
+```bash
+curl -kL -X PUT https://localhost:8090/resource-servers/<resource-server-id>/actions/<action-id> \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "name": "Updated Action Name",
+    "description": "Updated description"
+  }'
+```
+
+### Delete an Action
+
+```bash
+curl -kL -X DELETE https://localhost:8090/resource-servers/<resource-server-id>/actions/<action-id> \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+## Best Practices
+
+- **Plan handle names before creation.** The `handle` on resources and actions is immutable, as is the resource server `delimiter`. Use lowercase with hyphens for readability (for example, `reservations`, `create`).
+- **Use absolute URIs as identifiers for RFC 8707.** The `identifier` field accepts any string, but only resource servers with absolute URI identifiers (such as `https://api.example.com/booking`) are used in [resource indicator](../protocols/oauth-oidc/resource-indicators) flows. Set a URI identifier if you need audience-restricted access tokens.
+- **Create one resource server per API boundary.** Separate resource servers for different microservices or applications produce cleaner permission models and more targeted access tokens.
+- **Choose the delimiter before creation.** The delimiter separates hierarchy levels in permission strings and cannot be changed. The colon (`:`) is the most common choice.
+
+## Next Steps
+
+- [Resource Indicators](../protocols/oauth-oidc/resource-indicators), request audience-restricted access tokens targeting specific resource servers.
+- [Organization Units](../organization-units), organize resource servers within organizational boundaries.

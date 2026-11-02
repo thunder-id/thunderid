@@ -1,0 +1,115 @@
+---
+title: Resolve Translations
+docType: reference
+sidebar_position: 3
+description: Complete reference for the i18n API including listing languages, resolving translations, validation rules, and error codes.
+---
+
+# Resolve Translations
+
+Resolve translations at runtime by listing available languages and retrieving translations for a specific language.
+
+## List Available Languages
+
+Retrieve all language tags that have translations in the system. This endpoint requires no authentication. Authentication screens can discover available languages before the user signs in.
+
+**Request:**
+```bash
+curl -X GET https://localhost:8090/i18n/languages
+```
+**Response:**
+```json
+{
+  "languages": ["en-US", "es", "fr-FR", "ja-JP"]
+}
+```
+
+## Discover Available Translation Keys
+
+Before adding translations for a new language, resolve the default `en-US` translations to see all available namespaces and keys. This returns the full set of keys you can override.
+
+**Request:**
+```bash
+curl -X GET "https://localhost:8090/i18n/languages/en-US/translations/resolve"
+```
+
+You can also filter by namespace to focus on a specific screen:
+
+```bash
+curl -X GET "https://localhost:8090/i18n/languages/en-US/translations/resolve?namespace=signin"
+```
+
+The response lists every key with its default English value. Use these keys as a reference when building your translation payload for another language.
+
+## Resolve Translations
+
+Resolve all translations for a language. The response merges system defaults with your custom overrides, and custom values take priority.
+
+:::note
+Resolve endpoints require no authentication and return `200` even when only system defaults exist. A `404` response indicates that no translation exists for the requested scope.
+:::
+
+**Request:**
+```bash
+curl -X GET "https://localhost:8090/i18n/languages/es/translations/resolve"
+```
+
+**Response:**
+```json
+{
+  "language": "es",
+  "totalResults": 5,
+  "translations": {
+    "signin": {
+      "forms.credentials.title": "Iniciar sesión",
+      "forms.credentials.fields.username.label": "Nombre de usuario",
+      "forms.credentials.fields.password.label": "Contraseña"
+    },
+    "recovery": {
+      "forms.username.title": "Recuperación de contraseña",
+      "forms.username.fields.username.label": "Nombre de usuario"
+    }
+  }
+}
+```
+
+### Filter by Namespace
+
+Add the `namespace` query parameter to retrieve translations for a single namespace.
+
+**Request:**
+```bash
+curl -X GET "https://localhost:8090/i18n/languages/es/translations/resolve?namespace=signin"
+```
+
+### Resolve a Single Key
+
+Resolve a specific translation by language, namespace, and key.
+
+**Request:**
+```bash
+curl -X GET "https://localhost:8090/i18n/languages/es/translations/ns/recovery/keys/forms.username.title/resolve"
+```
+
+**Response:**
+```json
+{
+  "language": "es",
+  "namespace": "recovery",
+  "key": "forms.username.title",
+  "value": "Recuperación de contraseña"
+}
+```
+
+## Error Codes
+
+| Code | Description |
+|------|-------------|
+| `I18N-1001` | Invalid language tag format. Must follow BCP 47. |
+| `I18N-1002` | Invalid namespace format. |
+| `I18N-1003` | Invalid key format. |
+| `I18N-1004` | Missing language code in the request. |
+| `I18N-1005` | Missing translation value. |
+| `I18N-1006` | Translation not found (no custom or default value exists). |
+| `I18N-1007` | Invalid request format (malformed body). |
+| `I18N-1008` | Empty translations (at least one translation required). |

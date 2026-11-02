@@ -1,0 +1,67 @@
+---
+title: View Profile
+docType: use-case
+description: View profile attributes, update them, and change the password as John Doe.
+sidebar_position: 4
+---
+
+# View Profile
+
+In this walkthrough, John opens his Wayfinder profile and exercises the two parts of the use case. He **views** what
+Wayfinder stores about him: name, email, and the other attributes on his `Customer` record. He then **updates** the
+values he wants to change: his last name and his password.
+
+:::note Prerequisites
+Complete [Set Up Your Environment](../../build-environment) before starting this walkthrough.
+:::
+
+:::info Background
+[Understand It](../../overview) covers the requirements story behind this use case.
+:::
+
+## Pick Your Pattern
+
+<PatternPicker>
+<Pattern value="redirect" label="Redirect-based" description="Hosted screens, simplest to add" icon="external-link" default>
+
+In the redirect-based pattern, the consumer application renders the profile screen itself. Profile attributes are read from `/users/me` and ID token. Updates go through <ProductName />'s self-service endpoints: `/users/me` for attribute changes, `/users/me/meta` for schema metadata retrieve, and `/users/me/update-credentials` for password changes. These endpoints act on the signed-in user's own record, so no extra permissions are needed; the access token alone is enough.
+
+**Try the Use Case**
+
+1. Open <WayFinderSampleUrl /> and sign in as John.
+2. Open the account menu and select **Profile**. The sample reads John's attributes from his ID token and renders the
+   **View** section.
+3. Edit the **Last Name** field and select **Save**.
+4. Select **Change Password**, enter the current password, set a new one, and save.
+
+**Try a Variant**
+
+- Add a new attribute to the `Customer` schema (for example, `seatPreference`) and verify it appears on John's profile page after a refresh. See [User Types](../../../../guides/users/user-types).
+
+</Pattern>
+
+<Pattern value="app-native-steps" label="App-native step-by-step" description="Custom UI, step-by-step control" icon="list-ordered">
+
+Coming soon. See the [App-native pattern](../../integration-patterns#app-native) for what to expect.
+
+</Pattern>
+
+<Pattern value="app-native-managed" label="App-native managed" description="Custom UI, managed outcomes" icon="wand">
+
+Coming soon. See the [App-native pattern](../../integration-patterns#app-native) for what to expect.
+
+</Pattern>
+
+<Pattern value="direct-api" label="Direct API" description="Direct API calls, no journey" icon="terminal">
+
+Coming soon. See the [Direct API pattern](../../integration-patterns#direct-api) for what to expect.
+
+</Pattern>
+</PatternPicker>
+
+## Going Deeper
+
+- Want to understand which attributes Wayfinder stores about John? See [User Types](../../build-users#user-types)
+  in the Build It tutorial.
+- Prefer to define the `Customer` schema manually? See
+  [Model Your Users](../../build-users) in the Build It tutorial.

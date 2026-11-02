@@ -1,0 +1,139 @@
+---
+title: Accessing Protected APIs
+docType: guide
+description: Use the access token to call downstream APIs from a Node.js server-side application
+---
+
+# Accessing Protected APIs
+
+This guide shows how to retrieve the user's access token from the <ProductName /> Node.js SDK and use it to call protected downstream APIs.
+
+## Prerequisites
+
+- Complete the [Handling Authentication](../handling-authentication) guide to set up the client and session management.
+- The user must be signed in before you retrieve an access token.
+
+## Retrieve the Access Token
+
+Use the `getAccessToken` method to retrieve the access token for the current user session.
+
+```ts title="src/services/userService.ts" showLineNumbers
+import { CookieConfig } from '@thunderid/node'
+import auth from '../auth'
+
+export async function fetchUserProfile(sessionId: string) {
+  const accessToken = await auth.getAccessToken(sessionId)
+
+  const response = await fetch('https://localhost:8090/users/<user_id>', {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`API request failed: ${response.status}`)
+  }
+
+  return response.json()
+}
+```
+
+## Call a Protected API from a Route
+
+Use the service function in a route handler that already requires authentication.
+
+```ts title="src/routes/profile.ts" showLineNumbers
+import { requireAuth } from '../middleware/requireAuth'
+import { CookieConfig } from '@thunderid/node'
+import { fetchUserProfile } from '../services/userService'
+
+app.get('/profile', requireAuth, async (req, res) => {
+  const sessionId = req.cookies[CookieConfig.SESSION_COOKIE_NAME]
+
+  try {
+    const profile = await fetchUserProfile(sessionId)
+    res.render('profile', { profile })
+  } catch (error) {
+    res.status(500).render('error', { message: 'Failed to load profile.' })
+  }
+})
+```
+
+## Send Multiple Requests in Parallel
+
+Use `Promise.all` to send multiple authenticated requests concurrently.
+
+```ts title="src/services/dashboardService.ts" showLineNumbers
+import auth from '../auth'
+
+export async function fetchDashboardData(sessionId: string) {
+  const accessToken = await auth.getAccessToken(sessionId)
+
+  const headers = {
+    Authorization: `Bearer ${accessToken}`,
+    'Content-Type': 'application/json',
+  }
+
+  const [profile, organizations] = await Promise.all([
+    fetch('https://localhost:8090/users/<user_id>', { headers }).then(r => r.json()),
+    fetch('https://localhost:8090/organizations', { headers }).then(r => r.json()),
+  ])
+
+  return { organizations, profile }
+}
+```
+
+## Handle Token Expiry
+
+The SDK refreshes the access token automatically when `isSignedIn` is called (for example, in your authentication middleware). This means that by the time a route handler executes, the access token is already up to date.
+
+If you call `getAccessToken` outside a middleware-protected route, verify the session first:
+
+```ts showLineNumbers
+const signedIn = await auth.isSignedIn(sessionId)
+
+if (!signedIn) {
+  throw new Error('User is not signed in.')
+}
+
+const accessToken = await auth.getAccessToken(sessionId)
+```
+
+## Use the Token Exchange Flow
+
+For advanced scenarios such as impersonation or delegated access, use `exchangeToken` to get a token with a different scope or for a different subject.
+
+```ts showLineNumbers
+import auth from '../auth'
+
+const newTokens = await auth.exchangeToken(
+  {
+    attachToken: false,
+    data: {
+      client_id: '<your-client-id>',
+      grant_type: 'account_switch',
+      scope: 'openid profile',
+      token: currentAccessToken,
+    },
+    id: 'account-switch',
+    returnResponse: true,
+    returnsSession: true,
+    signInRequired: true,
+  },
+  sessionId,
+)
+```
+
+## Revoke an Access Token
+
+To revoke the access token when the user signs out or when you want to invalidate a session immediately, call `revokeAccessToken`.
+
+```ts showLineNumbers
+await auth.revokeAccessToken(sessionId)
+```
+
+## Next Steps
+
+- [Protecting Routes](../protecting-routes): Restrict access to routes based on authentication state
+- [`ThunderIDNodeClient`](../../apis/clients/thunderid-node-client): Base client class reference

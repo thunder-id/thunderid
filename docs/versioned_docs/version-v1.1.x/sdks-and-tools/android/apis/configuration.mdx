@@ -1,0 +1,89 @@
+---
+title: Configuration
+docType: reference
+description: ThunderIDConfig options for the Android SDK, covering client ID, base URL, scopes, and redirect URIs.
+---
+
+# Configuration
+
+`ThunderIDConfig` is the configuration data class passed to `ThunderIDClient.initialize(config, storage)` and to the `ThunderIDProvider` composable.
+
+## Example
+
+```kotlin
+import dev.thunderid.android.ThunderIDConfig
+
+val config = ThunderIDConfig(
+    baseUrl = "https://localhost:8090",
+    clientId = "<your-client-id>",
+    scopes = listOf("openid", "profile", "email"),
+    afterSignInUrl = "dev.thunderid.app://callback",
+    afterSignOutUrl = "dev.thunderid.app://logout",
+    applicationId = "<your-application-id>"
+)
+```
+
+## Parameters
+
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `baseUrl` | `String` | - | **Required.** Your <ProductName /> instance URL. Must use HTTPS (e.g., `https://localhost:8090`). |
+| `clientId` | `String?` | `null` | The Client ID from your <ProductName /> application. Required for redirect-based authentication and token operations. |
+| `scopes` | `List<String>` | `["openid"]` | OAuth 2.0 scopes to request. Include `"profile"` and `"email"` to receive user identity claims. |
+| `afterSignInUrl` | `String?` | `null` | The redirect URI to return to after sign-in. Must match an **Allowed Redirect URI** registered in the console. |
+| `afterSignOutUrl` | `String?` | `null` | The redirect URI to return to after sign-out. Must match an **Allowed Post-Logout Redirect URI** in the console. |
+| `signInUrl` | `String?` | `null` | Override the sign-in URL. Defaults to the <ProductName /> hosted sign-in page. |
+| `signUpUrl` | `String?` | `null` | Override the sign-up URL. |
+| `clientSecret` | `String?` | `null` | Client secret for confidential clients. Do not include this in a shipped Android app. |
+| `signInOptions` | `Map<String, Any>` | `{}` | Additional query parameters appended to the authorization URL on sign-in. |
+| `signOutOptions` | `Map<String, Any>` | `{}` | Additional parameters sent with the sign-out request. |
+| `signUpOptions` | `Map<String, Any>` | `{}` | Additional parameters sent with the sign-up request. |
+| `applicationId` | `String?` | `null` | The Application ID used for app-native (embedded) sign-in flows via the Flow Execution API. |
+| `organizationHandle` | `String?` | `null` | The organization handle for multi-tenant deployments. |
+| `tokenValidation` | `TokenValidationConfig` | see below | Controls ID token validation behavior. |
+| `storage` | `StorageAdapter?` | `null` | Custom token storage backend. Defaults to `EncryptedStorageAdapter`. |
+| `instanceId` | `Int?` | `null` | Identifies the SDK instance when running multiple instances in one process. |
+
+## TokenValidationConfig
+
+Controls how the SDK validates ID tokens.
+
+```kotlin
+ThunderIDConfig(
+    baseUrl = "https://localhost:8090",
+    clientId = "<your-client-id>",
+    tokenValidation = TokenValidationConfig(
+        validate = true,
+        validateIssuer = true,
+        clockTolerance = 30
+    )
+)
+```
+
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `validate` | `Boolean` | `true` | Whether to validate ID token signatures and claims. Set to `false` only during local development. |
+| `validateIssuer` | `Boolean` | `true` | Whether to validate the `iss` claim against `baseUrl`. |
+| `clockTolerance` | `Int` | `0` | Allowed clock skew in seconds when validating token expiry. |
+
+## Storage Backends
+
+The SDK provides two built-in storage backends:
+
+| Class | Description |
+| :--- | :--- |
+| `EncryptedStorageAdapter(context)` | Default. Persists tokens using AES-256-GCM encryption backed by the Android Keystore. Tokens survive app restarts. |
+| `InMemoryStorageAdapter()` | Stores tokens in memory only. Tokens are lost when the process is terminated. Useful for testing. |
+
+To use a custom backend, implement the `StorageAdapter` interface:
+
+```kotlin
+interface StorageAdapter {
+    fun store(key: String, value: String)
+    fun retrieve(key: String): String?
+    fun delete(key: String)
+    fun clear()
+}
+```
+
+Pass your implementation to `ThunderIDConfig(storage = ...)` or to `ThunderIDClient.initialize(config, storage)`.

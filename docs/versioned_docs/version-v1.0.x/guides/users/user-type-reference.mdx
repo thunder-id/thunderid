@@ -40,7 +40,7 @@ Modifiers add validation and behavior rules to an attribute. You can combine mul
 
 ### Person
 
-An admin-managed user type. Self-registration is disabled and only an administrator can create these users.
+The general-purpose user type. Self-registration is enabled, so users of this type can sign up through the registration flow of any application that lists it under [Allowed User Types](../../applications/application-settings#control-who-can-register). Administrators can also create users of this type.
 
 | Attribute | Type | Constraints | Notes |
 |-----------|------|-------------|-------|
@@ -49,7 +49,6 @@ An admin-managed user type. Self-registration is disabled and only an administra
 | `given_name` | `string` | - | |
 | `family_name` | `string` | - | |
 | `mobile_number` | `string` | - | |
-| `phone_number` | `string` | - | |
 | `sub` | `string` | - | |
 | `name` | `string` | - | |
 | `picture` | `string` | - | |

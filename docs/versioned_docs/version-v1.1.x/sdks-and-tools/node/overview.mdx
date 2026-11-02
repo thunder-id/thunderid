@@ -1,0 +1,61 @@
+---
+title: Node.js SDK Overview
+docType: concept
+sidebar_position: 1
+sidebar_label: Overview
+description: Node.js SDK for server-side authentication with session management, token handling, and API protection.
+---
+
+# Node.js SDK
+
+The <ProductName /> Node.js SDK (`@thunderid/node`) provides authentication and session management for server-side Node.js applications. The SDK implements the OAuth 2.0 Authorization Code flow with PKCE and supports multi-user session management.
+
+## Installation
+
+Install the <ProductName /> Node.js SDK using your preferred package manager:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm install @thunderid/node
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn add @thunderid/node
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm add @thunderid/node
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun add @thunderid/node
+  </CodeBlock>
+</CodeGroup>
+
+## Next Steps
+
+To integrate the SDK into your application, start with the [Handling Authentication](../guides/handling-authentication) guide, which walks you through client setup, the sign-in flow, and sign-out. Then explore:
+
+- [Protecting Routes](../guides/protecting-routes): Restrict access based on session state
+- [Accessing Protected APIs](../guides/accessing-protected-apis): Call downstream APIs with the access token
+
+## Features
+
+### Clients
+
+The SDK provides authentication clients designed for server-side Node.js applications.
+
+- **[`ThunderIDNodeClient`](../apis/clients/thunderid-node-client)**: Abstract base class for building Node.js framework integrations
+
+### Configuration
+
+- **[`ThunderIDNodeConfig`](../apis/config/thunderid-node-config)**: Configuration type for the Node.js SDK
+
+### Utilities
+
+Helper functions and constants for session and cookie management.
+
+- **[`CookieConfig`](../apis/utilities/cookie-config)**: Default cookie configuration constants
+- **[`CookieOptions`](../apis/utilities/cookie-options)**: Cookie configuration interface
+- **[`generateSessionId()`](../apis/utilities/generate-session-id)**: Generate unique session identifiers
+- **[`getSessionCookieOptions()`](../apis/utilities/get-session-cookie-options)**: Build cookie options with defaults applied

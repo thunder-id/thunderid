@@ -1,0 +1,56 @@
+---
+title: <UserDropdown />
+docType: reference
+description: Dropdown menu showing the authenticated user's name and avatar with a sign-out action.
+---
+
+# `<UserDropdown />`
+
+The `UserDropdown` component renders a dropdown menu with user information and common actions like viewing profile, settings, and signing out.
+
+## Usage
+
+### Basic Usage
+
+```jsx title="src/Header.jsx" showLineNumbers
+import { UserDropdown } from '@thunderid/react'
+
+function Header() {
+  return (
+    <header>
+      <UserDropdown />
+    </header>
+  )
+}
+
+export default Header
+```
+
+### Custom Menu Items
+
+```jsx title="src/Header.jsx" showLineNumbers
+import { UserDropdown } from '@thunderid/react'
+
+function Header() {
+  return (
+    <UserDropdown>
+      <UserDropdown.Item href="/profile">Profile</UserDropdown.Item>
+      <UserDropdown.Item href="/settings">Settings</UserDropdown.Item>
+      <UserDropdown.Item href="/billing">Billing</UserDropdown.Item>
+      <UserDropdown.Divider />
+      <UserDropdown.SignOut />
+    </UserDropdown>
+  )
+}
+
+export default Header
+```
+
+## Props
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `children` | `ReactNode` | ❌ | Custom menu items (defaults to standard items) |
+| `showAvatar` | `boolean` | ❌ | Show user avatar (defaults to `true`) |
+| `showName` | `boolean` | ❌ | Show user name (defaults to `true`) |
+| `showEmail` | `boolean` | ❌ | Show user email (defaults to `true`) |

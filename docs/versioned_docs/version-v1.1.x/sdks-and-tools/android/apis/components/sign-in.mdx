@@ -1,0 +1,109 @@
+---
+title: SignIn
+docType: reference
+description: Embedded Kotlin sign-in composable driven by the ThunderID Flow Execution API for multi-step authentication.
+---
+
+# `SignIn`
+
+The `SignIn` composable renders a full app-native sign-in form. It drives the Flow Execution API loop automatically: initiating the flow, presenting the server-defined inputs and actions on each step, and completing when the user is authenticated.
+
+`SignIn` requires `ThunderIDProvider` in its ancestor composable hierarchy.
+
+## Usage
+
+```kotlin
+import dev.thunderid.compose.components.presentation.auth.SignIn
+
+@Composable
+fun AuthView(applicationId: String) {
+    SignIn(
+        applicationId = applicationId,
+        modifier = Modifier.fillMaxWidth().padding(16.dp)
+    )
+}
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `applicationId` | `String` | ✅ | The Application ID from your <ProductName /> application settings. Identifies which sign-in flow to execute. |
+| `modifier` | `Modifier` | ❌ | Compose modifier applied to the form container. |
+| `onComplete` | `(() -> Unit)?` | ❌ | Called when authentication completes successfully. |
+| `onError` | `((String) -> Unit)?` | ❌ | Called with an error message when a flow step fails. |
+
+## Handling Completion
+
+Use `onComplete` to navigate away from the sign-in screen after a successful sign-in. `LocalThunderID.current.user` is updated automatically before this callback fires.
+
+```kotlin
+@Composable
+fun AuthScreen(applicationId: String) {
+    SignIn(
+        applicationId = applicationId,
+        onComplete = {
+            // thunder.isSignedIn is now true; navigate to your home screen
+        },
+        onError = { errorMessage ->
+            println("Sign-in error: $errorMessage")
+        }
+    )
+}
+```
+
+## Customization with `BaseSignIn`
+
+`BaseSignIn` is the unstyled builder variant. It manages the Flow Execution loop and passes a `SignInState` object to your content lambda, giving you full control over the form's appearance.
+
+```kotlin
+import dev.thunderid.compose.components.presentation.auth.BaseSignIn
+
+@Composable
+fun CustomSignInView(applicationId: String) {
+    BaseSignIn(applicationId = applicationId) { signInState ->
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            signInState.error?.let { error ->
+                Text(error, color = MaterialTheme.colorScheme.error)
+            }
+
+            signInState.inputs.forEach { input ->
+                if (input.type == "PASSWORD_INPUT") {
+                    var value by signInState.binding(input.name)
+                    SecureField(value, onValueChange = { value = it })
+                } else {
+                    var value by signInState.binding(input.name)
+                    OutlinedTextField(value, onValueChange = { value = it }, label = { Text(input.name) })
+                }
+            }
+
+            signInState.actions.forEach { action ->
+                Button(
+                    onClick = { signInState.submit(actionId = action.id) },
+                    enabled = !signInState.isLoading
+                ) {
+                    Text(action.label ?: "Submit")
+                }
+            }
+        }
+    }
+}
+```
+
+### `SignInState` Properties
+
+`SignInState` is passed to the `BaseSignIn` content lambda and exposes the current flow step.
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `inputs` | `List<FlowInput>` | Input fields to render for the current step. Each has a `name`, `type`, and `required` flag. |
+| `actions` | `List<FlowAction>` | Submit buttons to render. Each has an `id` and an optional `label`. |
+| `isLoading` | `Boolean` | `true` while a network request is in progress. |
+| `error` | `String?` | Error message from the last failed step. `null` on success. |
+
+### `SignInState` Methods
+
+| Method | Description |
+| :--- | :--- |
+| `binding(name)` | Returns a `MutableState<String>` for the named input field. |
+| `submit(actionId)` | Submits the current field values with the given action ID. |

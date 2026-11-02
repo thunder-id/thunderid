@@ -1,0 +1,140 @@
+---
+title: Middleware
+docType: reference
+displayed_sidebar: nextjsSdkSidebar
+description: Protect routes and refresh tokens automatically with Next.js Edge middleware using ThunderIDMiddleware.
+---
+
+# Middleware
+
+The <ProductName /> Next.js SDK provides Edge Runtime-compatible middleware for automatic token refresh and route protection.
+
+## `thunderIDProxy()`
+
+Create a Next.js middleware that handles authentication concerns for every request.
+
+```ts title="middleware.ts" showLineNumbers
+import {
+  thunderIDProxy,
+  createRouteMatcher,
+} from '@thunderid/nextjs/server'
+
+const isProtectedRoute = createRouteMatcher(['/dashboard(.*)'])
+
+export default thunderIDProxy(async (thunderid, request) => {
+  if (isProtectedRoute(request)) {
+    await thunderid.protectRoute()
+  }
+})
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+}
+```
+
+### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `handler` | `(thunderid, request) => Promise<void>` | Optional callback that receives the auth context and the request |
+| `options` | `ThunderIDProxyOptions` | Optional configuration overrides |
+
+### Proxy Context
+
+The `thunderid` object passed to your handler provides:
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `getSession()` | `Promise<SessionTokenPayload \| undefined>` | Retrieve the current session payload |
+| `getSessionId()` | `string \| undefined` | Retrieve the current session ID |
+| `isSignedIn()` | `boolean` | Check whether the user is authenticated |
+| `protectRoute(options?)` | `Promise<NextResponse \| void>` | Redirect unauthenticated users to the sign-in page |
+
+### `protectRoute()` Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `redirect` | `string` | Custom URL to redirect unauthenticated users to. Defaults to the configured `signInUrl` |
+
+## `createRouteMatcher()`
+
+Create a function that matches requests against a list of route patterns.
+
+```typescript
+import { createRouteMatcher } from '@thunderid/nextjs/server'
+
+const isProtectedRoute = createRouteMatcher([
+  '/dashboard(.*)',
+  '/admin(.*)',
+  '/settings(.*)',
+])
+```
+
+### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `patterns` | `string[]` | Array of glob-like route patterns |
+
+**Returns:** `(req: NextRequest) => boolean`
+
+## Automatic Token Refresh
+
+The middleware automatically refreshes access tokens that are about to expire (within 25 seconds of their expiry). This happens transparently:
+
+1. The middleware reads the session cookie from the request
+2. If the token expires soon, the middleware calls the refresh endpoint
+3. The updated session cookie is set on both the response and the forwarded request headers
+4. Your page components and server actions always receive a valid token
+
+## Examples
+
+### Protect Multiple Route Groups
+
+```ts title="middleware.ts" showLineNumbers
+import {
+  thunderIDProxy,
+  createRouteMatcher,
+} from '@thunderid/nextjs/server'
+
+const isProtectedRoute = createRouteMatcher([
+  '/dashboard(.*)',
+  '/settings(.*)',
+  '/api/private(.*)',
+])
+
+const isAdminRoute = createRouteMatcher(['/admin(.*)'])
+
+export default thunderIDProxy(async (thunderid, request) => {
+  if (isAdminRoute(request)) {
+    await thunderid.protectRoute({ redirect: '/unauthorized' })
+    return
+  }
+
+  if (isProtectedRoute(request)) {
+    await thunderid.protectRoute()
+  }
+})
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+}
+```
+
+### Access Session Data in Middleware
+
+```ts title="middleware.ts" showLineNumbers
+import { thunderIDProxy } from '@thunderid/nextjs/server'
+
+export default thunderIDProxy(async (thunderid, request) => {
+  const session = await thunderid.getSession()
+
+  if (session) {
+    console.log('Authenticated user:', session.sub)
+  }
+})
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+}
+```
