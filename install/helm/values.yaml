@@ -472,6 +472,14 @@ configuration:
     # MCP clients should register through Dynamic Client Registration instead.
     cimd:
       enabled: true
+    # Deployment-wide switches for issuing and accepting Identity Assertion JWT Authorization Grants (ID-JAG),
+    # applied on top of each application's and trusted issuer's own setting. Issuance also needs the token
+    # exchange grant, and acceptance the jwt-bearer grant, in allowedGrantTypes.
+    idJag:
+      issuance:
+        enabled: true
+      acceptance:
+        enabled: true
     # RFC 9396 rich authorization requests. processorTimeout bounds one call to an authorization details
     # type's processor, in seconds (at most 30). typeMetadataEnabled serves the type metadata endpoint and
     # advertises it in the authorization server metadata.

@@ -223,6 +223,24 @@ vi.mock('react-i18next', () => ({
   Trans: ({defaults = ''}: {defaults?: string}) => <span>{defaults}</span>,
 }));
 
+// The real Identity assertions card reads the runtime's authorization server metadata. Answer that
+// one request from `serverMetadata` (a 404, which is unknown and blocks nothing, unless a test sets
+// a body) rather than reaching whatever listens on the test server URL; other requests pass through.
+const serverMetadata: {body: Record<string, string[]> | undefined} = {body: undefined};
+const realFetch = globalThis.fetch;
+const fetchWithStubbedServerMetadata = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  let url: string;
+  if (typeof input === 'string') url = input;
+  else if (input instanceof URL) url = input.href;
+  else url = input.url;
+  if (!url.endsWith('/.well-known/oauth-authorization-server')) return realFetch(input, init);
+  return Promise.resolve(
+    serverMetadata.body
+      ? new Response(JSON.stringify(serverMetadata.body), {status: 200, headers: {'Content-Type': 'application/json'}})
+      : new Response(null, {status: 404}),
+  );
+};
+
 describe('AgentEditPage', () => {
   const baseAgent = {
     id: 'agent-1',
@@ -242,8 +260,14 @@ describe('AgentEditPage', () => {
     ],
   };
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
+    serverMetadata.body = undefined;
+    vi.stubGlobal('fetch', fetchWithStubbedServerMetadata);
     stagingCallbackIdentities.clear();
     advancedSettings.real = false;
     mockUseGetAgent.mockReturnValue({
@@ -1382,6 +1406,48 @@ describe('AgentEditPage', () => {
 
         expect(screen.queryByRole('switch', {name: 'Identity assertions (ID-JAG)'})).not.toBeInTheDocument();
         expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
+      });
+
+      it('should not let ID-JAG be turned on in the real card when the runtime does not serve token exchange', async () => {
+        advancedSettings.real = true;
+        serverMetadata.body = {grant_types_supported: ['client_credentials', 'authorization_code']};
+        const user = userEvent.setup();
+        renderWithIdJag({enabled: false});
+        await user.click(screen.getByRole('tab', {name: /Advanced/i}));
+
+        expect(
+          await screen.findByText(
+            'This server does not allow the token exchange grant, so identity assertions cannot be issued.',
+          ),
+        ).toBeInTheDocument();
+        expect(screen.getByRole('switch', {name: 'Identity assertions (ID-JAG)'})).toBeDisabled();
+      });
+
+      it('should save ID-JAG off without the token exchange grant when the runtime does not serve it', async () => {
+        advancedSettings.real = true;
+        serverMetadata.body = {grant_types_supported: ['client_credentials', 'authorization_code']};
+        const user = userEvent.setup();
+        renderWithIdJag({enabled: true, allowedAudiences: ['https://mcp.example.com'], validityPeriod: 300});
+        await user.click(screen.getByRole('tab', {name: /Advanced/i}));
+        await screen.findByText(
+          'This server does not allow the token exchange grant, so identity assertions cannot be issued.',
+        );
+
+        await user.click(screen.getByRole('switch', {name: 'Identity assertions (ID-JAG)'}));
+        await user.click(screen.getByRole('button', {name: 'Save'}));
+
+        await waitFor(() => {
+          expect(mockMutateAsync).toHaveBeenCalledTimes(1);
+        });
+        const {data} = mockMutateAsync.mock.calls[0][0] as {
+          data: {inboundAuthConfig: {config: {grantTypes: string[]; token: Record<string, unknown>}}[]};
+        };
+        expect(data.inboundAuthConfig[0].config.grantTypes).not.toContain(
+          'urn:ietf:params:oauth:grant-type:token-exchange',
+        );
+        expect(data.inboundAuthConfig[0].config.token).toEqual({
+          idJag: {enabled: false, allowedAudiences: ['https://mcp.example.com'], validityPeriod: 300},
+        });
       });
 
       it('should block Save when ID-JAG is turned on in the real card without an allowed audience', async () => {

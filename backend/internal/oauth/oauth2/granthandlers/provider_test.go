@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
+	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
@@ -54,7 +55,12 @@ func (suite *GrantHandlerProviderTestSuite) SetupTest() {
 	suite.mockEntityProvider = actorprovidermock.NewActorProviderMock(suite.T())
 	suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
 	suite.mockCIBAService = cibamock.NewCIBAServiceInterfaceMock(suite.T())
-	suite.provider = newGrantHandlerProvider(
+	suite.provider = suite.newProvider(testhelpers.OAuthConfig())
+}
+
+// newProvider builds a grant handler provider over the suite's mocks with the given OAuth configuration.
+func (suite *GrantHandlerProviderTestSuite) newProvider(cfg oauthconfig.Config) GrantHandlerProviderInterface {
+	return newGrantHandlerProvider(
 		suite.mockJWTService,
 		suite.authzService,
 		suite.mockTokenBuilder,
@@ -71,7 +77,7 @@ func (suite *GrantHandlerProviderTestSuite) SetupTest() {
 		nil,
 		nil,
 		0,
-		testhelpers.OAuthConfig(),
+		cfg,
 	)
 }
 
@@ -146,6 +152,55 @@ func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_JWTBearer() {
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
+}
+
+func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_JWTBearerServedOnlyWithIDJAGAcceptance() {
+	cases := []struct {
+		name          string
+		allowedGrants []string
+		acceptance    *bool
+		served        bool
+	}{
+		{name: "acceptance unset", served: true},
+		{name: "acceptance on", acceptance: new(true), served: true},
+		{name: "acceptance off", acceptance: new(false), served: false},
+		{
+			name:          "grant not allowed",
+			allowedGrants: []string{string(providers.GrantTypeTokenExchange)},
+			acceptance:    new(true),
+			served:        false,
+		},
+	}
+
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			cfg := testhelpers.OAuthConfig()
+			cfg.OAuth.AllowedGrantTypes = tc.allowedGrants
+			cfg.OAuth.IDJAG.Acceptance.Enabled = tc.acceptance
+			provider := suite.newProvider(cfg)
+
+			handler, err := provider.GetGrantHandler(providers.GrantTypeJWTBearer)
+
+			if tc.served {
+				suite.NoError(err)
+				suite.NotNil(handler)
+			} else {
+				suite.Equal(constants.UnSupportedGrantTypeError, err)
+				suite.Nil(handler)
+			}
+		})
+	}
+}
+
+// ID-JAG issuance is decided inside the token exchange grant, so switching it off keeps that grant served.
+func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_TokenExchangeServedWithIDJAGIssuanceOff() {
+	cfg := testhelpers.OAuthConfig()
+	cfg.OAuth.IDJAG.Issuance.Enabled = new(false)
+
+	handler, err := suite.newProvider(cfg).GetGrantHandler(providers.GrantTypeTokenExchange)
+
+	suite.NoError(err)
+	suite.NotNil(handler)
 }
 
 func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_UnsupportedGrantType() {

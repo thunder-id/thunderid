@@ -34,7 +34,7 @@ flowchart LR
 
 ## Notes
 
-While `oauth.allowed_grant_types` allows them, the well-known documents list `urn:ietf:params:oauth:grant-type:token-exchange` and `urn:ietf:params:oauth:grant-type:jwt-bearer` in `grant_types_supported` and, with the JWT bearer grant, the ID-JAG grant profile `urn:ietf:params:oauth:grant-profile:id-jag` in `authorization_grant_profiles_supported`. Configuration, including trusted issuers and allowed audiences, is exchanged out of band. Scope semantics differ per leg: issuance passes the requested scope through verbatim, while acceptance intersects it with the assertion's own scope. Neither leg issues a refresh token.
+Setting `oauth.id_jag.issuance.enabled` or `oauth.id_jag.acceptance.enabled` to `false` turns that role off for the whole deployment, whatever the application or trusted issuer settings say. Both are on by default. The well-known documents list `urn:ietf:params:oauth:grant-type:token-exchange` in `grant_types_supported` while `oauth.allowed_grant_types` allows it. They list `urn:ietf:params:oauth:grant-type:jwt-bearer`, and with it the ID-JAG grant profile `urn:ietf:params:oauth:grant-profile:id-jag` in `authorization_grant_profiles_supported`, while it is allowed and acceptance is on. Configuration, including trusted issuers and allowed audiences, is exchanged out of band. Scope semantics differ per leg: issuance passes the requested scope through verbatim, while acceptance intersects it with the assertion's own scope. Neither leg issues a refresh token.
 
 ## Related Guides
 

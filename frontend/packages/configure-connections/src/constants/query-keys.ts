@@ -74,6 +74,11 @@ const ConnectionQueryKeys = {
    * Name of the server-config section that holds the default email sender
    */
   NOTIFICATION_CONFIG: 'notification',
+
+  /**
+   * Key for the runtime's authorization server metadata (GET /.well-known/oauth-authorization-server)
+   */
+  AUTHORIZATION_SERVER_METADATA: 'authorization-server-metadata',
 } as const;
 
 export const SUBJECT_MAPPING_TYPES_PAGE_SIZE = 100;

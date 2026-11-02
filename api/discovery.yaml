@@ -195,7 +195,7 @@ components:
           type: array
           items:
             type: string
-          description: Authorization grant profiles supported, e.g. the ID-JAG profile (`urn:ietf:params:oauth:grant-profile:id-jag`).
+          description: Authorization grant profiles supported, e.g. the ID-JAG profile (`urn:ietf:params:oauth:grant-profile:id-jag`). Present only while the JWT bearer grant is served, that is, it is in `oauth.allowed_grant_types` and `oauth.id_jag.acceptance.enabled` is `true`.
         client_id_metadata_document_supported:
           type: boolean
           description: Whether clients registered from a Client ID Metadata Document are supported. Present only when true.

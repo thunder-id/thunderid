@@ -20,6 +20,7 @@ Use this when your application's or agent's users need to access an external, ID
 
 - A running <ProductName /> deployment. See [Get Started](../../../../../getting-started/get-thunderid).
 - Console access.
+- ID-JAG issuance allowed on the deployment. It is on by default. If `oauth.id_jag.issuance.enabled` is `false`, no client can request an ID-JAG. The token exchange grant, `urn:ietf:params:oauth:grant-type:token-exchange`, must also be in `oauth.allowed_grant_types`. See the [server configuration](../../../../../deployment/configuration).
 - A client that signs the user in and uses a confidential client type. Public clients cannot issue identity assertions. Use one of the following:
     - [An application](../../../../applications/manage-applications) that supports the authorization code grant. An application registered from a [Client ID Metadata Document](../../../../mcp/mcp-clients/client-id-metadata-document) can issue them only when its document declares the `private_key_jwt` authentication method. For such a client, token exchange serves only identity assertion requests.
     - [An agent](../../../../agents/manage-agents) with Delegated mode on and a grant that signs the user in: authorization code or CIBA. The subject token for the exchange is the user's ID token issued to this agent, so an agent that holds only token exchange or JWT bearer cannot obtain one, because neither grant yields an ID token.
@@ -44,6 +45,8 @@ sequenceDiagram
 ```
 
 ## Enable Identity Assertions
+
+If the deployment's discovery document does not list the token exchange grant, the Console shows a hint and does not let you turn on the **Identity assertions (ID-JAG)** toggle. You can still turn off one that is already on. The Console cannot detect `oauth.id_jag.issuance.enabled: false`, so it still lets you turn the toggle on in that case, and identity assertion requests then fail with `invalid_target`.
 
 <Tabs groupId="idjag-client">
 <TabItem value="application" label="Application" default>
@@ -290,11 +293,12 @@ The header sets `typ` to `oauth-id-jag+jwt`.
 | `invalid_request` | ID-JAG requests require subject_token_type urn:ietf:params:oauth:token-type:id_token | Wrong subject token type |
 | `invalid_request` | subject_token must be an ID token issued to this client | Subject token is not a valid self-issued ID token |
 | `invalid_request` | subject_token audience does not match the authenticated client | ID token was issued to a different client |
-| `invalid_target` | The client is not permitted to request ID-JAGs | ID-JAG disabled on the client or no allowed audiences |
+| `invalid_target` | The client is not permitted to request ID-JAGs | ID-JAG issuance turned off for the deployment (`oauth.id_jag.issuance.enabled` is `false`), ID-JAG disabled on the client, or no allowed audiences |
 | `invalid_target` | The audience parameter is required for ID-JAG requests / Exactly one audience is required for ID-JAG requests / The requested audience is not permitted for this client | Audience missing, repeated, or not in the allow-list |
 | `invalid_target` | Invalid resource parameter: must be an absolute URI (or must not contain a fragment component) | Malformed resource |
 | `invalid_client` | ID-JAG requests require a confidential client | Public client |
 | `unauthorized_client` | The client is not authorized to use this grant type | Token exchange grant not enabled on the client |
+| `unsupported_grant_type` | Unsupported grant type | The token exchange grant is not in the deployment's `oauth.allowed_grant_types` |
 | `server_error` | Failed to process token request | Internal failure, including unavailable revocation status |
 
 ## Related Guides

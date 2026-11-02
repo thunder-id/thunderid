@@ -2762,6 +2762,9 @@ const translations = {
     'create.form.idJagEnabled.hint':
       'Accept and exchange signed identity assertions from this issuer for access tokens.',
 
+    // Shared by the create form and the detail page
+    'idJag.acceptanceUnavailable': 'This server does not accept identity assertions from any issuer.',
+
     // Detail page
     'detail.back': 'Back to connections',
     'detail.loadError': 'Failed to load trusted issuer.',
@@ -3883,6 +3886,8 @@ const translations = {
     'edit.advanced.idJag.validityPeriod.error': 'Enter a value of at least 1 second.',
     'edit.advanced.idJag.validityPeriod.hint': 'How long an issued assertion stays valid. Default 300.',
     'edit.advanced.idJag.grantTypeHint': 'The token exchange grant type is enabled together with this feature.',
+    'edit.advanced.idJag.tokenExchangeUnavailable':
+      'This server does not allow the token exchange grant, so identity assertions cannot be issued.',
     'create.success': 'Application created successfully.',
     'create.error': 'Failed to create application. Please try again.',
     'create.flowGenerationError': 'Failed to generate the authentication flow. Please try again.',

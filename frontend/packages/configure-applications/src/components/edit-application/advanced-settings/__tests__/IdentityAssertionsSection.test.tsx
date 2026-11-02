@@ -14,6 +14,22 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+const {mockUseAuthorizationServerMetadata} = vi.hoisted(() => ({mockUseAuthorizationServerMetadata: vi.fn()}));
+
+vi.mock('@thunderid/configure-connections', () => ({
+  useAuthorizationServerMetadata: mockUseAuthorizationServerMetadata,
+}));
+
+const TOKEN_EXCHANGE = 'urn:ietf:params:oauth:grant-type:token-exchange';
+const TOKEN_EXCHANGE_UNAVAILABLE_HINT =
+  'This server does not allow the token exchange grant, so identity assertions cannot be issued.';
+const GRANT_TYPE_HINT = 'The token exchange grant type is enabled together with this feature.';
+
+// Stands in for the runtime's authorization server metadata query (data undefined while loading or failed).
+const mockServerMetadata = (data: {grant_types_supported?: string[]} | undefined, isError = false): void => {
+  mockUseAuthorizationServerMetadata.mockReturnValue({data, isError});
+};
+
 describe('IdentityAssertionsSection', () => {
   const mockOnTokenConfigChange = vi.fn();
 
@@ -26,6 +42,7 @@ describe('IdentityAssertionsSection', () => {
 
   beforeEach(() => {
     mockOnTokenConfigChange.mockClear();
+    mockServerMetadata(undefined);
   });
 
   describe('Rendering', () => {
@@ -466,6 +483,169 @@ describe('IdentityAssertionsSection', () => {
       );
 
       expect(screen.getByLabelText('Identity assertions (ID-JAG)')).toBeDisabled();
+    });
+  });
+
+  describe('Token exchange availability', () => {
+    const enabledConfig: OAuth2Config = {
+      ...baseConfig,
+      grantTypes: ['authorization_code', TOKEN_EXCHANGE],
+      token: {
+        accessToken: {} as never,
+        idToken: {} as never,
+        idJag: {enabled: true, allowedAudiences: ['https://api.example.com'], validityPeriod: 300},
+      },
+    };
+
+    it('should disable turning ID-JAG on when the runtime metadata does not list the token exchange grant', () => {
+      mockServerMetadata({grant_types_supported: ['authorization_code', 'client_credentials']});
+
+      render(<IdentityAssertionsSection oauth2Config={baseConfig} onTokenConfigChange={mockOnTokenConfigChange} />);
+
+      const toggle = screen.getByLabelText('Identity assertions (ID-JAG)');
+      expect(toggle).not.toBeChecked();
+      expect(toggle).toBeDisabled();
+    });
+
+    it('should explain in a tooltip that the server does not allow the token exchange grant', async () => {
+      const user = userEvent.setup();
+      mockServerMetadata({grant_types_supported: ['authorization_code']});
+
+      render(<IdentityAssertionsSection oauth2Config={baseConfig} onTokenConfigChange={mockOnTokenConfigChange} />);
+
+      const toggle = screen.getByLabelText('Identity assertions (ID-JAG)');
+      await user.hover(toggle.closest('.MuiSwitch-root')!.parentElement!);
+
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(TOKEN_EXCHANGE_UNAVAILABLE_HINT);
+    });
+
+    it('should not call onTokenConfigChange when the disabled toggle is clicked', async () => {
+      // A disabled switch has pointer-events: none, so the check is skipped to force the click through.
+      const user = userEvent.setup({pointerEventsCheck: 0});
+      mockServerMetadata({grant_types_supported: ['authorization_code']});
+
+      render(<IdentityAssertionsSection oauth2Config={baseConfig} onTokenConfigChange={mockOnTokenConfigChange} />);
+
+      await user.click(screen.getByLabelText('Identity assertions (ID-JAG)'));
+
+      expect(mockOnTokenConfigChange).not.toHaveBeenCalled();
+    });
+
+    it('should let a client that already has ID-JAG on turn it off and drop the token exchange grant in the same update', async () => {
+      const user = userEvent.setup();
+      mockServerMetadata({grant_types_supported: ['authorization_code']});
+
+      render(<IdentityAssertionsSection oauth2Config={enabledConfig} onTokenConfigChange={mockOnTokenConfigChange} />);
+
+      const toggle = screen.getByLabelText('Identity assertions (ID-JAG)');
+      expect(toggle).toBeChecked();
+      expect(toggle).not.toBeDisabled();
+
+      await user.click(toggle);
+
+      expect(mockOnTokenConfigChange).toHaveBeenCalledTimes(1);
+      expect(mockOnTokenConfigChange).toHaveBeenCalledWith(
+        {idJag: {enabled: false, allowedAudiences: ['https://api.example.com'], validityPeriod: 300}},
+        expect.objectContaining({grantTypes: ['authorization_code']}),
+      );
+    });
+
+    it('should send only the token update when turning ID-JAG off on a client that does not hold the token exchange grant', async () => {
+      const user = userEvent.setup();
+      mockServerMetadata({grant_types_supported: ['authorization_code']});
+      const oauth2Config: OAuth2Config = {...enabledConfig, grantTypes: ['authorization_code']};
+
+      render(<IdentityAssertionsSection oauth2Config={oauth2Config} onTokenConfigChange={mockOnTokenConfigChange} />);
+
+      await user.click(screen.getByLabelText('Identity assertions (ID-JAG)'));
+
+      expect(mockOnTokenConfigChange).toHaveBeenCalledTimes(1);
+      expect(mockOnTokenConfigChange).toHaveBeenCalledWith({
+        idJag: {enabled: false, allowedAudiences: ['https://api.example.com'], validityPeriod: 300},
+      });
+    });
+
+    it('should show the hint in place of the grant type caption while a client that has ID-JAG on cannot be issued assertions', () => {
+      mockServerMetadata({grant_types_supported: ['authorization_code']});
+
+      render(<IdentityAssertionsSection oauth2Config={enabledConfig} onTokenConfigChange={mockOnTokenConfigChange} />);
+
+      expect(screen.getByText(TOKEN_EXCHANGE_UNAVAILABLE_HINT)).toBeInTheDocument();
+      expect(screen.queryByText(GRANT_TYPE_HINT)).not.toBeInTheDocument();
+      expect(screen.getByText('Allowed audiences *')).toBeInTheDocument();
+    });
+
+    it('should show the hint as visible text in the card body while ID-JAG is off and cannot be turned on', () => {
+      mockServerMetadata({grant_types_supported: ['authorization_code']});
+
+      render(<IdentityAssertionsSection oauth2Config={baseConfig} onTokenConfigChange={mockOnTokenConfigChange} />);
+
+      expect(screen.getByText(TOKEN_EXCHANGE_UNAVAILABLE_HINT)).toBeInTheDocument();
+      expect(screen.queryByText('Allowed audiences *')).not.toBeInTheDocument();
+      expect(screen.queryByText(GRANT_TYPE_HINT)).not.toBeInTheDocument();
+    });
+
+    it('should allow turning ID-JAG on and show no hint when the runtime metadata lists the token exchange grant', async () => {
+      const user = userEvent.setup();
+      mockServerMetadata({grant_types_supported: ['authorization_code', TOKEN_EXCHANGE]});
+
+      render(<IdentityAssertionsSection oauth2Config={baseConfig} onTokenConfigChange={mockOnTokenConfigChange} />);
+
+      const toggle = screen.getByLabelText('Identity assertions (ID-JAG)');
+      expect(toggle).not.toBeDisabled();
+      await user.click(toggle);
+
+      expect(mockOnTokenConfigChange).toHaveBeenCalledWith(
+        {idJag: {enabled: true, allowedAudiences: [], validityPeriod: 300}},
+        expect.objectContaining({grantTypes: ['authorization_code', TOKEN_EXCHANGE]}),
+      );
+      expect(screen.queryByText(TOKEN_EXCHANGE_UNAVAILABLE_HINT)).not.toBeInTheDocument();
+    });
+
+    it('should allow turning ID-JAG on while the metadata is loading', async () => {
+      const user = userEvent.setup();
+      mockServerMetadata(undefined);
+
+      render(<IdentityAssertionsSection oauth2Config={baseConfig} onTokenConfigChange={mockOnTokenConfigChange} />);
+
+      const toggle = screen.getByLabelText('Identity assertions (ID-JAG)');
+      expect(toggle).not.toBeDisabled();
+      await user.click(toggle);
+
+      expect(mockOnTokenConfigChange).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText(TOKEN_EXCHANGE_UNAVAILABLE_HINT)).not.toBeInTheDocument();
+    });
+
+    it('should allow turning ID-JAG on when the metadata failed to load', () => {
+      mockServerMetadata(undefined, true);
+
+      render(<IdentityAssertionsSection oauth2Config={baseConfig} onTokenConfigChange={mockOnTokenConfigChange} />);
+
+      expect(screen.getByLabelText('Identity assertions (ID-JAG)')).not.toBeDisabled();
+      expect(screen.queryByText(TOKEN_EXCHANGE_UNAVAILABLE_HINT)).not.toBeInTheDocument();
+    });
+
+    it('should allow turning ID-JAG on when the metadata has no grant types list', () => {
+      mockServerMetadata({});
+
+      render(<IdentityAssertionsSection oauth2Config={baseConfig} onTokenConfigChange={mockOnTokenConfigChange} />);
+
+      expect(screen.getByLabelText('Identity assertions (ID-JAG)')).not.toBeDisabled();
+    });
+
+    it('should keep the public client explanation when the client is public and the grant is unavailable', async () => {
+      const user = userEvent.setup();
+      mockServerMetadata({grant_types_supported: ['authorization_code']});
+      const oauth2Config: OAuth2Config = {...baseConfig, publicClient: true};
+
+      render(<IdentityAssertionsSection oauth2Config={oauth2Config} onTokenConfigChange={mockOnTokenConfigChange} />);
+
+      const toggle = screen.getByLabelText('Identity assertions (ID-JAG)');
+      await user.hover(toggle.closest('.MuiSwitch-root')!.parentElement!);
+
+      expect(
+        await screen.findByText('Identity assertions require a confidential client. Turn off public client to enable.'),
+      ).toBeInTheDocument();
     });
   });
 

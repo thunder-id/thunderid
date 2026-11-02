@@ -1084,6 +1084,52 @@ func PatchDeploymentConfig(patch map[string]interface{}) error {
 	return nil
 }
 
+// RestartWithOAuthConfig restarts the server with the oauth section of deployment.yaml changed by edit,
+// and re-obtains the admin token. It returns a function that does the same with the original section;
+// call it once the test is done, even when this function fails after writing the change. Later calls
+// of the returned function do nothing.
+func RestartWithOAuthConfig(edit func(oauth map[string]interface{})) (func() error, error) {
+	original, err := ReadDeploymentConfigKey("oauth")
+	if err != nil {
+		return func() error { return nil }, fmt.Errorf("failed to read the oauth config: %w", err)
+	}
+
+	restored := false
+	restore := func() error {
+		if restored {
+			return nil
+		}
+		restored = true
+		return restartWithOAuthSection(copyConfigSection(original))
+	}
+
+	edited := copyConfigSection(original)
+	edit(edited)
+	return restore, restartWithOAuthSection(edited)
+}
+
+// restartWithOAuthSection writes the oauth section of deployment.yaml, restarts the server, and
+// re-obtains the admin token.
+func restartWithOAuthSection(section map[string]interface{}) error {
+	if err := PatchDeploymentConfig(map[string]interface{}{"oauth": section}); err != nil {
+		return fmt.Errorf("failed to write the oauth config: %w", err)
+	}
+	if err := RestartServer(); err != nil {
+		return err
+	}
+	return ObtainAdminAccessToken()
+}
+
+// copyConfigSection returns a shallow copy of a deployment.yaml section, or an empty one when it is absent.
+func copyConfigSection(section interface{}) map[string]interface{} {
+	source, _ := section.(map[string]interface{})
+	copied := make(map[string]interface{}, len(source)+1)
+	for key, value := range source {
+		copied[key] = value
+	}
+	return copied
+}
+
 // ensureDirectAuthSecretInDeploymentConfig guarantees server.security.direct_auth_secret is set to the
 // fixture value in the extracted product's deployment.yaml. The server is secure by default (an empty
 // secret blocks the Direct API endpoints), and suites that rewrite deployment.yaml via UpdateDeploymentConfig
