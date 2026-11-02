@@ -13,7 +13,11 @@ import type {FlowListResponse} from '../models/responses';
  */
 export interface UseGetFlowsParams {
   /**
-   * Filter by flow type (AUTHENTICATION or REGISTRATION)
+   * Whether to run the query.
+   */
+  enabled?: boolean;
+  /**
+   * Filter by flow type.
    */
   flowType?: FlowType;
   /**
@@ -24,6 +28,10 @@ export interface UseGetFlowsParams {
    * Number of records to skip for pagination (default: 0)
    */
   offset?: number;
+  /**
+   * Fetch every page matching the filters instead of returning only one page.
+   */
+  fetchAllPages?: boolean;
 }
 
 /**
@@ -37,6 +45,7 @@ export interface UseGetFlowsParams {
  * @param params.flowType - Filter flows by type (AUTHENTICATION or REGISTRATION)
  * @param params.limit - Maximum number of records to return (default: 30, max: 100)
  * @param params.offset - Number of records to skip for pagination (default: 0)
+ * @param params.fetchAllPages - Whether to fetch and combine every matching page
  * @returns TanStack Query result object containing flows list data, loading state, and error information
  *
  * @example
@@ -91,32 +100,60 @@ export interface UseGetFlowsParams {
 export default function useGetFlows(params?: UseGetFlowsParams): UseQueryResult<FlowListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
-  const {flowType, limit = 30, offset = 0} = params ?? {};
+  const {flowType, limit = 30, offset = 0, enabled = true, fetchAllPages = false} = params ?? {};
 
   return useQuery<FlowListResponse>({
-    queryKey: [FlowQueryKeys.FLOWS, {flowType, limit, offset}],
+    queryKey: [FlowQueryKeys.FLOWS, {flowType, limit, offset, ...(fetchAllPages ? {fetchAllPages} : {})}],
+    enabled,
     queryFn: async (): Promise<FlowListResponse> => {
       const serverUrl: string = getServerUrl();
-      const queryParams: URLSearchParams = new URLSearchParams({
-        limit: limit.toString(),
-        offset: offset.toString(),
-      });
+      const fetchPage = async (pageOffset: number): Promise<FlowListResponse> => {
+        const queryParams: URLSearchParams = new URLSearchParams({
+          limit: limit.toString(),
+          offset: pageOffset.toString(),
+        });
 
-      if (flowType) {
-        queryParams.append('flowType', flowType);
+        if (flowType) {
+          queryParams.append('flowType', flowType);
+        }
+
+        const response: {
+          data: FlowListResponse;
+        } = await http.request({
+          url: `${serverUrl}/flows?${queryParams.toString()}`,
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        } as unknown as Parameters<typeof http.request>[0]);
+
+        return response.data;
+      };
+
+      if (!fetchAllPages) {
+        return fetchPage(offset);
       }
 
-      const response: {
-        data: FlowListResponse;
-      } = await http.request({
-        url: `${serverUrl}/flows?${queryParams.toString()}`,
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      } as unknown as Parameters<typeof http.request>[0]);
+      const firstPage = await fetchPage(offset);
+      const flows: FlowListResponse['flows'] = [...firstPage.flows];
+      const totalResults = firstPage.totalResults;
 
-      return response.data;
+      for (let pageOffset = offset + limit; flows.length < totalResults; pageOffset += limit) {
+        const page = await fetchPage(pageOffset);
+        flows.push(...page.flows);
+
+        if (page.count < limit || page.flows.length < limit) {
+          break;
+        }
+      }
+
+      return {
+        ...firstPage,
+        totalResults,
+        startIndex: offset + 1,
+        count: flows.length,
+        flows,
+      };
     },
   });
 }

@@ -9,7 +9,11 @@ import Call from '../Call';
 vi.mock('react-i18next', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-i18next')>()),
   useTranslation: () => ({
-    t: (_key: string, fallback?: string) => fallback ?? _key,
+    t: (_key: string, fallback?: string, values?: Record<string, string>) =>
+      Object.entries(values ?? {}).reduce(
+        (message, [name, value]) => message.replace(`{{${name}}}`, value),
+        fallback ?? _key,
+      ),
   }),
 }));
 
@@ -27,9 +31,8 @@ const mockDeleteElements = vi.fn();
 const mockUseNodeId = vi.fn<() => string | null>(() => 'call-node-id');
 
 vi.mock('@xyflow/react', () => ({
-  // eslint-disable-next-line react/require-default-props
-  Handle: ({type, position, id}: {type: string; position: string; id?: string}) => (
-    <div data-testid={`handle-${type}-${id ?? position}`} data-position={position} data-handle-id={id} />
+  Handle: ({type, position, id = ''}: {type: string; position: string; id?: string}) => (
+    <div data-testid={`handle-${type}-${id || position}`} data-position={position} data-handle-id={id} />
   ),
   Position: {Left: 'left', Right: 'right', Top: 'top', Bottom: 'bottom'},
   useNodeId: () => mockUseNodeId(),

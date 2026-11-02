@@ -29,13 +29,14 @@ interface SelectFlowTemplateProps {
   onTemplateChange: (template: FlowTemplate) => void;
 }
 
-const CATEGORY_ORDER = ['PASSWORD', 'SOCIAL_LOGIN', 'MFA', 'PASSWORDLESS'];
+const CATEGORY_ORDER = ['PASSWORD', 'SOCIAL_LOGIN', 'MFA', 'PASSWORDLESS', 'DEVICE_AUTHORIZATION'];
 
 const CATEGORY_LABELS: Record<string, string> = {
   PASSWORD: 'Password',
   SOCIAL_LOGIN: 'Social login',
   MFA: 'Multi-factor',
   PASSWORDLESS: 'Passwordless',
+  DEVICE_AUTHORIZATION: 'Device authorization',
 };
 
 // Icons that use brand colors and should not be inverted in dark mode
@@ -73,6 +74,10 @@ const TEMPLATE_ICONS: Record<string, string[]> = {
   CIBA_EMAIL_NOTIFICATION: ['assets/images/icons/email-down.svg'],
   DISAMBIGUATION_LOGIN: ['assets/images/icons/magnifying-glass.svg'],
   DEFAULT: ['assets/images/icons/user.svg'],
+};
+
+const DEVICE_TEMPLATE_ICONS: Record<string, ReactNode> = {
+  DEVICE_GRANT: <Lock size={24} />,
 };
 
 export default function SelectFlowTemplate({
@@ -153,6 +158,11 @@ export default function SelectFlowTemplate({
    * than one icon.
    */
   const renderTemplateIcon = (type: string): JSX.Element => {
+    const deviceIcon = DEVICE_TEMPLATE_ICONS[type];
+    if (deviceIcon) {
+      return <ResourceAvatar transparent variant="rounded" size={48} fallback={deviceIcon} />;
+    }
+
     const icons = TEMPLATE_ICONS[type];
     if (!icons) {
       return <ResourceAvatar transparent variant="rounded" size={48} fallback={<Lock size={24} />} />;
@@ -330,10 +340,6 @@ export default function SelectFlowTemplate({
                         </Typography>
                       )}
                     </Stack>
-
-                    <Typography variant="caption" color="text.disabled" sx={{fontWeight: 500, letterSpacing: 0.2}}>
-                      {`#${(CATEGORY_LABELS[template.category] ?? template.category).toLowerCase()}`}
-                    </Typography>
                   </Stack>
                 </CardContent>
               </Card>

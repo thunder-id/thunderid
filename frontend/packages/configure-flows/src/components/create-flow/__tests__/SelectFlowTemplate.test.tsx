@@ -103,6 +103,20 @@ const unknownIconTemplate: FlowTemplate = {
   config: {name: '', handle: '', nodes: []},
 };
 
+const deviceGrantTemplate: FlowTemplate = {
+  resourceType: 'TEMPLATE',
+  category: 'DEVICE_AUTHORIZATION',
+  type: 'DEVICE_GRANT',
+  flowType: 'DEVICE_GRANT',
+  display: {
+    label: 'Device authorization',
+    description: 'Verify a device code and sign in to authorize the device',
+    image: 'assets/images/icons/lock.svg',
+    showOnResourcePanel: true,
+  },
+  config: {name: 'Device Authorization Flow', handle: 'device-authorization-flow', nodes: []},
+};
+
 const mockTemplates: FlowTemplate[] = [
   blankTemplate,
   passwordTemplate,
@@ -110,12 +124,13 @@ const mockTemplates: FlowTemplate[] = [
   githubTemplate,
   compositeTemplate,
   unknownIconTemplate,
+  deviceGrantTemplate,
 ];
 
 vi.mock('../../../api/useGetFlowsMeta', () => ({
-  default: () => ({
+  default: ({flowType}: {flowType: string}) => ({
     data: {
-      templates: mockTemplates,
+      templates: mockTemplates.filter((template) => template.flowType === flowType),
       steps: [],
       actions: [],
       elements: [],
@@ -171,6 +186,13 @@ describe('SelectFlowTemplate', () => {
       render(<SelectFlowTemplate {...defaultProps} />);
 
       expect(screen.getByText('GitHub')).toBeInTheDocument();
+    });
+
+    it('should render the generic Device Authorization icon', () => {
+      render(<SelectFlowTemplate {...defaultProps} flowType="DEVICE_GRANT" />);
+
+      expect(screen.getAllByText('Device authorization')).toHaveLength(2);
+      expect(screen.getByTestId('icon-lock')).toBeInTheDocument();
     });
 
     it('should render a composite icon row for a template with multiple icons', () => {

@@ -460,6 +460,7 @@ describe('hasUserAccess', () => {
   it('is true for authorization_code, CIBA, and password grants', () => {
     expect(hasUserAccess([OAuth2GrantTypes.AUTHORIZATION_CODE])).toBe(true);
     expect(hasUserAccess([OAuth2GrantTypes.CIBA])).toBe(true);
+    expect(hasUserAccess([OAuth2GrantTypes.DEVICE_CODE])).toBe(true);
     expect(hasUserAccess([OAuth2GrantTypes.PASSWORD])).toBe(true);
   });
 
