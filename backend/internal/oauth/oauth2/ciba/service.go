@@ -5,6 +5,7 @@ package ciba
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -14,6 +15,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	authzdetailcommon "github.com/thunder-id/thunderid/internal/authzdetail/common"
 	flowcm "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
@@ -58,6 +60,7 @@ type cibaService struct {
 	inboundClient   providers.ActorProvider
 	resourceService providers.ResourceServerProvider
 	governance      providers.IdentityGovernanceProvider
+	authzDetails    providers.AuthorizationDetailProvider
 	logger          *log.Logger
 }
 
@@ -69,6 +72,7 @@ func newCIBAService(
 	actorProvider providers.ActorProvider,
 	resourceService providers.ResourceServerProvider,
 	governance providers.IdentityGovernanceProvider,
+	authzDetails providers.AuthorizationDetailProvider,
 	cfg oauthconfig.Config,
 ) CIBAServiceInterface {
 	return &cibaService{
@@ -79,6 +83,7 @@ func newCIBAService(
 		inboundClient:   actorProvider,
 		resourceService: resourceService,
 		governance:      governance,
+		authzDetails:    authzDetails,
 		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CIBAService")),
 	}
 }
@@ -111,15 +116,28 @@ func (s *cibaService) InitiateBackchannelAuth(
 
 	expiresIn := resolveExpiresIn(request.RequestedExpiry)
 
+	requestedDetails, encodedDetails, errResp, err := oauth2utils.PrepareAuthorizationDetails(
+		ctx, s.authzDetails, json.RawMessage(request.AuthorizationDetails))
+	if errResp != nil {
+		return nil, &CIBAError{Code: errResp.Error, Message: errResp.ErrorDescription}
+	}
+	if err != nil {
+		s.logger.Error(ctx, "Failed to encode authorization details", log.Error(err))
+		return nil, &CIBAError{
+			Code:    oauth2const.ErrorServerError,
+			Message: "Failed to process backchannel authentication request",
+		}
+	}
+
 	// Separate OIDC (standard) and permission scopes — mirrors the authorization_code path exactly.
 	// auth code uses SeparateOIDCAndNonOIDCScopes + ResolveAndDownscope; no scopeValidator needed.
 	oidcScopes, permissionScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(request.Scope, oauthApp.ScopeClaims)
 
 	// Bind the request to a single target resource server before consent, mirroring authorization_code.
-	// OIDC-only (no resource, no permission scopes) stays unbound; a permission-bearing request resolves
-	// an explicit resource or the configured default, rejecting with invalid_target when none applies.
+	// OIDC-only (no resource, permission scopes or authorization details) stays unbound; any other request
+	// resolves an explicit resource or the configured default, rejecting with invalid_target when none applies.
 	targetRS, rsErr := resourceindicators.ResolveAudienceBinding(
-		ctx, s.resourceService, request.Resources, permissionScopes, false)
+		ctx, s.resourceService, request.Resources, permissionScopes, len(requestedDetails) > 0)
 	if rsErr != nil {
 		return nil, &CIBAError{Code: rsErr.Error, Message: rsErr.ErrorDescription}
 	}
@@ -163,6 +181,9 @@ func (s *cibaService) InitiateBackchannelAuth(
 	}
 	if request.ACRValues != "" {
 		runtimeData[flowcm.RuntimeKeyRequestedAuthClasses] = request.ACRValues
+	}
+	if len(requestedDetails) > 0 {
+		runtimeData[flowcm.RuntimeKeyRequestedAuthorizationDetails] = encodedDetails
 	}
 
 	loginHint := request.LoginHint
@@ -208,6 +229,8 @@ func (s *cibaService) InitiateBackchannelAuth(
 		Resources:      effectiveResources,
 		State:          CIBAStatePending,
 		ExpiryTime:     now.Add(time.Duration(expiresIn) * time.Second),
+
+		AuthorizationDetails: requestedDetails,
 	}
 	if storeErr := s.store.Add(ctx, cibaRequest); storeErr != nil {
 		s.logger.Error(ctx, "Failed to store CIBA authentication request", log.Error(storeErr))
@@ -357,8 +380,23 @@ func (s *cibaService) handleSuccessCallback(ctx context.Context, record *CIBAAut
 		append(utils.ParseStringArray(record.StandardScopes, " "), permissionScopeList...),
 		" ")
 
+	// A flow that did not decide on the requested details is denied rather than issuing unapproved ones.
+	var grantedDetails []providers.AuthorizationDetail
+	if len(record.AuthorizationDetails) > 0 {
+		if claims.grantedAuthorizationDetails == nil {
+			s.logger.Debug(ctx, "The flow did not record a decision on the authorization details")
+			const description = "Authorization details were not approved"
+			if err := s.store.MarkFailed(ctx, authReqID, CIBAStateDenied, description); err != nil {
+				s.logger.Error(ctx, "Failed to deny CIBA authentication request", log.Error(err))
+			}
+			return &CIBAError{Code: oauth2const.ErrorAccessDenied, Message: description}
+		}
+		grantedDetails = claims.grantedAuthorizationDetails
+	}
+
 	if markErr := s.store.MarkAuthenticated(ctx, authReqID, claims.userID, authorizedScopes,
-		claims.attributeCacheID, claims.completedACR, claims.sessionID, authTime); markErr != nil {
+		claims.attributeCacheID, claims.completedACR, claims.sessionID, authTime,
+		grantedDetails); markErr != nil {
 		s.logger.Error(ctx, "Failed to mark CIBA authentication request as authenticated",
 			log.Error(markErr))
 		return &CIBAError{
@@ -402,7 +440,14 @@ func (s *cibaService) handleFailedCallback(
 		log.String("state", string(targetState)),
 		log.String("flowErrorType", claims.ErrorType),
 		log.String("flowErrorDescription", claims.Description))
-	if err := s.UpdateState(ctx, authReqID, targetState); err != nil {
+	if err := s.store.MarkFailed(ctx, authReqID, targetState, ""); err != nil {
+		if errors.Is(err, ErrCIBARequestNotPending) {
+			s.logger.Debug(ctx, "Backchannel authentication request left the pending state before it could be failed")
+			return &CIBAError{
+				Code:    oauth2const.ErrorInvalidRequest,
+				Message: "Backchannel authentication request is not pending",
+			}
+		}
 		s.logger.Error(ctx, "Failed to update CIBA authentication request state",
 			log.String("state", string(targetState)), log.Error(err))
 		return &CIBAError{
@@ -694,6 +739,19 @@ func decodeAttributesFromAssertion(assertion string) (assertionClaims, time.Time
 
 	if v, ok := payload[oauth2const.ClaimSessionID].(string); ok {
 		claims.sessionID = v
+	}
+
+	// Read from the claim's JSON text so numbers are kept exactly.
+	grantedClaim, hasGranted, err := jwt.DecodeJWTClaim(assertion, oauth2const.ClaimGrantedAuthorizationDetails)
+	if err != nil {
+		return assertionClaims{}, time.Time{}, err
+	}
+	if hasGranted {
+		granted, err := authzdetailcommon.GrantedFromClaim(grantedClaim)
+		if err != nil {
+			return assertionClaims{}, time.Time{}, err
+		}
+		claims.grantedAuthorizationDetails = granted
 	}
 
 	if v, ok := payload[flowcm.ClaimFlowErrorType].(string); ok {

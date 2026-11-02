@@ -100,6 +100,8 @@ type RefreshTokenBuildContext struct {
 	// so a grant cannot outlive its original issuance window. Zero starts a fresh validity period,
 	// which is what first issuance does.
 	ExpiresAt int64
+	// AuthorizationDetails, when set, is carried on the refresh token for the access tokens minted on refresh.
+	AuthorizationDetails []providers.AuthorizationDetail
 }
 
 // IDJAGBuildContext contains all the information needed to build an ID-JAG (Identity Assertion
@@ -196,6 +198,14 @@ type RefreshTokenClaims struct {
 	// Empty when the grant had no session or the token predates sid issuance.
 	SessionID string
 	Claims    map[string]interface{}
+	// AuthorizationDetails holds the granted authorization details carried on the refresh token.
+	AuthorizationDetails []providers.AuthorizationDetail
+}
+
+// grantedTypeVersion identifies the type definition (ID and version) a refresh token's details were approved on.
+type grantedTypeVersion struct {
+	TypeID  string `json:"id"`
+	Version int    `json:"version"`
 }
 
 // MappedAuthorization is server-resolved authorization context for a subject token's issuing

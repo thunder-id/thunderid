@@ -6,6 +6,8 @@ package model
 
 import (
 	"encoding/json"
+
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // TokenRequest represents the OAuth2 token request.
@@ -105,6 +107,9 @@ type TokenResponseDTO struct {
 	// IssuesRefreshToken marks a response whose grant path issues a refresh token although its grant
 	// type does not otherwise, subject to the client allowing the refresh token grant.
 	IssuesRefreshToken bool
+	// RefreshableAuthorizationDetails holds the granted details the refresh token keeps: those of reusable types
+	// still on the version they were granted on. It is never returned to the client.
+	RefreshableAuthorizationDetails []providers.AuthorizationDetail
 }
 
 // SessionData is one SSO session a client holds: the handle that resumes it, keyed by the identifier of

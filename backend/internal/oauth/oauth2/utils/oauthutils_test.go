@@ -15,12 +15,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
+	authzdetailcommon "github.com/thunder-id/thunderid/internal/authzdetail/common"
 	authzdetailexec "github.com/thunder-id/thunderid/internal/authzdetail/exec"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/authzdetailprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 )
 
@@ -1996,6 +1998,68 @@ func (suite *OAuth2UtilsTestSuite) TestIsClientHeld_NothingToCheck() {
 	}
 }
 
+func (suite *OAuth2UtilsTestSuite) TestPrepareAuthorizationDetails() {
+	raw := json.RawMessage(`[{"type":"payment_initiation","amount":45.00}]`)
+	prepared := []providers.AuthorizationDetail{{ID: "d-1", Type: "payment_initiation", TypeID: "type-2",
+		TypeVersion: 2, Requested: raw}}
+	encoded, err := json.Marshal(prepared)
+	suite.Require().NoError(err)
+
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	authzDetails.EXPECT().PrepareAuthorizationDetails(context.Background(), raw).Return(prepared, nil)
+
+	details, gotEncoded, errResp, err := PrepareAuthorizationDetails(context.Background(), authzDetails, raw)
+
+	suite.NoError(err)
+	suite.Nil(errResp)
+	suite.Equal(prepared, details)
+	suite.Equal(string(encoded), gotEncoded)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestPrepareAuthorizationDetails_Refused() {
+	raw := json.RawMessage(`[{"type":"unknown"}]`)
+	svcErr := authzdetailexec.ErrorMalformedAuthorizationDetails.WithParams(map[string]string{"reason": "bad"})
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	authzDetails.EXPECT().PrepareAuthorizationDetails(context.Background(), raw).Return(nil, svcErr)
+
+	details, encoded, errResp, err := PrepareAuthorizationDetails(context.Background(), authzDetails, raw)
+
+	suite.NoError(err)
+	suite.Equal(AuthorizationDetailsErrorResponse(svcErr), errResp)
+	suite.Equal(constants.ErrorInvalidAuthorizationDetails, errResp.Error)
+	suite.Nil(details)
+	suite.Empty(encoded)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestPrepareAuthorizationDetails_EncodeFailure() {
+	raw := json.RawMessage(`[{"type":"payment_initiation"}]`)
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	authzDetails.EXPECT().PrepareAuthorizationDetails(context.Background(), raw).Return(
+		[]providers.AuthorizationDetail{{Type: "payment_initiation", Requested: json.RawMessage(`{`)}}, nil)
+
+	details, encoded, errResp, err := PrepareAuthorizationDetails(context.Background(), authzDetails, raw)
+
+	suite.Error(err)
+	suite.Nil(errResp)
+	suite.Nil(details)
+	suite.Empty(encoded)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestPrepareAuthorizationDetails_Absent() {
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+
+	for name, raw := range map[string]json.RawMessage{"Nil": nil, "Empty": json.RawMessage("")} {
+		suite.Run(name, func() {
+			details, encoded, errResp, err := PrepareAuthorizationDetails(context.Background(), authzDetails, raw)
+
+			suite.NoError(err)
+			suite.Nil(errResp)
+			suite.Nil(details)
+			suite.Empty(encoded)
+		})
+	}
+}
+
 func (suite *OAuth2UtilsTestSuite) TestAuthorizationDetailsErrorResponse() {
 	testCases := []struct {
 		name     string
@@ -2004,12 +2068,12 @@ func (suite *OAuth2UtilsTestSuite) TestAuthorizationDetailsErrorResponse() {
 	}{
 		{
 			name: "InvalidDetails",
-			svcErr: authzdetailexec.ErrorAuthorizationDetailNotAllowed.WithParams(
-				map[string]string{"index": "1", "reason": "field amount is above its maximum"}),
+			svcErr: authzdetailexec.ErrorAuthorizationDetailExceedsGrant.WithParams(
+				map[string]string{"index": "1", "reason": "field amount exceeds the granted value"}),
 			expected: &model.ErrorResponse{
 				Error: constants.ErrorInvalidAuthorizationDetails,
-				ErrorDescription: "authorization_details entry 1 is not allowed: " +
-					"field amount is above its maximum",
+				ErrorDescription: "authorization_details entry 1 exceeds the grant: " +
+					"field amount exceeds the granted value",
 			},
 		},
 		{
@@ -2032,7 +2096,7 @@ func (suite *OAuth2UtilsTestSuite) TestAuthorizationDetailsErrorResponse() {
 		},
 		{
 			name:   "ServerError",
-			svcErr: &authzdetailexec.ErrorProcessorUnavailable,
+			svcErr: &authzdetailcommon.ErrorProcessorUnavailable,
 			expected: &model.ErrorResponse{
 				Error:            constants.ErrorServerError,
 				ErrorDescription: "Failed to process authorization details",

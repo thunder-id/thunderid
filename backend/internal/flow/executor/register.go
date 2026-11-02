@@ -253,6 +253,7 @@ type ExecutorDependencies struct {
 	ObservabilitySvc       providers.ObservabilityProvider
 	IdentityGovernance     providers.IdentityGovernanceProvider
 	ArtifactLifetime       artifactLifetimeResolver
+	AuthzDetailProvider    providers.AuthorizationDetailProvider
 	tokenLeeway            time.Duration
 }
 
@@ -316,6 +317,10 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 			reg.RegisterExecutor(ExecutorNameAuthorization, newAuthorizationExecutor(
 				deps.FlowFactory, deps.AuthZService, deps.EntityProvider, deps.AuthnProvider,
 				deps.ResourceService))
+		},
+		ExecutorNameAuthorizationDetail: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameAuthorizationDetail, newAuthorizationDetailExecutor(
+				deps.FlowFactory, deps.AuthzDetailProvider, deps.AuthnProvider))
 		},
 		ExecutorNameHTTPRequest: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameHTTPRequest, newHTTPRequestExecutor(deps.FlowFactory, deps.OUService,

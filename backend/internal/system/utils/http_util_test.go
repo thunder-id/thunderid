@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package utils
@@ -610,8 +610,11 @@ func (suite *HTTPUtilTestSuite) TestFilterSensitiveQueryParams_StripsCredentials
 		"id_token_hint":         {"eyJhbGc..."},
 		"login_hint":            {"alice@example.com"},
 		"scope":                 {"openid", "profile"},
+		"authorization_details": {`[{"type":"pay"}]`},
 	})
 
+	_, hasDetails := filtered["authorization_details"]
+	assert.False(suite.T(), hasDetails, "the raw authorization_details must be stripped")
 	_, hasSecret := filtered["client_secret"]
 	_, hasAssertion := filtered["client_assertion"]
 	_, hasAssertionType := filtered["client_assertion_type"]

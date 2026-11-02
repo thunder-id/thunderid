@@ -126,9 +126,16 @@ paths:
           description: >-
             Resource indicator per RFC 8707 (absolute URI, no fragment). Only one value is
             supported; requests with multiple resource values are rejected with invalid_target.
-            When omitted from a permission-bearing request, the configured
-            defaultResourceServer is used. OIDC-only and scopeless requests use the
+            When omitted from a request carrying permission scopes or authorization details, the
+            configured defaultResourceServer is used. OIDC-only and scopeless requests use the
             client_id audience.
+        - name: authorization_details
+          in: query
+          required: false
+          schema:
+            type: string
+          description: >-
+            RFC 9396 authorization details: a JSON array of objects, each naming a registered `type`. Each object is validated against its type (its schema and limits; a member the type does not declare is refused, the RFC 9396 common fields included), and an invalid one is refused with `invalid_authorization_details`. Details carry no resource server: the access token audience comes from `resource`, or the default resource server when it is omitted, as for permission scopes.
         - name: acr_values
           in: query
           required: false
@@ -287,13 +294,17 @@ paths:
 
         RFC 8707 resource indicators bind the request to a single resource server before user
         authorization. A valid `resource` binds the request to that resource server; when omitted from
-        a permission-bearing request the configured `defaultResourceServer` is used, and a
-        permission-bearing request with no resource and no default is rejected with `invalid_target`.
+        a request carrying permission scopes or authorization details the configured
+        `defaultResourceServer` is used, and such a request with no resource and no default is
+        rejected with `invalid_target`.
         OIDC-only requests without a resource remain valid and keep the `client_id` audience. Multiple
         `resource` values, including duplicates, are rejected with `invalid_target`. The resulting
         access token has the bound resource server identifier as its sole `aud`, and its permissions
         are limited to those defined by that resource server. A `resource` optionally supplied when
         polling the token endpoint must exactly match the bound resource server.
+
+        RFC 9396 `authorization_details` may be sent here, as RFC 9396 section 3 allows for
+        backchannel authentication requests. See the `authorization_details` field.
       tags:
         - Backchannel Authentication
       requestBody:
@@ -325,7 +336,7 @@ paths:
         "400":
           description: >-
             Bad Request — invalid_request, invalid_scope, invalid_target, unknown_user_id,
-            invalid_binding_message, or unauthorized_client.
+            invalid_binding_message, invalid_authorization_details, or unauthorized_client.
           content:
             application/json:
               schema:
@@ -1060,7 +1071,7 @@ components:
         authorization_details:
           type: string
           description: >-
-            RFC 9396 authorization details as a JSON array. On `client_credentials` it is a new request: every requested type must have a processor, the token carries only the details the processors approve, and a request whose details are all refused fails with `invalid_authorization_details`. The `authorization_code`, `urn:openid:params:grant-type:ciba` and `refresh_token` grants ignore it. Other grants refuse it with `invalid_authorization_details`.
+            RFC 9396 authorization details as a JSON array. On the `authorization_code`, `urn:openid:params:grant-type:ciba` and `refresh_token` grants it modifies the grant (RFC 9396 section 6): each entry is a whole detail object that must be an allowed modification of a distinct granted detail of its type, and the access token carries only the entries. An entry may leave out the fields the processor supplied, which are taken from the granted detail. When the request leaves out `authorization_details`, the token response carries the whole grant, including any values the user changed at consent, which a later request (for example on refresh) may narrow. On `client_credentials` it is a new request: every requested type must have a processor, the token carries only the details the processors approve, and a request whose details are all refused fails with `invalid_authorization_details`. Other grants refuse it with `invalid_authorization_details`.
 
     TokenResponse:
       type: object
@@ -1141,6 +1152,10 @@ components:
           description: >-
             Resource indicator per RFC 8707 (absolute URI). Only one value is supported; multiple
             resource values are rejected with invalid_target.
+        authorization_details:
+          type: string
+          description: >-
+            RFC 9396 authorization details: a JSON array of objects, each naming a registered `type`. Each object is validated against its type (its schema and limits; a member the type does not declare is refused, the RFC 9396 common fields included), and an invalid one is refused with `invalid_authorization_details`. Details carry no resource server: the access token audience comes from `resource`, or the default resource server when it is omitted, as for permission scopes.
         acr_values:
           type: string
         claims:
@@ -1558,9 +1573,9 @@ components:
           description: >-
             Resource indicator per RFC 8707 (absolute URI, no fragment). Only one value is
             supported; requests with multiple resource values, including duplicates, are rejected
-            with invalid_target. When omitted from a permission-bearing request, the configured
-            defaultResourceServer is used; a permission-bearing request with no resource and no
-            default is rejected with invalid_target. OIDC-only requests use the client_id audience.
+            with invalid_target. When omitted from a request carrying permission scopes or
+            authorization details, the configured defaultResourceServer is used; such a request with
+            no resource and no default is rejected with invalid_target. OIDC-only requests use the client_id audience.
         binding_message:
           type: string
           description: >-
@@ -1572,6 +1587,10 @@ components:
         acr_values:
           type: string
           description: Space-separated list of requested Authentication Context Class Reference values.
+        authorization_details:
+          type: string
+          description: >-
+            RFC 9396 authorization details: a JSON array of objects, each naming a registered `type`. Each object is validated against its type (its schema and limits; a member the type does not declare is refused, the RFC 9396 common fields included), and an invalid one is refused with `invalid_authorization_details`. Details carry no resource server: the access token audience comes from `resource`, or the default resource server when it is omitted, as for permission scopes. The details are validated before the user is notified. The user's login flow processes them and asks the user to approve them, as on the authorization code path, so the flow needs the consent step, preceded by the authorization detail step when a requested type declares a processor. The token response to the poll carries the approved details, and the polling token request may modify them. When the user's flow refuses them, the poll returns `access_denied` with the generic denial description; the processor's reason is not returned on CIBA.
     BackchannelAuthResponse:
       type: object
       required:

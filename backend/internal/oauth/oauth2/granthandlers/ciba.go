@@ -29,6 +29,7 @@ type cibaGrantHandler struct {
 	attributeCache     attributecache.AttributeCacheServiceInterface
 	resourceService    providers.ResourceServerProvider
 	enforcementService revocation.EnforcementServiceInterface
+	authzDetails       providers.AuthorizationDetailProvider
 	logger             *log.Logger
 }
 
@@ -39,6 +40,7 @@ func newCIBAGrantHandler(
 	attributeCache attributecache.AttributeCacheServiceInterface,
 	resourceService providers.ResourceServerProvider,
 	enforcementService revocation.EnforcementServiceInterface,
+	authzDetails providers.AuthorizationDetailProvider,
 ) GrantHandlerInterface {
 	return &cibaGrantHandler{
 		cibaService:        cibaService,
@@ -46,6 +48,7 @@ func newCIBAGrantHandler(
 		attributeCache:     attributeCache,
 		resourceService:    resourceService,
 		enforcementService: enforcementService,
+		authzDetails:       authzDetails,
 		logger:             log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CIBAGrantHandler")),
 	}
 }
@@ -148,9 +151,13 @@ func (h *cibaGrantHandler) HandleGrant(ctx context.Context, tokenRequest *model.
 	case ciba.CIBAStatePending:
 		return nil, h.handlePending(ctx, record, now)
 	case ciba.CIBAStateDenied:
+		description := record.FailureDescription
+		if description == "" {
+			description = "The user denied the authentication request"
+		}
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorAccessDenied,
-			ErrorDescription: "The user denied the authentication request",
+			ErrorDescription: description,
 		}
 	case ciba.CIBAStateFailed:
 		return nil, &model.ErrorResponse{
@@ -163,7 +170,7 @@ func (h *cibaGrantHandler) HandleGrant(ctx context.Context, tokenRequest *model.
 			ErrorDescription: "The authentication request has already been used",
 		}
 	case ciba.CIBAStateAuthenticated:
-		return h.issueTokens(ctx, record, oauthApp)
+		return h.issueTokens(ctx, tokenRequest, record, oauthApp)
 	default:
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorInvalidGrant,
@@ -195,8 +202,8 @@ func (h *cibaGrantHandler) handlePending(ctx context.Context, record *ciba.CIBAA
 }
 
 // issueTokens builds the access, refresh, and (when openid) ID tokens, then marks the request consumed.
-func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAuthRequest,
-	oauthApp *providers.OAuthClient) (*model.TokenResponseDTO, *model.ErrorResponse) {
+func (h *cibaGrantHandler) issueTokens(ctx context.Context, tokenRequest *model.TokenRequest,
+	record *ciba.CIBAAuthRequest, oauthApp *providers.OAuthClient) (*model.TokenResponseDTO, *model.ErrorResponse) {
 	// Use AuthorizedScopes (StandardScopes + authorized permissions from assertion) when available.
 	// Falls back to StandardScopes (OIDC only) if callback hasn't been processed yet.
 	scopeStr := record.AuthorizedScopes
@@ -224,18 +231,30 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAut
 		attrs = cacheEntry.Attributes
 	}
 
+	authorizationDetails, errResp := modifyGrantedAuthorizationDetails(ctx, h.authzDetails,
+		record.AuthorizationDetails, tokenRequest.AuthorizationDetails)
+	if errResp != nil {
+		return nil, errResp
+	}
+	refreshableDetails, errResp := refreshableAuthorizationDetails(ctx, h.authzDetails,
+		record.AuthorizationDetails)
+	if errResp != nil {
+		return nil, errResp
+	}
+
 	userSubConfig := oauthApp.UserAccessTokenConfig()
 	accessTokenCtx := &tokenservice.AccessTokenBuildContext{
-		Subject:           record.UserID,
-		Audiences:         accessTokenAudiences,
-		ClientID:          oauthApp.ClientID,
-		Scopes:            accessTokenScopes,
-		SubjectAttributes: tokenservice.FilterAttributesByAllowList(attrs, userSubConfig),
-		AttributeCacheID:  record.AttributeCacheID,
-		GrantType:         string(providers.GrantTypeCIBA),
-		OAuthApp:          oauthApp,
-		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
-		DPoPJkt:           dpop.GetJkt(ctx),
+		Subject:              record.UserID,
+		Audiences:            accessTokenAudiences,
+		ClientID:             oauthApp.ClientID,
+		Scopes:               accessTokenScopes,
+		SubjectAttributes:    tokenservice.FilterAttributesByAllowList(attrs, userSubConfig),
+		AttributeCacheID:     record.AttributeCacheID,
+		GrantType:            string(providers.GrantTypeCIBA),
+		OAuthApp:             oauthApp,
+		ValidityPeriod:       userSubConfig.ValidityPeriodOrZero(),
+		DPoPJkt:              dpop.GetJkt(ctx),
+		AuthorizationDetails: authorizationDetails,
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		accessTokenCtx.ActorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}
@@ -252,8 +271,9 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAut
 	accessToken.OriginalAudiences = accessTokenAudiences
 
 	tokenResponse := &model.TokenResponseDTO{
-		AccessToken: *accessToken,
-		SessionID:   record.SessionID,
+		AccessToken:                     *accessToken,
+		SessionID:                       record.SessionID,
+		RefreshableAuthorizationDetails: refreshableDetails,
 	}
 
 	if slices.Contains(accessTokenScopes, constants.ScopeOpenID) {

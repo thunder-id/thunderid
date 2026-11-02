@@ -5,10 +5,13 @@ package granthandlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"testing"
 	"time"
+
+	authzdetailexec "github.com/thunder-id/thunderid/internal/authzdetail/exec"
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -30,12 +33,18 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
+	"github.com/thunder-id/thunderid/tests/mocks/authzdetailprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/revocationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 )
+
+// noAuthzDetails refuses every detail; the server runtime must be initialized first.
+func noAuthzDetails() providers.AuthorizationDetailProvider {
+	return authzdetailexec.Initialize(nil, time.Second)
+}
 
 const (
 	oidcReadWriteScopes         = "openid read write"
@@ -118,6 +127,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) SetupTest() {
 		Return([]string{}, nil).Maybe()
 
 	suite.handler = &authorizationCodeGrantHandler{
+		authzDetails:    noAuthzDetails(),
 		tokenBuilder:    suite.mockTokenBuilder,
 		authzService:    suite.mockAuthzService,
 		attributeCache:  suite.mockAttrCacheService,
@@ -185,7 +195,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) stubDefaultResourceServer()
 
 func (suite *AuthorizationCodeGrantHandlerTestSuite) TestNewAuthorizationCodeGrantHandler() {
 	handler := newAuthorizationCodeGrantHandler(suite.mockAuthzService, suite.mockTokenBuilder,
-		suite.mockAttrCacheService, suite.mockResourceService, suite.mockEnforcement, time.Hour)
+		suite.mockAttrCacheService, suite.mockResourceService, suite.mockEnforcement, time.Hour, noAuthzDetails())
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
 }
@@ -365,6 +375,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_ActorClaim(
 			suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
 			suite.stubDefaultResourceServer()
 			suite.handler = &authorizationCodeGrantHandler{
+				authzDetails:    noAuthzDetails(),
 				tokenBuilder:    suite.mockTokenBuilder,
 				authzService:    suite.mockAuthzService,
 				attributeCache:  suite.mockAttrCacheService,
@@ -445,6 +456,68 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_PassesCodeS
 
 	assert.Nil(suite.T(), err)
 	suite.mockTokenBuilder.AssertExpectations(suite.T())
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_PassesCodeAuthorizationDetailsToTheBuilder() {
+	details := json.RawMessage(testPaymentValues)
+	authCode := suite.testAuthzCode
+	authCode.AuthorizationDetails = testPaymentDetails
+
+	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
+		Return(&authCode, nil)
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(tokenCtx *tokenservice.AccessTokenBuildContext) bool {
+			return string(tokenCtx.AuthorizationDetails) == testPaymentValues
+		})).Return(&model.TokenDTO{
+		Token:                "test-jwt-token",
+		TokenType:            constants.TokenTypeBearer,
+		IssuedAt:             time.Now().Unix(),
+		ExpiresIn:            3600,
+		ClientID:             testClientID,
+		Subject:              testUserID,
+		AuthorizationDetails: details,
+	}, nil)
+
+	result, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), details, result.AccessToken.AuthorizationDetails)
+	suite.mockTokenBuilder.AssertExpectations(suite.T())
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_RefreshCarriesOnlyReusableDetails() {
+	details := json.RawMessage(`[{"type":"payment_initiation"},{"type":"account_information"}]`)
+	account := providers.AuthorizationDetail{Type: "account_information", TypeID: "type-3", TypeVersion: 1,
+		Value: json.RawMessage(`{"type":"account_information"}`), Admitted: true}
+	refreshable := []providers.AuthorizationDetail{account}
+	authCode := suite.testAuthzCode
+	authCode.AuthorizationDetails = []providers.AuthorizationDetail{{Type: "payment_initiation", TypeID: "type-2",
+		TypeVersion: 2, Value: json.RawMessage(`{"type":"payment_initiation"}`), Admitted: true}, account}
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	authzDetails.EXPECT().RefreshableAuthorizationDetails(mock.Anything, authCode.AuthorizationDetails).
+		Return(refreshable, nil).Once()
+	handler := newAuthorizationCodeGrantHandler(
+		suite.mockAuthzService, suite.mockTokenBuilder, suite.mockAttrCacheService, suite.mockResourceService,
+		suite.mockEnforcement, time.Hour, authzDetails)
+	suite.mockEnforcement.EXPECT().EnsureNotRevoked(mock.Anything, mock.Anything).Return(nil)
+
+	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
+		Return(&authCode, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(tokenCtx *tokenservice.AccessTokenBuildContext) bool {
+			return string(tokenCtx.AuthorizationDetails) == string(details)
+		})).Return(&model.TokenDTO{
+		Token: "test-jwt-token", TokenType: constants.TokenTypeBearer, IssuedAt: time.Now().Unix(),
+		ExpiresIn: 3600, ClientID: testClientID, Subject: testUserID, AuthorizationDetails: details,
+	}, nil)
+
+	result, err := handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), details, result.AccessToken.AuthorizationDetails)
+	assert.Equal(suite.T(), refreshable, result.RefreshableAuthorizationDetails,
+		"the refresh token keeps only the renewed details")
 }
 
 func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_CarriesCodeCorrelationID() {
@@ -698,6 +771,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_WithGroups(
 			suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
 			suite.stubDefaultResourceServer()
 			suite.handler = &authorizationCodeGrantHandler{
+				authzDetails:    noAuthzDetails(),
 				tokenBuilder:    suite.mockTokenBuilder,
 				authzService:    suite.mockAuthzService,
 				attributeCache:  suite.mockAttrCacheService,
@@ -898,6 +972,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_WithEmptyGr
 			suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
 			suite.stubDefaultResourceServer()
 			suite.handler = &authorizationCodeGrantHandler{
+				authzDetails:    noAuthzDetails(),
 				tokenBuilder:    suite.mockTokenBuilder,
 				authzService:    suite.mockAuthzService,
 				attributeCache:  suite.mockAttrCacheService,

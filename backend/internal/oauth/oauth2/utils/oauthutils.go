@@ -32,6 +32,26 @@ func ValidateAuthorizationDetails(ctx context.Context,
 	return details, nil
 }
 
+// PrepareAuthorizationDetails prepares a request's validated authorization_details for a flow and encodes them
+// for its runtime data. A refusal is mapped to an OAuth error; a failure to encode is returned as an error.
+// Absent details yield no details and an empty encoding.
+func PrepareAuthorizationDetails(ctx context.Context,
+	authzDetails providers.AuthorizationDetailProvider,
+	raw json.RawMessage) ([]providers.AuthorizationDetail, string, *model.ErrorResponse, error) {
+	if len(raw) == 0 {
+		return nil, "", nil, nil
+	}
+	details, svcErr := authzDetails.PrepareAuthorizationDetails(ctx, raw)
+	if svcErr != nil {
+		return nil, "", AuthorizationDetailsErrorResponse(svcErr), nil
+	}
+	encoded, err := json.Marshal(details)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	return details, string(encoded), nil, nil
+}
+
 // AuthorizationDetailsErrorResponse maps an authorization details error to an OAuth error response.
 func AuthorizationDetailsErrorResponse(svcErr *tidcommon.ServiceError) *model.ErrorResponse {
 	if svcErr.Type != tidcommon.ClientErrorType {

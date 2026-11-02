@@ -83,7 +83,7 @@ func (s *TypeAPITestSuite) TestCreateGetUpdateDelete() {
 	s.Equal(created.ID, got.ID)
 	s.Equal("Book {{route}}", got.ConsentTemplate)
 
-	// A name change keeps the version; a schema change moves it, since earlier approvals no longer apply.
+	// A name change keeps the version; a schema or reuse change moves it, since earlier approvals no longer apply.
 	renamed := typeRequest{Type: value, Name: "Flight", Schema: flightSchema, ConsentTemplate: "Book {{route}}",
 		Reuse: true}
 	updated := updateType(s.T(), created.ID, renamed)
@@ -93,6 +93,10 @@ func (s *TypeAPITestSuite) TestCreateGetUpdateDelete() {
 	renamed.Schema = json.RawMessage(`{"type":"object","properties":{"route":{"type":"string"}}}`)
 	updated = updateType(s.T(), created.ID, renamed)
 	s.Equal(2, updated.Version)
+
+	renamed.Reuse = false
+	updated = updateType(s.T(), created.ID, renamed)
+	s.Equal(3, updated.Version)
 
 	// A type changed this way is sent back as it was fetched.
 	fetched, err := json.Marshal(updated)

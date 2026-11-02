@@ -194,6 +194,10 @@ const (
 	// RuntimeKeyConsentedPermissions holds the space-separated permission scopes the user has consented to
 	// release to the client, as produced by the ConsentExecutor.
 	RuntimeKeyConsentedPermissions = "consented_permissions"
+	// RuntimeKeyRequestedAuthorizationDetails holds the requested RFC 9396 authorization details as JSON.
+	RuntimeKeyRequestedAuthorizationDetails = "requested_authorization_details"
+	// RuntimeKeyConsentedAuthorizationDetails holds the authorization details granted by consent as JSON.
+	RuntimeKeyConsentedAuthorizationDetails = "consented_authorization_details"
 	// RuntimeKeyRequiredEssentialAttributes holds the space-separated essential user attributes required for the flow.
 	RuntimeKeyRequiredEssentialAttributes = "required_essential_attributes"
 	// RuntimeKeyRequiredOptionalAttributes holds the space-separated optional user attributes required for the flow.

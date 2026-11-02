@@ -104,8 +104,8 @@ Use get_authorization_detail_type_by_id on an existing type to see a complete ex
 			`value cannot change.
 
 Use get_authorization_detail_type_by_id first to get the current definition, change it, and send ` +
-			`the complete definition back. The version increments when the schema or consent template changes, ` +
-			`or the processor is added or removed, and earlier approvals then no longer cover new requests.`,
+			`the complete definition back. The version increments when the schema, consent template or reuse ` +
+			`changes, or the processor is added or removed, and earlier approvals then no longer cover new requests.`,
 		InputSchema: tool.GenerateSchema[updateTypeInput](
 			withSchemaObject("The JSON Schema 2020-12 object schema of the type, with field "+
 				"policies."),

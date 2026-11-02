@@ -5,6 +5,7 @@ package executor
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -228,10 +229,11 @@ func addCorrelationClaim(jwtClaims map[string]interface{}, executionID string) {
 // replaced value would reach the authorization code and be reported as the event's subject, which is
 // the mapped-attribute disclosure these claims exist to avoid.
 var reservedAssertionClaims = map[string]bool{
-	oauth2const.ClaimSubjectID:     true,
-	oauth2const.ClaimSubjectType:   true,
-	oauth2const.ClaimCorrelationID: true,
-	oauth2const.ClaimSessionID:     true,
+	oauth2const.ClaimSubjectID:                   true,
+	oauth2const.ClaimSubjectType:                 true,
+	oauth2const.ClaimCorrelationID:               true,
+	oauth2const.ClaimSessionID:                   true,
+	oauth2const.ClaimGrantedAuthorizationDetails: true,
 }
 
 // addSubjectIdentityClaims carries the authenticated entity's resource ID and category onto the
@@ -349,6 +351,10 @@ func (a *authAssertExecutor) generateAuthAssertion(ctx *providers.NodeContext,
 	// authorizes the specific request it accompanies.
 	if authReqID, exists := ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID]; exists && authReqID != "" {
 		jwtClaims[oauth2const.ClaimAuthorizationRequestID] = authReqID
+	}
+
+	if granted, ok := ctx.RuntimeData[common.RuntimeKeyConsentedAuthorizationDetails]; ok && granted != "" {
+		jwtClaims[oauth2const.ClaimGrantedAuthorizationDetails] = json.RawMessage(granted)
 	}
 
 	addCorrelationClaim(jwtClaims, ctx.ExecutionID)

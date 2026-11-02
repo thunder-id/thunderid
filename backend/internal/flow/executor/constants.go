@@ -38,6 +38,7 @@ const (
 	ExecutorNameProvisioning                 = executormeta.ExecutorNameProvisioning
 	ExecutorNameAttributeCollect             = executormeta.ExecutorNameAttributeCollect
 	ExecutorNameAuthorization                = executormeta.ExecutorNameAuthorization
+	ExecutorNameAuthorizationDetail          = executormeta.ExecutorNameAuthorizationDetail
 	ExecutorNamePermissionValidator          = executormeta.ExecutorNamePermissionValidator
 	ExecutorNameOUCreation                   = executormeta.ExecutorNameOUCreation
 	ExecutorNameHTTPRequest                  = executormeta.ExecutorNameHTTPRequest
