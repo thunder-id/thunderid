@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"slices"
 	"time"
 
@@ -45,6 +46,8 @@ type AgentServiceInterface interface {
 		*tidcommon.ServiceError)
 	GetAgentList(ctx context.Context, limit, offset int, filters map[string]interface{},
 		includeDisplay bool) (*model.AgentListResponse, *tidcommon.ServiceError)
+	GetAgentListByProject(ctx context.Context, projectID string, limit, offset int,
+		filters map[string]interface{}, includeDisplay bool) (*model.AgentListResponse, *tidcommon.ServiceError)
 	UpdateAgent(ctx context.Context, agentID string, req *model.UpdateAgentRequest) (
 		*model.AgentCompleteResponse, *tidcommon.ServiceError)
 	DeleteAgent(ctx context.Context, agentID string) *tidcommon.ServiceError
@@ -57,6 +60,11 @@ type AgentServiceInterface interface {
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	SetDependencyRegistry(r resourcedependency.Registry)
+}
+
+// projectOUResolver finds the organization unit that a resource scoped to a project belongs to.
+type projectOUResolver interface {
+	ResolveProjectOU(ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError)
 }
 
 type agentService struct {
@@ -74,6 +82,8 @@ type agentService struct {
 	// commit together.
 	transactioner    providers.Transactioner
 	observabilitySvc observability.ObservabilityServiceInterface
+	// projectResolver is nil on a deployment that serves no projects.
+	projectResolver projectOUResolver
 }
 
 func newAgentService(
@@ -87,6 +97,7 @@ func newAgentService(
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	transactioner providers.Transactioner,
 	observabilitySvc observability.ObservabilityServiceInterface,
+	projectResolver projectOUResolver,
 ) AgentServiceInterface {
 	return &agentService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AgentService")),
@@ -100,6 +111,7 @@ func newAgentService(
 		entityTypeService:    entityTypeService,
 		transactioner:        transactioner,
 		observabilitySvc:     observabilitySvc,
+		projectResolver:      projectResolver,
 	}
 }
 
@@ -264,22 +276,13 @@ func (s *agentService) GetAgentList(ctx context.Context, limit, offset int,
 		return nil, &ErrorInvalidFilter
 	}
 
-	// Resolve the set of organization units the caller is authorized to list agents from.
-	accessible, svcErr := s.authzService.GetAccessibleResources(
-		ctx, security.ActionListAgents, security.ResourceTypeOU)
-	if svcErr != nil {
-		s.logger.Error(ctx, "Failed to resolve accessible resources for listing agents",
-			log.Any("error", svcErr))
-		return nil, &tidcommon.InternalServerError
+	if ouID != "" {
+		return s.listAccessibleAgentsInOU(ctx, ouID, limit, offset, includeDisplay, listQuery)
 	}
 
-	if ouID != "" {
-		// An organization unit the caller cannot list agents from has none to show.
-		if !accessible.AllAllowed && !slices.Contains(accessible.IDs, ouID) {
-			return s.buildListResponse(ctx, []providers.Entity{}, 0, 0, limit, offset, includeDisplay,
-				listQuery), nil
-		}
-		return s.listAgentsInOU(ctx, ouID, limit, offset, includeDisplay, listQuery)
+	accessible, svcErr := s.getAccessibleOUs(ctx)
+	if svcErr != nil {
+		return nil, svcErr
 	}
 
 	// Unfiltered path: system-level caller — return all agents.
@@ -289,6 +292,65 @@ func (s *agentService) GetAgentList(ctx context.Context, limit, offset int,
 
 	// Filtered path: return agents belonging to the accessible OUs.
 	return s.listAgentsByOUIDs(ctx, accessible.IDs, limit, offset, filters, includeDisplay, listQuery)
+}
+
+// GetAgentListByProject returns a paginated list of the agents an organization unit of the project
+// owns, followed by the ones shared into it. Without an organization unit filter it lists the
+// project's root organization unit. A project that does not exist, or an organization unit outside
+// it, has none.
+func (s *agentService) GetAgentListByProject(ctx context.Context, projectID string, limit, offset int,
+	filters map[string]interface{}, includeDisplay bool) (*model.AgentListResponse, *tidcommon.ServiceError) {
+	if svcErr := validatePaginationParams(limit, offset); svcErr != nil {
+		return nil, svcErr
+	}
+	if limit == 0 {
+		limit = 30
+	}
+
+	listQuery := "&" + projectIDQueryParam + "=" + url.QueryEscape(projectID) +
+		sysutils.FilterQueryParam(filters) + sysutils.DisplayQueryParam(includeDisplay)
+	ouID, rest, err := filter.SplitOUIDFilter(filters)
+	if err != nil || len(rest) > 0 {
+		return nil, &ErrorInvalidFilter
+	}
+
+	ouID, svcErr := s.resolveProjectOU(ctx, projectID, ouID)
+	if svcErr != nil {
+		if svcErr.Type == tidcommon.ClientErrorType {
+			return s.buildListResponse(ctx, []providers.Entity{}, 0, 0, limit, offset, includeDisplay,
+				listQuery), nil
+		}
+		return nil, svcErr
+	}
+	return s.listAccessibleAgentsInOU(ctx, ouID, limit, offset, includeDisplay, listQuery)
+}
+
+// getAccessibleOUs resolves the set of organization units the caller is authorized to list agents from.
+func (s *agentService) getAccessibleOUs(ctx context.Context) (
+	*sysauthz.AccessibleResources, *tidcommon.ServiceError) {
+	accessible, svcErr := s.authzService.GetAccessibleResources(
+		ctx, security.ActionListAgents, security.ResourceTypeOU)
+	if svcErr != nil {
+		s.logger.Error(ctx, "Failed to resolve accessible resources for listing agents",
+			log.Any("error", svcErr))
+		return nil, &tidcommon.InternalServerError
+	}
+	return accessible, nil
+}
+
+// listAccessibleAgentsInOU lists the agents of an organization unit the caller can list agents from.
+// An organization unit the caller cannot list agents from has none to show.
+func (s *agentService) listAccessibleAgentsInOU(ctx context.Context, ouID string, limit, offset int,
+	includeDisplay bool, listQuery string) (*model.AgentListResponse, *tidcommon.ServiceError) {
+	accessible, svcErr := s.getAccessibleOUs(ctx)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if !accessible.AllAllowed && !slices.Contains(accessible.IDs, ouID) {
+		return s.buildListResponse(ctx, []providers.Entity{}, 0, 0, limit, offset, includeDisplay,
+			listQuery), nil
+	}
+	return s.listAgentsInOU(ctx, ouID, limit, offset, includeDisplay, listQuery)
 }
 
 // listAgentsInOU lists the agents an organization unit owns, followed by the ones shared into it.
@@ -833,6 +895,15 @@ func (s *agentService) ValidateAgent(ctx context.Context, agent *providers.Agent
 		}
 		agent.OUID = ou.ID
 	}
+	// A project places the agent in its root organization unit, or checks that the one named
+	// belongs to it.
+	if agent.ProjectID != "" {
+		ouID, svcErr := s.resolveProjectOU(ctx, agent.ProjectID, agent.OUID)
+		if svcErr != nil {
+			return "", "", inboundmodel.InboundClient{}, svcErr
+		}
+		agent.OUID = ouID
+	}
 	if svcErr := s.validateOUExists(ctx, agent.OUID); svcErr != nil {
 		return "", "", inboundmodel.InboundClient{}, svcErr
 	}
@@ -940,6 +1011,32 @@ func (s *agentService) validateOUExists(ctx context.Context, ouID string) *tidco
 	return nil
 }
 
+// resolveProjectOU returns the organization unit of the project that an agent belongs to: the
+// project's root organization unit when ouID is empty, or ouID when it is in the project. It returns
+// ErrorInvalidProject when no such project exists, ErrorOUNotInProject when the organization unit is
+// outside the project, and ErrorOrganizationUnitNotFound when the organization unit does not exist.
+func (s *agentService) resolveProjectOU(
+	ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError) {
+	if projectID == "" || s.projectResolver == nil {
+		return "", &ErrorInvalidProject
+	}
+	resolved, svcErr := s.projectResolver.ResolveProjectOU(ctx, projectID, ouID)
+	if svcErr == nil {
+		return resolved, nil
+	}
+	if svcErr.Type != tidcommon.ClientErrorType {
+		return "", &tidcommon.InternalServerError
+	}
+	switch svcErr.Code {
+	case projectNotFoundErrorCode:
+		return "", &ErrorInvalidProject
+	case ouNotInProjectErrorCode:
+		return "", &ErrorOUNotInProject
+	default:
+		return "", &ErrorOrganizationUnitNotFound
+	}
+}
+
 // resolveUpdateOwner picks the effective owner for an update — either the requested owner or the
 // existing one — and validates it exists when the owner is changing.
 func (s *agentService) resolveUpdateOUID(
@@ -958,12 +1055,15 @@ func (s *agentService) resolveUpdateOUID(
 	}
 	ouID := req.OUID
 	if ouID == "" {
-		return existingOUID, nil
-	}
-	if ouID != existingOUID {
+		ouID = existingOUID
+	} else if ouID != existingOUID {
 		if svcErr := s.validateOUExists(ctx, ouID); svcErr != nil {
 			return "", svcErr
 		}
+	}
+	// A project checks that the agent stays in it; it never moves the agent on its own.
+	if req.ProjectID != "" {
+		return s.resolveProjectOU(ctx, req.ProjectID, ouID)
 	}
 	return ouID, nil
 }

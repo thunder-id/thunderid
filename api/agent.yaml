@@ -32,12 +32,15 @@ paths:
       summary: List agents
       description: |
         Retrieve a paginated list of agents. An `ouId` filter lists the agents the organization unit
-        owns, followed by the agents shared into it.
+        owns, followed by the agents shared into it. A `projectId` lists the same for the project's
+        root organization unit, or for the organization unit in the `ouId` filter when it belongs to
+        the project.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
         - $ref: '#/components/parameters/agentFilterParam'
         - $ref: '#/components/parameters/includeQueryParam'
+        - $ref: '#/components/parameters/projectIdQueryParam'
       responses:
         "200":
           description: List of agents
@@ -385,6 +388,26 @@ paths:
                     description:
                       key: "error.agentservice.missing_delegation_grant_type_description"
                       defaultValue: "A delegated agent needs at least one of these grant types: {{param(grantTypes)}}"
+                invalid-project:
+                  summary: The project does not exist
+                  value:
+                    code: "AGT-1047"
+                    message:
+                      key: "error.agentservice.invalid_project"
+                      defaultValue: "Invalid project"
+                    description:
+                      key: "error.agentservice.invalid_project_description"
+                      defaultValue: "No project exists with the given project ID"
+                ou-not-in-project:
+                  summary: The organization unit is outside the project
+                  value:
+                    code: "AGT-1048"
+                    message:
+                      key: "error.agentservice.ou_not_in_project"
+                      defaultValue: "Organization unit not in project"
+                    description:
+                      key: "error.agentservice.ou_not_in_project_description"
+                      defaultValue: "The organization unit must be the project's root organization unit or one below it"
                 ou-not-found:
                   summary: Organization unit not found
                   value:
@@ -943,6 +966,26 @@ paths:
                     description:
                       key: "error.agentservice.invalid_redirect_uri_description"
                       defaultValue: "One or more redirect URIs are not valid"
+                invalid-project:
+                  summary: The project does not exist
+                  value:
+                    code: "AGT-1047"
+                    message:
+                      key: "error.agentservice.invalid_project"
+                      defaultValue: "Invalid project"
+                    description:
+                      key: "error.agentservice.invalid_project_description"
+                      defaultValue: "No project exists with the given project ID"
+                ou-not-in-project:
+                  summary: The organization unit is outside the project
+                  value:
+                    code: "AGT-1048"
+                    message:
+                      key: "error.agentservice.ou_not_in_project"
+                      defaultValue: "Organization unit not in project"
+                    description:
+                      key: "error.agentservice.ou_not_in_project_description"
+                      defaultValue: "The organization unit must be the project's root organization unit or one below it"
                 ou-not-found:
                   summary: New organization unit not found
                   value:
@@ -1860,6 +1903,18 @@ components:
           - display
       description: |
         Pass `display` to populate the `display` and `ouHandle` fields in the response.
+    projectIdQueryParam:
+      in: query
+      name: projectId
+      required: false
+      description: |
+        Lists the agents the project's root organization unit owns, followed by the agents shared
+        into it. With an `ouId` filter, lists that organization unit instead when it is the
+        project's root organization unit or one below it. No other filter expression can be
+        combined with it. A project that does not exist, or an organization unit outside it, has no
+        agents.
+      schema:
+        type: string
     agentFilterParam:
       in: query
       name: filter
@@ -1980,7 +2035,7 @@ components:
           readOnly: true
           description: |
             Whether the listed organization unit owns the agent rather than being shared it. Present
-            only in agent lists. Without an `ouId` filter, every listed agent is owned.
+            only in agent lists. Without an `ouId` filter or a `projectId`, every listed agent is owned.
 
     AgentListResponse:
       type: object
@@ -2008,7 +2063,7 @@ components:
 
     CreateAgentRequest:
       type: object
-      required: [ouId, type]
+      required: [type]
       description: |
         Request to create an agent. What gets persisted depends on which fields are provided:
         - Always: entity row (`id`, `ouId`, `type`, `description`, `attributes`, `owner`).
@@ -2019,8 +2074,17 @@ components:
         ouId:
           type: string
           format: uuid
-          description: The organization unit ID where the agent will be created.
+          description: |
+            The organization unit ID where the agent will be created. Required unless `projectId`
+            is given.
           example: "456e8400-e29b-41d4-a716-446655440001"
+        projectId:
+          type: string
+          description: |
+            The ID of the project the agent belongs to. Without `ouId`, the agent is created in the
+            project's root organization unit. With `ouId`, that organization unit must be the
+            project's root organization unit or one below it.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         type:
           type: string
           description: The handle of the agent type. Only `default` is supported.
@@ -2136,6 +2200,13 @@ components:
           format: uuid
           description: New organization unit ID. Validated against existing OUs when changed.
           example: "456e8400-e29b-41d4-a716-446655440001"
+        projectId:
+          type: string
+          description: |
+            The ID of the project the agent belongs to. The agent's organization unit, the new one
+            when `ouId` is given or the current one otherwise, must be the project's root
+            organization unit or one below it. A project never moves the agent on its own.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         type:
           type: string
           example: "service-agent"

@@ -803,6 +803,10 @@ type Agent struct {
 	// and checked when the agent is created and is not stored.
 	Delegated bool `json:"delegated,omitempty"`
 
+	// ProjectID places the agent in the project's root organization unit, or checks that the
+	// organization unit named belongs to the project. It is not stored.
+	ProjectID string `json:"projectId,omitempty"`
+
 	// The service-level model carries the full internal profile.
 	InboundAuthProfile
 	InboundAuthConfig []InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`

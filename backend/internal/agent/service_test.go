@@ -25,6 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/project"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
@@ -4342,4 +4343,269 @@ func (suite *AgentServiceTestSuite) TestPublishLifespanEvent_ObservabilityDisabl
 
 	svc.publishLifespanSet(context.Background(), testAgentID, lifespanEnd{})
 	obs.AssertNotCalled(suite.T(), "PublishEvent", mock.Anything, mock.Anything)
+}
+
+// projectResolverStub resolves the organization unit of a project with the given function.
+type projectResolverStub func(ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError)
+
+func (f projectResolverStub) ResolveProjectOU(
+	ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError) {
+	return f(ctx, projectID, ouID)
+}
+
+// resolvingTo builds a project resolver that expects project-1 and the given organization unit, and
+// returns the given result.
+func (suite *AgentServiceTestSuite) resolvingTo(
+	wantOUID, ouID string, svcErr *tidcommon.ServiceError) projectResolverStub {
+	return func(_ context.Context, projectID, gotOUID string) (string, *tidcommon.ServiceError) {
+		suite.Equal("project-1", projectID)
+		suite.Equal(wantOUID, gotOUID)
+		return ouID, svcErr
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestProjectErrorCodesMatchTheProjectService() {
+	assert.Equal(suite.T(), project.ErrorProjectNotFound.Code, projectNotFoundErrorCode)
+	assert.Equal(suite.T(), project.ErrorOUNotInProject.Code, ouNotInProjectErrorCode)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentListByProject() {
+	for name, tc := range map[string]struct {
+		filters map[string]interface{}
+		filter  string
+	}{
+		"the project's root organization unit": {},
+		"an organization unit filter": {
+			filters: map[string]interface{}{"ouId": "child-ou"}, filter: "child-ou",
+		},
+	} {
+		suite.Run(name, func() {
+			svc, mockEntity, _, _, _ := suite.setupService()
+			svc.projectResolver = suite.resolvingTo(tc.filter, testOUID, nil)
+			mockEntity.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryAgent, testOUID,
+				entity.OUEntityScopeAll, 1, 0, map[string]interface{}(nil)).
+				Return(&entity.OUEntityPage{
+					Owned: []providers.Entity{{ID: "owned-agent", Category: providers.EntityCategoryAgent,
+						OUID: testOUID}},
+					TotalResults: 2,
+				}, nil)
+
+			resp, svcErr := svc.GetAgentListByProject(context.Background(), "project-1", 1, 0, tc.filters, false)
+
+			suite.Require().Nil(svcErr)
+			assert.Equal(suite.T(), 2, resp.TotalResults)
+			suite.Require().Len(resp.Agents, 1)
+			assert.Equal(suite.T(), "owned-agent", resp.Agents[0].ID)
+			suite.Require().NotEmpty(resp.Links)
+			assert.Contains(suite.T(), resp.Links[0].Href, "&projectId=project-1")
+		})
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentListByProject_NothingInScope() {
+	for name, tc := range map[string]struct {
+		projectID string
+		resolver  projectOUResolver
+	}{
+		"an unknown project": {
+			projectID: "project-1",
+			resolver:  suite.resolvingTo("", "", &project.ErrorProjectNotFound),
+		},
+		"an organization unit outside the project": {
+			projectID: "project-1",
+			resolver:  suite.resolvingTo("", "", &project.ErrorOUNotInProject),
+		},
+		"an unknown organization unit": {
+			projectID: "project-1",
+			resolver: suite.resolvingTo("", "",
+				&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "OU-1003"}),
+		},
+		"an empty project ID": {},
+		"a deployment without projects": {
+			projectID: "project-1",
+		},
+	} {
+		suite.Run(name, func() {
+			svc, mockEntity, _, _, _ := suite.setupService()
+			svc.projectResolver = tc.resolver
+
+			resp, svcErr := svc.GetAgentListByProject(context.Background(), tc.projectID, 10, 0, nil, false)
+
+			suite.Require().Nil(svcErr)
+			assert.Zero(suite.T(), resp.TotalResults)
+			assert.Empty(suite.T(), resp.Agents)
+			mockEntity.AssertNotCalled(suite.T(), "GetEntityPageInOU", mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+// A caller who cannot list agents from the project's organization unit gets an empty page.
+func (suite *AgentServiceTestSuite) TestGetAgentListByProject_WithoutAccess() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListAgents,
+		security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{AllAllowed: false, IDs: []string{"other-ou"}}, nil).Once()
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+	svc.projectResolver = suite.resolvingTo("", testOUID, nil)
+
+	resp, svcErr := svc.GetAgentListByProject(context.Background(), "project-1", 10, 0, nil, false)
+
+	suite.Require().Nil(svcErr)
+	assert.Zero(suite.T(), resp.TotalResults)
+	mockEntity.AssertNotCalled(suite.T(), "GetEntityPageInOU", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentListByProject_Fails() {
+	for name, tc := range map[string]struct {
+		limit    int
+		filters  map[string]interface{}
+		resolver projectOUResolver
+		expected *tidcommon.ServiceError
+	}{
+		"another filter attribute": {
+			filters:  map[string]interface{}{"name": "agent"},
+			expected: &ErrorInvalidFilter,
+		},
+		"an invalid limit": {limit: -1, expected: &ErrorInvalidLimit},
+		"a resolver failure": {
+			resolver: suite.resolvingTo("", "", &tidcommon.InternalServerError),
+			expected: &tidcommon.InternalServerError,
+		},
+	} {
+		suite.Run(name, func() {
+			svc, _, _, _, _ := suite.setupService()
+			svc.projectResolver = tc.resolver
+
+			resp, svcErr := svc.GetAgentListByProject(context.Background(), "project-1", tc.limit, 0,
+				tc.filters, false)
+
+			assert.Nil(suite.T(), resp)
+			assert.Equal(suite.T(), tc.expected, svcErr)
+		})
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_InProject() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	svc.projectResolver = suite.resolvingTo("", testOUID, nil)
+	clearMockCalls(mockEntity, "CreateEntity")
+	mockEntity.On("CreateEntity", mock.Anything, mock.MatchedBy(func(e *providers.Entity) bool {
+		return e.OUID == testOUID
+	}), mock.Anything, mock.Anything).Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	resp, svcErr := svc.CreateAgent(context.Background(),
+		&providers.Agent{Type: testAgentType, ProjectID: "project-1"})
+
+	suite.Require().Nil(svcErr)
+	assert.Equal(suite.T(), testOUID, resp.OUID)
+}
+
+func (suite *AgentServiceTestSuite) TestValidateAgent_Project() {
+	for name, tc := range map[string]struct {
+		agent    *providers.Agent
+		resolver projectOUResolver
+		ouID     string
+		expected *tidcommon.ServiceError
+	}{
+		"no organization unit": {
+			agent:    &providers.Agent{Type: testAgentType, ProjectID: "project-1"},
+			resolver: suite.resolvingTo("", testOUID, nil),
+			ouID:     testOUID,
+		},
+		"an organization unit handle in the project": {
+			agent:    &providers.Agent{Type: testAgentType, ProjectID: "project-1", OUHandle: "child"},
+			resolver: suite.resolvingTo(testOUID, testOUID, nil),
+			ouID:     testOUID,
+		},
+		"an unknown project": {
+			agent:    &providers.Agent{Type: testAgentType, ProjectID: "project-1"},
+			resolver: suite.resolvingTo("", "", &project.ErrorProjectNotFound),
+			expected: &ErrorInvalidProject,
+		},
+		"an organization unit outside the project": {
+			agent:    &providers.Agent{Type: testAgentType, ProjectID: "project-1", OUID: "other-ou"},
+			resolver: suite.resolvingTo("other-ou", "", &project.ErrorOUNotInProject),
+			ouID:     "other-ou",
+			expected: &ErrorOUNotInProject,
+		},
+		"an unknown organization unit": {
+			agent: &providers.Agent{Type: testAgentType, ProjectID: "project-1", OUID: "missing-ou"},
+			resolver: suite.resolvingTo("missing-ou", "",
+				&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "OU-1003"}),
+			ouID:     "missing-ou",
+			expected: &ErrorOrganizationUnitNotFound,
+		},
+		"a deployment without projects": {
+			agent:    &providers.Agent{Type: testAgentType, ProjectID: "project-1"},
+			expected: &ErrorInvalidProject,
+		},
+		"a resolver failure": {
+			agent:    &providers.Agent{Type: testAgentType, ProjectID: "project-1"},
+			resolver: suite.resolvingTo("", "", &tidcommon.InternalServerError),
+			expected: &tidcommon.InternalServerError,
+		},
+	} {
+		suite.Run(name, func() {
+			svc, _, _, _, _ := suite.setupService()
+			svc.projectResolver = tc.resolver
+
+			_, _, _, svcErr := svc.ValidateAgent(context.Background(), tc.agent, "")
+
+			assert.Equal(suite.T(), tc.expected, svcErr)
+			assert.Equal(suite.T(), tc.ouID, tc.agent.OUID)
+		})
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_Project() {
+	for name, tc := range map[string]struct {
+		req      *model.UpdateAgentRequest
+		resolver projectOUResolver
+		ouID     string
+		expected *tidcommon.ServiceError
+	}{
+		"the agent stays in its organization unit": {
+			req:      &model.UpdateAgentRequest{Type: testAgentType, ProjectID: "project-1"},
+			resolver: suite.resolvingTo(testOUID, testOUID, nil),
+			ouID:     testOUID,
+		},
+		"the agent moves within the project": {
+			req:      &model.UpdateAgentRequest{Type: testAgentType, ProjectID: "project-1", OUID: "child-ou"},
+			resolver: suite.resolvingTo("child-ou", "child-ou", nil),
+			ouID:     "child-ou",
+		},
+		"the agent is outside the project": {
+			req:      &model.UpdateAgentRequest{Type: testAgentType, ProjectID: "project-1"},
+			resolver: suite.resolvingTo(testOUID, "", &project.ErrorOUNotInProject),
+			expected: &ErrorOUNotInProject,
+		},
+		"an unknown project": {
+			req:      &model.UpdateAgentRequest{Type: testAgentType, ProjectID: "project-1"},
+			resolver: suite.resolvingTo(testOUID, "", &project.ErrorProjectNotFound),
+			expected: &ErrorInvalidProject,
+		},
+	} {
+		suite.Run(name, func() {
+			svc, mockEntity, _, _, _ := suite.setupService()
+			svc.projectResolver = tc.resolver
+			clearMockCalls(mockEntity, "GetEntityProfile")
+			mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+				Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+			clearMockCalls(mockEntity, "UpdateEntity")
+			mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).
+				Return(&providers.Entity{}, nil).Maybe()
+
+			resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, tc.req)
+
+			assert.Equal(suite.T(), tc.expected, svcErr)
+			if tc.expected == nil {
+				suite.Require().NotNil(resp)
+				assert.Equal(suite.T(), tc.ouID, resp.OUID)
+			} else {
+				mockEntity.AssertNotCalled(suite.T(), "UpdateEntity", mock.Anything, mock.Anything, mock.Anything)
+			}
+		})
+	}
 }
