@@ -144,6 +144,8 @@ export default defineConfig(({command}) => ({
   test: {
     globals: true,
     environment: 'jsdom',
+    // Node 25+ exposes its own localStorage global, which hides the jsdom one.
+    execArgv: ['--no-experimental-webstorage'],
     setupFiles: ['@thunderid/test-utils/setup'],
     reporters: process.env.CI ? ['dot'] : ['default'],
     restoreMocks: true,
