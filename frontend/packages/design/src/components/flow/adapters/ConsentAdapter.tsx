@@ -16,7 +16,7 @@ import {
   useConsentDetailField,
 } from '@thunderid/react';
 import {cn} from '@thunderid/utils';
-import {Box, Button, Chip, Divider, FormControlLabel, Switch, TextField, Typography} from '@wso2/oxygen-ui';
+import {Alert, Box, Button, Chip, Divider, FormControlLabel, Switch, TextField, Typography} from '@wso2/oxygen-ui';
 import {useState, type ChangeEvent, type JSX, type KeyboardEvent, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import getAuthorizationDetailRowLayout from '../../../utils/getAuthorizationDetailRowLayout';
@@ -89,6 +89,50 @@ interface ConsentAdapterProps {
   consentData?: string | ConsentPurpose[] | {purposes: ConsentPurpose[]};
   formValues: Record<string, string>;
   onInputChange: (name: string, value: string) => void;
+  /** Host of the client ID, shown with the redirect URI host when the server supplies both. */
+  clientIdHost?: string;
+  /** Host of the redirect URI the client returns to. */
+  redirectUriHost?: string;
+  /** Whether the redirect URI host is a loopback host, so the client runs on the user's device. */
+  redirectUriLoopback?: boolean;
+}
+
+interface ClientHostsProps {
+  clientIdHost: string;
+  redirectUriHost: string;
+  redirectUriLoopback: boolean;
+}
+
+// Shows where the client is published and where it returns to, and warns when it returns to the user's
+// device, since any program on the device can use a loopback redirect URI.
+function ClientHosts({clientIdHost, redirectUriHost, redirectUriLoopback}: ClientHostsProps): JSX.Element {
+  const {t} = useTranslation();
+
+  return (
+    <Box className={cn('Flow--consentClient')} sx={{display: 'flex', flexDirection: 'column', gap: 1}}>
+      <Typography
+        className={cn('Text--body2')}
+        variant="body2"
+        color="text.secondary"
+        sx={{minWidth: 0, overflowWrap: 'anywhere'}}
+      >
+        {t('consent:client.hosts', 'Published by {{clientIdHost}}. Returns to {{redirectUriHost}}.', {
+          clientIdHost,
+          redirectUriHost,
+        })}
+      </Typography>
+      {redirectUriLoopback && (
+        <Alert className={cn('Flow--consentDeviceWarning', 'Alert--root')} severity="warning">
+          <Typography className={cn('Text--body2')} variant="body2">
+            {t(
+              'consent:client.deviceWarning',
+              'This app runs on your device. Other programs on your device can use the same address, so continue only if you started this app.',
+            )}
+          </Typography>
+        </Alert>
+      )}
+    </Box>
+  );
 }
 
 // Permissions are opt-in: an absent form value means the user has not granted the permission. This
@@ -648,6 +692,9 @@ export default function ConsentAdapter({
   consentData = undefined,
   formValues,
   onInputChange,
+  clientIdHost = undefined,
+  redirectUriHost = undefined,
+  redirectUriLoopback = false,
 }: ConsentAdapterProps): JSX.Element | null {
   if (!consentData) return null;
 
@@ -655,6 +702,13 @@ export default function ConsentAdapter({
     <Consent consentData={consentData} formValues={formValues} onInputChange={onInputChange}>
       {({purposes}: ConsentRenderProps) => (
         <Box className={cn('Flow--consent')} sx={{display: 'flex', flexDirection: 'column', gap: 2, mt: 1}}>
+          {clientIdHost && redirectUriHost && (
+            <ClientHosts
+              clientIdHost={clientIdHost}
+              redirectUriHost={redirectUriHost}
+              redirectUriLoopback={redirectUriLoopback}
+            />
+          )}
           {purposes.map((purpose, idx) => (
             <Box key={purpose.purposeId ?? idx}>
               {isAuthorizationDetailPurpose(purpose) &&

@@ -802,30 +802,35 @@ describe('ConsentAdapter — large content', () => {
   });
 });
 
-describe('ConsentAdapter — Gate text', () => {
-  // Gate translations, as the locale bundle or the server provides them, with wording unlike the SDK's.
-  const gateI18n = i18next.createInstance();
-  gateI18n
-    .use(initReactI18next)
-    .init({
-      lng: 'en',
-      resources: {
-        en: {
-          consent: {
-            'authorizationDetails.numberMax': 'No more than {{value}}, please.',
-            'authorizationDetails.removeItem': 'Take out {{item}}',
-            'authorizationDetails.addItem': 'Put in {{item}}',
-            'authorizationDetails.addBackItem': 'Bring back {{item}}',
-            'authorizationDetails.newItem': 'Add to {{label}}',
-          },
+// Gate translations, as the locale bundle or the server provides them, with wording unlike the SDK's.
+const gateI18n = i18next.createInstance();
+gateI18n
+  .use(initReactI18next)
+  .init({
+    lng: 'en',
+    resources: {
+      en: {
+        consent: {
+          'authorizationDetails.numberMax': 'No more than {{value}}, please.',
+          'authorizationDetails.removeItem': 'Take out {{item}}',
+          'authorizationDetails.addItem': 'Put in {{item}}',
+          'authorizationDetails.addBackItem': 'Bring back {{item}}',
+          'authorizationDetails.newItem': 'Add to {{label}}',
+          'client.hosts': 'Published by {{clientIdHost}}. Returns to {{redirectUriHost}}.',
+          'client.deviceWarning':
+            'This app runs on your device. Other programs on your device can use the same address, so continue only if you started this app.',
         },
       },
-      interpolation: {escapeValue: false},
-    })
-    .catch(() => undefined);
-  function GateText({children}: {children: ReactNode}): JSX.Element {
-    return <I18nextProvider i18n={gateI18n}>{children}</I18nextProvider>;
-  }
+    },
+    interpolation: {escapeValue: false},
+  })
+  .catch(() => undefined);
+
+function GateText({children}: {children: ReactNode}): JSX.Element {
+  return <I18nextProvider i18n={gateI18n}>{children}</I18nextProvider>;
+}
+
+describe('ConsentAdapter — Gate text', () => {
   const renderWithGateText = (purpose: object, formValues: Record<string, string> = {}) =>
     renderWithProviders(
       <GateText>
@@ -886,5 +891,74 @@ describe('ConsentAdapter — Gate text', () => {
       'aria-label',
       'Take out initiate',
     );
+  });
+});
+
+describe('ConsentAdapter — client hosts', () => {
+  const renderWithHostText = (ui: ReactNode) => renderWithProviders(<GateText>{ui}</GateText>);
+  const hostsText = 'Published by vscode.dev. Returns to 127.0.0.1.';
+  const deviceWarning =
+    'This app runs on your device. Other programs on your device can use the same address, so continue only if you started this app.';
+
+  it('shows the client and redirect hosts with the device warning for a loopback redirect', () => {
+    renderWithHostText(
+      <ConsentAdapter
+        consentData={permissionsPurpose}
+        formValues={{}}
+        onInputChange={noop}
+        clientIdHost="vscode.dev"
+        redirectUriHost="127.0.0.1"
+        redirectUriLoopback
+      />,
+    );
+
+    expect(screen.getByText(hostsText)).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toBe(deviceWarning);
+  });
+
+  it('shows the hosts without the device warning for a redirect off the device', () => {
+    renderWithHostText(
+      <ConsentAdapter
+        consentData={permissionsPurpose}
+        formValues={{}}
+        onInputChange={noop}
+        clientIdHost="claude.ai"
+        redirectUriHost="claude.ai"
+      />,
+    );
+
+    expect(screen.getByText('Published by claude.ai. Returns to claude.ai.')).toBeTruthy();
+    expect(screen.queryByText(deviceWarning)).toBeNull();
+  });
+
+  it('shows the hosts above the purposes', () => {
+    renderWithHostText(
+      <ConsentAdapter
+        consentData={permissionsPurpose}
+        formValues={{}}
+        onInputChange={noop}
+        clientIdHost="vscode.dev"
+        redirectUriHost="127.0.0.1"
+        redirectUriLoopback
+      />,
+    );
+
+    const hosts = screen.getByText(hostsText);
+    const permission = switchFor('system');
+    expect(hosts.compareDocumentPosition(permission) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it.each([
+    ['no hosts', {}],
+    ['only the client host', {clientIdHost: 'vscode.dev'}],
+    ['only the redirect host', {redirectUriHost: '127.0.0.1', redirectUriLoopback: true}],
+  ])('shows neither the hosts nor the device warning with %s', (_label, hostProps) => {
+    renderWithHostText(
+      <ConsentAdapter consentData={permissionsPurpose} formValues={{}} onInputChange={noop} {...hostProps} />,
+    );
+
+    expect(screen.queryByText(/Published by/)).toBeNull();
+    expect(screen.queryByText(deviceWarning)).toBeNull();
+    expect(switchFor('system')).toBeTruthy();
   });
 });

@@ -356,6 +356,10 @@ var requestScopedSnapshotDenyList = map[string]struct{}{
 	common.RuntimeKeyRequiredLocales:             {},
 	common.RuntimeKeyClientID:                    {},
 	common.RuntimeKeyAuthorizationRequestID:      {},
+	// The client and redirect hosts name the establishing client; a replayed copy would show them for
+	// another client at its consent.
+	common.RuntimeKeyClientIDHost:    {},
+	common.RuntimeKeyRedirectURIHost: {},
 	// The token family id is minted fresh per flow execution, so it must not ride a reused snapshot.
 	common.RuntimeKeyTokenFamilyID: {},
 	// The SSO session id is resolved fresh per flow execution; a replayed copy could name another session.

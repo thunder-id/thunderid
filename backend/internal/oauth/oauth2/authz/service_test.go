@@ -3307,3 +3307,178 @@ func (suite *AuthorizeServiceTestSuite) TestDecodeAttributesFromAssertion_Grante
 	assert.NotNil(suite.T(), claims.grantedAuthorizationDetails, "an empty claim is a decision granting none")
 	assert.Empty(suite.T(), claims.grantedAuthorizationDetails)
 }
+
+// metadataDocumentApp returns a client registered from a Client ID Metadata Document.
+func (suite *AuthorizeServiceTestSuite) metadataDocumentApp(redirectURI string) *providers.OAuthClient {
+	app := suite.testApp()
+	app.ClientID = "https://client.example.com/oauth/client.json"
+	app.ClientIDMetadataDocument = true
+	app.RedirectURIs = []string{redirectURI}
+	return app
+}
+
+// initiateStandardRequest sends an authorization request for app and returns the flow it starts.
+func (suite *AuthorizeServiceTestSuite) initiateStandardRequest(
+	app *providers.OAuthClient, redirectURI string) *flowexec.FlowInitContext {
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, app.ClientID).Return(app, nil)
+	suite.mockValidator.On("validateInitialAuthorizationRequest", mock.Anything, mock.Anything, app).
+		Return(false, "", "")
+	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
+	var captured *flowexec.FlowInitContext
+	suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, ic *flowexec.FlowInitContext) { captured = ic }).
+		Return("test-flow-id", nil)
+
+	msg := suite.testMsg()
+	msg.RequestQueryParams["client_id"] = []string{app.ClientID}
+	msg.RequestQueryParams["redirect_uri"] = []string{redirectURI}
+	_, authErr := suite.newService().HandleInitialAuthorizationRequest(context.Background(), msg)
+
+	suite.Require().Nil(authErr)
+	suite.Require().NotNil(captured)
+	return captured
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_MetadataDocumentClientHTTPSRedirect() {
+	redirectURI := "https://client.example.com/callback"
+
+	captured := suite.initiateStandardRequest(suite.metadataDocumentApp(redirectURI), redirectURI)
+
+	assert.Equal(suite.T(), "client.example.com", captured.RuntimeData[flowcm.RuntimeKeyClientIDHost])
+	assert.Equal(suite.T(), "client.example.com", captured.RuntimeData[flowcm.RuntimeKeyRedirectURIHost])
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_MetadataDocumentClientLoopbackRedirect() {
+	redirectURI := "http://127.0.0.1:3118/callback"
+
+	captured := suite.initiateStandardRequest(suite.metadataDocumentApp(redirectURI), redirectURI)
+
+	assert.Equal(suite.T(), "client.example.com", captured.RuntimeData[flowcm.RuntimeKeyClientIDHost])
+	assert.Equal(suite.T(), "127.0.0.1", captured.RuntimeData[flowcm.RuntimeKeyRedirectURIHost])
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_MetadataDocumentClientDefaultRedirect() {
+	app := suite.metadataDocumentApp("http://localhost/callback")
+
+	captured := suite.initiateStandardRequest(app, "")
+
+	assert.Equal(suite.T(), "client.example.com", captured.RuntimeData[flowcm.RuntimeKeyClientIDHost])
+	assert.Equal(suite.T(), "localhost", captured.RuntimeData[flowcm.RuntimeKeyRedirectURIHost])
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_OtherClientHasNoHosts() {
+	captured := suite.initiateStandardRequest(suite.testApp(), "https://client.example.com/callback")
+
+	assert.NotContains(suite.T(), captured.RuntimeData, flowcm.RuntimeKeyClientIDHost)
+	assert.NotContains(suite.T(), captured.RuntimeData, flowcm.RuntimeKeyRedirectURIHost)
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_PARMetadataDocumentClientHosts() {
+	redirectURI := "http://[::1]:3118/callback"
+	app := suite.metadataDocumentApp(redirectURI)
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, app.ClientID).Return(app, nil)
+	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
+	var captured *flowexec.FlowInitContext
+	suite.mockFlowExecService.EXPECT().InitiateFlow(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, ic *flowexec.FlowInitContext) { captured = ic }).
+		Return("test-flow-id", nil)
+
+	svc := suite.newService()
+	svc.parService = &stubPARService{params: &oauth2model.OAuthParameters{
+		ClientID:       app.ClientID,
+		RedirectURI:    redirectURI,
+		ResponseType:   "code",
+		StandardScopes: []string{"openid"},
+	}}
+	msg := &OAuthMessage{
+		RequestType: oauth2const.TypeInitialAuthorizationRequest,
+		RequestQueryParams: url.Values{
+			"client_id":   {app.ClientID},
+			"request_uri": {"urn:ietf:params:oauth:request_uri:abc"},
+		},
+	}
+
+	_, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), msg)
+
+	suite.Require().Nil(authErr)
+	suite.Require().NotNil(captured)
+	assert.Equal(suite.T(), "client.example.com", captured.RuntimeData[flowcm.RuntimeKeyClientIDHost])
+	assert.Equal(suite.T(), "::1", captured.RuntimeData[flowcm.RuntimeKeyRedirectURIHost])
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_MetadataDocumentClientHostsLowercased() {
+	redirectURI := "https://Client.Example.com/callback"
+	app := suite.metadataDocumentApp(redirectURI)
+	app.ClientID = "https://CLIENT.example.com/oauth/client.json"
+
+	captured := suite.initiateStandardRequest(app, redirectURI)
+
+	assert.Equal(suite.T(), "client.example.com", captured.RuntimeData[flowcm.RuntimeKeyClientIDHost])
+	assert.Equal(suite.T(), "client.example.com", captured.RuntimeData[flowcm.RuntimeKeyRedirectURIHost])
+}
+
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_MetadataDocumentClientHostsPunycode() {
+	// A Cyrillic small letter o (U+043E) makes the host look like vscode.dev.
+	redirectURI := "https://VSC\u043eDE.dev/callback"
+	app := suite.metadataDocumentApp(redirectURI)
+	app.ClientID = "https://vsc\u043ede.dev/oauth/client.json"
+
+	captured := suite.initiateStandardRequest(app, redirectURI)
+
+	assert.Equal(suite.T(), "xn--vscde-lye.dev", captured.RuntimeData[flowcm.RuntimeKeyClientIDHost])
+	assert.Equal(suite.T(), "xn--vscde-lye.dev", captured.RuntimeData[flowcm.RuntimeKeyRedirectURIHost])
+}
+
+func (suite *AuthorizeServiceTestSuite) TestASCIIHost() {
+	testCases := []struct {
+		host     string
+		expected string
+		ok       bool
+	}{
+		{host: "Client.Example.com", expected: "client.example.com", ok: true},
+		{host: "my_host.example", expected: "my_host.example", ok: true},
+		{host: "::1", expected: "::1", ok: true},
+		{host: "m\u00fcnchen.de", expected: "xn--mnchen-3ya.de", ok: true},
+		{host: "\uff56\uff53\uff43\uff4f\uff44\uff45.dev", expected: "vscode.dev", ok: true},
+		// The lookup profile rejects Latin and Hebrew in one label, so the host is plain punycode.
+		{host: "AB\u05d0.example.com", expected: "xn--ab-wld.example.com", ok: true},
+		{host: "a\xffb.example.com", ok: false},
+	}
+	for _, tc := range testCases {
+		suite.Run(tc.host, func() {
+			host, ok := asciiHost(tc.host)
+
+			assert.Equal(suite.T(), tc.ok, ok)
+			if tc.ok {
+				assert.Equal(suite.T(), tc.expected, host)
+			}
+		})
+	}
+}
+
+func (suite *AuthorizeServiceTestSuite) TestAddMetadataDocumentClientHosts_SkipsWithoutBothHosts() {
+	testCases := []struct {
+		name        string
+		clientID    string
+		redirectURI string
+	}{
+		{name: "NoRedirectURI", clientID: "https://client.example.com/client.json", redirectURI: ""},
+		{name: "InvalidClientID", clientID: "https://client.example.com/%zz", redirectURI: "http://localhost/cb"},
+		{name: "InvalidRedirectURI", clientID: "https://client.example.com/client.json", redirectURI: "http://[::1"},
+		{name: "NoASCIIClientIDHost", clientID: "https://a%FFb.example.com/client.json",
+			redirectURI: "http://localhost/cb"},
+		{name: "NoASCIIRedirectURIHost", clientID: "https://client.example.com/client.json",
+			redirectURI: "https://a%FFb.example.com/cb"},
+	}
+	svc := suite.newService()
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			app := &providers.OAuthClient{ClientID: tc.clientID, ClientIDMetadataDocument: true}
+			runtimeData := map[string]string{}
+
+			svc.addMetadataDocumentClientHosts(runtimeData, app, tc.redirectURI)
+
+			assert.Empty(suite.T(), runtimeData)
+		})
+	}
+}
