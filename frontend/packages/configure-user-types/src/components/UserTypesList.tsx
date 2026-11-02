@@ -8,6 +8,7 @@ import {getErrorMessage} from '@thunderid/utils';
 import {
   Chip,
   IconButton,
+  Stack,
   Tooltip,
   Typography,
   Alert,
@@ -20,7 +21,7 @@ import {
   Button,
   DataGrid,
 } from '@wso2/oxygen-ui';
-import {Eye, Pencil, Trash2, UserRoundCog} from '@wso2/oxygen-ui-icons-react';
+import {Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useMemo, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -88,12 +89,14 @@ export default function UserTypesList() {
         flex: 1.5,
         minWidth: 220,
         renderCell: (params: DataGrid.GridRenderCellParams<UserTypeListItem>) => (
-          <ListingTable.CellIcon
-            icon={<UserRoundCog size={20} />}
-            primary={params.row.displayName}
-            secondary={params.row.handle}
-            sx={{width: '100%'}}
-          />
+          <Stack justifyContent="center" sx={{height: '100%'}}>
+            <Typography variant="body2" sx={{fontWeight: 500, lineHeight: 1.3}}>
+              {params.row.displayName}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{lineHeight: 1.2}}>
+              {params.row.handle}
+            </Typography>
+          </Stack>
         ),
       },
       {
@@ -143,9 +146,9 @@ export default function UserTypesList() {
             {params.row.isReadOnly ? (
               <Tooltip title={t('common:status.readOnly', 'Read only')}>
                 <IconButton
+                  aria-label={t('common:status.readOnly', 'Read only')}
                   size="small"
                   disableRipple
-                  aria-label={t('common:status.readOnly', 'Read only')}
                   sx={{cursor: 'default'}}
                 >
                   <Eye size={16} />
@@ -155,8 +158,8 @@ export default function UserTypesList() {
               <>
                 <Tooltip title={t('common:actions.edit', 'Edit')}>
                   <IconButton
-                    size="small"
                     aria-label={t('common:actions.edit', 'Edit')}
+                    size="small"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleViewClick(params.row.id);
@@ -167,9 +170,9 @@ export default function UserTypesList() {
                 </Tooltip>
                 <Tooltip title={t('common:actions.delete', 'Delete')}>
                   <IconButton
+                    aria-label={t('common:actions.delete', 'Delete')}
                     size="small"
                     color="error"
-                    aria-label={t('common:actions.delete', 'Delete')}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleDeleteClick(params.row.id);
@@ -201,8 +204,8 @@ export default function UserTypesList() {
 
   return (
     <>
-      <ListingTable.Provider variant="data-grid" loading={isLoading}>
-        <ListingTable.Container>
+      <ListingTable.Provider variant="data-grid-card" loading={isLoading}>
+        <ListingTable.Container disablePaper>
           <ListingTable.DataGrid
             rows={userTypesData?.types ?? []}
             columns={columns}
@@ -210,7 +213,6 @@ export default function UserTypesList() {
             onRowClick={(params) => {
               handleViewClick((params.row as UserTypeListItem).id);
             }}
-            rowHeight={64}
             initialState={{
               pagination: {
                 paginationModel: {pageSize: 10},

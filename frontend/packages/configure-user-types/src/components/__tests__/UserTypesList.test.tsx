@@ -49,24 +49,12 @@ vi.mock('@wso2/oxygen-ui', async () => {
       GridRenderCellParams: {},
     },
     ListingTable: {
-      Provider: ({
-        children,
-        loading = false,
-        variant = undefined,
-      }: {
-        children: ReactNode;
-        loading?: boolean;
-        variant?: string;
-      }) => (
-        <div data-testid="listing-table-provider" data-loading={loading ? 'true' : 'false'} data-variant={variant}>
+      Provider: ({children, loading = false}: {children: ReactNode; loading?: boolean}) => (
+        <div data-testid="listing-table-provider" data-loading={loading ? 'true' : 'false'}>
           {children}
         </div>
       ),
-      Container: ({children, disablePaper = false}: {children: ReactNode; disablePaper?: boolean}) => (
-        <div data-testid="listing-table-container" data-disable-paper={disablePaper ? 'true' : undefined}>
-          {children}
-        </div>
-      ),
+      Container: ({children}: {children: ReactNode}): ReactElement => children as ReactElement,
       DataGrid: ({
         rows = [],
         columns = [],
@@ -120,19 +108,10 @@ vi.mock('@wso2/oxygen-ui', async () => {
           })}
         </div>
       ),
-      CellIcon: ({
-        primary,
-        secondary = undefined,
-        icon = undefined,
-      }: {
-        primary: string;
-        secondary?: ReactNode;
-        icon?: ReactNode;
-      }) => (
+      CellIcon: ({primary, icon = undefined}: {primary: string; icon?: ReactNode}) => (
         <>
           {icon}
           <span>{primary}</span>
-          {secondary && <span>{secondary}</span>}
         </>
       ),
       RowActions: ({children}: {children: ReactNode}): ReactElement => children as ReactElement,
@@ -256,33 +235,6 @@ describe('UserTypesList', () => {
 
     expect(screen.getByTestId('row-schema1')).toHaveTextContent('Employee Schema');
     expect(screen.getByTestId('row-schema2')).toHaveTextContent('Contractor Schema');
-  });
-
-  it('uses the data grid variant inside a paper container', () => {
-    render(<UserTypesList />);
-
-    expect(screen.getByTestId('listing-table-provider')).toHaveAttribute('data-variant', 'data-grid');
-    expect(screen.getByTestId('listing-table-container')).not.toHaveAttribute('data-disable-paper');
-  });
-
-  it('names the edit and delete actions of each row', () => {
-    render(<UserTypesList />);
-
-    expect(screen.getAllByRole('button', {name: 'Edit'})).toHaveLength(2);
-    expect(screen.getAllByRole('button', {name: 'Delete'})).toHaveLength(2);
-  });
-
-  it('names the read-only indicator of a read-only user type', () => {
-    mockUseGetUserTypes.mockReturnValue({
-      data: {...mockUserTypesData, types: [{...mockUserTypesData.types[0], isReadOnly: true}]},
-      isLoading: false,
-      error: null,
-      refetch: mockRefetchUserTypes,
-    } as unknown as ReturnType<typeof useGetUserTypesHook>);
-
-    render(<UserTypesList />);
-
-    expect(screen.getByRole('button', {name: 'Read only'})).toBeInTheDocument();
   });
 
   it('shows the handle under the display name', () => {

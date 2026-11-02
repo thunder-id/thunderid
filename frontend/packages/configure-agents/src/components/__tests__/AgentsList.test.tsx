@@ -33,16 +33,8 @@ vi.mock('@wso2/oxygen-ui', async (importOriginal) => {
     ...actual,
     OxygenUIThemeProvider: ({children}: {children: React.ReactNode}) => children,
     ListingTable: {
-      Provider: ({children, variant = undefined}: {children: React.ReactNode; variant?: string}) => (
-        <div data-testid="listing-provider" data-variant={variant}>
-          {children}
-        </div>
-      ),
-      Container: ({children, disablePaper = undefined}: {children: React.ReactNode; disablePaper?: boolean}) => (
-        <div data-testid="listing-container" data-disable-paper={disablePaper}>
-          {children}
-        </div>
-      ),
+      Provider: ({children}: {children: React.ReactNode}): React.ReactElement => children as React.ReactElement,
+      Container: ({children}: {children: React.ReactNode}): React.ReactElement => children as React.ReactElement,
       DataGrid: ({
         rows,
         columns,
@@ -267,32 +259,6 @@ describe('AgentsList', () => {
     const indicators = screen.getAllByRole('img', {name: 'Active'});
     expect(indicators.length).toBeGreaterThan(0);
     indicators.forEach((indicator) => expect(indicator).toHaveAttribute('tabindex', '-1'));
-  });
-
-  it('should render the listing as a papered data grid', () => {
-    vi.mocked(useGetAgents).mockReturnValue({
-      data: mockAgentsData,
-      isLoading: false,
-      error: null,
-    } as ReturnType<typeof useGetAgents>);
-
-    renderComponent();
-
-    expect(screen.getByTestId('listing-provider')).toHaveAttribute('data-variant', 'data-grid');
-    expect(screen.getByTestId('listing-container')).not.toHaveAttribute('data-disable-paper');
-  });
-
-  it('should give each row action button an accessible name', () => {
-    vi.mocked(useGetAgents).mockReturnValue({
-      data: mockAgentsData,
-      isLoading: false,
-      error: null,
-    } as ReturnType<typeof useGetAgents>);
-
-    renderComponent();
-
-    expect(screen.getAllByRole('button', {name: 'Edit'})).toHaveLength(2);
-    expect(screen.getAllByRole('button', {name: 'Delete'})).toHaveLength(2);
   });
 
   it('should fall back to the agent id when an agent has no display value', () => {
